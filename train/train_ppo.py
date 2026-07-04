@@ -17,7 +17,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "python"))
 
 from sb3_contrib import RecurrentPPO
 from stable_baselines3 import PPO
-from stable_baselines3.common.callbacks import BaseCallback
+from stable_baselines3.common.callbacks import BaseCallback, CheckpointCallback
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv
 
@@ -146,9 +146,14 @@ def main():
         model = PPO("MlpPolicy", vec_env, n_steps=args.n_steps, batch_size=256,
                     policy_kwargs=policy_kwargs or None, **common)
 
+    # 每 ~50 万步存一次检查点(v9 在 40% 被终止时权重全丢的教训)
+    ckpt = CheckpointCallback(
+        save_freq=max(1, 500_000 // args.num_envs),
+        save_path=str(run_dir / "ckpt"), name_prefix="model",
+    )
     callback = EpisodeJsonlCallback(run_dir, config)
     try:
-        model.learn(total_timesteps=args.total_steps, callback=callback)
+        model.learn(total_timesteps=args.total_steps, callback=[callback, ckpt])
     finally:
         model.save(str(run_dir / "model_final"))
         vec_env.close()
