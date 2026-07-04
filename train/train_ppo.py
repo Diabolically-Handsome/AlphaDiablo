@@ -93,6 +93,8 @@ def main():
     ap.add_argument("--n-steps", type=int, default=512, help="每个 env 每轮采样步数")
     ap.add_argument("--algo", default="ppo", choices=["ppo", "rppo"],
                     help="rppo = RecurrentPPO/LSTM(B 计划:学习记忆替代手写宏状态机)")
+    ap.add_argument("--arch", default="mlp", choices=["mlp", "attn"],
+                    help="attn = 实体注意力感知(v9:AlphaStar 式 entity encoder + 地图 CNN)")
     args = ap.parse_args()
 
     run_name = args.run_name or time.strftime("ppo-l1-%m%d-%H%M%S")
@@ -105,7 +107,8 @@ def main():
         "device": args.device,
         "lr": args.lr,
         "n_steps": args.n_steps,
-        "algo": "RecurrentPPO/MlpLstmPolicy" if args.algo == "rppo" else "PPO/MlpPolicy",
+        "algo": ("RecurrentPPO/MlpLstmPolicy" if args.algo == "rppo" else "PPO/MlpPolicy")
+                + ("+EntityAttention" if args.arch == "attn" else ""),
         "goal": "地牢 1 层:杀怪拿 XP,找楼梯下 2 层",
     }
     print(f"== DiabloGym PPO 训练 == run={run_name}")
@@ -124,15 +127,24 @@ def main():
         verbose=1,
         tensorboard_log=str(run_dir / "tb"),
     )
+    policy_kwargs = {}
+    if args.arch == "attn":
+        from models import EntityAttentionExtractor
+        policy_kwargs = dict(
+            features_extractor_class=EntityAttentionExtractor,
+            features_extractor_kwargs=dict(features_dim=256),
+            net_arch=dict(pi=[128], vf=[128]),
+        )
     if args.algo == "rppo":
         model = RecurrentPPO(
             "MlpLstmPolicy", vec_env,
             n_steps=256, batch_size=256,
-            policy_kwargs=dict(lstm_hidden_size=128, n_lstm_layers=1),
+            policy_kwargs=dict(lstm_hidden_size=128, n_lstm_layers=1, **policy_kwargs),
             **common,
         )
     else:
-        model = PPO("MlpPolicy", vec_env, n_steps=args.n_steps, batch_size=256, **common)
+        model = PPO("MlpPolicy", vec_env, n_steps=args.n_steps, batch_size=256,
+                    policy_kwargs=policy_kwargs or None, **common)
 
     callback = EpisodeJsonlCallback(run_dir, config)
     try:
