@@ -194,8 +194,9 @@ class DiabloGymEnv(gym.Env):
                 if prev_target is not None and cur_target["hp"] >= prev_target["hp"]:
                     d_prev = max(abs(prev_target["x"] - prev["player_x"]), abs(prev_target["y"] - prev["player_y"]))
                     d_cur = max(abs(cur_target["x"] - raw["player_x"]), abs(cur_target["y"] - raw["player_y"]))
-                    if d_cur >= d_prev:
-                        # 追击无进展:该目标冷却 60 决策步,别再锁它
+                    # 贴脸(≤1 格)= 正在互殴,不判"无进展"——一次挥砍 ~12 tick,
+                    # 2 拍(8 tick)窗口内血量不动是常态(v7.1 回归的根因:误判+冷却=杀怪禁令)
+                    if d_cur >= d_prev and d_cur > 1:
                         self._engage_cooldown[tid] = self._steps + 60
                         break
             prev = raw
