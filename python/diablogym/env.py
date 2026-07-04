@@ -109,6 +109,7 @@ class DiabloGymEnv(gym.Env):
         self._clear_bonus_given = False
         self._explore_blacklist: set[tuple[int, int]] = set()
         self._engage_cooldown: dict[int, int] = {}
+        self._engage_fail: dict[int, int] = {}
         return self._vectorize(self._raw), self._info(self._raw)
 
     def step(self, action: int):
@@ -186,7 +187,12 @@ class DiabloGymEnv(gym.Env):
             raw = bridge.step(ticks=self.ticks_per_step)
             cur_target = next((m for m in raw["monsters"] if m["id"] == tid), None)
             if cur_target is None or raw["dead"] or raw["dungeon_level"] != start_level:
+                self._engage_fail.pop(tid, None)  # 击杀/终局:清连败计数
                 break
+            if beats >= 2:
+                prev_t = next((m for m in prev["monsters"] if m["id"] == tid), None)
+                if prev_t is not None and cur_target["hp"] < prev_t["hp"]:
+                    self._engage_fail.pop(tid, None)  # 造成伤害 = 有进展,清连败
             # 止损:连续 2 拍既没接近目标也没造成伤害(多半隔墙不可达)→ 提前放弃,
             # 把决策权还给策略,避免 run3 式"对着墙白烧 10 拍"
             if beats >= 2:
@@ -195,9 +201,13 @@ class DiabloGymEnv(gym.Env):
                     d_prev = max(abs(prev_target["x"] - prev["player_x"]), abs(prev_target["y"] - prev["player_y"]))
                     d_cur = max(abs(cur_target["x"] - raw["player_x"]), abs(cur_target["y"] - raw["player_y"]))
                     # 贴脸(≤1 格)= 正在互殴,不判"无进展"——一次挥砍 ~12 tick,
-                    # 2 拍(8 tick)窗口内血量不动是常态(v7.1 回归的根因:误判+冷却=杀怪禁令)
+                    # 2 拍(8 tick)窗口内血量不动是常态(v7.1 回归的根因:误判+冷却=杀怪禁令)。
+                    # 远程无进展 ≠ 不可达:绕柱/拐弯时直线距离短暂不减(v7.2 残留误伤),
+                    # 故同一目标连续两次宏失败才冷却——真不可达必然连败,拐弯党不会
                     if d_cur >= d_prev and d_cur > 1:
-                        self._engage_cooldown[tid] = self._steps + 60
+                        self._engage_fail[tid] = self._engage_fail.get(tid, 0) + 1
+                        if self._engage_fail[tid] >= 2:
+                            self._engage_cooldown[tid] = self._steps + 60
                         break
             prev = raw
         return raw, beats
