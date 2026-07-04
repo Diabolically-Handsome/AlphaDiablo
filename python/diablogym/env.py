@@ -107,6 +107,8 @@ class DiabloGymEnv(gym.Env):
         self._visited = {(self._raw["player_x"], self._raw["player_y"])}
         self._initial_monsters = max(1, len(self._raw["monsters"]))
         self._clear_bonus_given = False
+        self._explore_blacklist: set[tuple[int, int]] = set()
+        self._engage_cooldown: dict[int, int] = {}
         return self._vectorize(self._raw), self._info(self._raw)
 
     def step(self, action: int):
@@ -165,8 +167,14 @@ class DiabloGymEnv(gym.Env):
             bridge.act_walk(px + dx, py + dy)
 
     def _macro_engage(self, max_beats: int = 10):
-        """交战宏:锁定最近怪物,持续下追击指令直到分出结果或超时。"""
-        target = self._nearest_monster(self._raw)
+        """交战宏:锁定最近的『非冷却』怪物追击。追击失败(多半不可达)的目标
+        进入冷却名单,一段时间内不再被选中——止损而不重蹈覆辙(v7.1)。"""
+        obs = self._raw
+        px, py = obs["player_x"], obs["player_y"]
+        candidates = [m for m in obs["monsters"]
+                      if self._engage_cooldown.get(m["id"], -1) < self._steps]
+        target = min(candidates, key=lambda m: max(abs(m["x"] - px), abs(m["y"] - py))) \
+            if candidates else None
         if target is None:
             return bridge.step(ticks=self.ticks_per_step), 1
         tid = target["id"]
@@ -187,6 +195,8 @@ class DiabloGymEnv(gym.Env):
                     d_prev = max(abs(prev_target["x"] - prev["player_x"]), abs(prev_target["y"] - prev["player_y"]))
                     d_cur = max(abs(cur_target["x"] - raw["player_x"]), abs(cur_target["y"] - raw["player_y"]))
                     if d_cur >= d_prev:
+                        # 追击无进展:该目标冷却 60 决策步,别再锁它
+                        self._engage_cooldown[tid] = self._steps + 60
                         break
             prev = raw
         return raw, beats
@@ -212,7 +222,7 @@ class DiabloGymEnv(gym.Env):
                 continue
             tx, ty = px + (i % side) - r, py + (i // side) - r
             d_player = max(abs(tx - px), abs(ty - py))
-            if d_player >= 5 and (tx, ty) not in near_visited:
+            if d_player >= 5 and (tx, ty) not in near_visited and (tx, ty) not in self._explore_blacklist:
                 candidates.append((d_player, tx, ty))
         if candidates:
             _, tx, ty = min(candidates)  # 最近的边疆点(便宜且稳)
@@ -238,7 +248,14 @@ class DiabloGymEnv(gym.Env):
                     or max(abs(pos[0] - tx), abs(pos[1] - ty)) <= 1):  # 到达
                 break
             stall = stall + 1 if pos == last_pos else 0
-            if stall >= 2:  # 目标不可达,止损
+            if stall >= 2:
+                # 目标不可达:拉黑该边疆点(否则下次仍被选中,止损沦为死循环 v7 教训),
+                # 并强制随机挪一步——宏必须"要么有进展,要么换花样"
+                self._explore_blacklist.add((tx, ty))
+                dx, dy = _DIRS[int(np.random.default_rng(len(self._explore_blacklist)).integers(0, 8))]
+                bridge.act_walk(pos[0] + dx * 2, pos[1] + dy * 2)
+                raw = bridge.step(ticks=self.ticks_per_step)
+                beats += 1
                 break
             last_pos = pos
         return raw, beats
