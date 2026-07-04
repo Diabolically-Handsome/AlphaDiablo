@@ -86,7 +86,7 @@ PAGE = """<!doctype html><html lang="zh"><head><meta charset="utf-8">
   <div class="card"><h3>每局步数(存活时长)</h3><svg id="c-len"></svg></div>
 </div>
 <div class="card" style="margin-top:12px"><h3>最近战绩</h3>
-  <table><thead><tr><th>局</th><th>奖励</th><th>步数</th><th>击杀</th><th>XP</th>
+  <table><thead><tr><th>局</th><th>奖励</th><th>步数</th><th>击杀</th><th>清层%</th><th>XP</th>
   <th>等级</th><th>层</th><th>金币</th><th>结局</th></tr></thead>
   <tbody id="tbody"></tbody></table>
 </div>
@@ -137,7 +137,8 @@ async function tick() {
     chart('c-len',    eps.map(e=>e.len));
     document.getElementById('tbody').innerHTML = eps.slice(-12).reverse().map(e=>
       `<tr><td>#${e.ep}</td><td>${e.reward.toFixed(2)}</td><td>${e.len}</td>`+
-      `<td>${e.kills??'-'}</td><td>${e.xp??'-'}</td><td>${e.char_level??'-'}</td>`+
+      `<td>${e.kills??'-'}</td><td>${e.clear_pct!=null?e.clear_pct+'%':'-'}</td>`+
+      `<td>${e.xp??'-'}</td><td>${e.char_level??'-'}</td>`+
       `<td>${e.depth??'-'}</td><td>${e.gold??'-'}</td>`+
       `<td>${e.died?'💀':'⏳'}</td></tr>`).join('');
   } catch (err) { /* 训练进程写文件的瞬间可能读到半行,下轮自愈 */ }

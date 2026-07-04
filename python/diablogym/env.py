@@ -6,8 +6,8 @@
    存活怪数/50, 最近怪距离/30(无怪=1),
    最近下行楼梯方向 dx/56, dy/56(本层无则 0,0)]
   + K 个最近怪物的 (dx/20, dy/20, hp/max_hp, 1存在标志)
-  + 11×11 局部地图两通道(可走性、怪物占位)——run4 教训:没有空间感知,
-    奖励再好也是"盲人拿完美账本"(隔墙锁定、穿墙塑形、找不到房门)
+  + 11×11 局部地图三通道(可走性、怪物占位、本局足迹)——run4 教训:没有空间感知,
+    奖励再好也是"盲人拿完美账本";足迹通道是配合探索宏的穷人版记忆(v7)
 
 动作(Discrete(11)):
   0      原地不动
@@ -25,6 +25,7 @@
   +1.0 * 击杀                                  收头奖励
   +0.01 * ΔXP                                  真实目标(升级)
   +8.0  * Δ地牢层                               ≈4 只怪的价值,清完才值得下楼
+  +10.0  清层里程碑(v7):清掉本层 80% 初始怪,一次性
   +0.005 * 自己走近最近怪的格数(远离同额扣)
   -0.002  原地不动(含撞墙)
   -2.0 死亡   +10.0 通关
@@ -83,7 +84,7 @@ class DiabloGymEnv(gym.Env):
         self.action_space = gym.spaces.Discrete(11)
         self.observation_space = gym.spaces.Box(
             low=-np.inf, high=np.inf,
-            shape=(12 + _K_MONSTERS * 4 + 2 * side * side,), dtype=np.float32,
+            shape=(12 + _K_MONSTERS * 4 + 3 * side * side,), dtype=np.float32,
         )
         self._raw = None
         self._steps = 0
@@ -104,6 +105,8 @@ class DiabloGymEnv(gym.Env):
         self._ep_kills = 0
         self._ep_start_xp = int(self._raw["xp"])
         self._visited = {(self._raw["player_x"], self._raw["player_y"])}
+        self._initial_monsters = max(1, len(self._raw["monsters"]))
+        self._clear_bonus_given = False
         return self._vectorize(self._raw), self._info(self._raw)
 
     def step(self, action: int):
@@ -126,6 +129,13 @@ class DiabloGymEnv(gym.Env):
             self._ep_kills += sum(1 for m in prev["monsters"] if m["id"] not in cur_ids)
 
         reward = self._reward(prev, self._raw)
+
+        # v7 清层里程碑:清掉本层 80% 初始怪,一次性 +10
+        if (not self._clear_bonus_given
+                and self._ep_kills >= 0.8 * self._initial_monsters):
+            reward += 10.0
+            self._clear_bonus_given = True
+
         terminated = bool(self._raw["dead"] or self._raw["game_over"] or self._raw["victory"])
         truncated = self._steps >= self.max_steps
 
@@ -138,6 +148,7 @@ class DiabloGymEnv(gym.Env):
                 "depth": self._raw["dungeon_level"],
                 "died": bool(self._raw["dead"]),
                 "gold": self._raw["gold"],
+                "clear_pct": round(100.0 * self._ep_kills / self._initial_monsters, 1),
             }
         return self._vectorize(self._raw), reward, terminated, truncated, info
 
@@ -286,10 +297,9 @@ class DiabloGymEnv(gym.Env):
             r += 10.0
         return float(r)
 
-    @classmethod
-    def _vectorize(cls, obs) -> np.ndarray:
+    def _vectorize(self, obs) -> np.ndarray:
         px, py = obs["player_x"], obs["player_y"]
-        nearest = cls._nearest_dist(obs)
+        nearest = self._nearest_dist(obs)
         stairs = [t for t in obs.get("triggers", []) if t["msg"] == 0]  # WM_DIABNEXTLVL
         if stairs:
             st = min(stairs, key=lambda t: max(abs(t["x"] - px), abs(t["y"] - py)))
@@ -319,4 +329,10 @@ class DiabloGymEnv(gym.Env):
         lm = bridge.local_map(radius=_MAP_RADIUS)
         vec += [float(v) for v in lm["walkable"]]
         vec += [float(v) for v in lm["monster"]]
+        # 第三通道:本局足迹(穷人版记忆,v7)
+        r = _MAP_RADIUS
+        vec += [
+            1.0 if (px + dx, py + dy) in self._visited else 0.0
+            for dy in range(-r, r + 1) for dx in range(-r, r + 1)
+        ]
         return np.asarray(vec, dtype=np.float32)

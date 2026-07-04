@@ -26,7 +26,7 @@ def make_env():
 
     env = DiabloGymEnv(
         ticks_per_step=4,      # 每个决策 = 0.2 秒游戏时间
-        max_steps=1500,        # 单局上限 5 分钟游戏时间
+        max_steps=3000,        # v7:寿命翻倍,给清层留够时间(run6 断在时间墙)
         start_in_dungeon=True, # 跳过城镇,直接站在地牢 1 层入口
         include_raw=False,     # 训练不传 raw 大字典(多进程 IPC 减负)
     )
