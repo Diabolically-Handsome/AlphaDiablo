@@ -6,8 +6,8 @@
    存活怪数/50, 最近怪距离/30(无怪=1),
    最近下行楼梯方向 dx/56, dy/56(本层无则 0,0)]
   + K 个最近怪物的 (dx/20, dy/20, hp/max_hp, 1存在标志)
-  + 11×11 局部地图三通道(可走性、怪物占位、本局足迹)——run4 教训:没有空间感知,
-    奖励再好也是"盲人拿完美账本";足迹通道是配合探索宏的穷人版记忆(v7)
+  + 11×11 局部地图两通道(可走性、怪物占位)——run4 教训:没有空间感知,
+    奖励再好也是"盲人拿完美账本"(隔墙锁定、穿墙塑形、找不到房门)
 
 动作(Discrete(11)):
   0      原地不动
@@ -25,7 +25,6 @@
   +1.0 * 击杀                                  收头奖励
   +0.01 * ΔXP                                  真实目标(升级)
   +8.0  * Δ地牢层                               ≈4 只怪的价值,清完才值得下楼
-  +10.0  清层里程碑(v7):清掉本层 80% 初始怪,一次性
   +0.005 * 自己走近最近怪的格数(远离同额扣)
   -0.002  原地不动(含撞墙)
   -2.0 死亡   +10.0 通关
@@ -84,7 +83,7 @@ class DiabloGymEnv(gym.Env):
         self.action_space = gym.spaces.Discrete(11)
         self.observation_space = gym.spaces.Box(
             low=-np.inf, high=np.inf,
-            shape=(12 + _K_MONSTERS * 4 + 3 * side * side,), dtype=np.float32,
+            shape=(12 + _K_MONSTERS * 4 + 2 * side * side,), dtype=np.float32,
         )
         self._raw = None
         self._steps = 0
@@ -105,11 +104,6 @@ class DiabloGymEnv(gym.Env):
         self._ep_kills = 0
         self._ep_start_xp = int(self._raw["xp"])
         self._visited = {(self._raw["player_x"], self._raw["player_y"])}
-        self._initial_monsters = max(1, len(self._raw["monsters"]))
-        self._clear_bonus_given = False
-        self._explore_blacklist: set[tuple[int, int]] = set()
-        self._engage_cooldown: dict[int, int] = {}
-        self._engage_fail: dict[int, int] = {}
         return self._vectorize(self._raw), self._info(self._raw)
 
     def step(self, action: int):
@@ -132,13 +126,6 @@ class DiabloGymEnv(gym.Env):
             self._ep_kills += sum(1 for m in prev["monsters"] if m["id"] not in cur_ids)
 
         reward = self._reward(prev, self._raw)
-
-        # v7 清层里程碑:清掉本层 80% 初始怪,一次性 +10
-        if (not self._clear_bonus_given
-                and self._ep_kills >= 0.8 * self._initial_monsters):
-            reward += 10.0
-            self._clear_bonus_given = True
-
         terminated = bool(self._raw["dead"] or self._raw["game_over"] or self._raw["victory"])
         truncated = self._steps >= self.max_steps
 
@@ -151,7 +138,6 @@ class DiabloGymEnv(gym.Env):
                 "depth": self._raw["dungeon_level"],
                 "died": bool(self._raw["dead"]),
                 "gold": self._raw["gold"],
-                "clear_pct": round(100.0 * self._ep_kills / self._initial_monsters, 1),
             }
         return self._vectorize(self._raw), reward, terminated, truncated, info
 
@@ -168,14 +154,8 @@ class DiabloGymEnv(gym.Env):
             bridge.act_walk(px + dx, py + dy)
 
     def _macro_engage(self, max_beats: int = 10):
-        """交战宏:锁定最近的『非冷却』怪物追击。追击失败(多半不可达)的目标
-        进入冷却名单,一段时间内不再被选中——止损而不重蹈覆辙(v7.1)。"""
-        obs = self._raw
-        px, py = obs["player_x"], obs["player_y"]
-        candidates = [m for m in obs["monsters"]
-                      if self._engage_cooldown.get(m["id"], -1) < self._steps]
-        target = min(candidates, key=lambda m: max(abs(m["x"] - px), abs(m["y"] - py))) \
-            if candidates else None
+        """交战宏:锁定最近怪物,持续下追击指令直到分出结果或超时。"""
+        target = self._nearest_monster(self._raw)
         if target is None:
             return bridge.step(ticks=self.ticks_per_step), 1
         tid = target["id"]
@@ -187,12 +167,7 @@ class DiabloGymEnv(gym.Env):
             raw = bridge.step(ticks=self.ticks_per_step)
             cur_target = next((m for m in raw["monsters"] if m["id"] == tid), None)
             if cur_target is None or raw["dead"] or raw["dungeon_level"] != start_level:
-                self._engage_fail.pop(tid, None)  # 击杀/终局:清连败计数
                 break
-            if beats >= 2:
-                prev_t = next((m for m in prev["monsters"] if m["id"] == tid), None)
-                if prev_t is not None and cur_target["hp"] < prev_t["hp"]:
-                    self._engage_fail.pop(tid, None)  # 造成伤害 = 有进展,清连败
             # 止损:连续 2 拍既没接近目标也没造成伤害(多半隔墙不可达)→ 提前放弃,
             # 把决策权还给策略,避免 run3 式"对着墙白烧 10 拍"
             if beats >= 2:
@@ -200,14 +175,7 @@ class DiabloGymEnv(gym.Env):
                 if prev_target is not None and cur_target["hp"] >= prev_target["hp"]:
                     d_prev = max(abs(prev_target["x"] - prev["player_x"]), abs(prev_target["y"] - prev["player_y"]))
                     d_cur = max(abs(cur_target["x"] - raw["player_x"]), abs(cur_target["y"] - raw["player_y"]))
-                    # 贴脸(≤1 格)= 正在互殴,不判"无进展"——一次挥砍 ~12 tick,
-                    # 2 拍(8 tick)窗口内血量不动是常态(v7.1 回归的根因:误判+冷却=杀怪禁令)。
-                    # 远程无进展 ≠ 不可达:绕柱/拐弯时直线距离短暂不减(v7.2 残留误伤),
-                    # 故同一目标连续两次宏失败才冷却——真不可达必然连败,拐弯党不会
-                    if d_cur >= d_prev and d_cur > 1:
-                        self._engage_fail[tid] = self._engage_fail.get(tid, 0) + 1
-                        if self._engage_fail[tid] >= 2:
-                            self._engage_cooldown[tid] = self._steps + 60
+                    if d_cur >= d_prev:
                         break
             prev = raw
         return raw, beats
@@ -233,7 +201,7 @@ class DiabloGymEnv(gym.Env):
                 continue
             tx, ty = px + (i % side) - r, py + (i // side) - r
             d_player = max(abs(tx - px), abs(ty - py))
-            if d_player >= 5 and (tx, ty) not in near_visited and (tx, ty) not in self._explore_blacklist:
+            if d_player >= 5 and (tx, ty) not in near_visited:
                 candidates.append((d_player, tx, ty))
         if candidates:
             _, tx, ty = min(candidates)  # 最近的边疆点(便宜且稳)
@@ -259,14 +227,7 @@ class DiabloGymEnv(gym.Env):
                     or max(abs(pos[0] - tx), abs(pos[1] - ty)) <= 1):  # 到达
                 break
             stall = stall + 1 if pos == last_pos else 0
-            if stall >= 2:
-                # 目标不可达:拉黑该边疆点(否则下次仍被选中,止损沦为死循环 v7 教训),
-                # 并强制随机挪一步——宏必须"要么有进展,要么换花样"
-                self._explore_blacklist.add((tx, ty))
-                dx, dy = _DIRS[int(np.random.default_rng(len(self._explore_blacklist)).integers(0, 8))]
-                bridge.act_walk(pos[0] + dx * 2, pos[1] + dy * 2)
-                raw = bridge.step(ticks=self.ticks_per_step)
-                beats += 1
+            if stall >= 2:  # 目标不可达,止损
                 break
             last_pos = pos
         return raw, beats
@@ -325,9 +286,10 @@ class DiabloGymEnv(gym.Env):
             r += 10.0
         return float(r)
 
-    def _vectorize(self, obs) -> np.ndarray:
+    @classmethod
+    def _vectorize(cls, obs) -> np.ndarray:
         px, py = obs["player_x"], obs["player_y"]
-        nearest = self._nearest_dist(obs)
+        nearest = cls._nearest_dist(obs)
         stairs = [t for t in obs.get("triggers", []) if t["msg"] == 0]  # WM_DIABNEXTLVL
         if stairs:
             st = min(stairs, key=lambda t: max(abs(t["x"] - px), abs(t["y"] - py)))
@@ -357,10 +319,4 @@ class DiabloGymEnv(gym.Env):
         lm = bridge.local_map(radius=_MAP_RADIUS)
         vec += [float(v) for v in lm["walkable"]]
         vec += [float(v) for v in lm["monster"]]
-        # 第三通道:本局足迹(穷人版记忆,v7)
-        r = _MAP_RADIUS
-        vec += [
-            1.0 if (px + dx, py + dy) in self._visited else 0.0
-            for dy in range(-r, r + 1) for dx in range(-r, r + 1)
-        ]
         return np.asarray(vec, dtype=np.float32)

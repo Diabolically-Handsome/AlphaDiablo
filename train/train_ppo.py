@@ -15,6 +15,7 @@ import time
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "python"))
 
+from sb3_contrib import RecurrentPPO
 from stable_baselines3 import PPO
 from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.monitor import Monitor
@@ -26,7 +27,7 @@ def make_env():
 
     env = DiabloGymEnv(
         ticks_per_step=4,      # 每个决策 = 0.2 秒游戏时间
-        max_steps=3000,        # v7:寿命翻倍,给清层留够时间(run6 断在时间墙)
+        max_steps=1500,        # v8:回到 run6 已验证配方,LSTM 是唯一新变量
         start_in_dungeon=True, # 跳过城镇,直接站在地牢 1 层入口
         include_raw=False,     # 训练不传 raw 大字典(多进程 IPC 减负)
     )
@@ -90,6 +91,8 @@ def main():
     ap.add_argument("--device", default="cpu", help="cpu / mps(小 MLP 通常 cpu 更快)")
     ap.add_argument("--lr", type=float, default=3e-4)
     ap.add_argument("--n-steps", type=int, default=512, help="每个 env 每轮采样步数")
+    ap.add_argument("--algo", default="ppo", choices=["ppo", "rppo"],
+                    help="rppo = RecurrentPPO/LSTM(B 计划:学习记忆替代手写宏状态机)")
     args = ap.parse_args()
 
     run_name = args.run_name or time.strftime("ppo-l1-%m%d-%H%M%S")
@@ -102,7 +105,7 @@ def main():
         "device": args.device,
         "lr": args.lr,
         "n_steps": args.n_steps,
-        "algo": "PPO/MlpPolicy",
+        "algo": "RecurrentPPO/MlpLstmPolicy" if args.algo == "rppo" else "PPO/MlpPolicy",
         "goal": "地牢 1 层:杀怪拿 XP,找楼梯下 2 层",
     }
     print(f"== DiabloGym PPO 训练 == run={run_name}")
@@ -113,18 +116,23 @@ def main():
     else:
         vec_env = SubprocVecEnv([make_env] * args.num_envs, start_method="spawn")
 
-    model = PPO(
-        "MlpPolicy",
-        vec_env,
+    common = dict(
         learning_rate=args.lr,
-        n_steps=args.n_steps,
-        batch_size=256,
         gamma=0.99,
         ent_coef=0.02,  # 首训 0.01 时策略塌缩成单方向面壁,提熵防锁死
         device=args.device,
         verbose=1,
         tensorboard_log=str(run_dir / "tb"),
     )
+    if args.algo == "rppo":
+        model = RecurrentPPO(
+            "MlpLstmPolicy", vec_env,
+            n_steps=256, batch_size=256,
+            policy_kwargs=dict(lstm_hidden_size=128, n_lstm_layers=1),
+            **common,
+        )
+    else:
+        model = PPO("MlpPolicy", vec_env, n_steps=args.n_steps, batch_size=256, **common)
 
     callback = EpisodeJsonlCallback(run_dir, config)
     try:
