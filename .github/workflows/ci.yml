@@ -1,0 +1,41 @@
+# 全流程 CI:引擎构建 + 无头冒烟 + 下地牢/种子分化测试。
+# 用免费可分发的共享版 spawn.mpq(恰好覆盖测试所需的地牢 1-2 层),不涉及版权数据。
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  macos-smoke:
+    runs-on: macos-14
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install system deps
+        run: brew install cmake fmt sdl2 libsodium pkg-config googletest google-benchmark magic_enum
+
+      - name: Set up Python venv
+        run: |
+          python3 -m venv .venv
+          .venv/bin/pip install --quiet numpy gymnasium pybind11 "stable-baselines3>=2.4" torch
+
+      - name: Fetch shareware game data (spawn.mpq)
+        run: |
+          mkdir -p "$HOME/Library/Application Support/diasurgical/devilution"
+          curl -sL -o "$HOME/Library/Application Support/diasurgical/devilution/spawn.mpq" \
+            https://github.com/diasurgical/devilutionx-assets/releases/download/v5/spawn.mpq
+
+      - name: Bootstrap engine source
+        run: ./bootstrap.sh || true   # 首次全量构建由 build.sh 完成,bootstrap 只负责 clone+依赖
+
+      - name: Build bridge
+        run: PYTHON="$PWD/.venv/bin/python" ./build.sh
+
+      - name: Smoke test (random agent + determinism)
+        run: cd tests && ../.venv/bin/python smoke_random_agent.py
+
+      - name: Descend + seed differentiation test
+        run: cd tests && ../.venv/bin/python descend_seed_test.py

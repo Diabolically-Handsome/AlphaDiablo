@@ -1,0 +1,17 @@
+# 构建产物(引擎 + pybind11 模块,~490MB)
+build/
+
+# 训练产物(模型/TB 日志/战绩;曲线图见 docs/assets)
+train/runs/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# macOS
+.DS_Store
+
+# 游戏数据永不入库(版权:Diablo © Blizzard Entertainment)
+*.mpq
+*.exe
