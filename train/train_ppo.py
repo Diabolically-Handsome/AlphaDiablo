@@ -27,7 +27,9 @@ def make_env():
 
     env = DiabloGymEnv(
         ticks_per_step=4,      # 每个决策 = 0.2 秒游戏时间
-        max_steps=1500,        # v8:回到 run6 已验证配方,LSTM 是唯一新变量
+        max_steps=3000,        # v10(清层章重启):冠军配方上唯一变量=寿命翻倍。
+                               # 注意 32 种子排行榜评估仍固定 1500 步(可比性),
+                               # 清层/下楼用补充的 3000 步评估单独度量
         start_in_dungeon=True, # 跳过城镇,直接站在地牢 1 层入口
         include_raw=False,     # 训练不传 raw 大字典(多进程 IPC 减负)
     )
