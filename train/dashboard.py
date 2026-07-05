@@ -1,6 +1,6 @@
 """DiabloGym 训练监控面板(零依赖,stdlib HTTP)。
 
-用法:  ../.venv/bin/python train/dashboard.py [--port 8787] [--run-dir runs/xxx]
+用法(仓库根目录):  .venv/bin/python train/dashboard.py [--port 8787] [--run-dir runs/xxx]
 默认自动追踪 runs/ 下最新的训练(每次刷新重新探测,可跨多次训练常开)。
 打开:  http://127.0.0.1:8787
 """

@@ -28,8 +28,10 @@ jobs:
           curl -sL -o "$HOME/Library/Application Support/diasurgical/devilution/spawn.mpq" \
             https://github.com/diasurgical/devilutionx-assets/releases/download/v5/spawn.mpq
 
-      - name: Bootstrap engine source
-        run: ./bootstrap.sh || true   # 首次全量构建由 build.sh 完成,bootstrap 只负责 clone+依赖
+      - name: Bootstrap engine source (clone-only)
+        # 只 clone 钉死版源码 + brew 依赖;引擎编译统一由 build.sh 完成(避免编两遍)。
+        # 不加 || true:钉死 SHA 拉取失败必须在这一步红,而不是下一步报"源码缺失"
+        run: BOOTSTRAP_CLONE_ONLY=1 ./bootstrap.sh
 
       - name: Build bridge
         run: PYTHON="$PWD/.venv/bin/python" ./build.sh

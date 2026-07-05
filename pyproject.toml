@@ -1,7 +1,7 @@
 [project]
 name = "diablogym"
 version = "0.1.0"
-description = "AlphaDiablo: a fast, deterministic Diablo I reinforcement-learning environment built on DevilutionX (headless, 20000x realtime)"
+description = "AlphaDiablo: a fast, deterministic Diablo I reinforcement-learning environment built on DevilutionX (headless; raw engine ~13,000x realtime, ~7,500 Gymnasium env.step()/s)"
 readme = "README.md"
 requires-python = ">=3.11"
 license = { file = "LICENSE" }
@@ -17,7 +17,9 @@ dependencies = [
 train = [
   "torch>=2.5",
   "stable-baselines3>=2.4",
+  "sb3-contrib>=2.4",  # RecurrentPPO —— evaluate.py 评 LSTM 检查点时需要
   "tensorboard",
+  "matplotlib",        # train/plot_figures.py(从本地 runs/ 重生成 README 图)
 ]
 build = [
   "pybind11>=3.0",

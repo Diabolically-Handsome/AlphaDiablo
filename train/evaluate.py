@@ -1,11 +1,18 @@
 """32 种子标准评估(评估制度 v2,2026-07-05 起为唯一金标准)。
 
-教训:8 种子的运气波动曾把 run6/run8 高估近一倍(15.6/13.2 → 8.8/8.4)。
-种子集固定为 9000-9031,永不用于训练超参挑选之外的用途。
+协议(全部条件都是结果的一部分,缺一不可比):
+  - 种子集固定 9000-9031,只用于最终评估,永不参与训练/调参;
+  - argmax 确定性策略,max_steps=1500,ticks_per_step=4;
+  - 引擎源码钉死在 bootstrap.sh 的 ENGINE_REF(换引擎版本必须重建整张排行榜);
+  - 空载机器上运行:引擎的回合推进读真实墙钟(nthread_has_500ms_passed),
+    高负载下个别 tick 会少推一个逻辑回合导致轨迹漂移——2026-07-05 实测:
+    空载下跨进程 4 次评估逐种子位级一致;训练同机并行时中位数曾漂过 0.5。
 
-用法:
-  ../.venv/bin/python train/evaluate.py train/runs/<run>/model_final
-  自动识别 RecurrentPPO(路径含 lstm)与自定义特征提取器;结果追加进 leaderboard.md
+教训:8 种子的运气波动曾把 run6/run8 分别高估 77%/57%(15.6→8.8,13.2→8.4)。
+
+用法(仓库根目录):
+  .venv/bin/python train/evaluate.py train/runs/<run>/model_final
+  自动识别 RecurrentPPO(路径含 lstm)与自定义特征提取器;结果写入 leaderboard.md
 """
 
 from __future__ import annotations
@@ -81,11 +88,18 @@ def main():
           f"零杀 {r['zero']} | 到2层 {r['depth2']}  [{r['secs']}s]")
     if not LEADERBOARD.exists():
         LEADERBOARD.write_text(
-            "# 排行榜(32 种子确定性评估,seeds 9000-9031)\n\n"
-            "| run | 均击杀 | 中位 | 最高 | 零杀 | 到2层 |\n|---|---|---|---|---|---|\n"
+            "# Leaderboard — deterministic evaluation, 32 fixed seeds\n\n"
+            "Protocol: argmax policy, seeds 9000-9031 (never used for training or\n"
+            "hyper-parameter selection), 1500 steps/episode, idle machine, engine\n"
+            "pinned to `ENGINE_REF` in bootstrap.sh. See train/evaluate.py.\n\n"
+            "| run | mean kills | median | max | zero-kill | reached L2 |\n"
+            "|---|---|---|---|---|---|\n"
         )
-    with open(LEADERBOARD, "a") as f:
-        f.write(line + "\n")
+    # 插到表格最后一行之后(表格后面还有脚注/长局探针说明,不能盲目追加到文件尾)
+    lines = LEADERBOARD.read_text().splitlines(keepends=True)
+    last_row = max(i for i, l in enumerate(lines) if l.startswith("|"))
+    lines.insert(last_row + 1, line + "\n")
+    LEADERBOARD.write_text("".join(lines))
     print(f"已写入 {LEADERBOARD.name}")
 
 

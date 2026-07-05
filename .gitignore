@@ -7,7 +7,8 @@ train/runs/
 # Python
 __pycache__/
 *.pyc
-.venv/
+*.egg-info/
+.venv
 
 # macOS
 .DS_Store

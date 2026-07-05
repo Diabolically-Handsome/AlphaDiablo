@@ -4,7 +4,7 @@
 到达地牢 1 层 → 快照(玩家入口位置 + 全部怪物)。
 断言:同种子两次快照完全一致;不同种子快照不同。
 
-用法:  ../../.venv/bin/python descend_seed_test.py
+用法(仓库根目录):  .venv/bin/python tests/descend_seed_test.py
 """
 
 import pathlib

@@ -1,7 +1,7 @@
 """DiabloGym v0 冒烟测试:随机 agent + 确定性验证。
 
 验证链:引擎初始化 → reset(seed) → 随机动作 N 步 → 观测在变 → 同种子可复现。
-用法:  ../../.venv/bin/python smoke_random_agent.py
+用法(仓库根目录):  .venv/bin/python tests/smoke_random_agent.py
 """
 
 import pathlib

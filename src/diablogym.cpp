@@ -381,6 +381,12 @@ py::dict Reset(uint32_t seed)
 		DungeonSeeds[i] = static_cast<uint32_t>(rng());
 		LevelSeeds[i] = std::nullopt;
 	}
+	// 防御性接管全局 RNG:CreatePlayer(经 pfile_ui_save_create)刚用墙钟毫秒
+	// SetRndSeed 过(player.cpp)。钉死版引擎里任务抽选不受其影响(InitQuests 走
+	// InitialiseQuestPools(DungeonSeeds[15]),局部 RNG,种子已在上面循环里被接管),
+	// 关卡加载时也会按层种子重播;此覆写是把"全局 RNG 归 episode 种子管"钉成
+	// 不随上游演化失效的不变量。实测修复前后 32 种子评估指纹位级一致。
+	SetRndSeed(static_cast<uint32_t>(rng()));
 
 	// 外层 StartGame(bNewGame=true) 的新开局初始化
 	InitLevels();

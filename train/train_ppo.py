@@ -1,13 +1,14 @@
 """DiabloGym v1 训练:PPO 学清地牢 1 层。
 
-用法:
-  ../.venv/bin/python train/train_ppo.py --total-steps 2000000 --num-envs 4
+用法(仓库根目录):
+  .venv/bin/python train/train_ppo.py --total-steps 3000000 --num-envs 4
   (指标落盘到 runs/<run>/progress.jsonl + status.json,dashboard.py 实时读取)
 """
 
 from __future__ import annotations
 
 import argparse
+import functools
 import json
 import pathlib
 import sys
@@ -22,14 +23,13 @@ from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv
 
 
-def make_env():
+def make_env(max_steps: int = 1500):
     from diablogym import DiabloGymEnv
 
     env = DiabloGymEnv(
         ticks_per_step=4,      # 每个决策 = 0.2 秒游戏时间
-        max_steps=3000,        # v10(清层章重启):冠军配方上唯一变量=寿命翻倍。
-                               # 注意 32 种子排行榜评估仍固定 1500 步(可比性),
-                               # 清层/下楼用补充的 3000 步评估单独度量
+        max_steps=max_steps,   # 1500 = 冠军(v6)配方;3000 = v10 长局实验。
+                               # 32 种子排行榜评估固定 1500 步(可比性)
         start_in_dungeon=True, # 跳过城镇,直接站在地牢 1 层入口
         include_raw=False,     # 训练不传 raw 大字典(多进程 IPC 减负)
     )
@@ -97,6 +97,10 @@ def main():
                     help="rppo = RecurrentPPO/LSTM(B 计划:学习记忆替代手写宏状态机)")
     ap.add_argument("--arch", default="mlp", choices=["mlp", "attn"],
                     help="attn = 实体注意力感知(v9:AlphaStar 式 entity encoder + 地图 CNN)")
+    ap.add_argument("--max-steps", type=int, default=1500,
+                    help="episode 步数上限;1500 = 冠军(v6)配方,3000 = v10 长局实验")
+    ap.add_argument("--seed", type=int, default=None,
+                    help="训练种子(SB3 全局种子 + 环境 reset 种子;多进程采样时序仍会引入少量不确定性,只保证近似复现)")
     args = ap.parse_args()
 
     run_name = args.run_name or time.strftime("ppo-l1-%m%d-%H%M%S")
@@ -109,6 +113,8 @@ def main():
         "device": args.device,
         "lr": args.lr,
         "n_steps": args.n_steps,
+        "max_steps": args.max_steps,
+        "seed": args.seed,
         "algo": ("RecurrentPPO/MlpLstmPolicy" if args.algo == "rppo" else "PPO/MlpPolicy")
                 + ("+EntityAttention" if args.arch == "attn" else ""),
         "goal": "地牢 1 层:杀怪拿 XP,找楼梯下 2 层",
@@ -116,10 +122,11 @@ def main():
     print(f"== DiabloGym PPO 训练 == run={run_name}")
     print(f"   {config}")
 
+    env_fn = functools.partial(make_env, args.max_steps)
     if args.num_envs == 1:
-        vec_env = DummyVecEnv([make_env])
+        vec_env = DummyVecEnv([env_fn])
     else:
-        vec_env = SubprocVecEnv([make_env] * args.num_envs, start_method="spawn")
+        vec_env = SubprocVecEnv([env_fn] * args.num_envs, start_method="spawn")
 
     common = dict(
         learning_rate=args.lr,
@@ -128,6 +135,7 @@ def main():
         device=args.device,
         verbose=1,
         tensorboard_log=str(run_dir / "tb"),
+        seed=args.seed,
     )
     policy_kwargs = {}
     if args.arch == "attn":
