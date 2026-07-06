@@ -20,16 +20,17 @@ _N_TOKENS = 8
 _TOKEN_DIM = 4
 _MAP_SIDE = 11
 _MAP_CH = 2
+_N_EXTRA = 4  # v13:腰带药数 + 最近地面治疗药 dx/dy/存在(向量尾部,并入标量分支)
 
 
 class EntityAttentionExtractor(BaseFeaturesExtractor):
     def __init__(self, observation_space: spaces.Box, features_dim: int = 256):
         super().__init__(observation_space, features_dim)
-        expected = _N_SCALAR + _N_TOKENS * _TOKEN_DIM + _MAP_CH * _MAP_SIDE * _MAP_SIDE
+        expected = _N_SCALAR + _N_TOKENS * _TOKEN_DIM + _MAP_CH * _MAP_SIDE * _MAP_SIDE + _N_EXTRA
         assert observation_space.shape[0] == expected, \
             f"观测布局不匹配: {observation_space.shape[0]} != {expected}"
 
-        self.scalar_net = nn.Sequential(nn.Linear(_N_SCALAR, 64), nn.ReLU())
+        self.scalar_net = nn.Sequential(nn.Linear(_N_SCALAR + _N_EXTRA, 64), nn.ReLU())
 
         self.token_embed = nn.Linear(_TOKEN_DIM, 64)
         self.cls = nn.Parameter(torch.zeros(1, 1, 64))
@@ -52,9 +53,12 @@ class EntityAttentionExtractor(BaseFeaturesExtractor):
         b = obs.shape[0]
         scalars = obs[:, :_N_SCALAR]
         tokens = obs[:, _N_SCALAR:_N_SCALAR + _N_TOKENS * _TOKEN_DIM].reshape(b, _N_TOKENS, _TOKEN_DIM)
-        maps = obs[:, _N_SCALAR + _N_TOKENS * _TOKEN_DIM:].reshape(b, _MAP_CH, _MAP_SIDE, _MAP_SIDE)
+        map_lo = _N_SCALAR + _N_TOKENS * _TOKEN_DIM
+        map_hi = map_lo + _MAP_CH * _MAP_SIDE * _MAP_SIDE
+        maps = obs[:, map_lo:map_hi].reshape(b, _MAP_CH, _MAP_SIDE, _MAP_SIDE)
+        extras = obs[:, -_N_EXTRA:]  # v13 尾部 4 维
 
-        s = self.scalar_net(scalars)
+        s = self.scalar_net(torch.cat([scalars, extras], dim=1))
 
         t = self.token_embed(tokens)
         cls = self.cls.expand(b, -1, -1)

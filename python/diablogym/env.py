@@ -1,6 +1,6 @@
 """DiabloGymEnv —— Gymnasium 包装(v0:结构化向量观测 + 离散动作)。
 
-观测向量(float32,长度 12 + K*4 + 2*(2R+1)²,R=5 时共 286):
+观测向量(float32,长度 12 + K*4 + 2*(2R+1)² + 4,R=5 时共 290):
   [hp/maxhp, mana/maxmana, xp(log1p/10), gold/1000, char_level/50,
    dungeon_level/16, player_x/112, player_y/112,
    存活怪数/50, 最近怪距离/30(无怪=1),
@@ -8,8 +8,11 @@
   + K 个最近怪物的 (dx/20, dy/20, hp/max_hp, 1存在标志)
   + 11×11 局部地图两通道(可走性、怪物占位)——run4 教训:没有空间感知,
     奖励再好也是"盲人拿完美账本"(隔墙锁定、穿墙塑形、找不到房门)
+  + [腰带治疗药数/8, 最近地面治疗药 dx/20, dy/20(截断至 ±1), 存在标志]
+    (v13,治"瓶盲"——教训十一:动作的前置条件必须可观测,否则策略学不会
+    按键纪律)
 
-动作(Discrete(13)):
+动作(Discrete(14)):
   0      原地不动
   1-8    朝八方向走一格(寻路)
   9      交战宏:锁定最近怪物持续追击,直到它死/自己死/换层/超时(≤10 拍)
@@ -22,9 +25,15 @@
          (困局的逃生舱 + 清层后的下一章按钮);12 拍后控制权自然归还。
          (v10 教训:困局是死的 0,多给时间没用——得给一扇门)
   12     喝药键(v12):腰带有治疗类药水就喝一瓶(引擎手柄快捷键同路),
-         没有则为空拍。观测向量刻意不加"腰带药数"字段——策略凭它已有的
-         血量比例(obs[0])学"何时按",286 维保持,历代模型全部可复评。
-         (v11 教训:能力缺口用动作补,奖励与观测保持冻结)
+         没有则为空拍。v12 曾刻意不把腰带药数放进观测(保 286 维历代
+         可复评),结果 99.5% 的按键落在空腰带上(教训十一"瓶盲"),
+         v13 起腰带药数与最近地面药方向入观测。
+  13     捡药宏(v13):与下楼宏同款门/桶感知 BFS 走向最近的地面治疗药,
+         遇关门先开门;进入 2 格内交给引擎原生拾取(CMD_GOTOAGETITEM,
+         自动走近+拾取+入腰带)。引擎自带的 MakePlrPath 是门盲的(关门
+         =墙,寻路失败即静默弃疗——9003 号种子实锤:药在关门后,原生
+         命令原地罚站),所以跨房间接近必须由宏承担。无地面药则空拍。
+         供给侧=怪物掉落+地面固定刷新(32 评估种子出生层全部有药,1-5 瓶)。
 
 奖励(v2,逐刀致密化,Lawrence 提案 + 防磨刀修正):
   +0.5 * (本刀伤害/目标最大血) * 残血系数     每刀即时到账;系数 1.0→1.5,
@@ -89,11 +98,11 @@ class DiabloGymEnv(gym.Env):
         self.start_in_dungeon = start_in_dungeon
         self.include_raw = include_raw
         side = 2 * _MAP_RADIUS + 1
-        self.action_space = gym.spaces.Discrete(13)
+        self.action_space = gym.spaces.Discrete(14)
         self.observation_space = gym.spaces.Box(
             low=-np.inf, high=np.inf,
-            shape=(12 + _K_MONSTERS * 4 + 2 * side * side,), dtype=np.float32,
-        )
+            shape=(12 + _K_MONSTERS * 4 + 2 * side * side + 4,), dtype=np.float32,
+        )  # +4 = v13:腰带药数 + 最近地面治疗药 dx/dy/存在标志
         self._raw = None
         self._steps = 0
         self._ep_kills = 0
@@ -128,6 +137,8 @@ class DiabloGymEnv(gym.Env):
             bridge.act_drink()  # 无药时引擎侧为空操作;站桩惩罚由奖励函数自然覆盖
             self._raw = bridge.step(ticks=self.ticks_per_step)
             micro = 1
+        elif action == 13:
+            self._raw, micro = self._macro_pickup()
         else:
             self._apply_action(action)
             self._raw = bridge.step(ticks=self.ticks_per_step)
@@ -380,6 +391,109 @@ class DiabloGymEnv(gym.Env):
             last_pos = pos
         return raw, beats
 
+    def _macro_pickup(self, max_beats: int = 12):
+        """捡药宏(v13):复用下楼宏的规划器(_plan_descend_path 本就目标参数化,
+        门/桶=可操作软墙),沿路径开门走向最近的地面治疗药;进入 2 格内改用
+        引擎原生拾取命令收尾(此时无门阻隔,MakePlrPath 必然成功)。
+
+        成功判据:腰带药数上涨,或目标药从地面消失(腰带满时直落背包)。
+        阵亡/换层/路径耗尽/持续失速提前结束;12 拍耗尽自然归还控制权,
+        下次按键重新规划。全程无随机数,确定性。
+        """
+        raw = self._raw
+        heals = [it for it in raw.get("floor_items", []) if it.get("heal")]
+        if not heals or raw["belt_heals"] >= 8:
+            # 无地面药,或腰带已满(捡了直落背包=喝药键看不见的黑洞):空拍交还
+            return bridge.step(ticks=self.ticks_per_step), 1
+        px, py = raw["player_x"], raw["player_y"]
+        h = min(heals, key=lambda it: max(abs(it["x"] - px), abs(it["y"] - py)))
+        hx, hy = h["x"], h["y"]
+        start_belt = raw["belt_heals"]
+        start_level = raw["dungeon_level"]
+
+        near0 = max(abs(hx - px), abs(hy - py)) <= 2
+        path = self._plan_descend_path(raw, hx, hy)
+        if path is None and not near0:
+            return bridge.step(ticks=self.ticks_per_step), 1  # 真不可达:空拍交还
+
+        pi = 0            # 路径消费指针
+        target = None     # (kind, x, y, path_index)
+        stall = 0
+        beats = 0
+        last_pos = (px, py)
+        for beats in range(1, max_beats + 1):
+            if target is None:
+                cur = (raw["player_x"], raw["player_y"])
+                near = max(abs(hx - cur[0]), abs(hy - cur[1])) <= 2
+                door_pending = bool(path) and any(
+                    p[2] for p in path[pi:min(pi + 3, len(path))])
+                if near and not door_pending:
+                    # 近旁且无门阻隔:引擎原生拾取收尾(审查角落:贴门站位时
+                    # 必须先走开门分支,否则原生寻路对门失败=白按)
+                    target = ("pick", hx, hy, pi)
+                    bridge.act_pickup()
+                elif path is None or pi >= len(path):
+                    break  # 路径耗尽仍未进入近旁,交还控制权
+                else:
+                    # 与下楼宏同款:先处理前方 8 格内的第一扇关门,否则取 ~8 格外路点
+                    nxt = None
+                    for j in range(pi, min(pi + 8, len(path))):
+                        if path[j][2]:
+                            nxt = ("open", path[j][0], path[j][1], j)
+                            break
+                    if nxt is None:
+                        j = min(pi + 7, len(path) - 1)
+                        nxt = ("walk", path[j][0], path[j][1], j)
+                    target = nxt
+                    if target[0] == "open":
+                        bridge.act_operate(target[1], target[2])
+                    else:
+                        bridge.act_walk(target[1], target[2])
+            raw = bridge.step(ticks=self.ticks_per_step)
+            pos = (raw["player_x"], raw["player_y"])
+            self._visited.add(pos)
+            if raw["dead"] or raw["dungeon_level"] != start_level:
+                break
+            if raw["belt_heals"] > start_belt:
+                break  # 到手
+            if target[0] == "pick":
+                still_there = any(
+                    it["x"] == hx and it["y"] == hy
+                    for it in raw.get("floor_items", []) if it.get("heal"))
+                if not still_there:
+                    break  # 药离地(腰带满→直落背包)也算完成
+            elif target[0] == "open":
+                # 开门型目标:门格真的变可走才算完成(贴脸≠已开,动画要几拍)
+                if bridge.probe_tile(target[1], target[2])["walkable"]:
+                    path[target[3]] = (target[1], target[2], False)
+                    pi = target[3]
+                    target = None
+                    stall = 0
+                    last_pos = pos
+                    continue
+            elif max(abs(pos[0] - target[1]), abs(pos[1] - target[2])) <= 1:
+                pi = target[3] + 1  # 到达路点,继续下一段
+                target = None
+                stall = 0
+                last_pos = pos
+                continue
+            if pos == last_pos:
+                stall += 1
+                if stall == 3 and target is not None:
+                    # 命令可能被打断:原地重发一次
+                    if target[0] == "open":
+                        bridge.act_operate(target[1], target[2])
+                    elif target[0] == "pick":
+                        bridge.act_pickup()
+                    else:
+                        bridge.act_walk(target[1], target[2])
+                if stall >= 6:
+                    break  # 重发后仍无进展 → 交还控制权,下次按键重新规划
+            else:
+                stall = 0
+            last_pos = pos
+        return raw, beats
+
     @staticmethod
     def _nearest_monster(obs):
         px, py = obs["player_x"], obs["player_y"]
@@ -467,4 +581,12 @@ class DiabloGymEnv(gym.Env):
         lm = bridge.local_map(radius=_MAP_RADIUS)
         vec += [float(v) for v in lm["walkable"]]
         vec += [float(v) for v in lm["monster"]]
+        heals = [it for it in obs.get("floor_items", []) if it.get("heal")]
+        if heals:  # v13:瓶盲修复——喝药/捡药两个键的前置条件入观测
+            h = min(heals, key=lambda it: max(abs(it["x"] - px), abs(it["y"] - py)))
+            vec += [obs.get("belt_heals", 0) / 8.0,
+                    max(-1.0, min(1.0, (h["x"] - px) / 20.0)),
+                    max(-1.0, min(1.0, (h["y"] - py) / 20.0)), 1.0]
+        else:
+            vec += [obs.get("belt_heals", 0) / 8.0, 0.0, 0.0, 0.0]
         return np.asarray(vec, dtype=np.float32)

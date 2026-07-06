@@ -8,8 +8,10 @@
  * 动作走网络命令层(NetSendCmd*)—— 与多人协议同一条路,天然支持日后联机部署。
  */
 
+#include <algorithm>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <optional>
 #include <random>
 #include <stdexcept>
@@ -87,7 +89,8 @@ bool DummyGetHeroInfo(_uiheroinfo * /*info*/)
 	return true;
 }
 
-int CountBeltHeals(); // 定义在动作区(v12);Observe 的 raw 字段也要用
+int CountBeltHeals();            // 定义在动作区(v12);Observe 的 raw 字段也要用
+bool IsHealItem(const Item &);   // 定义在动作区(v13);floor_items 的 heal 标志也要用
 
 // 空事件处理器:demo::FetchMessage 在 CurrentEventHandler==DisableInputEventHandler
 // 时拒绝吐出事件(demomode.cpp:727),必须装一个"游戏中"处理器才能解锁事件流。
@@ -197,6 +200,10 @@ void SyncLoad(interface_mode uMsg)
 	// ProgressEventHandler WM_DONE 分支的无头必需部分:宣告加入关卡
 	NetSendCmdLocParam2(true, CMD_PLAYER_JOINLEVEL, myPlayer.position.tile, myPlayer.plrlevel,
 	    myPlayer.plrIsOnSetLevel ? 1 : 0);
+	// 复刻上游 WM_DONE 分支的 NewCursor(CURSOR_HAND)(interfac.cpp,无头下被
+	// skipRendering 跳过):拾取的到位判定要求 pcurs==CURSOR_HAND(player.cpp),
+	// 每次换层都重申,把这个隐性不变量钉死(v13 审查发现)
+	NewCursor(CURSOR_HAND);
 	gStartupTick = true;
 }
 
@@ -246,7 +253,7 @@ py::dict Observe()
 	obs["dead"] = player._pmode == PM_DEATH || (player._pHitPoints >> 6) <= 0;
 	obs["game_over"] = !gbRunGame;
 	obs["victory"] = !IsDiabloAlive(false);
-	obs["belt_heals"] = CountBeltHeals(); // 仅入 raw 字典;286 维观测向量不变(v12)
+	obs["belt_heals"] = CountBeltHeals(); // v12 起入 raw;v13 起由 env 写进观测向量(瓶盲修复)
 
 	py::list monsters;
 	for (size_t i = 0; i < ActiveMonsterCount; i++) {
@@ -271,6 +278,7 @@ py::dict Observe()
 		py::dict it;
 		it["x"] = static_cast<int>(item.position.x);
 		it["y"] = static_cast<int>(item.position.y);
+		it["heal"] = IsHealItem(item); // v13:捡药宏的目标标志
 		items.append(it);
 	}
 	obs["floor_items"] = items;
@@ -471,15 +479,19 @@ void ActOperate(int x, int y)
 	NetSendCmdLoc(MyPlayerId, true, CMD_OPOBJXY, { x, y });
 }
 
+bool IsHealItem(const Item &item)
+{
+	if (item.isEmpty())
+		return false;
+	return IsAnyOf(item._iMiscId, IMISC_HEAL, IMISC_FULLHEAL, IMISC_REJUV, IMISC_FULLREJUV)
+	    || item.isScrollOf(SpellID::Healing);
+}
+
 int CountBeltHeals()
 {
 	int heals = 0;
 	for (int i = 0; i < MaxBeltItems; i++) {
-		const Item &item = MyPlayer->SpdList[i];
-		if (item.isEmpty())
-			continue;
-		if (IsAnyOf(item._iMiscId, IMISC_HEAL, IMISC_FULLHEAL, IMISC_REJUV, IMISC_FULLREJUV)
-		    || item.isScrollOf(SpellID::Healing))
+		if (IsHealItem(MyPlayer->SpdList[i]))
 			heals++;
 	}
 	return heals;
@@ -493,6 +505,40 @@ int ActDrink()
 	if (heals > 0)
 		UseBeltItem(BeltItemType::Healing);
 	return heals;
+}
+
+int ActPickup()
+{
+	// 走向并拾取最近的地面治疗药(与鼠标点击拾取同路 CMD_GOTOAGETITEM:
+	// 引擎自动寻路、到位拾取、药水经 AutoPlaceItemInBelt 自动进腰带)。
+	// 无目标时不发任何命令(空拍)。返回 0/1 = 是否发出了拾取命令
+	bool beltHasRoom = false;
+	for (int i = 0; i < MaxBeltItems; i++) {
+		if (MyPlayer->SpdList[i].isEmpty()) {
+			beltHasRoom = true;
+			break;
+		}
+	}
+	if (!beltHasRoom)
+		return 0; // 腰带无空位:捡了会直落背包(喝药键与观测都看不见的价值黑洞),不发命令
+	const Point me = MyPlayer->position.tile;
+	int best = -1;
+	int bestDist = 1 << 30;
+	for (int i = 0; i < ActiveItemCount; i++) {
+		const int ii = ActiveItems[i];
+		const Item &item = Items[ii];
+		if (!IsHealItem(item))
+			continue;
+		const int dist = std::max(std::abs(item.position.x - me.x), std::abs(item.position.y - me.y));
+		if (dist < bestDist) {
+			bestDist = dist;
+			best = ii;
+		}
+	}
+	if (best < 0)
+		return 0;
+	NetSendCmdLocParam1(true, CMD_GOTOAGETITEM, Items[best].position, static_cast<uint16_t>(best));
+	return 1;
 }
 
 } // namespace
@@ -511,6 +557,7 @@ PYBIND11_MODULE(_diablogym, m)
 	m.def("act_attack_tile", &ActAttackTile, py::arg("x"), py::arg("y"), "原地朝目标格挥击");
 	m.def("act_operate", &ActOperate, py::arg("x"), py::arg("y"), "操作目标格物体(开门等;引擎自动走近)");
 	m.def("act_drink", &ActDrink, "喝腰带上的第一瓶治疗药(无药=无操作);返回按键前腰带治疗药数");
+	m.def("act_pickup", &ActPickup, "走向并拾取最近的地面治疗药(无目标=无操作);返回 0/1");
 	m.def("end_game", &EndGame, "结束当前局(reset 会自动调用)");
 
 	m.def("local_map", [](int radius) {

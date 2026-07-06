@@ -16,7 +16,7 @@ falsified) per run.
   see protocol notes in [train/evaluate.py](train/evaluate.py)); engine source
   pinned to an exact upstream commit by [bootstrap.sh](bootstrap.sh)
 - 🧩 **Gymnasium API**: structured observations (entity features + 11×11 local
-  map), macro-actions (engage / explore / descend / drink)
+  map), macro-actions (engage / explore / descend / drink / pick-up-potion)
 - 📊 **Zero-dependency live dashboard** for training runs
 - 🩹 Ships **upstream fixes** for six DevilutionX headless-mode bugs — asset
   fallbacks, monster-missile anims (a bat swoop was the first crash), the
@@ -159,7 +159,7 @@ curl -L -o "$HOME/Library/Application Support/diasurgical/devilution/spawn.mpq" 
 | Layer | Where | What |
 |---|---|---|
 | C++ bridge | `src/diablogym.cpp` | Embeds the whole engine as a shared library (`HeadlessMode`), drives the game loop tick-by-tick from Python, injects actions at the **network command layer** (same path as multiplayer — a trained agent can later join a TCP co-op game as a headless client) |
-| Env | `python/diablogym/env.py` | Gymnasium env: 286-dim obs (player/monster entities + stairs direction + 11×11 walkability & monster-occupancy map), `Discrete(13)` with engage/explore/descend/drink macro-actions, per-hit damage rewards |
+| Env | `python/diablogym/env.py` | Gymnasium env: 290-dim obs (player/monster entities + stairs direction + 11×11 walkability & monster-occupancy map + belt/floor-potion fields), `Discrete(14)` with engage/explore/descend/drink/pickup macro-actions, per-hit damage rewards |
 | Training | `train/train_ppo.py` | SB3 PPO, subprocess vec-envs, per-episode JSONL metrics |
 | Evaluation | `train/evaluate.py` | Frozen 32-seed deterministic protocol; appends to the leaderboard |
 | Monitoring | `train/dashboard.py` | stdlib-only live dashboard (SVG charts, 2s polling) |
