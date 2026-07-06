@@ -5,7 +5,7 @@
 **A fast, deterministic Diablo I reinforcement-learning environment** built on
 [DevilutionX](https://github.com/diasurgical/devilutionX), plus the training
 pipeline that took a PPO agent from *hiding in a corner* to *opening doors,
-smashing barrels and fighting its way down to dungeon level 4* — eleven
+smashing barrels and fighting its way down to dungeon level 4* — twelve
 documented runs, one diagnosed failure mode eliminated (or one hypothesis
 falsified) per run.
 
@@ -16,7 +16,7 @@ falsified) per run.
   see protocol notes in [train/evaluate.py](train/evaluate.py)); engine source
   pinned to an exact upstream commit by [bootstrap.sh](bootstrap.sh)
 - 🧩 **Gymnasium API**: structured observations (entity features + 11×11 local
-  map), macro-actions (engage / explore)
+  map), macro-actions (engage / explore / descend / drink)
 - 📊 **Zero-dependency live dashboard** for training runs
 - 🩹 Ships **upstream fixes** for six DevilutionX headless-mode bugs — asset
   fallbacks, monster-missile anims (a bat swoop was the first crash), the
@@ -39,6 +39,7 @@ iterations that built the champion. Right: the gold standard — deterministic
 | v9c entity-attention | 701,980 | 3.8 | 0 | 38 | 21/32 | 0/32 |
 | v10 = v6 recipe, 3000-step episodes | 45,836 | 5.5 | 0 | 49 | 18/32 | 0/32 |
 | **v11 = v6 + descend option (champion)** | 45,901 | **19.4** | **14.5** | **70** | **2/32** | **27/32** |
+| v12 = v11 + belt-potion action | 45,966 | 12.3 | 10.0 | 46 | 9/32 | 26/32 |
 
 ¹ *Evaluated post-hoc on the current env (same observation; it never selects
 the explore macro). Protocol: seeds 9000-9031, 1500 steps, argmax, idle
@@ -51,9 +52,11 @@ on the distribution shape (median, zero-kill), not the means. The v11 jump,
 by contrast, moves every column at once and is far outside that noise band.
 Leaderboard checkpoints are not distributed yet (a tagged release is
 planned); rows come from the author's runs and are deterministically
-re-evaluable given the checkpoint. Current least flattering number: **17/32
-v11 episodes end in death** on the deeper floors — a naked level-2 warrior's
-economics (the v12 potion chapter exists because of this column).
+re-evaluable given the checkpoint. Least flattering numbers: **17/32 v11
+episodes end in death** on the deeper floors — a naked level-2 warrior's
+economics — and the v12 potion chapter built to fix that column did cut
+deaths to 10/32, but regressed mean kills to 12.3 and spent 4,715 of its
+4,740 drink presses on an empty belt (lesson 11). v11 stays champion.
 
 Three findings we did not expect:
 
@@ -84,7 +87,7 @@ Three findings we did not expect:
    deepest sealed seed the policy uses the descend macro as a *door-opening
    key* and farms the unsealed rooms without ever taking the stairs.
 
-### Ten lessons from eleven runs (short version)
+### Eleven lessons from twelve runs (short version)
 
 1. Don't tax the intermediate costs of the behaviour you want, and don't leave
    zero-cost sanctuaries in the reward landscape (v1's wall-hugger).
@@ -113,6 +116,14 @@ Three findings we did not expect:
     done, architecture only tunes the efficiency in between (v11: one new
     option, +120% mean kills; v9c: 15× parameters, −57%). Audit those three
     layers in that order — the cheapest miracles live in the action space.
+11. A new action is also a new hiding place. v12's drink action did its
+    designed job on a few seeds (one argmax clutch heal from 8.6% HP) and
+    deaths fell 17/32 → 10/32 — but mean kills regressed 19.4 → 12.3, and
+    4,715 of 4,740 presses hit an empty belt. The belt count was
+    deliberately kept out of the observation (protocol comparability), so
+    the policy could never learn when *not* to press: lesson 5 applies to
+    action preconditions too. Door-blindness, then bottle-blindness —
+    self-inflicted this time. v11 keeps the crown.
 
 ## Quickstart (macOS, Apple Silicon)
 
@@ -148,7 +159,7 @@ curl -L -o "$HOME/Library/Application Support/diasurgical/devilution/spawn.mpq" 
 | Layer | Where | What |
 |---|---|---|
 | C++ bridge | `src/diablogym.cpp` | Embeds the whole engine as a shared library (`HeadlessMode`), drives the game loop tick-by-tick from Python, injects actions at the **network command layer** (same path as multiplayer — a trained agent can later join a TCP co-op game as a headless client) |
-| Env | `python/diablogym/env.py` | Gymnasium env: 286-dim obs (player/monster entities + stairs direction + 11×11 walkability & monster-occupancy map), `Discrete(11)` with engage/explore macro-actions, per-hit damage rewards |
+| Env | `python/diablogym/env.py` | Gymnasium env: 286-dim obs (player/monster entities + stairs direction + 11×11 walkability & monster-occupancy map), `Discrete(13)` with engage/explore/descend/drink macro-actions, per-hit damage rewards |
 | Training | `train/train_ppo.py` | SB3 PPO, subprocess vec-envs, per-episode JSONL metrics |
 | Evaluation | `train/evaluate.py` | Frozen 32-seed deterministic protocol; appends to the leaderboard |
 | Monitoring | `train/dashboard.py` | stdlib-only live dashboard (SVG charts, 2s polling) |
@@ -169,8 +180,9 @@ quirks are documented in [train/evaluate.py](train/evaluate.py).
   the walkability channel; the v11 descend option (door/barrel-aware BFS)
   cut zero-kill episodes 15/32 → 2/32
 - [x] Descend to L2 — 27/32 episodes reach it now (deepest runs chain to L4)
-- [ ] Survive down there: belt-potion action (v12, training as this line is
-  written), potion pickup, then gear
+- [ ] Survive down there: the v12 belt-potion action cut deaths 17/32 → 10/32
+  at a kill-rate cost (lesson 11); next: put the belt count into the
+  observation, potion pickup, then gear
 - [ ] Clear-rate objective
 - [ ] The Butcher 🥩 (his greeting already crashed our headless engine once —
   see patches/0003; killing him is next)
@@ -181,12 +193,13 @@ quirks are documented in [train/evaluate.py](train/evaluate.py).
 
 基于 DevilutionX 的暗黑破坏神 I 强化学习环境:无头引擎裸跑 ~13,000 倍实时
 (含观测的 env.step 约 7,500 步/秒,~1,500 倍实时)、种子级确定性(评估跨进程
-位级可复现)、Gymnasium 接口、宏动作(交战/探索/下楼)、零依赖训练监控面板。
-十一轮迭代把 PPO 从"面壁思过"练到"开门、砸桶、下楼、直抵第四层"(32 种子金
-标准均击杀 **19.4**,到达二层 27/32——此前五代全部为 0),并留下十课教训:
-奖励税、塑形归因、动作时序、防磨刀、感知天花板、探索 option、宏退化吸引子、
-评估运气税、任务设计>架构、**能力住在动作空间**——每一课都有数据实锤,完整
-踩坑史见 [docs/DESIGN.md](docs/DESIGN.md)。
+位级可复现)、Gymnasium 接口、宏动作(交战/探索/下楼/喝药)、零依赖训练监控
+面板。十二轮迭代把 PPO 从"面壁思过"练到"开门、砸桶、下楼、直抵第四层"(32
+种子金标准均击杀 **19.4**,到达二层 27/32——此前五代全部为 0),并留下十一课
+教训:奖励税、塑形归因、动作时序、防磨刀、感知天花板、探索 option、宏退化
+吸引子、评估运气税、任务设计>架构、能力住在动作空间、**新动作也是新藏身处**
+(v12 喝药键:战死 17→10,但 4,740 次按键里 4,715 次按在空腰带上)——每一课
+都有数据实锤,完整踩坑史见 [docs/DESIGN.md](docs/DESIGN.md)。
 
 ## Legal
 
