@@ -4,9 +4,10 @@
 
 **A fast, deterministic Diablo I reinforcement-learning environment** built on
 [DevilutionX](https://github.com/diasurgical/devilutionX), plus the training
-pipeline that took a PPO agent from *hiding in a corner* to *autonomously
-hunting Fallen packs on dungeon level 1* — ten documented runs, one diagnosed
-failure mode eliminated (or one hypothesis falsified) per run.
+pipeline that took a PPO agent from *hiding in a corner* to *opening doors,
+smashing barrels and fighting its way down to dungeon level 4* — eleven
+documented runs, one diagnosed failure mode eliminated (or one hypothesis
+falsified) per run.
 
 - 🚀 **~13,000× realtime**: full game logic, headless — 254k engine ticks/s raw,
   ~7,500 `env.step()`/s with full observations (M-series MacBook, measured)
@@ -17,8 +18,9 @@ failure mode eliminated (or one hypothesis falsified) per run.
 - 🧩 **Gymnasium API**: structured observations (entity features + 11×11 local
   map), macro-actions (engage / explore)
 - 📊 **Zero-dependency live dashboard** for training runs
-- 🩹 Ships **upstream fixes** for four DevilutionX headless-mode asset bugs
-  (`patches/`)
+- 🩹 Ships **upstream fixes** for six DevilutionX headless-mode bugs — asset
+  fallbacks, monster-missile anims (a bat swoop was the first crash), the
+  unloaded SFX table (the Butcher's greeting was the second) — in `patches/`
 
 ![learning curves](docs/assets/learning-curves.png)
 
@@ -32,26 +34,28 @@ iterations that built the champion. Right: the gold standard — deterministic
 | model | params | mean kills | median | max | zero-kill | reached L2 |
 |---|---|---|---|---|---|---|
 | v5 vision, no explore macro¹ | 45,771 | 7.6 | 0 | 45 | 19/32 | 0/32 |
-| **v6 macro-MLP (champion)** | 45,836 | **8.8** | **3.5** | 36 | 15/32 | 0/32 |
+| v6 macro-MLP | 45,836 | 8.8 | 3.5 | 36 | 15/32 | 0/32 |
 | v8 LSTM-128 | 451,596 | 8.4 | 3.0 | 43 | 13/32 | 0/32 |
 | v9c entity-attention | 701,980 | 3.8 | 0 | 38 | 21/32 | 0/32 |
 | v10 = v6 recipe, 3000-step episodes | 45,836 | 5.5 | 0 | 49 | 18/32 | 0/32 |
+| **v11 = v6 + descend option (champion)** | 45,901 | **19.4** | **14.5** | **70** | **2/32** | **27/32** |
 
 ¹ *Evaluated post-hoc on the current env (same observation; it never selects
 the explore macro). Protocol: seeds 9000-9031, 1500 steps, argmax, idle
 machine, pinned engine — [train/leaderboard.md](train/leaderboard.md).*
 
-Honesty notes: each row is a **single training run** (training was unseeded;
-`--seed` exists now), and a 32-seed mean has an SEM of ≈2 kills — so the
-v5/v6/v8 means are statistically indistinguishable and ordering claims below
-rest on the distribution shape (median, zero-kill), not the means. Leaderboard
-checkpoints are not distributed yet (a tagged release is planned); rows come
-from the author's runs and are deterministically re-evaluable given the
-checkpoint. And the least flattering number in the table: despite a +8.0
-reward per level descended and stairs-direction features in the observation,
-**no agent of any generation has ever taken the stairs to level 2**.
+Honesty notes: each row is a **single training run** (v1-v10 unseeded; v11
+onward uses `--seed`), and a 32-seed mean has an SEM of ≈2 kills — so the
+v5/v6/v8 means are statistically indistinguishable and ordering claims rest
+on the distribution shape (median, zero-kill), not the means. The v11 jump,
+by contrast, moves every column at once and is far outside that noise band.
+Leaderboard checkpoints are not distributed yet (a tagged release is
+planned); rows come from the author's runs and are deterministically
+re-evaluable given the checkpoint. Current least flattering number: **17/32
+v11 episodes end in death** on the deeper floors — a naked level-2 warrior's
+economics (the v12 potion chapter exists because of this column).
 
-Two findings we did not expect:
+Three findings we did not expect:
 
 1. **At this scale, task design beats architecture** (directional evidence,
    one run per architecture). With a 3M-step budget, a 46k-parameter MLP
@@ -65,9 +69,22 @@ Two findings we did not expect:
    evaluation horizon to 3,000 steps changes *nothing*: per-seed kill counts
    are bit-identical at both horizons for both v6 and v10, all 32 seeds. When
    the spawn pocket has no reachable prey, the agent never recovers — a
-   planning/exploration failure (**the** open problem), not a time budget one.
+   planning/exploration failure, not a time budget one.
+3. **Capability lives in the action space, not the parameter count.** The
+   dead zeros turned out to be a *sensor* problem: closed doors are
+   indistinguishable from walls in the walkability channel, so part of every
+   level is invisible-by-construction. A static "sealed spawn" analysis
+   predicts zero-kill episodes for the MLP, the LSTM and the attention model
+   with zero false positives (15/15 cells) — information destroyed at the
+   sensor is unrecoverable by any downstream architecture. v11 added **one
+   action** (a descend option that plans through doors/barrels with a
+   full-map BFS and operates them en route), left observation, rewards and
+   architecture untouched, and doubled the gold standard — where a 15×
+   parameter increase had previously *lost* points. Emergent bonus: on the
+   deepest sealed seed the policy uses the descend macro as a *door-opening
+   key* and farms the unsealed rooms without ever taking the stairs.
 
-### Nine lessons from ten runs (short version)
+### Ten lessons from eleven runs (short version)
 
 1. Don't tax the intermediate costs of the behaviour you want, and don't leave
    zero-cost sanctuaries in the reward landscape (v1's wall-hugger).
@@ -92,6 +109,10 @@ Two findings we did not expect:
    LSTM matched but didn't beat the macro-MLP; attention never trained
    stably; doubling episode length changed nothing. The bottleneck is the
    spawn-pocket deadlock — task structure again.
+10. Perception bounds what can be known, the action set bounds what can be
+    done, architecture only tunes the efficiency in between (v11: one new
+    option, +120% mean kills; v9c: 15× parameters, −57%). Audit those three
+    layers in that order — the cheapest miracles live in the action space.
 
 ## Quickstart (macOS, Apple Silicon)
 
@@ -143,13 +164,16 @@ quirks are documented in [train/evaluate.py](train/evaluate.py).
 ## Roadmap
 
 - [x] v0 walking skeleton: embed, reset(seed), step, obs, actions
-- [x] Phase 1 — autonomous fighter on dungeon level 1 (champion: 8.8 mean
-  kills over 32 seeds; single-episode best 49 across generations)
-- [ ] **Crack the spawn-pocket deadlock** (15/32 episodes end at 0 kills when
-  no prey is reachable early — candidates: spawn curriculum, cross-room
-  frontier exploration, bigger LSTM budget)
-- [ ] Clear-rate objective & descend-to-L2 curriculum
-- [ ] The Butcher 🥩 (requires full game data)
+- [x] Phase 1 — autonomous fighter on dungeon level 1 (v6: 8.8 mean kills)
+- [x] **Crack the spawn-pocket deadlock** — root cause was door-blindness in
+  the walkability channel; the v11 descend option (door/barrel-aware BFS)
+  cut zero-kill episodes 15/32 → 2/32
+- [x] Descend to L2 — 27/32 episodes reach it now (deepest runs chain to L4)
+- [ ] Survive down there: belt-potion action (v12, training as this line is
+  written), potion pickup, then gear
+- [ ] Clear-rate objective
+- [ ] The Butcher 🥩 (his greeting already crashed our headless engine once —
+  see patches/0003; killing him is next)
 - [ ] Cross-class generalization (Rogue / Sorcerer — `hero_class` already exposed)
 - [ ] Multiplayer co-op deployment (carry your creator through the game)
 
@@ -157,11 +181,12 @@ quirks are documented in [train/evaluate.py](train/evaluate.py).
 
 基于 DevilutionX 的暗黑破坏神 I 强化学习环境:无头引擎裸跑 ~13,000 倍实时
 (含观测的 env.step 约 7,500 步/秒,~1,500 倍实时)、种子级确定性(评估跨进程
-位级可复现)、Gymnasium 接口、宏动作(交战/探索)、零依赖训练监控面板。十轮
-迭代把 PPO 从"面壁思过"练到"自主猎杀堕落者"(从早期 8 种子旧口径的 0,到现役
-冠军在 32 种子金标准下的 8.8),并留下九课教训:奖励税、塑形归因、动作时序、
-防磨刀、感知天花板、探索 option、宏退化吸引子、评估运气税、任务设计>架构——
-每一课都有数据实锤,完整踩坑史见 [docs/DESIGN.md](docs/DESIGN.md)。
+位级可复现)、Gymnasium 接口、宏动作(交战/探索/下楼)、零依赖训练监控面板。
+十一轮迭代把 PPO 从"面壁思过"练到"开门、砸桶、下楼、直抵第四层"(32 种子金
+标准均击杀 **19.4**,到达二层 27/32——此前五代全部为 0),并留下十课教训:
+奖励税、塑形归因、动作时序、防磨刀、感知天花板、探索 option、宏退化吸引子、
+评估运气税、任务设计>架构、**能力住在动作空间**——每一课都有数据实锤,完整
+踩坑史见 [docs/DESIGN.md](docs/DESIGN.md)。
 
 ## Legal
 

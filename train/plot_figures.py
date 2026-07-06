@@ -43,7 +43,9 @@ BARS = [
     ("ppo-l1-v8-lstm", "v8 LSTM-128\n452k params"),
     ("ppo-l1-v9c-attn", "v9c entity-attn\n702k params"),
     ("ppo-l1-v10-longep", "v10 = v6 recipe,\n3000-step training"),
+    ("ppo-l1-v11-descend", "v11 +descend option\n(doors/barrels/stairs)"),
 ]
+CHAMPION = "ppo-l1-v11-descend"
 
 
 def rolling(xs: list[float], w: int) -> list[float]:
@@ -109,7 +111,7 @@ def main() -> None:
     labels = [label for _, label in BARS]
     means = [board[name]["mean"] for name, _ in BARS]
     zeros = [board[name]["zero"] for name, _ in BARS]
-    colors = ["#d4880f" if name == "ppo-l1-v6-explore" else "#c0c0c0" for name, _ in BARS]
+    colors = ["#d4880f" if name == CHAMPION else "#c0c0c0" for name, _ in BARS]
     bars = ax2.bar(labels, means, color=colors)
     for bar, mean, zero in zip(bars, means, zeros):
         ax2.annotate(
