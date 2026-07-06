@@ -9,7 +9,7 @@
   + 11×11 局部地图两通道(可走性、怪物占位)——run4 教训:没有空间感知,
     奖励再好也是"盲人拿完美账本"(隔墙锁定、穿墙塑形、找不到房门)
 
-动作(Discrete(11)):
+动作(Discrete(12)):
   0      原地不动
   1-8    朝八方向走一格(寻路)
   9      交战宏:锁定最近怪物持续追击,直到它死/自己死/换层/超时(≤10 拍)
@@ -17,6 +17,10 @@
   10     探索宏:走向 25×25 视野内最近的"可走且未踏足"边疆点;发现猎物
          (最近怪 ≤6 格)立即交还控制权;无边疆点时朝下行楼梯走
          (run5 教训:出生区无可达怪时,反应式策略不会"换个房间找")
+  11     下楼宏(v11):接力寻路走向本层最近的下行楼梯并站上去等触发。
+         与探索宏不同,发现猎物**不**打断——这是策略主动选择的撤离/换层键
+         (困局的逃生舱 + 清层后的下一章按钮);12 拍后控制权自然归还。
+         (v10 教训:困局是死的 0,多给时间没用——得给一扇门)
 
 奖励(v2,逐刀致密化,Lawrence 提案 + 防磨刀修正):
   +0.5 * (本刀伤害/目标最大血) * 残血系数     每刀即时到账;系数 1.0→1.5,
@@ -36,6 +40,7 @@ from __future__ import annotations
 import math
 import pathlib
 import tempfile
+from collections import deque
 
 import gymnasium as gym
 import numpy as np
@@ -80,7 +85,7 @@ class DiabloGymEnv(gym.Env):
         self.start_in_dungeon = start_in_dungeon
         self.include_raw = include_raw
         side = 2 * _MAP_RADIUS + 1
-        self.action_space = gym.spaces.Discrete(11)
+        self.action_space = gym.spaces.Discrete(12)
         self.observation_space = gym.spaces.Box(
             low=-np.inf, high=np.inf,
             shape=(12 + _K_MONSTERS * 4 + 2 * side * side,), dtype=np.float32,
@@ -113,11 +118,17 @@ class DiabloGymEnv(gym.Env):
             self._raw, micro = self._macro_engage()
         elif action == 10:
             self._raw, micro = self._macro_explore()
+        elif action == 11:
+            self._raw, micro = self._macro_descend()
         else:
             self._apply_action(action)
             self._raw = bridge.step(ticks=self.ticks_per_step)
             micro = 1
         self._steps += micro
+        if self._raw["dungeon_level"] != prev["dungeon_level"]:
+            # 新一层:足迹清零。各层共用同一坐标系,不清的话探索宏在新层
+            # 会把旧层足迹当"已踏足",边疆逻辑整层失效
+            self._visited = set()
         self._visited.add((self._raw["player_x"], self._raw["player_y"]))
 
         # 击杀统计:同层内 id 消失即击杀(换层时基线失效,跳过)
@@ -229,6 +240,135 @@ class DiabloGymEnv(gym.Env):
             stall = stall + 1 if pos == last_pos else 0
             if stall >= 2:  # 目标不可达,止损
                 break
+            last_pos = pos
+        return raw, beats
+
+    _DESCEND_RADIUS = 112  # 规划窗覆盖全图(地牢 112×112):有的层联通回廊会绕大圈,
+                           # 40 格窗曾在 seed 9005 上漏掉西侧绕行路线。每次按键只规划一次,
+                           # C++ 端一次调用出图,开销在毫秒级,换全局最优值得
+
+    def _plan_descend_path(self, raw, sx, sy):
+        """全局窗 4 向 BFS(关着的门视为可通行),返回去往"可达且离楼梯最近的格"
+        的路径 [(x, y, 是否关门), ...](不含起点)。None = 可达域内没有比脚下
+        更接近楼梯的格子(真·被困)。4 向保证引擎寻路必然接受每段(斜穿墙角
+        引擎会拒绝);贪心"只挑更近的格"会死在凹形迷宫里,BFS 允许先绕远。"""
+        px, py = raw["player_x"], raw["player_y"]
+        r = self._DESCEND_RADIUS
+        side = 2 * r + 1
+        lm = bridge.local_map(radius=r)
+        walk, door = lm["walkable"], lm["door"]
+
+        def idx(tx, ty):
+            return (ty - py + r) * side + (tx - px + r)
+
+        start = (px, py)
+        prev = {start: None}
+        depth = {start: 0}
+        best = (max(abs(sx - px), abs(sy - py)), 0, start)
+        queue = deque([start])
+        while queue:
+            cx, cy = queue.popleft()
+            for ddx, ddy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                nx, ny = cx + ddx, cy + ddy
+                if abs(nx - px) > r or abs(ny - py) > r or (nx, ny) in prev:
+                    continue
+                i = idx(nx, ny)
+                if not walk[i] and not door[i]:
+                    continue
+                prev[(nx, ny)] = (cx, cy)
+                depth[(nx, ny)] = depth[(cx, cy)] + 1
+                d_stairs = max(abs(sx - nx), abs(sy - ny))
+                if (d_stairs, depth[(nx, ny)]) < best[:2]:
+                    best = (d_stairs, depth[(nx, ny)], (nx, ny))
+                queue.append((nx, ny))
+        if best[2] == start:
+            return None
+        path = []
+        cur = best[2]
+        while cur != start:
+            path.append((cur[0], cur[1], bool(door[idx(*cur)])))
+            cur = prev[cur]
+        path.reverse()
+        return path
+
+    def _macro_descend(self, max_beats: int = 12):
+        """下楼宏:全局 BFS 规划一次,沿路径逐路点走向下行楼梯,遇关门先开门
+        (CMD_OPOBJXY 引擎自动走近再操作;地牢房间靠门连通,而关着的门在
+        walkable 通道里长得和墙一样——这是宏必须自带门感知的原因)。
+
+        发现猎物不打断(这是主动撤离键);换层/阵亡/持续失速提前结束;
+        12 拍耗尽自然归还控制权,下次按键重新规划。全程无随机数,确定性。
+        """
+        raw = self._raw
+        stairs = [t for t in raw.get("triggers", []) if t["msg"] == 0]
+        if not stairs:
+            return bridge.step(ticks=self.ticks_per_step), 1
+        px, py = raw["player_x"], raw["player_y"]
+        st = min(stairs, key=lambda t: max(abs(t["x"] - px), abs(t["y"] - py)))
+        sx, sy = st["x"], st["y"]
+        start_level = raw["dungeon_level"]
+
+        path = self._plan_descend_path(raw, sx, sy)
+        if path is None:
+            return bridge.step(ticks=self.ticks_per_step), 1  # 真被困:原地一拍,交还控制权
+
+        pi = 0            # 路径消费指针
+        target = None     # (kind, x, y, path_index)
+        stall = 0
+        beats = 0
+        last_pos = (px, py)
+        for beats in range(1, max_beats + 1):
+            if target is None:
+                if pi >= len(path):
+                    break  # 路径走完(最近可达格≠楼梯时会发生),交还控制权
+                # 先处理前方 8 格内的第一扇关门,否则取 ~8 格外的路点
+                nxt = None
+                for j in range(pi, min(pi + 8, len(path))):
+                    if path[j][2]:
+                        nxt = ("open", path[j][0], path[j][1], j)
+                        break
+                if nxt is None:
+                    j = min(pi + 7, len(path) - 1)
+                    nxt = ("walk", path[j][0], path[j][1], j)
+                target = nxt
+                if target[0] == "open":
+                    bridge.act_operate(target[1], target[2])
+                else:
+                    bridge.act_walk(target[1], target[2])
+            raw = bridge.step(ticks=self.ticks_per_step)
+            pos = (raw["player_x"], raw["player_y"])
+            self._visited.add(pos)
+            if raw["dead"] or raw["dungeon_level"] != start_level:
+                break  # 换层成功(或阵亡);足迹由 step() 统一按层重置
+            if pos == (sx, sy):
+                continue  # 已站上楼梯格,等触发换层——站桩不算失速
+            if target[0] == "open":
+                # 开门型目标:门格真的变可走才算完成(贴脸≠已开,动画要几拍)
+                if bridge.probe_tile(target[1], target[2])["walkable"]:
+                    path[target[3]] = (target[1], target[2], False)
+                    pi = target[3]  # 从门所在格继续消费路径
+                    target = None
+                    stall = 0
+                    last_pos = pos
+                    continue
+            elif max(abs(pos[0] - target[1]), abs(pos[1] - target[2])) <= 1:
+                pi = target[3] + 1  # 到达路点,继续下一段
+                target = None
+                stall = 0
+                last_pos = pos
+                continue
+            if pos == last_pos:
+                stall += 1
+                if stall == 3 and target is not None:
+                    # 命令可能被打断(被怪撞开路径等):原地重发一次
+                    if target[0] == "open":
+                        bridge.act_operate(target[1], target[2])
+                    else:
+                        bridge.act_walk(target[1], target[2])
+                if stall >= 6:
+                    break  # 重发后仍无进展 → 交还控制权,下次按键重新规划
+            else:
+                stall = 0
             last_pos = pos
         return raw, beats
 

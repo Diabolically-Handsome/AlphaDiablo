@@ -55,6 +55,7 @@
 #include "msg.h"
 #include "multi.h"
 #include "nthread.h"
+#include "objects.h" // FindObjectAtPosition / isDoor(下楼宏的门感知)
 #include "options.h"
 #include "pfile.h"
 #include "player.h"
@@ -460,6 +461,12 @@ void ActAttackTile(int x, int y)
 	NetSendCmdLoc(MyPlayerId, true, CMD_SATTACKXY, { x, y });
 }
 
+void ActOperate(int x, int y)
+{
+	// 操作目标格上的物体(门/箱子/杠杆):引擎自动走过去再操作——与鼠标点击同路
+	NetSendCmdLoc(MyPlayerId, true, CMD_OPOBJXY, { x, y });
+}
+
 } // namespace
 
 PYBIND11_MODULE(_diablogym, m)
@@ -474,24 +481,43 @@ PYBIND11_MODULE(_diablogym, m)
 	m.def("act_walk", &ActWalk, py::arg("x"), py::arg("y"), "寻路走向目标格(网络命令层注入)");
 	m.def("act_attack_monster", &ActAttackMonster, py::arg("monster_id"), "追击并近战指定怪物");
 	m.def("act_attack_tile", &ActAttackTile, py::arg("x"), py::arg("y"), "原地朝目标格挥击");
+	m.def("act_operate", &ActOperate, py::arg("x"), py::arg("y"), "操作目标格物体(开门等;引擎自动走近)");
 	m.def("end_game", &EndGame, "结束当前局(reset 会自动调用)");
 
 	m.def("local_map", [](int radius) {
-		// 以玩家为中心的 (2r+1)² 局部地图:可走性 + 怪物占位(C++ 端单次调用,避免逐格 probe 的开销)
+		// 以玩家为中心的 (2r+1)² 局部地图:可走性 + 怪物占位 + 关闭的门
+		// (C++ 端单次调用,避免逐格 probe 的开销)。
+		// 注意:观测向量只消费 walkable/monster 两通道;door 通道仅供宏内部导航,
+		// 不改变 286 维观测 —— 旧模型与排行榜完全兼容
 		const Player &p = *MyPlayer;
 		const int cx = p.position.tile.x, cy = p.position.tile.y;
-		py::list walkable, monster;
+		py::list walkable, monster, door;
 		for (int dy = -radius; dy <= radius; dy++) {
 			for (int dx = -radius; dx <= radius; dx++) {
 				const int x = cx + dx, y = cy + dy;
 				const bool inBounds = x >= 0 && x < MAXDUNX && y >= 0 && y < MAXDUNY;
 				walkable.append(inBounds && IsTileWalkable({ x, y }, false) ? 1 : 0);
 				monster.append(inBounds && dMonster[x][y] != 0 ? 1 : 0);
+				// 关着的门:门对象在场且该格当前不可走。注意不能用 _oSolidFlag——
+				// 引擎里门的封堵是靠门格地块换成实心(nSolidTable),门对象本身不置 solid。
+				// 挡路的桶:实心但可破坏(operate 一击即碎,格子变可走)——seed 9005 的
+				// 楼梯就被"门后一只桶"封死过,可通行规划必须认识这两种"软墙"
+				bool closedDoor = false;
+				bool barrel = false;
+				if (inBounds) {
+					Object *object = FindObjectAtPosition({ x, y });
+					if (object != nullptr) {
+						closedDoor = object->isDoor() && !IsTileWalkable({ x, y }, false);
+						barrel = object->IsBreakable() && object->_oSolidFlag;
+					}
+				}
+				door.append((closedDoor || barrel) ? 1 : 0);
 			}
 		}
 		py::dict d;
 		d["walkable"] = walkable;
 		d["monster"] = monster;
+		d["door"] = door;
 		return d;
 	}, py::arg("radius") = 5, "以玩家为中心的局部地图通道");
 
@@ -512,8 +538,13 @@ PYBIND11_MODULE(_diablogym, m)
 		d["object"] = static_cast<int>(dObject[x][y]);
 		d["solid"] = IsTileSolid({ x, y });
 		d["walkable"] = IsTileWalkable({ x, y }, false);
+		Object *object = FindObjectAtPosition({ x, y });
+		d["object_type"] = object != nullptr ? static_cast<int>(object->_otype) : -1;
+		d["object_is_door"] = object != nullptr && object->isDoor();
+		d["object_solid"] = object != nullptr && object->_oSolidFlag;
+		d["object_selectable"] = object != nullptr && object->canInteractWith();
 		return d;
-	}, py::arg("x"), py::arg("y"), "调试:读取单格的占位/碰撞状态");
+	}, py::arg("x"), py::arg("y"), "调试:读取单格的占位/碰撞/物体状态");
 
 	// 触发点消息类型常量(观测 triggers[].msg 的取值)
 	m.attr("WM_DIABNEXTLVL") = static_cast<int>(WM_DIABNEXTLVL);
