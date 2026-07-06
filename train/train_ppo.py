@@ -166,7 +166,22 @@ def main():
         model.learn(total_timesteps=args.total_steps, callback=[callback, ckpt])
     finally:
         model.save(str(run_dir / "model_final"))
-        vec_env.close()
+        # 工作进程崩溃(如引擎段错误)后,SubprocVecEnv.close() 会在断管上永久阻塞,
+        # 把"响亮的异常"变成"无声的挂死"(v11 连续三次的死状)。给 close 上闹钟:
+        # 超时就放弃清理,让异常正常冒出、进程以非零码退出,监控才有尸体可验
+        import signal
+
+        def _close_timeout(*_):
+            raise TimeoutError("vec_env.close() 超时(疑似 worker 已死)")
+
+        signal.signal(signal.SIGALRM, _close_timeout)
+        signal.alarm(20)
+        try:
+            vec_env.close()
+        except Exception as e:
+            print(f"vec_env.close 异常(忽略,不影响已保存的模型): {e}")
+        finally:
+            signal.alarm(0)
         print(f"模型已保存: {run_dir}/model_final.zip")
 
 
