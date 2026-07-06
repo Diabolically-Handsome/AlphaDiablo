@@ -15,6 +15,7 @@ All rows re-measured 2026-07-05 on the same build.
 | ppo-l1-v11-descend | 19.4 | 14.5 | 70 | 2/32 | 27 |
 | ppo-l1-v12-drink² | 12.3 | 10.0 | 46 | 9/32 | 26 |
 | ppo-l1-v13-pickup³ | 35.2 | 29.0 | 65 | 1/32 | 25 |
+| ppo-l1-v13-pickup-s14⁴ | 38.1 | 33.5 | 76 | 1/32 | 24 |
 
 ¹ v5 predates the explore macro; evaluated post-hoc on the current env
 (same 286-dim observation, it simply never selects action 10). v1-v4
@@ -32,6 +33,15 @@ one observation change — real-drink share 0.5% → 93.4% (25 of 57 argmax
 drinks below half HP, deepest at 1%). Deaths 17/32 (v11) → 12/32 while
 fighting nearly twice as much. Residue: one seed (9001) migrated the idle
 attractor onto the pickup key (1,448 no-op presses) — lesson 12.
+
+⁴ Same config as v13, training seed 14 — the project's first same-config
+repeat, run for error bars, not a new generation (the champion row remains
+the pre-registered seed-13 run; picking the better of two repeats would be
+a selection effect). The kill level replicates (35.2 / 38.1); the style
+does not: deaths 12 vs 21/32, real-drink share 93.4% vs 45.7% (pooled
+65%), and idle-spam seeds go 1 → 3 (9001 presses pickup for its entire
+episode). Outcome-level claims are robust; behaviour-composition claims
+carry single-run error bars.
 
 Long-episode probe (max_steps 1500 → 3000, same protocol): per-seed
 kills are bit-identical for both v6 and v10 at both horizons (32/32

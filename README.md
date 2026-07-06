@@ -51,6 +51,11 @@ onward uses `--seed`), and a 32-seed mean has an SEM of ≈2 kills — so the
 v5/v6/v8 means are statistically indistinguishable and ordering claims rest
 on the distribution shape (median, zero-kill), not the means. The v11 jump,
 by contrast, moves every column at once and is far outside that noise band.
+v13 is the first config with a same-config seed repeat (means 35.2 and
+38.1 — the effect is robust), and the repeat taught us something the level
+could not: deaths (12 vs 21/32) and drink discipline (93% vs 46%
+real-share) vary wildly between runs of the same config. *How much* it
+wins is reproducible; *how* it wins is not.
 Leaderboard checkpoints are not distributed yet (a tagged release is
 planned); rows come from the author's runs and are deterministically
 re-evaluable given the checkpoint. Champion honesty numbers: v13's
@@ -90,14 +95,15 @@ Four findings we did not expect:
    parameter increase had previously *lost* points. Emergent bonus: on the
    deepest sealed seed the policy uses the descend macro as a *door-opening
    key* and farms the unsealed rooms without ever taking the stairs.
-4. **One observation bit bought a ~190× improvement in button discipline.**
-   v12 and v13 share the same drink button. v12 could not see the belt and
-   spent 99.5% of its presses on an empty one; v13 can, and spends 93.4% of
-   its presses on a stocked one — 25 of its 57 argmax drinks fire below
-   half HP, the deepest at 1% HP. What makes a skill learnable is not the
-   action but the observability of the action's precondition (lessons 5,
-   11, 12) — and the mean nearly doubled (19.4 → 35.2) once the potion
-   economy closed.
+4. **One observation bit made the potion economy learnable — and nearly
+   doubled the champion.** v12 and v13 share the same drink button. v12
+   could not see the belt and spent 99.5% of its presses on an empty one;
+   the seed-13 run of v13 spends 93.4% of its presses on a stocked one (25
+   of 57 argmax drinks below half HP, the deepest at 1% HP), and the mean
+   jumped 19.4 → 35.2. The seed-14 repeat keeps the kill level (38.1) but
+   only 45.7% discipline (pooled: 65%) — the *capability* is unlocked by
+   observability (lessons 5, 11, 12); how thoroughly a given run exploits
+   it is seed lottery.
 
 ### Twelve lessons from thirteen runs (short version)
 
@@ -140,9 +146,12 @@ Four findings we did not expect:
     conserved. Giving the policy eyes on the belt (v13) turned 99.5% waste
     into 93.4% discipline and doubled the champion — but the idle-spam
     attractor from lesson 11 did not die, it migrated: one seed presses the
-    new pickup key 1,448 times as its no-op corner. Remove a hiding place
-    and risk-averse probability mass flows to the next zero-risk action;
-    budget for attractor migration whenever you add one.
+    new pickup key 1,448 times as its no-op corner, and the seed-14 repeat
+    grew that to three seeds (one spends its *entire* 1,500-step episode on
+    the key). Remove a hiding place and risk-averse probability mass flows
+    to the next zero-risk action; budget for attractor migration whenever
+    you add one — and only trust behaviour-composition claims that survive
+    a seed repeat.
 
 ## Quickstart (macOS, Apple Silicon)
 
