@@ -26,6 +26,7 @@
 
 #include "DiabloUI/diabloui.h" // _uiheroinfo
 #include "controls/control_mode.hpp"
+#include "controls/plrctrls.h" // UseBeltItem(喝药键 v12)
 #include "cursor.h"
 #include "diablo.h"
 #include "engine/render/scrollrt.h" // CalcViewportGeometry
@@ -85,6 +86,8 @@ bool DummyGetHeroInfo(_uiheroinfo * /*info*/)
 {
 	return true;
 }
+
+int CountBeltHeals(); // 定义在动作区(v12);Observe 的 raw 字段也要用
 
 // 空事件处理器:demo::FetchMessage 在 CurrentEventHandler==DisableInputEventHandler
 // 时拒绝吐出事件(demomode.cpp:727),必须装一个"游戏中"处理器才能解锁事件流。
@@ -243,6 +246,7 @@ py::dict Observe()
 	obs["dead"] = player._pmode == PM_DEATH || (player._pHitPoints >> 6) <= 0;
 	obs["game_over"] = !gbRunGame;
 	obs["victory"] = !IsDiabloAlive(false);
+	obs["belt_heals"] = CountBeltHeals(); // 仅入 raw 字典;286 维观测向量不变(v12)
 
 	py::list monsters;
 	for (size_t i = 0; i < ActiveMonsterCount; i++) {
@@ -467,6 +471,30 @@ void ActOperate(int x, int y)
 	NetSendCmdLoc(MyPlayerId, true, CMD_OPOBJXY, { x, y });
 }
 
+int CountBeltHeals()
+{
+	int heals = 0;
+	for (int i = 0; i < MaxBeltItems; i++) {
+		const Item &item = MyPlayer->SpdList[i];
+		if (item.isEmpty())
+			continue;
+		if (IsAnyOf(item._iMiscId, IMISC_HEAL, IMISC_FULLHEAL, IMISC_REJUV, IMISC_FULLREJUV)
+		    || item.isScrollOf(SpellID::Healing))
+			heals++;
+	}
+	return heals;
+}
+
+int ActDrink()
+{
+	// 喝腰带上的第一瓶治疗类药水(与手柄快捷键 UseBeltItem 同路);
+	// 无药时不发任何命令(空拍)。返回按键前的腰带治疗药数量
+	const int heals = CountBeltHeals();
+	if (heals > 0)
+		UseBeltItem(BeltItemType::Healing);
+	return heals;
+}
+
 } // namespace
 
 PYBIND11_MODULE(_diablogym, m)
@@ -482,6 +510,7 @@ PYBIND11_MODULE(_diablogym, m)
 	m.def("act_attack_monster", &ActAttackMonster, py::arg("monster_id"), "追击并近战指定怪物");
 	m.def("act_attack_tile", &ActAttackTile, py::arg("x"), py::arg("y"), "原地朝目标格挥击");
 	m.def("act_operate", &ActOperate, py::arg("x"), py::arg("y"), "操作目标格物体(开门等;引擎自动走近)");
+	m.def("act_drink", &ActDrink, "喝腰带上的第一瓶治疗药(无药=无操作);返回按键前腰带治疗药数");
 	m.def("end_game", &EndGame, "结束当前局(reset 会自动调用)");
 
 	m.def("local_map", [](int radius) {

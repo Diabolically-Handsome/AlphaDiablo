@@ -9,7 +9,7 @@
   + 11×11 局部地图两通道(可走性、怪物占位)——run4 教训:没有空间感知,
     奖励再好也是"盲人拿完美账本"(隔墙锁定、穿墙塑形、找不到房门)
 
-动作(Discrete(12)):
+动作(Discrete(13)):
   0      原地不动
   1-8    朝八方向走一格(寻路)
   9      交战宏:锁定最近怪物持续追击,直到它死/自己死/换层/超时(≤10 拍)
@@ -21,6 +21,10 @@
          与探索宏不同,发现猎物**不**打断——这是策略主动选择的撤离/换层键
          (困局的逃生舱 + 清层后的下一章按钮);12 拍后控制权自然归还。
          (v10 教训:困局是死的 0,多给时间没用——得给一扇门)
+  12     喝药键(v12):腰带有治疗类药水就喝一瓶(引擎手柄快捷键同路),
+         没有则为空拍。观测向量刻意不加"腰带药数"字段——策略凭它已有的
+         血量比例(obs[0])学"何时按",286 维保持,历代模型全部可复评。
+         (v11 教训:能力缺口用动作补,奖励与观测保持冻结)
 
 奖励(v2,逐刀致密化,Lawrence 提案 + 防磨刀修正):
   +0.5 * (本刀伤害/目标最大血) * 残血系数     每刀即时到账;系数 1.0→1.5,
@@ -85,7 +89,7 @@ class DiabloGymEnv(gym.Env):
         self.start_in_dungeon = start_in_dungeon
         self.include_raw = include_raw
         side = 2 * _MAP_RADIUS + 1
-        self.action_space = gym.spaces.Discrete(12)
+        self.action_space = gym.spaces.Discrete(13)
         self.observation_space = gym.spaces.Box(
             low=-np.inf, high=np.inf,
             shape=(12 + _K_MONSTERS * 4 + 2 * side * side,), dtype=np.float32,
@@ -120,6 +124,10 @@ class DiabloGymEnv(gym.Env):
             self._raw, micro = self._macro_explore()
         elif action == 11:
             self._raw, micro = self._macro_descend()
+        elif action == 12:
+            bridge.act_drink()  # 无药时引擎侧为空操作;站桩惩罚由奖励函数自然覆盖
+            self._raw = bridge.step(ticks=self.ticks_per_step)
+            micro = 1
         else:
             self._apply_action(action)
             self._raw = bridge.step(ticks=self.ticks_per_step)
