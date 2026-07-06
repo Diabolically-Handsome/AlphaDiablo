@@ -45,8 +45,9 @@ BARS = [
     ("ppo-l1-v10-longep", "v10 = v6 recipe,\n3000-step training"),
     ("ppo-l1-v11-descend", "v11 +descend option\n(doors/barrels/stairs)"),
     ("ppo-l1-v12-drink", "v12 +belt potion\n(deaths 17→10, kills regress)"),
+    ("ppo-l1-v13-pickup", "v13 potions learnable\n(obs 286→290 + pickup macro)"),
 ]
-CHAMPION = "ppo-l1-v11-descend"
+CHAMPION = "ppo-l1-v13-pickup"
 
 
 def rolling(xs: list[float], w: int) -> list[float]:

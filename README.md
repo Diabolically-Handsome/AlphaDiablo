@@ -5,9 +5,9 @@
 **A fast, deterministic Diablo I reinforcement-learning environment** built on
 [DevilutionX](https://github.com/diasurgical/devilutionX), plus the training
 pipeline that took a PPO agent from *hiding in a corner* to *opening doors,
-smashing barrels and fighting its way down to dungeon level 4* — twelve
-documented runs, one diagnosed failure mode eliminated (or one hypothesis
-falsified) per run.
+smashing barrels, looting potions and fighting its way down through the
+dungeon* — thirteen documented runs, one diagnosed failure mode eliminated
+(or one hypothesis falsified) per run.
 
 - 🚀 **~13,000× realtime**: full game logic, headless — 254k engine ticks/s raw,
   ~7,500 `env.step()`/s with full observations (M-series MacBook, measured)
@@ -38,8 +38,9 @@ iterations that built the champion. Right: the gold standard — deterministic
 | v8 LSTM-128 | 451,596 | 8.4 | 3.0 | 43 | 13/32 | 0/32 |
 | v9c entity-attention | 701,980 | 3.8 | 0 | 38 | 21/32 | 0/32 |
 | v10 = v6 recipe, 3000-step episodes | 45,836 | 5.5 | 0 | 49 | 18/32 | 0/32 |
-| **v11 = v6 + descend option (champion)** | 45,901 | **19.4** | **14.5** | **70** | **2/32** | **27/32** |
+| v11 = v6 + descend option | 45,901 | 19.4 | 14.5 | **70** | 2/32 | **27/32** |
 | v12 = v11 + belt-potion action | 45,966 | 12.3 | 10.0 | 46 | 9/32 | 26/32 |
+| **v13 = potion system made learnable (champion)** | 46,543 | **35.2** | **29.0** | 65 | **1/32** | 25/32 |
 
 ¹ *Evaluated post-hoc on the current env (same observation; it never selects
 the explore macro). Protocol: seeds 9000-9031, 1500 steps, argmax, idle
@@ -52,13 +53,16 @@ on the distribution shape (median, zero-kill), not the means. The v11 jump,
 by contrast, moves every column at once and is far outside that noise band.
 Leaderboard checkpoints are not distributed yet (a tagged release is
 planned); rows come from the author's runs and are deterministically
-re-evaluable given the checkpoint. Least flattering numbers: **17/32 v11
-episodes end in death** on the deeper floors — a naked level-2 warrior's
-economics — and the v12 potion chapter built to fix that column did cut
-deaths to 10/32, but regressed mean kills to 12.3 and spent 4,715 of its
-4,740 drink presses on an empty belt (lesson 11). v11 stays champion.
+re-evaluable given the checkpoint. Champion honesty numbers: v13's
+pre-registered predictions went **2/4** — real-drink share >50% and mean
+≥16 hit; deaths ≤10 **missed** (12/32), reached-L2 ≥26 **missed** (25/32).
+Deaths did fall 17/32 → 12/32 while the kill rate nearly doubled, but one
+seed (9001) migrated the v12 idle-spam attractor onto the new pickup key —
+1,448 no-op presses (lesson 12). Observation changes (286→290 in v13) end
+direct re-evaluation of older checkpoints on the current env; each row
+stands on the env version it was scored under (same policy as v1-v4/v7).
 
-Three findings we did not expect:
+Four findings we did not expect:
 
 1. **At this scale, task design beats architecture** (directional evidence,
    one run per architecture). With a 3M-step budget, a 46k-parameter MLP
@@ -86,8 +90,16 @@ Three findings we did not expect:
    parameter increase had previously *lost* points. Emergent bonus: on the
    deepest sealed seed the policy uses the descend macro as a *door-opening
    key* and farms the unsealed rooms without ever taking the stairs.
+4. **One observation bit bought a ~190× improvement in button discipline.**
+   v12 and v13 share the same drink button. v12 could not see the belt and
+   spent 99.5% of its presses on an empty one; v13 can, and spends 93.4% of
+   its presses on a stocked one — 25 of its 57 argmax drinks fire below
+   half HP, the deepest at 1% HP. What makes a skill learnable is not the
+   action but the observability of the action's precondition (lessons 5,
+   11, 12) — and the mean nearly doubled (19.4 → 35.2) once the potion
+   economy closed.
 
-### Eleven lessons from twelve runs (short version)
+### Twelve lessons from thirteen runs (short version)
 
 1. Don't tax the intermediate costs of the behaviour you want, and don't leave
    zero-cost sanctuaries in the reward landscape (v1's wall-hugger).
@@ -124,6 +136,13 @@ Three findings we did not expect:
     the policy could never learn when *not* to press: lesson 5 applies to
     action preconditions too. Door-blindness, then bottle-blindness —
     self-inflicted this time. v11 keeps the crown.
+12. Discipline is a function of observability, and hiding places are
+    conserved. Giving the policy eyes on the belt (v13) turned 99.5% waste
+    into 93.4% discipline and doubled the champion — but the idle-spam
+    attractor from lesson 11 did not die, it migrated: one seed presses the
+    new pickup key 1,448 times as its no-op corner. Remove a hiding place
+    and risk-averse probability mass flows to the next zero-risk action;
+    budget for attractor migration whenever you add one.
 
 ## Quickstart (macOS, Apple Silicon)
 
@@ -180,9 +199,11 @@ quirks are documented in [train/evaluate.py](train/evaluate.py).
   the walkability channel; the v11 descend option (door/barrel-aware BFS)
   cut zero-kill episodes 15/32 → 2/32
 - [x] Descend to L2 — 27/32 episodes reach it now (deepest runs chain to L4)
-- [ ] Survive down there: the v12 belt-potion action cut deaths 17/32 → 10/32
-  at a kill-rate cost (lesson 11); next: put the belt count into the
-  observation, potion pickup, then gear
+- [x] Survive down there: v12's blind drink action cut deaths at a kill-rate
+  cost (lesson 11); v13 made the potion system *learnable* (belt count +
+  nearest floor heal into the observation, door-aware pickup macro) —
+  deaths 17/32 → 12/32 while mean kills doubled to 35.2
+- [ ] Gear up: equip armor and weapons from the floor (v14)
 - [ ] Clear-rate objective
 - [ ] The Butcher 🥩 (his greeting already crashed our headless engine once —
   see patches/0003; killing him is next)
@@ -193,13 +214,13 @@ quirks are documented in [train/evaluate.py](train/evaluate.py).
 
 基于 DevilutionX 的暗黑破坏神 I 强化学习环境:无头引擎裸跑 ~13,000 倍实时
 (含观测的 env.step 约 7,500 步/秒,~1,500 倍实时)、种子级确定性(评估跨进程
-位级可复现)、Gymnasium 接口、宏动作(交战/探索/下楼/喝药)、零依赖训练监控
-面板。十二轮迭代把 PPO 从"面壁思过"练到"开门、砸桶、下楼、直抵第四层"(32
-种子金标准均击杀 **19.4**,到达二层 27/32——此前五代全部为 0),并留下十一课
-教训:奖励税、塑形归因、动作时序、防磨刀、感知天花板、探索 option、宏退化
-吸引子、评估运气税、任务设计>架构、能力住在动作空间、**新动作也是新藏身处**
-(v12 喝药键:战死 17→10,但 4,740 次按键里 4,715 次按在空腰带上)——每一课
-都有数据实锤,完整踩坑史见 [docs/DESIGN.md](docs/DESIGN.md)。
+位级可复现)、Gymnasium 接口、宏动作(交战/探索/下楼/喝药/捡药)、零依赖训练
+监控面板。十三轮迭代把 PPO 从"面壁思过"练到"开门、砸桶、捡药续命、一路下杀"
+(32 种子金标准均击杀 **35.2**,较上代冠军近乎翻倍;实喝纪律 0.5%→93.4%),
+并留下十二课教训:奖励税、塑形归因、动作时序、防磨刀、感知天花板、探索
+option、宏退化吸引子、评估运气税、任务设计>架构、能力住在动作空间、新动作
+也是新藏身处、**纪律是观测的函数而藏身处守恒**——每一课都有数据实锤,完整
+踩坑史见 [docs/DESIGN.md](docs/DESIGN.md)。
 
 ## Legal
 
