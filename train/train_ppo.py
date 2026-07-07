@@ -23,15 +23,16 @@ from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv
 
 
-def make_env(max_steps: int = 1500):
+def make_env(max_steps: int = 1500, deep: bool = False):
     from diablogym import DiabloGymEnv
 
     env = DiabloGymEnv(
         ticks_per_step=4,      # 每个决策 = 0.2 秒游戏时间
-        max_steps=max_steps,   # 1500 = 冠军(v6)配方;3000 = v10 长局实验。
-                               # 32 种子排行榜评估固定 1500 步(可比性)
+        max_steps=max_steps,   # 1500 = 冠军(v6)配方;3000 = v10 长局实验 + v17 深水区。
+                               # 32 种子排行榜评估固定 1500 步(可比性);深水区章另立新表
         start_in_dungeon=True, # 跳过城镇,直接站在地牢 1 层入口
         include_raw=False,     # 训练不传 raw 大字典(多进程 IPC 减负)
+        descend_ladder=deep,   # v17:下楼奖金层数递进(8×N),给"往下活着"一个未来
     )
     return Monitor(env)
 
@@ -102,6 +103,8 @@ def main():
                     help="episode 步数上限;1500 = 冠军(v6)配方,3000 = v10 长局实验")
     ap.add_argument("--seed", type=int, default=None,
                     help="训练种子(SB3 全局种子 + 环境 reset 种子;多进程采样时序仍会引入少量不确定性,只保证近似复现)")
+    ap.add_argument("--deep", action="store_true",
+                    help="v17 深水区:下楼奖金层数递进(N→N+1 付 8×N);配合 --max-steps 3000")
     args = ap.parse_args()
 
     run_name = args.run_name or time.strftime("ppo-l1-%m%d-%H%M%S")
@@ -119,12 +122,14 @@ def main():
         "algo": ({"rppo": "RecurrentPPO/MlpLstmPolicy",
                   "mppo": "MaskablePPO/MlpPolicy(gear-key mask)"}.get(args.algo, "PPO/MlpPolicy")
                  + ("+EntityAttention" if args.arch == "attn" else "")),
-        "goal": "地牢 1 层:杀怪拿 XP,找楼梯下 2 层",
+        "goal": ("深水区:层数递进奖金,活着往下潜(L3/L4)" if args.deep
+                 else "地牢 1 层:杀怪拿 XP,找楼梯下 2 层"),
+        "deep": args.deep,
     }
     print(f"== DiabloGym PPO 训练 == run={run_name}")
     print(f"   {config}")
 
-    env_fn = functools.partial(make_env, args.max_steps)
+    env_fn = functools.partial(make_env, args.max_steps, args.deep)
     if args.num_envs == 1:
         vec_env = DummyVecEnv([env_fn])
     else:

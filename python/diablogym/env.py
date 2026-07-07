@@ -91,6 +91,7 @@ class DiabloGymEnv(gym.Env):
         max_steps: int = 5000,
         start_in_dungeon: bool = False,
         include_raw: bool = True,
+        descend_ladder: bool = False,
     ):
         super().__init__()
         assets = str(assets_dir or _DEFAULT_ASSETS)
@@ -105,6 +106,9 @@ class DiabloGymEnv(gym.Env):
         self.max_steps = max_steps
         self.start_in_dungeon = start_in_dungeon
         self.include_raw = include_raw
+        # v17 深水区:下楼奖金层数递进(N→N+1 付 8×N;False = v6-v16 的扁平 8.0,
+        # 旧章金标准的世界规则不动)
+        self.descend_ladder = descend_ladder
         side = 2 * _MAP_RADIUS + 1
         self.action_space = gym.spaces.Discrete(15)
         self.observation_space = gym.spaces.Box(
@@ -570,10 +574,16 @@ class DiabloGymEnv(gym.Env):
                 r += 1.0  # 击杀收头
         return r
 
-    @classmethod
-    def _reward(cls, prev, cur) -> float:
+    def _reward(self, prev, cur) -> float:
+        cls = type(self)
         r = 0.01 * (cur["xp"] - prev["xp"])
-        r += 8.0 * (cur["dungeon_level"] - prev["dungeon_level"])
+        dl = cur["dungeon_level"] - prev["dungeon_level"]
+        if self.descend_ladder and dl > 0:
+            # v17:深度递进——每个 N→N+1 付 8×N(L1→2 仍是 8,锚定旧章;
+            # L2→3 付 16、L3→4 付 24……越深越值钱,给"往下活着"一个未来)
+            r += 8.0 * sum(range(prev["dungeon_level"], cur["dungeon_level"]))
+        else:
+            r += 8.0 * dl
         if cur["armor_class"] > prev["armor_class"]:
             # v15(奖励 v3——自 v6 冻结以来首次修订):穿甲一次性入账,自举塑形。
             # 动机=教训十三:护甲收益(每击少几点血,摊几百步)对 3M 步视界统计
