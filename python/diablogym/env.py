@@ -48,6 +48,8 @@
   +1.0 * 击杀                                  收头奖励
   +0.01 * ΔXP                                  真实目标(升级)
   +8.0  * Δ地牢层                               ≈4 只怪的价值,清完才值得下楼
+  +0.5  * ΔAC(穿甲时,奖励 v3/v15)             教训十三的自举塑形:守恒存量、
+                                                不可刷;负 Δ(死亡掉装)不罚
   +0.005 * 自己走近最近怪的格数(远离同额扣)
   -0.002  原地不动(含撞墙)
   -2.0 死亡   +10.0 通关
@@ -558,6 +560,15 @@ class DiabloGymEnv(gym.Env):
     def _reward(cls, prev, cur) -> float:
         r = 0.01 * (cur["xp"] - prev["xp"])
         r += 8.0 * (cur["dungeon_level"] - prev["dungeon_level"])
+        if cur["armor_class"] > prev["armor_class"]:
+            # v15(奖励 v3——自 v6 冻结以来首次修订):穿甲一次性入账,自举塑形。
+            # 动机=教训十三:护甲收益(每击少几点血,摊几百步)对 3M 步视界统计
+            # 不可见,0/32 穿甲——行为必须先发生,真实回报才有机会被观测。
+            # Goodhart 预审:AutoEquip 只填空槽、无卸装/丢弃动作、属性点不自动
+            # 分配、未鉴定魔法加成不生效 → AC 是守恒存量,ΔAC>0 ⟺ 穿上装备,
+            # 不可刷。近似势函数塑形,取正半边(死亡掉装的负 Δ 不罚,死亡已有
+            # -2.0)。v15b 计划:学会后拆塑形微调,检验行为是否内化。
+            r += 0.5 * (cur["armor_class"] - prev["armor_class"])
         if cur["dungeon_level"] == prev["dungeon_level"]:
             r += cls._combat_reward(prev, cur)
         # 接近塑形:仅当是"自己走近"才有奖励(v2 教训:怪主动贴脸也计分,
