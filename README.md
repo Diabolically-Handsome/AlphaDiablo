@@ -89,6 +89,18 @@ seed (9001) migrated the v12 idle-spam attractor onto the new pickup key —
 direct re-evaluation of older checkpoints on the current env; each row
 stands on the env version it was scored under (same policy as v1-v4/v7).
 
+### Deep-water chapter (v17+, separate board)
+
+The gear/survival economy moved to its natural habitat: 3000-step
+episodes with a depth-progressive descent ladder (level N→N+1 pays 8×N),
+scored on [train/leaderboard-deep.md](train/leaderboard-deep.md) — not
+comparable to the table above. The opener (v17) transformed the species
+with one reward knob: depth median L3, 11/32 episodes touch L4 (the old
+chapter's deepest-ever), 28/32 leave L1 — but as a level-1 stair-rusher
+that farms nothing, wears nothing, and dies in 22/32 episodes, 16 of
+them with a dry belt. The ladder priced *touching* depth, not
+*surviving* it, and the policy solved the prices as written (lesson 16).
+
 Four findings we did not expect:
 
 1. **At this scale, task design beats architecture** (directional evidence,
@@ -127,7 +139,7 @@ Four findings we did not expect:
    observability (lessons 5, 11, 12); how thoroughly a given run exploits
    it is seed lottery.
 
-### Fifteen lessons from sixteen runs (short version)
+### Sixteen lessons from seventeen runs (short version)
 
 1. Don't tax the intermediate costs of the behaviour you want, and don't leave
    zero-cost sanctuaries in the reward landscape (v1's wall-hugger).
@@ -210,6 +222,18 @@ Four findings we did not expect:
     strike, cleanest yet): evicted from the masked key, it resettled
     on the unmasked drink/pickup keys. Structural hygiene relocates
     spam; only value can retire it.
+16. You buy the behavior you price, not the behavior you mean. v17's
+    escalating descent ladder (8/16/24 per level, death at −2) priced
+    "touching depth" above everything, and the policy obliged: median
+    first descent at step 138, every descent at character level 1,
+    kills 34.5 → 9.6, deaths 22/32 — and the armor audition never
+    convened (zero gear-key presses: no farming → no drops → nothing
+    to wear). The knob steers at full power; it steered to the letter
+    of the prices, not their intent ("survive at depth"). Rebalancing
+    the auction — a death cost scaled to the ladder — is v18's single
+    knob. Sixteen generations in, the constant: the agent solves your
+    reward, never your intention; task design is where the
+    intelligence lives.
 
 ## Quickstart (macOS, Apple Silicon)
 
@@ -279,9 +303,13 @@ quirks are documented in [train/evaluate.py](train/evaluate.py).
   (16/32 episodes equipped) — but outcomes didn't follow: a 1500-step
   L1 episode cannot amortize armor, and a forced-press probe measured
   gear acquisition at −7 kills / +6 deaths even for free (lesson 15).
-  The chapter moves to deep water: v17 runs 3000-step episodes with
-  depth-progressive descent bonuses, where armor's real job — stretching
-  the potion runway on L2-L4 — gets its natural audition
+  The chapter moved to deep water: v17's 3000-step episodes with
+  depth-progressive descent bonuses transformed the species (depth
+  median L3, 11/32 touch L4) but overpriced rushing — a level-1
+  stair-sprinter that farms nothing and wears nothing (lesson 16). The
+  armor audition is still pending: v18 rebalances the auction (death
+  cost scaled to the ladder) so surviving at depth, not touching it,
+  is what pays
 - [ ] Clear-rate objective
 - [ ] The Butcher 🥩 (his greeting already crashed our headless engine once —
   see patches/0003; killing him is next)
