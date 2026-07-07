@@ -132,6 +132,20 @@ class DiabloGymEnv(gym.Env):
         self._visited = {(self._raw["player_x"], self._raw["player_y"])}
         return self._vectorize(self._raw), self._info(self._raw)
 
+    def action_masks(self) -> np.ndarray:
+        """v16:无效动作掩码(MaskablePPO 协议方法;SubprocVecEnv 经
+        env_method("action_masks") 跨进程调用,Monitor 包装经 __getattr__ 透传)。
+
+        只掩码 14 号键:视野内没有可穿装备(floor_items 无 gear 标志,与
+        _vectorize 的第 294 维同源)时,键不在动作分布里——空按的负样本从此
+        不进梯度(教训十四:塑形只放大不召唤;掩码让键只在机会到场时存在)。
+        12/13 号键保持自由:"何时不按"是 v13 已学会的真本事(尽管是风格
+        彩票),掩掉等于换考卷,四手牌基线全作废。掩码不保证宏走得完——
+        它消灭空按,不消灭白按(路径受阻/12 拍超时/半路挨打仍会失败)。"""
+        mask = np.ones(15, dtype=bool)
+        mask[14] = any(it.get("gear") for it in self._raw.get("floor_items", []))
+        return mask
+
     def step(self, action: int):
         prev = self._raw
         action = int(action)

@@ -93,8 +93,9 @@ def main():
     ap.add_argument("--device", default="cpu", help="cpu / mps(小 MLP 通常 cpu 更快)")
     ap.add_argument("--lr", type=float, default=3e-4)
     ap.add_argument("--n-steps", type=int, default=512, help="每个 env 每轮采样步数")
-    ap.add_argument("--algo", default="ppo", choices=["ppo", "rppo"],
-                    help="rppo = RecurrentPPO/LSTM(B 计划:学习记忆替代手写宏状态机)")
+    ap.add_argument("--algo", default="ppo", choices=["ppo", "rppo", "mppo"],
+                    help="rppo = RecurrentPPO/LSTM(B 计划:学习记忆替代手写宏状态机);"
+                         "mppo = MaskablePPO(v16:无效动作掩码,env.action_masks)")
     ap.add_argument("--arch", default="mlp", choices=["mlp", "attn"],
                     help="attn = 实体注意力感知(v9:AlphaStar 式 entity encoder + 地图 CNN)")
     ap.add_argument("--max-steps", type=int, default=1500,
@@ -115,8 +116,9 @@ def main():
         "n_steps": args.n_steps,
         "max_steps": args.max_steps,
         "seed": args.seed,
-        "algo": ("RecurrentPPO/MlpLstmPolicy" if args.algo == "rppo" else "PPO/MlpPolicy")
-                + ("+EntityAttention" if args.arch == "attn" else ""),
+        "algo": ({"rppo": "RecurrentPPO/MlpLstmPolicy",
+                  "mppo": "MaskablePPO/MlpPolicy(gear-key mask)"}.get(args.algo, "PPO/MlpPolicy")
+                 + ("+EntityAttention" if args.arch == "attn" else "")),
         "goal": "地牢 1 层:杀怪拿 XP,找楼梯下 2 层",
     }
     print(f"== DiabloGym PPO 训练 == run={run_name}")
@@ -152,6 +154,13 @@ def main():
             policy_kwargs=dict(lstm_hidden_size=128, n_lstm_layers=1, **policy_kwargs),
             **common,
         )
+    elif args.algo == "mppo":
+        # v16:掩码采样与掩码更新都由 MaskablePPO 处理;掩码本身来自
+        # env.action_masks()(经 VecEnv.env_method 收集)。注意这是算法实现的
+        # 整体更换,开牌异常时首要嫌疑人(诚实账本已记)。
+        from sb3_contrib import MaskablePPO
+        model = MaskablePPO("MlpPolicy", vec_env, n_steps=args.n_steps, batch_size=256,
+                            policy_kwargs=policy_kwargs or None, **common)
     else:
         model = PPO("MlpPolicy", vec_env, n_steps=args.n_steps, batch_size=256,
                     policy_kwargs=policy_kwargs or None, **common)

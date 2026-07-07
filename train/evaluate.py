@@ -37,9 +37,13 @@ def evaluate(model_path: str, recurrent: bool | None = None):
 
     if recurrent is None:
         recurrent = "lstm" in model_path.lower()
+    masked = "mask" in model_path.lower()  # v16+:MaskablePPO 检查点(路径含 mask)
     if recurrent:
         from sb3_contrib import RecurrentPPO
         model = RecurrentPPO.load(model_path, device="cpu")
+    elif masked:
+        from sb3_contrib import MaskablePPO
+        model = MaskablePPO.load(model_path, device="cpu")
     else:
         from stable_baselines3 import PPO
         model = PPO.load(model_path, device="cpu")
@@ -58,6 +62,10 @@ def evaluate(model_path: str, recurrent: bool | None = None):
             if recurrent:
                 a, st = model.predict(obs, state=st, episode_start=ep_start, deterministic=True)
                 ep_start = np.zeros((1,), dtype=bool)
+            elif masked:
+                # 掩码是策略分布的一部分:评估不带掩码 = 换了一个策略
+                a, _ = model.predict(obs, action_masks=env.action_masks(),
+                                     deterministic=True)
             else:
                 a, _ = model.predict(obs, deterministic=True)
             obs, r, done, trunc, info = env.step(int(a))
