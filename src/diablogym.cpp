@@ -33,6 +33,8 @@
 #include "diablo.h"
 #include "engine/render/scrollrt.h" // CalcViewportGeometry
 #include "gmenu.h"
+#include "inv.h"     // v14:AutoEquip(背包打捞,PM_GOTHIT 时序窗修复)
+#include "options.h" // v14:自动穿装备选项(盔甲/头盔/首饰默认关)
 #include "qol/monhealthbar.h"
 #include "qol/xpbar.h"
 #include "engine/assets.hpp"
@@ -91,6 +93,7 @@ bool DummyGetHeroInfo(_uiheroinfo * /*info*/)
 
 int CountBeltHeals();            // 定义在动作区(v12);Observe 的 raw 字段也要用
 bool IsHealItem(const Item &);   // 定义在动作区(v13);floor_items 的 heal 标志也要用
+bool IsWantedGear(Item &);       // 定义在动作区(v14);floor_items 的 gear 标志也要用
 
 // 空事件处理器:demo::FetchMessage 在 CurrentEventHandler==DisableInputEventHandler
 // 时拒绝吐出事件(demomode.cpp:727),必须装一个"游戏中"处理器才能解锁事件流。
@@ -254,6 +257,7 @@ py::dict Observe()
 	obs["game_over"] = !gbRunGame;
 	obs["victory"] = !IsDiabloAlive(false);
 	obs["belt_heals"] = CountBeltHeals(); // v12 起入 raw;v13 起由 env 写进观测向量(瓶盲修复)
+	obs["armor_class"] = player.GetArmor(); // v14:护甲值(_pIBonusAC + _pIAC + 敏捷/5)
 
 	py::list monsters;
 	for (size_t i = 0; i < ActiveMonsterCount; i++) {
@@ -274,11 +278,12 @@ py::dict Observe()
 
 	py::list items;
 	for (int i = 0; i < ActiveItemCount; i++) {
-		const Item &item = Items[ActiveItems[i]];
+		Item &item = Items[ActiveItems[i]];
 		py::dict it;
 		it["x"] = static_cast<int>(item.position.x);
 		it["y"] = static_cast<int>(item.position.y);
-		it["heal"] = IsHealItem(item); // v13:捡药宏的目标标志
+		it["heal"] = IsHealItem(item);   // v13:捡药宏的目标标志
+		it["gear"] = IsWantedGear(item); // v14:捡装备宏的目标标志(空槽+属性达标)
 		items.append(it);
 	}
 	obs["floor_items"] = items;
@@ -352,6 +357,14 @@ void EngineInit(const std::string &assetsDir, const std::string &saveDir, const 
 	// (plrctrls.cpp:1744),导致走路命令只能执行一步。
 	ControlMode = ControlTypes::KeyboardAndMouse;
 	ControlDevice = ControlTypes::KeyboardAndMouse;
+
+	// v14:装备自动上身。引擎拾取链(AutoGetItem)会先试 AutoEquip,但盔甲/
+	// 头盔/首饰的自动装备选项默认是关的(options.cpp)——不开的话,捡到的
+	// 装备会直落背包,成为对观测与动作都不可见的价值黑洞(v13 审查教训的
+	// 装备版)。只填空槽 + _iStatFlag 属性需求由引擎把关(inv.cpp CanEquip)。
+	GetOptions().Gameplay.autoEquipArmor.SetValue(true);
+	GetOptions().Gameplay.autoEquipHelms.SetValue(true);
+	GetOptions().Gameplay.autoEquipJewelry.SetValue(true);
 
 	LoadSpellData();
 	LoadPlayerDataFiles();
@@ -541,6 +554,79 @@ int ActPickup()
 	return 1;
 }
 
+bool IsWantedGear(Item &item)
+{
+	// 值得捡的装备:对应身体槽位为空 + 属性需求达标。两个条件都在这里预判,
+	// 因为引擎 AutoEquip 失败时会把装备落进背包——那是对观测与动作都不可见
+	// 的价值黑洞(v13 审查的腰带满教训,装备版)。武器/盾牌不碰:战士出厂
+	// 双手已满,AutoEquip 只填空槽(留给 v15 的"以旧换新"章)。
+	if (item.isEmpty() || !item.isEquipment())
+		return false;
+	item.updateRequiredStatsCacheForPlayer(*MyPlayer); // 刷新 _iStatFlag(确定性纯函数)
+	if (!item._iStatFlag)
+		return false;
+	const Player &p = *MyPlayer;
+	switch (item._iLoc) {
+	case ILOC_ARMOR:
+		return p.InvBody[INVLOC_CHEST].isEmpty();
+	case ILOC_HELM:
+		return p.InvBody[INVLOC_HEAD].isEmpty();
+	case ILOC_RING:
+		return p.InvBody[INVLOC_RING_LEFT].isEmpty() || p.InvBody[INVLOC_RING_RIGHT].isEmpty();
+	case ILOC_AMULET:
+		return p.InvBody[INVLOC_AMULET].isEmpty();
+	default:
+		return false;
+	}
+}
+
+int SweepBackpackGear()
+{
+	// PM_GOTHIT 时序窗(v14 审查确认):拾取请求与执行隔一个 tick,若中间挨了
+	// 一记硬直(dam>>6 >= 等级),CanEquip 拒绝 _pmode>PM_WALK_SIDEWAYS,盔甲
+	// 又进不了腰带(非 usable),于是静默沉入背包——对观测与动作双盲的价值
+	// 黑洞。这里把背包里"本该穿上"的装备捞出来穿好(空槽+属性达标才动手,
+	// 引擎自会重算 AC 与贴图,均有无头守卫)。返回本次上身件数
+	Player &player = *MyPlayer;
+	if (player._pmode > PM_WALK_SIDEWAYS)
+		return 0;
+	int equipped = 0;
+	for (int iv = player._pNumInv - 1; iv >= 0; iv--) {
+		if (!IsWantedGear(player.InvList[iv]))
+			continue;
+		const Item copy = player.InvList[iv];
+		if (AutoEquip(player, copy, true, true)) {
+			player.RemoveInvItem(iv);
+			equipped++;
+		}
+	}
+	return equipped;
+}
+
+int ActPickupGear()
+{
+	// 走向并拾取最近的"值得穿"的地面装备(与捡药同路 CMD_GOTOAGETITEM;
+	// 引擎 AutoEquip 自动上身——EngineInit 已开启盔甲/头盔/首饰自动装备)。
+	// 无目标时不发任何命令(空拍)。返回 0/1
+	const Point me = MyPlayer->position.tile;
+	int best = -1;
+	int bestDist = 1 << 30;
+	for (int i = 0; i < ActiveItemCount; i++) {
+		const int ii = ActiveItems[i];
+		if (!IsWantedGear(Items[ii]))
+			continue;
+		const int dist = std::max(std::abs(Items[ii].position.x - me.x), std::abs(Items[ii].position.y - me.y));
+		if (dist < bestDist) {
+			bestDist = dist;
+			best = ii;
+		}
+	}
+	if (best < 0)
+		return 0;
+	NetSendCmdLocParam1(true, CMD_GOTOAGETITEM, Items[best].position, static_cast<uint16_t>(best));
+	return 1;
+}
+
 } // namespace
 
 PYBIND11_MODULE(_diablogym, m)
@@ -558,6 +644,8 @@ PYBIND11_MODULE(_diablogym, m)
 	m.def("act_operate", &ActOperate, py::arg("x"), py::arg("y"), "操作目标格物体(开门等;引擎自动走近)");
 	m.def("act_drink", &ActDrink, "喝腰带上的第一瓶治疗药(无药=无操作);返回按键前腰带治疗药数");
 	m.def("act_pickup", &ActPickup, "走向并拾取最近的地面治疗药(无目标=无操作);返回 0/1");
+	m.def("act_pickup_gear", &ActPickupGear, "走向并拾取最近的可穿戴装备(空槽+属性达标;无目标=无操作);返回 0/1");
+	m.def("sweep_backpack_gear", &SweepBackpackGear, "把因硬直时序窗沉入背包的该穿装备捞出穿上;返回上身件数");
 	m.def("end_game", &EndGame, "结束当前局(reset 会自动调用)");
 
 	m.def("local_map", [](int radius) {

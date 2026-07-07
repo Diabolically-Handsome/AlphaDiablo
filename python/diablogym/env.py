@@ -1,6 +1,6 @@
 """DiabloGymEnv —— Gymnasium 包装(v0:结构化向量观测 + 离散动作)。
 
-观测向量(float32,长度 12 + K*4 + 2*(2R+1)² + 4,R=5 时共 290):
+观测向量(float32,长度 12 + K*4 + 2*(2R+1)² + 8,R=5 时共 294):
   [hp/maxhp, mana/maxmana, xp(log1p/10), gold/1000, char_level/50,
    dungeon_level/16, player_x/112, player_y/112,
    存活怪数/50, 最近怪距离/30(无怪=1),
@@ -11,8 +11,10 @@
   + [腰带治疗药数/8, 最近地面治疗药 dx/20, dy/20(截断至 ±1), 存在标志]
     (v13,治"瓶盲"——教训十一:动作的前置条件必须可观测,否则策略学不会
     按键纪律)
+  + [护甲值/50(截断至 1), 最近可穿装备 dx/20, dy/20(截断至 ±1), 存在标志]
+    (v14,装备章:存在标志已预判"槽位为空+属性达标",=1 即值得按)
 
-动作(Discrete(14)):
+动作(Discrete(15)):
   0      原地不动
   1-8    朝八方向走一格(寻路)
   9      交战宏:锁定最近怪物持续追击,直到它死/自己死/换层/超时(≤10 拍)
@@ -34,6 +36,10 @@
          =墙,寻路失败即静默弃疗——9003 号种子实锤:药在关门后,原生
          命令原地罚站),所以跨房间接近必须由宏承担。无地面药则空拍。
          供给侧=怪物掉落+地面固定刷新(32 评估种子出生层全部有药,1-5 瓶)。
+  14     捡装备宏(v14):同款门感知 BFS 走向最近的"值得穿"装备(空槽+属性
+         达标,桥侧预判——引擎 AutoEquip 失败会把装备落进背包黑洞,所以
+         预判必须在按键前);到位后引擎自动上身(EngineInit 已开盔甲/头盔/
+         首饰的自动装备选项)。武器/盾牌不碰(出厂双手已满,换装留给 v15)。
 
 奖励(v2,逐刀致密化,Lawrence 提案 + 防磨刀修正):
   +0.5 * (本刀伤害/目标最大血) * 残血系数     每刀即时到账;系数 1.0→1.5,
@@ -98,11 +104,11 @@ class DiabloGymEnv(gym.Env):
         self.start_in_dungeon = start_in_dungeon
         self.include_raw = include_raw
         side = 2 * _MAP_RADIUS + 1
-        self.action_space = gym.spaces.Discrete(14)
+        self.action_space = gym.spaces.Discrete(15)
         self.observation_space = gym.spaces.Box(
             low=-np.inf, high=np.inf,
-            shape=(12 + _K_MONSTERS * 4 + 2 * side * side + 4,), dtype=np.float32,
-        )  # +4 = v13:腰带药数 + 最近地面治疗药 dx/dy/存在标志
+            shape=(12 + _K_MONSTERS * 4 + 2 * side * side + 8,), dtype=np.float32,
+        )  # +8 = v13 药 4 维(腰带数+最近地面药)+ v14 装备 4 维(AC+最近可穿装备)
         self._raw = None
         self._steps = 0
         self._ep_kills = 0
@@ -138,7 +144,13 @@ class DiabloGymEnv(gym.Env):
             self._raw = bridge.step(ticks=self.ticks_per_step)
             micro = 1
         elif action == 13:
-            self._raw, micro = self._macro_pickup()
+            self._raw, micro = self._macro_pickup("heal")
+        elif action == 14:
+            self._raw, micro = self._macro_pickup("gear")
+            if bridge.sweep_backpack_gear():
+                # PM_GOTHIT 时序窗(审查确认):拾取执行前挨硬直会让装备静默
+                # 沉入背包;打捞穿上后刷新观测(无 tick 成本)
+                self._raw = bridge.observe()
         else:
             self._apply_action(action)
             self._raw = bridge.step(ticks=self.ticks_per_step)
@@ -266,16 +278,22 @@ class DiabloGymEnv(gym.Env):
                            # 40 格窗曾在 seed 9005 上漏掉西侧绕行路线。每次按键只规划一次,
                            # C++ 端一次调用出图,开销在毫秒级,换全局最优值得
 
-    def _plan_descend_path(self, raw, sx, sy):
+    def _plan_descend_path(self, raw, sx, sy, avoid_monsters: bool = False):
         """全局窗 4 向 BFS(关着的门视为可通行),返回去往"可达且离楼梯最近的格"
         的路径 [(x, y, 是否关门), ...](不含起点)。None = 可达域内没有比脚下
         更接近楼梯的格子(真·被困)。4 向保证引擎寻路必然接受每段(斜穿墙角
-        引擎会拒绝);贪心"只挑更近的格"会死在凹形迷宫里,BFS 允许先绕远。"""
+        引擎会拒绝);贪心"只挑更近的格"会死在凹形迷宫里,BFS 允许先绕远。
+
+        avoid_monsters=True 时把怪物占位格视为墙(v14 修复:引擎寻路拒绝穿怪,
+        规划器若怪物盲,遇到闲置怪堵走廊会陷入"重规划出同一条路"的失速死循环
+        ——9024 号种子的 1 血骷髅当场抓获;调用方应在返回 None 时退回
+        avoid_monsters=False 保底,行为最坏退化为旧版失速交还)。"""
         px, py = raw["player_x"], raw["player_y"]
         r = self._DESCEND_RADIUS
         side = 2 * r + 1
         lm = bridge.local_map(radius=r)
         walk, door = lm["walkable"], lm["door"]
+        mon = lm["monster"] if avoid_monsters else None
 
         def idx(tx, ty):
             return (ty - py + r) * side + (tx - px + r)
@@ -294,6 +312,8 @@ class DiabloGymEnv(gym.Env):
                 i = idx(nx, ny)
                 if not walk[i] and not door[i]:
                     continue
+                if mon is not None and mon[i]:
+                    continue  # 怪物占位=墙(引擎寻路拒绝穿怪;见 docstring)
                 prev[(nx, ny)] = (cx, cy)
                 depth[(nx, ny)] = depth[(cx, cy)] + 1
                 d_stairs = max(abs(sx - nx), abs(sy - ny))
@@ -327,7 +347,9 @@ class DiabloGymEnv(gym.Env):
         sx, sy = st["x"], st["y"]
         start_level = raw["dungeon_level"]
 
-        path = self._plan_descend_path(raw, sx, sy)
+        path = self._plan_descend_path(raw, sx, sy, avoid_monsters=True)
+        if path is None:
+            path = self._plan_descend_path(raw, sx, sy)  # 怪物封死唯一通路:退回旧行为
         if path is None:
             return bridge.step(ticks=self.ticks_per_step), 1  # 真被困:原地一拍,交还控制权
 
@@ -391,28 +413,33 @@ class DiabloGymEnv(gym.Env):
             last_pos = pos
         return raw, beats
 
-    def _macro_pickup(self, max_beats: int = 12):
-        """捡药宏(v13):复用下楼宏的规划器(_plan_descend_path 本就目标参数化,
-        门/桶=可操作软墙),沿路径开门走向最近的地面治疗药;进入 2 格内改用
-        引擎原生拾取命令收尾(此时无门阻隔,MakePlrPath 必然成功)。
+    def _macro_pickup(self, kind: str = "heal", max_beats: int = 12):
+        """捡取宏(v13 药 / v14 装备):复用下楼宏的规划器(_plan_descend_path
+        本就目标参数化,门/桶=可操作软墙),沿路径开门走向最近的目标物;
+        进入 2 格内改用引擎原生拾取命令收尾(此时无门阻隔,MakePlrPath 必成)。
 
-        成功判据:腰带药数上涨,或目标药从地面消失(腰带满时直落背包)。
+        成功判据:目标从地面消失(药:进腰带;装备:引擎 AutoEquip 自动上身,
+        桥侧 gear 标志已预判空槽+属性达标);药另有腰带数上涨的快速判据。
         阵亡/换层/路径耗尽/持续失速提前结束;12 拍耗尽自然归还控制权,
         下次按键重新规划。全程无随机数,确定性。
         """
         raw = self._raw
-        heals = [it for it in raw.get("floor_items", []) if it.get("heal")]
-        if not heals or raw["belt_heals"] >= 8:
-            # 无地面药,或腰带已满(捡了直落背包=喝药键看不见的黑洞):空拍交还
+        flag = "heal" if kind == "heal" else "gear"
+        act = bridge.act_pickup if kind == "heal" else bridge.act_pickup_gear
+        targets = [it for it in raw.get("floor_items", []) if it.get(flag)]
+        if not targets or (kind == "heal" and raw["belt_heals"] >= 8):
+            # 无目标,或腰带已满(捡了直落背包=喝药键看不见的黑洞):空拍交还
             return bridge.step(ticks=self.ticks_per_step), 1
         px, py = raw["player_x"], raw["player_y"]
-        h = min(heals, key=lambda it: max(abs(it["x"] - px), abs(it["y"] - py)))
+        h = min(targets, key=lambda it: max(abs(it["x"] - px), abs(it["y"] - py)))
         hx, hy = h["x"], h["y"]
         start_belt = raw["belt_heals"]
         start_level = raw["dungeon_level"]
 
         near0 = max(abs(hx - px), abs(hy - py)) <= 2
-        path = self._plan_descend_path(raw, hx, hy)
+        path = self._plan_descend_path(raw, hx, hy, avoid_monsters=True)
+        if path is None:
+            path = self._plan_descend_path(raw, hx, hy)  # 怪物封死唯一通路:退回旧行为
         if path is None and not near0:
             return bridge.step(ticks=self.ticks_per_step), 1  # 真不可达:空拍交还
 
@@ -431,7 +458,7 @@ class DiabloGymEnv(gym.Env):
                     # 近旁且无门阻隔:引擎原生拾取收尾(审查角落:贴门站位时
                     # 必须先走开门分支,否则原生寻路对门失败=白按)
                     target = ("pick", hx, hy, pi)
-                    bridge.act_pickup()
+                    act()
                 elif path is None or pi >= len(path):
                     break  # 路径耗尽仍未进入近旁,交还控制权
                 else:
@@ -454,14 +481,14 @@ class DiabloGymEnv(gym.Env):
             self._visited.add(pos)
             if raw["dead"] or raw["dungeon_level"] != start_level:
                 break
-            if raw["belt_heals"] > start_belt:
+            if kind == "heal" and raw["belt_heals"] > start_belt:
                 break  # 到手
             if target[0] == "pick":
                 still_there = any(
                     it["x"] == hx and it["y"] == hy
-                    for it in raw.get("floor_items", []) if it.get("heal"))
+                    for it in raw.get("floor_items", []) if it.get(flag))
                 if not still_there:
-                    break  # 药离地(腰带满→直落背包)也算完成
+                    break  # 目标离地:药进腰带 / 装备上身,均算完成
             elif target[0] == "open":
                 # 开门型目标:门格真的变可走才算完成(贴脸≠已开,动画要几拍)
                 if bridge.probe_tile(target[1], target[2])["walkable"]:
@@ -484,7 +511,7 @@ class DiabloGymEnv(gym.Env):
                     if target[0] == "open":
                         bridge.act_operate(target[1], target[2])
                     elif target[0] == "pick":
-                        bridge.act_pickup()
+                        act()
                     else:
                         bridge.act_walk(target[1], target[2])
                 if stall >= 6:
@@ -589,4 +616,13 @@ class DiabloGymEnv(gym.Env):
                     max(-1.0, min(1.0, (h["y"] - py) / 20.0)), 1.0]
         else:
             vec += [obs.get("belt_heals", 0) / 8.0, 0.0, 0.0, 0.0]
+        gears = [it for it in obs.get("floor_items", []) if it.get("gear")]
+        ac = min(1.0, obs.get("armor_class", 0) / 50.0)
+        if gears:  # v14:装备章——捡装备键的前置条件入观测(教训十一验收单)
+            g = min(gears, key=lambda it: max(abs(it["x"] - px), abs(it["y"] - py)))
+            vec += [ac,
+                    max(-1.0, min(1.0, (g["x"] - px) / 20.0)),
+                    max(-1.0, min(1.0, (g["y"] - py) / 20.0)), 1.0]
+        else:
+            vec += [ac, 0.0, 0.0, 0.0]
         return np.asarray(vec, dtype=np.float32)

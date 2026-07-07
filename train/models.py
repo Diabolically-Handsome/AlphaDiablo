@@ -20,7 +20,7 @@ _N_TOKENS = 8
 _TOKEN_DIM = 4
 _MAP_SIDE = 11
 _MAP_CH = 2
-_N_EXTRA = 4  # v13:腰带药数 + 最近地面治疗药 dx/dy/存在(向量尾部,并入标量分支)
+_N_EXTRA = 8  # v13 药 4 维 + v14 装备 4 维(向量尾部,并入标量分支)
 
 
 class EntityAttentionExtractor(BaseFeaturesExtractor):
@@ -56,7 +56,7 @@ class EntityAttentionExtractor(BaseFeaturesExtractor):
         map_lo = _N_SCALAR + _N_TOKENS * _TOKEN_DIM
         map_hi = map_lo + _MAP_CH * _MAP_SIDE * _MAP_SIDE
         maps = obs[:, map_lo:map_hi].reshape(b, _MAP_CH, _MAP_SIDE, _MAP_SIDE)
-        extras = obs[:, -_N_EXTRA:]  # v13 尾部 4 维
+        extras = obs[:, -_N_EXTRA:]  # v13 药 4 维 + v14 装备 4 维(向量尾部)
 
         s = self.scalar_net(torch.cat([scalars, extras], dim=1))
 

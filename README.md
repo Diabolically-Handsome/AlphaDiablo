@@ -63,7 +63,7 @@ pre-registered predictions went **2/4** — real-drink share >50% and mean
 ≥16 hit; deaths ≤10 **missed** (12/32), reached-L2 ≥26 **missed** (25/32).
 Deaths did fall 17/32 → 12/32 while the kill rate nearly doubled, but one
 seed (9001) migrated the v12 idle-spam attractor onto the new pickup key —
-1,448 no-op presses (lesson 12). Observation changes (286→290 in v13) end
+1,448 no-op presses (lesson 12). Observation changes (286→290 in v13, 290→294 in v14) end
 direct re-evaluation of older checkpoints on the current env; each row
 stands on the env version it was scored under (same policy as v1-v4/v7).
 
@@ -187,7 +187,7 @@ curl -L -o "$HOME/Library/Application Support/diasurgical/devilution/spawn.mpq" 
 | Layer | Where | What |
 |---|---|---|
 | C++ bridge | `src/diablogym.cpp` | Embeds the whole engine as a shared library (`HeadlessMode`), drives the game loop tick-by-tick from Python, injects actions at the **network command layer** (same path as multiplayer — a trained agent can later join a TCP co-op game as a headless client) |
-| Env | `python/diablogym/env.py` | Gymnasium env: 290-dim obs (player/monster entities + stairs direction + 11×11 walkability & monster-occupancy map + belt/floor-potion fields), `Discrete(14)` with engage/explore/descend/drink/pickup macro-actions, per-hit damage rewards |
+| Env | `python/diablogym/env.py` | Gymnasium env: 294-dim obs (player/monster entities + stairs direction + 11×11 walkability & monster-occupancy map + belt/floor-potion fields + AC/nearest-gear fields), `Discrete(15)` with engage/explore/descend/drink/pickup-heal/pickup-gear macro-actions, per-hit damage rewards |
 | Training | `train/train_ppo.py` | SB3 PPO, subprocess vec-envs, per-episode JSONL metrics |
 | Evaluation | `train/evaluate.py` | Frozen 32-seed deterministic protocol; appends to the leaderboard |
 | Monitoring | `train/dashboard.py` | stdlib-only live dashboard (SVG charts, 2s polling) |

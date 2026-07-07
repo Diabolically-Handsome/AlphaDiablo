@@ -56,14 +56,14 @@ def main():
     assert len(positions) > 3, f"玩家几乎没动过(只到过 {len(positions)} 个格子)—— 动作注入可能失效"
     print(f"PASS: 玩家移动过 {len(positions)} 个格子,动作注入有效")
 
-    # --- 2b. 宏动作定向冒烟(11 下楼 / 12 喝药 / 13 捡药):每个新引擎代码
-    # 路径都可能埋着无头雷(教训:蝙蝠俯冲/屠夫台词),CI 必须真踩一遍 ---
+    # --- 2b. 宏动作定向冒烟(11 下楼 / 12 喝药 / 13 捡药 / 14 捡装备):每个
+    # 新引擎代码路径都可能埋着无头雷(教训:蝙蝠俯冲/屠夫台词),CI 必须真踩一遍 ---
     if not terminated:
-        for macro in (11, 12, 13):
+        for macro in (11, 12, 13, 14):
             obs, reward, terminated, truncated, info = env.step(macro)
             if terminated or truncated:
                 break
-        print("PASS: 宏动作 11/12/13 定向冒烟无崩溃")
+        print("PASS: 宏动作 11/12/13/14 定向冒烟无崩溃")
 
     # --- 3. 确定性:同种子同世界,异种子异世界 ---
     _, info_a = env.reset(seed=123)
