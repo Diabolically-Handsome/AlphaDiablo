@@ -23,7 +23,7 @@ from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv
 
 
-def make_env(max_steps: int = 1500, deep: bool = False):
+def make_env(max_steps: int = 1500, deep: bool = False, death_ladder: bool = False):
     from diablogym import DiabloGymEnv
 
     env = DiabloGymEnv(
@@ -33,6 +33,7 @@ def make_env(max_steps: int = 1500, deep: bool = False):
         start_in_dungeon=True, # 跳过城镇,直接站在地牢 1 层入口
         include_raw=False,     # 训练不传 raw 大字典(多进程 IPC 减负)
         descend_ladder=deep,   # v17:下楼奖金层数递进(8×N),给"往下活着"一个未来
+        death_ladder=death_ladder,  # v18:死在 N 层罚 8×N——"活着抵达"要赢过"摸到深度"
     )
     return Monitor(env)
 
@@ -105,6 +106,8 @@ def main():
                     help="训练种子(SB3 全局种子 + 环境 reset 种子;多进程采样时序仍会引入少量不确定性,只保证近似复现)")
     ap.add_argument("--deep", action="store_true",
                     help="v17 深水区:下楼奖金层数递进(N→N+1 付 8×N);配合 --max-steps 3000")
+    ap.add_argument("--death-ladder", action="store_true",
+                    help="v18:死亡成本随层数定价(死在 N 层罚 8×N,替代恒 -2)")
     args = ap.parse_args()
 
     run_name = args.run_name or time.strftime("ppo-l1-%m%d-%H%M%S")
@@ -125,11 +128,12 @@ def main():
         "goal": ("深水区:层数递进奖金,活着往下潜(L3/L4)" if args.deep
                  else "地牢 1 层:杀怪拿 XP,找楼梯下 2 层"),
         "deep": args.deep,
+        "death_ladder": args.death_ladder,
     }
     print(f"== DiabloGym PPO 训练 == run={run_name}")
     print(f"   {config}")
 
-    env_fn = functools.partial(make_env, args.max_steps, args.deep)
+    env_fn = functools.partial(make_env, args.max_steps, args.deep, args.death_ladder)
     if args.num_envs == 1:
         vec_env = DummyVecEnv([env_fn])
     else:

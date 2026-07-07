@@ -92,6 +92,7 @@ class DiabloGymEnv(gym.Env):
         start_in_dungeon: bool = False,
         include_raw: bool = True,
         descend_ladder: bool = False,
+        death_ladder: bool = False,
     ):
         super().__init__()
         assets = str(assets_dir or _DEFAULT_ASSETS)
@@ -109,6 +110,10 @@ class DiabloGymEnv(gym.Env):
         # v17 深水区:下楼奖金层数递进(N→N+1 付 8×N;False = v6-v16 的扁平 8.0,
         # 旧章金标准的世界规则不动)
         self.descend_ladder = descend_ladder
+        # v18:死亡成本与阶梯同步定价(死在 N 层罚 8×N;False = 恒 -2.0)。
+        # 教训十六:阶梯 8/16/24 对上死亡 -2,冲刺期望值稳赚(+5.8),
+        # "活着抵达"必须在拍卖行里赢过"摸到深度"
+        self.death_ladder = death_ladder
         side = 2 * _MAP_RADIUS + 1
         self.action_space = gym.spaces.Discrete(15)
         self.observation_space = gym.spaces.Box(
@@ -605,7 +610,7 @@ class DiabloGymEnv(gym.Env):
             if not moved:
                 r -= 0.002  # 反面壁/站桩
         if cur["dead"]:
-            r -= 2.0
+            r -= 8.0 * cur["dungeon_level"] if self.death_ladder else 2.0
         if cur["victory"]:
             r += 10.0
         return float(r)
