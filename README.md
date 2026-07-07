@@ -6,7 +6,7 @@
 [DevilutionX](https://github.com/diasurgical/devilutionX), plus the training
 pipeline that took a PPO agent from *hiding in a corner* to *opening doors,
 smashing barrels, looting potions and fighting its way down through the
-dungeon* — thirteen documented runs, one diagnosed failure mode eliminated
+dungeon* — fourteen documented runs, one diagnosed failure mode eliminated
 (or one hypothesis falsified) per run.
 
 - 🚀 **~13,000× realtime**: full game logic, headless — 254k engine ticks/s raw,
@@ -42,6 +42,7 @@ iterations that built the champion. Right: the gold standard — deterministic
 | v11 = v6 + descend option | 45,901 | 19.4 | 14.5 | **70** | 2/32 | **27/32** |
 | v12 = v11 + belt-potion action | 45,966 | 12.3 | 10.0 | 46 | 9/32 | 26/32 |
 | **v13 = potion system made learnable (champion)** | 46,543 | **35.2** | **29.0** | 65 | **1/32** | 25/32 |
+| v14 = v13 + auto-equip gear | 47,120 | 28.0 | 26.0 | 67 | 1/32 | 19/32 |
 
 ¹ *Evaluated post-hoc on the current env (same observation; it never selects
 the explore macro). Protocol: seeds 9000-9031, 1500 steps, argmax, idle
@@ -56,7 +57,10 @@ v13 is the first config with a same-config seed repeat (means 35.2 and
 38.1 — the effect is robust), and the repeat taught us something the level
 could not: deaths (12 vs 21/32) and drink discipline (93% vs 46%
 real-share) vary wildly between runs of the same config. *How much* it
-wins is reproducible; *how* it wins is not.
+wins is reproducible; *how* it wins is not. v14's registered predictions
+went **0/5** — gear-equip rate ≥16/32 landed at **0/32** (six presses of
+the gear key in 48,000 evaluation steps); the post-mortem is lesson 13,
+and v13 remains champion.
 Leaderboard checkpoints are not distributed yet (a tagged release is
 planned); rows come from the author's runs and are deterministically
 re-evaluable given the checkpoint. Champion honesty numbers: v13's
@@ -106,7 +110,7 @@ Four findings we did not expect:
    observability (lessons 5, 11, 12); how thoroughly a given run exploits
    it is seed lottery.
 
-### Twelve lessons from thirteen runs (short version)
+### Thirteen lessons from fourteen runs (short version)
 
 1. Don't tax the intermediate costs of the behaviour you want, and don't leave
    zero-cost sanctuaries in the reward landscape (v1's wall-hugger).
@@ -153,6 +157,16 @@ Four findings we did not expect:
     to the next zero-risk action; budget for attractor migration whenever
     you add one — and only trust behaviour-composition claims that survive
     a seed repeat.
+13. The reward stream is the last observer. v14 made gear preconditions
+    fully observable (AC + nearest wearable in obs, auto-equip wired,
+    probes green) and the policy still pressed the gear key 6 times in
+    48,000 evaluation steps, equipping nothing: armor's consequence — a
+    few percent less damage spread over hundreds of steps — is invisible
+    to a 3M-step credit-assignment horizon. Perception bounds what can be
+    known (5), the action set what can be done (10), the reward horizon
+    what can be *learned*. A capability chain is only as strong as its
+    least observable link: precondition → policy, consequence → learning
+    signal.
 
 ## Quickstart (macOS, Apple Silicon)
 
@@ -213,9 +227,11 @@ quirks are documented in [train/evaluate.py](train/evaluate.py).
   cost (lesson 11); v13 made the potion system *learnable* (belt count +
   nearest floor heal into the observation, door-aware pickup macro) —
   deaths 17/32 → 12/32 while mean kills doubled to 35.2
-- [ ] Gear up: auto-equip armor/helms from the floor via a door- and
-  monster-aware pickup macro (v14, training as this line is written);
-  weapon upgrades next
+- [ ] Gear up: v14 wired auto-equip end-to-end (probes green) but the
+  policy never learned to press the key — armor's payoff is invisible to
+  the reward stream at 3M steps (lesson 13). v15 candidates: bounded
+  AC-gain shaping, a gear-rich training curriculum, or 10-30× steps on
+  bigger hardware
 - [ ] Clear-rate objective
 - [ ] The Butcher 🥩 (his greeting already crashed our headless engine once —
   see patches/0003; killing him is next)
@@ -243,12 +259,14 @@ commercial real-time ARPG engine, unmodified at the game-rules level.
 基于 DevilutionX 的暗黑破坏神 I 强化学习环境:无头引擎裸跑 ~13,000 倍实时
 (含观测的 env.step 约 7,500 步/秒,~1,500 倍实时)、种子级确定性(评估跨进程
 位级可复现)、Gymnasium 接口、宏动作(交战/探索/下楼/喝药/捡药)、零依赖训练
-监控面板。十三轮迭代把 PPO 从"面壁思过"练到"开门、砸桶、捡药续命、一路下杀"
+监控面板。十四轮迭代把 PPO 从"面壁思过"练到"开门、砸桶、捡药续命、一路下杀"
 (32 种子金标准均击杀 **35.2**,较上代冠军近乎翻倍;实喝纪律 0.5%→93.4%),
-并留下十二课教训:奖励税、塑形归因、动作时序、防磨刀、感知天花板、探索
+并留下十三课教训:奖励税、塑形归因、动作时序、防磨刀、感知天花板、探索
 option、宏退化吸引子、评估运气税、任务设计>架构、能力住在动作空间、新动作
-也是新藏身处、**纪律是观测的函数而藏身处守恒**——每一课都有数据实锤,完整
-踩坑史见 [docs/DESIGN.md](docs/DESIGN.md)。
+也是新藏身处、纪律是观测的函数而藏身处守恒、**奖励流是最后一位观察者**
+(v14 装备键:前置条件全可观测,但护甲的收益对奖励流不可见——48,000 步
+评估只按了 6 次,0/32 穿甲)——每一课都有数据实锤,完整踩坑史见
+[docs/DESIGN.md](docs/DESIGN.md)。
 
 ## Legal
 
