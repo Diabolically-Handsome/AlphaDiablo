@@ -100,6 +100,16 @@ chapter's deepest-ever), 28/32 leave L1 — but as a level-1 stair-rusher
 that farms nothing, wears nothing, and dies in 22/32 episodes, 16 of
 them with a dry belt. The ladder priced *touching* depth, not
 *surviving* it, and the policy solved the prices as written (lesson 16).
+v18 applied the lesson's single knob — death now costs 8×level — and
+the pendulum swung hard back: kills 9.6 → 32.1, the armor audition
+finally convened (15/32 episodes equip, after farming resumed and
+drops existed again), dry deaths fell from 16/22 to 4/19… and depth
+retreated (median L2, one L4). Its dead now die fully stocked: at
+character level 1-2, the L2-L3 monsters burst faster than a belt can
+heal. The bottleneck has moved twice in two generations — sampling →
+resources → character power — and the farm-then-dive spiral exists in
+embryo (the five episodes that descended at level ≥2 are the best on
+the board).
 
 Four findings we did not expect:
 
