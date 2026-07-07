@@ -222,6 +222,22 @@ quirks are documented in [train/evaluate.py](train/evaluate.py).
 - [ ] Cross-class generalization (Rogue / Sorcerer — `hero_class` already exposed)
 - [ ] Multiplayer co-op deployment (carry your creator through the game)
 
+## Related work
+
+[DevilutionX-AI](https://github.com/rouming/DevilutionX-AI) (Jan 2025)
+independently built an RL framework on the same engine with a different
+integration approach — an out-of-process shared-memory bridge driving a
+running game, with an imitation-learning + PPO pipeline — reaching a 0.98
+success rate on level-1 goal-finding (sampling-mode evaluation; its author
+notes argmax scores lower). DiabloGym embeds the engine in-process, keeps
+evaluation argmax-only on frozen seeds, and pushes the task past
+navigation: sustained combat, autonomous multi-floor descent, and a closed
+potion economy. The roguelike-RL canon
+([NLE](https://github.com/facebookresearch/nle),
+[MiniHack](https://github.com/facebookresearch/minihack)) offers
+turn-based, purpose-built research environments; DiabloGym instead wraps a
+commercial real-time ARPG engine, unmodified at the game-rules level.
+
 ## 中文速览
 
 基于 DevilutionX 的暗黑破坏神 I 强化学习环境:无头引擎裸跑 ~13,000 倍实时
