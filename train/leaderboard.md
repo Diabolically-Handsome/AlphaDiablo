@@ -17,6 +17,7 @@ All rows re-measured 2026-07-05 on the same build.
 | ppo-l1-v13-pickup³ | 35.2 | 29.0 | 65 | 1/32 | 25 |
 | ppo-l1-v13-pickup-s14⁴ | 38.1 | 33.5 | 76 | 1/32 | 24 |
 | ppo-l1-v14-gear⁵ | 28.0 | 26.0 | 67 | 1/32 | 19 |
+| ppo-l1-v15-acshape⁶ | 31.3 | 30.5 | 66 | 2/32 | 19 |
 
 ¹ v5 predates the explore macro; evaluated post-hoc on the current env
 (same 286-dim observation, it simply never selects action 10). v1-v4
@@ -52,6 +53,15 @@ reward stream at this training horizon, so the button never earns value
 (lesson 13: observable preconditions are necessary, not sufficient).
 Kills 28.0 and reached-L2 19/32 sit below the v13 config's two-run spread;
 v13 keeps the crown.
+
+⁶ v15 = v14's config plus a bounded one-shot reward (+0.5 × ΔAC) on
+armor-class gains — lesson 13's cheapest prescription. Verdict: the gear
+key was pressed **once** in 48,000 evaluation steps (v14: six), equips
+stayed 0/32 — a shaping bonus cannot amplify an event exploration almost
+never completes (lesson 14). Registered predictions 2/4: mean ≥30 hit
+(31.3), deaths ≤11 hit at an all-time low (9/32; previous best 10), both
+gear predictions obliterated. Real-drink share drew 60% (fourth hand of
+the style lottery: 93/46/37/60%). v13 keeps the crown.
 
 Long-episode probe (max_steps 1500 → 3000, same protocol): per-seed
 kills are bit-identical for both v6 and v10 at both horizons (32/32

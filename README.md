@@ -43,6 +43,7 @@ iterations that built the champion. Right: the gold standard — deterministic
 | v12 = v11 + belt-potion action | 45,966 | 12.3 | 10.0 | 46 | 9/32 | 26/32 |
 | **v13 = potion system made learnable (champion)** | 46,543 | **35.2** | **29.0** | 65 | **1/32** | 25/32 |
 | v14 = v13 + auto-equip gear | 47,120 | 28.0 | 26.0 | 67 | 1/32 | 19/32 |
+| v15 = v14 + AC-gain reward shaping | 47,120 | 31.3 | 30.5 | 66 | 2/32 | 19/32 |
 
 ¹ *Evaluated post-hoc on the current env (same observation; it never selects
 the explore macro). Protocol: seeds 9000-9031, 1500 steps, argmax, idle
@@ -60,7 +61,12 @@ real-share) vary wildly between runs of the same config. *How much* it
 wins is reproducible; *how* it wins is not. v14's registered predictions
 went **0/5** — gear-equip rate ≥16/32 landed at **0/32** (six presses of
 the gear key in 48,000 evaluation steps); the post-mortem is lesson 13,
-and v13 remains champion.
+and v13 remains champion. v15 (bounded AC-gain shaping, lesson 13's
+cheapest prescription) went **2/4**: mean kills ≥30 hit (31.3) and deaths
+≤11 hit at an **all-time low of 9/32** — but both gear predictions were
+obliterated again (0/32 equips, *one* gear-key press in 48,000 steps),
+and real-drink share drew 60%, the style lottery's fourth hand
+(93/46/37/60%). Lesson 14; v13 remains champion.
 Leaderboard checkpoints are not distributed yet (a tagged release is
 planned); rows come from the author's runs and are deterministically
 re-evaluable given the checkpoint. Champion honesty numbers: v13's
@@ -110,7 +116,7 @@ Four findings we did not expect:
    observability (lessons 5, 11, 12); how thoroughly a given run exploits
    it is seed lottery.
 
-### Thirteen lessons from fourteen runs (short version)
+### Fourteen lessons from fifteen runs (short version)
 
 1. Don't tax the intermediate costs of the behaviour you want, and don't leave
    zero-cost sanctuaries in the reward landscape (v1's wall-hugger).
@@ -167,6 +173,19 @@ Four findings we did not expect:
     what can be *learned*. A capability chain is only as strong as its
     least observable link: precondition → policy, consequence → learning
     signal.
+14. Shaping amplifies; it does not summon. v15 paid a bounded one-shot
+    bonus (+0.5 per AC point) the moment armor went on — lesson 13's
+    cheapest prescription — and the policy pressed the gear key *once*
+    in 48,000 evaluation steps (v14: six times). A shaping term only
+    bends the value function along trajectories exploration actually
+    completes; when the event chain (gear spawns → enters the obs →
+    macro walks → auto-equips) is a product of small probabilities, the
+    bonus is sampled too thinly to outweigh the key's ever-present cost,
+    and the button dies anyway. Bootstrap the *event*, not the reward:
+    demonstrations, forced-equip resets, or a gear-rich environment
+    first — then shape. (The run itself was healthy: deaths hit an
+    all-time low of 9/32 and kills held at 31.3 — a v13-class fighter
+    that simply never touched its newest toy.)
 
 ## Quickstart (macOS, Apple Silicon)
 
@@ -229,9 +248,11 @@ quirks are documented in [train/evaluate.py](train/evaluate.py).
   deaths 17/32 → 12/32 while mean kills doubled to 35.2
 - [ ] Gear up: v14 wired auto-equip end-to-end (probes green) but the
   policy never learned to press the key — armor's payoff is invisible to
-  the reward stream at 3M steps (lesson 13). v15 candidates: bounded
-  AC-gain shaping, a gear-rich training curriculum, or 10-30× steps on
-  bigger hardware
+  the reward stream at 3M steps (lesson 13). v15 tried the cheapest fix,
+  bounded AC-gain shaping, and the key was pressed *once* in 48k eval
+  steps: shaping cannot summon a rare event (lesson 14). Next: bootstrap
+  the event itself — forced-equip exploration resets, demonstrations/IL,
+  a gear-rich curriculum, or 10-30× steps on bigger hardware
 - [ ] Clear-rate objective
 - [ ] The Butcher 🥩 (his greeting already crashed our headless engine once —
   see patches/0003; killing him is next)
