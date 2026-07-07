@@ -18,6 +18,7 @@ All rows re-measured 2026-07-05 on the same build.
 | ppo-l1-v13-pickup-s14⁴ | 38.1 | 33.5 | 76 | 1/32 | 24 |
 | ppo-l1-v14-gear⁵ | 28.0 | 26.0 | 67 | 1/32 | 19 |
 | ppo-l1-v15-acshape⁶ | 31.3 | 30.5 | 66 | 2/32 | 19 |
+| ppo-l1-v16-mask⁷ | 34.5 | 33.5 | 80 | 0/32 | 18 |
 
 ¹ v5 predates the explore macro; evaluated post-hoc on the current env
 (same 286-dim observation, it simply never selects action 10). v1-v4
@@ -62,6 +63,22 @@ never completes (lesson 14). Registered predictions 2/4: mean ≥30 hit
 (31.3), deaths ≤11 hit at an all-time low (9/32; previous best 10), both
 gear predictions obliterated. Real-drink share drew 60% (fourth hand of
 the style lottery: 93/46/37/60%). v13 keeps the crown.
+
+⁷ v16 = v15 plus invalid-action masking on the gear key (MaskablePPO):
+the key exists only when wearable gear is in view. Masking cured the
+sampling famine outright — 258 presses, 16/32 episodes equipped
+(first-equip median 172 steps) after v14/v15's six and one presses —
+and the fighter is the strongest non-champion yet (median 33.5, max 80,
+zero-kill 0/32: all-time firsts or ties). But outcomes did not follow
+the armor: deaths 14/32, reached-L2 18/32; of the 16 geared episodes 7
+died (dropping the gear) and 3 broke it in combat (cheap L1 gear has
+single-digit durability). First-equips per press (16/258 ≈ 6%) match
+the forced-press probe's 6.7% wild completion: the bottleneck moved
+from sampling to economics, exactly as the probe predicted. Meanwhile
+the no-op attractor, evicted from key 14, resettled on keys 12/13 —
+real-drink share crashed to 3.7% (fifth hand of the style lottery:
+93/46/37/60/4; the PPO→MaskablePPO swap is a registered confound) —
+lesson 15. v13 keeps the crown on mean kills and descent.
 
 Long-episode probe (max_steps 1500 → 3000, same protocol): per-seed
 kills are bit-identical for both v6 and v10 at both horizons (32/32

@@ -48,6 +48,7 @@ BARS = [
     ("ppo-l1-v13-pickup", "v13 potions learnable\n(obs 286→290 + pickup macro)"),
     ("ppo-l1-v14-gear", "v14 +auto-equip gear\n(0/32 equips — lesson 13)"),
     ("ppo-l1-v15-acshape", "v15 +AC-gain shaping\n(1 gear press — lesson 14)"),
+    ("ppo-l1-v16-mask", "v16 +gear-key masking\n(16/32 equip — lesson 15)"),
 ]
 CHAMPION = "ppo-l1-v13-pickup"
 

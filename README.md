@@ -41,9 +41,10 @@ iterations that built the champion. Right: the gold standard — deterministic
 | v10 = v6 recipe, 3000-step episodes | 45,836 | 5.5 | 0 | 49 | 18/32 | 0/32 |
 | v11 = v6 + descend option | 45,901 | 19.4 | 14.5 | **70** | 2/32 | **27/32** |
 | v12 = v11 + belt-potion action | 45,966 | 12.3 | 10.0 | 46 | 9/32 | 26/32 |
-| **v13 = potion system made learnable (champion)** | 46,543 | **35.2** | **29.0** | 65 | **1/32** | 25/32 |
+| **v13 = potion system made learnable (champion)** | 46,543 | **35.2** | 29.0 | 65 | 1/32 | 25/32 |
 | v14 = v13 + auto-equip gear | 47,120 | 28.0 | 26.0 | 67 | 1/32 | 19/32 |
 | v15 = v14 + AC-gain reward shaping | 47,120 | 31.3 | 30.5 | 66 | 2/32 | 19/32 |
+| v16 = v15 + gear-key action masking | 47,120 | 34.5 | **33.5** | **80** | **0/32** | 18/32 |
 
 ¹ *Evaluated post-hoc on the current env (same observation; it never selects
 the explore macro). Protocol: seeds 9000-9031, 1500 steps, argmax, idle
@@ -66,7 +67,17 @@ cheapest prescription) went **2/4**: mean kills ≥30 hit (31.3) and deaths
 ≤11 hit at an **all-time low of 9/32** — but both gear predictions were
 obliterated again (0/32 equips, *one* gear-key press in 48,000 steps),
 and real-drink share drew 60%, the style lottery's fourth hand
-(93/46/37/60%). Lesson 14; v13 remains champion.
+(93/46/37/60%). Lesson 14; v13 remains champion. v16 (gear-key action
+masking) went **3/4** and resurrected the button by intervention: 258
+gear-key presses and **16/32 episodes equipped** (from one press and
+0/32 in v15), plus three all-time firsts (median 33.5, max 80,
+zero-kill 0/32) — but deaths ≤13 missed at 14, descent slipped to
+18/32, and outcomes never followed the armor (7 of 16 geared episodes
+died and dropped it, 3 broke it in combat). The no-op attractor,
+evicted from the masked key, resettled on the drink/pickup keys:
+real-drink share crashed to 3.7% (fifth hand; the PPO→MaskablePPO swap
+is a registered confound). Lesson 15; v13 still holds mean kills and
+descent.
 Leaderboard checkpoints are not distributed yet (a tagged release is
 planned); rows come from the author's runs and are deterministically
 re-evaluable given the checkpoint. Champion honesty numbers: v13's
@@ -116,7 +127,7 @@ Four findings we did not expect:
    observability (lessons 5, 11, 12); how thoroughly a given run exploits
    it is seed lottery.
 
-### Fourteen lessons from fifteen runs (short version)
+### Fifteen lessons from sixteen runs (short version)
 
 1. Don't tax the intermediate costs of the behaviour you want, and don't leave
    zero-cost sanctuaries in the reward landscape (v1's wall-hugger).
@@ -186,6 +197,19 @@ Four findings we did not expect:
     first — then shape. (The run itself was healthy: deaths hit an
     all-time low of 9/32 and kills held at 31.3 — a v13-class fighter
     that simply never touched its newest toy.)
+15. Masking moves probability, not value. v16 masked the gear key to
+    exist only when gear is in view, and the button resurrected
+    overnight: one press per 48k steps → 258, equips 0/32 → 16/32 —
+    lesson 14's mechanism confirmed by intervention. But outcomes did
+    not follow: deaths and descent slipped, cheap L1 gear drops on
+    death or breaks in combat, and wild macro completion stayed at the
+    forced-press probe's ~6%. A mask can put a button back on the
+    menu; it cannot make the goods worth buying — that is the task
+    economics' job, and a 1500-step L1 episode cannot amortize armor.
+    And the no-op attractor obeys conservation (lesson 12, third
+    strike, cleanest yet): evicted from the masked key, it resettled
+    on the unmasked drink/pickup keys. Structural hygiene relocates
+    spam; only value can retire it.
 
 ## Quickstart (macOS, Apple Silicon)
 
@@ -250,9 +274,14 @@ quirks are documented in [train/evaluate.py](train/evaluate.py).
   policy never learned to press the key — armor's payoff is invisible to
   the reward stream at 3M steps (lesson 13). v15 tried the cheapest fix,
   bounded AC-gain shaping, and the key was pressed *once* in 48k eval
-  steps: shaping cannot summon a rare event (lesson 14). Next: bootstrap
-  the event itself — forced-equip exploration resets, demonstrations/IL,
-  a gear-rich curriculum, or 10-30× steps on bigger hardware
+  steps: shaping cannot summon a rare event (lesson 14). v16 masked the
+  key to exist only when gear is in view and the button resurrected
+  (16/32 episodes equipped) — but outcomes didn't follow: a 1500-step
+  L1 episode cannot amortize armor, and a forced-press probe measured
+  gear acquisition at −7 kills / +6 deaths even for free (lesson 15).
+  The chapter moves to deep water: v17 runs 3000-step episodes with
+  depth-progressive descent bonuses, where armor's real job — stretching
+  the potion runway on L2-L4 — gets its natural audition
 - [ ] Clear-rate objective
 - [ ] The Butcher 🥩 (his greeting already crashed our headless engine once —
   see patches/0003; killing him is next)
