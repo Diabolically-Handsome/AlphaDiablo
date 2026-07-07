@@ -243,12 +243,18 @@ quirks are documented in [train/evaluate.py](train/evaluate.py).
 [DevilutionX-AI](https://github.com/rouming/DevilutionX-AI) (Jan 2025)
 independently built an RL framework on the same engine with a different
 integration approach — an out-of-process shared-memory bridge driving a
-running game, with an imitation-learning + PPO pipeline — reaching a 0.98
-success rate on level-1 goal-finding (sampling-mode evaluation; its author
-notes argmax scores lower). DiabloGym embeds the engine in-process, keeps
-evaluation argmax-only on frozen seeds, and pushes the task past
-navigation: sustained combat, autonomous multi-floor descent, and a closed
-potion economy. The roguelike-RL canon
+running game, with an imitation-learning + PPO pipeline. Its master branch
+documents a 0.98 success rate on level-1 goal-finding (sampling-mode
+evaluation; its author notes argmax scores lower); its develop branch goes
+much further — per-level descent episodes sampled across all 16 dungeon
+levels, with melee plus seven spells, potion and mana-shield management, a
+hierarchical manager/worker model (explorer and combat options) and a
+level-weighted curriculum, at ~71% mean training success (per its author,
+Jul 2026). DiabloGym differs in integration (engine embedded in-process
+via pybind11), in evaluation discipline (argmax-only on frozen seeds,
+pinned engine ref, idle machine), and in its product: the iteration ledger
+itself — fourteen generations, every champion and every failed generation
+documented with the lesson it taught. The roguelike-RL canon
 ([NLE](https://github.com/facebookresearch/nle),
 [MiniHack](https://github.com/facebookresearch/minihack)) offers
 turn-based, purpose-built research environments; DiabloGym instead wraps a
