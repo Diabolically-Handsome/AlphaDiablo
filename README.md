@@ -16,7 +16,8 @@ dungeon* — thirteen documented runs, one diagnosed failure mode eliminated
   see protocol notes in [train/evaluate.py](train/evaluate.py)); engine source
   pinned to an exact upstream commit by [bootstrap.sh](bootstrap.sh)
 - 🧩 **Gymnasium API**: structured observations (entity features + 11×11 local
-  map), macro-actions (engage / explore / descend / drink / pick-up-potion)
+  map + potion/gear preconditions), macro-actions (engage / explore / descend /
+  drink / pick-up-potion / pick-up-gear)
 - 📊 **Zero-dependency live dashboard** for training runs
 - 🩹 Ships **upstream fixes** for six DevilutionX headless-mode bugs — asset
   fallbacks, monster-missile anims (a bat swoop was the first crash), the
@@ -212,7 +213,9 @@ quirks are documented in [train/evaluate.py](train/evaluate.py).
   cost (lesson 11); v13 made the potion system *learnable* (belt count +
   nearest floor heal into the observation, door-aware pickup macro) —
   deaths 17/32 → 12/32 while mean kills doubled to 35.2
-- [ ] Gear up: equip armor and weapons from the floor (v14)
+- [ ] Gear up: auto-equip armor/helms from the floor via a door- and
+  monster-aware pickup macro (v14, training as this line is written);
+  weapon upgrades next
 - [ ] Clear-rate objective
 - [ ] The Butcher 🥩 (his greeting already crashed our headless engine once —
   see patches/0003; killing him is next)
