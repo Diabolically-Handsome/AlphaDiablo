@@ -11,6 +11,7 @@ See train/evaluate_deep.py.
 |---|---|---|---|---|---|---|---|---|
 | ppo-deep-v17¹ | 3.0 | 4 | 28 | 17 | 11 | 22 | 9.6 | 7.5 |
 | ppo-deep-v18-deathprice² | 2.0 | 4 | 19 | 7 | 1 | 19 | 32.1 | 32.0 |
+| ppo-deep-v19-powergauge³ | 1.5 | 4 | 16 | 10 | 1 | 15 | 26.1 | 22.0 |
 
 ¹ Chapter opener: v16's masked stack + depth-progressive ladder +
 3000-step episodes (6M steps = episode-count parity with the old
@@ -40,3 +41,19 @@ stocked (15/19 with potions still in the belt) — at character level
 bottleneck moved again: resources → character power. The farming↔diving
 auction now needs finer prices, or a bigger budget for the level-up
 spiral (farm L1 → dive → farm L2 → dive) to emerge.
+
+³ Null result, recorded as such. The power gauge (char-level /
+dungeon-level ratio into the obs, 294→295 dims) did not crack the
+farm-then-dive spiral at 6M steps: first-descent character level stayed
+at median 1, and descender mortality is unchanged (v18 17/19 ≈ 89% →
+v19 14/16 ≈ 88%). Deaths fell 19 → 15 by composition — half the seeds
+now simply never leave L1. Weak positives: descenders that do go
+convert to L3 at 10/16 (v18: 7/19), deaths now cluster at L3 rather
+than L2, dry deaths 2/15, and gear stays alive (9/32 equipped, 266
+presses). Real-drink share drew 77% — the style lottery's sixth hand
+(93/46/37/60/4/77). Procedural note: this generation launched without
+registered predictions (the night's one ritual miss) — scored
+descriptively only. Chapter status: three auction knobs mapped
+(ladder → rush; death price → retreat; visibility → split), the spiral
+has not emerged at M1-Max budgets; the design doc's workstation line
+(10× steps, IL warm-start) is the standing next move.
