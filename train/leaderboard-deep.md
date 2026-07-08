@@ -12,6 +12,7 @@ See train/evaluate_deep.py.
 | ppo-deep-v17¹ | 3.0 | 4 | 28 | 17 | 11 | 22 | 9.6 | 7.5 |
 | ppo-deep-v18-deathprice² | 2.0 | 4 | 19 | 7 | 1 | 19 | 32.1 | 32.0 |
 | ppo-deep-v19-powergauge³ | 1.5 | 4 | 16 | 10 | 1 | 15 | 26.1 | 22.0 |
+| ppo-deep-v20-statline⁴ | 1.0 | 2 | 1 | 0 | 0 | 4 | 21.0 | 13.5 |
 
 ¹ Chapter opener: v16's masked stack + depth-progressive ladder +
 3000-step episodes (6M steps = episode-count parity with the old
@@ -57,3 +58,23 @@ descriptively only. Chapter status: three auction knobs mapped
 (ladder → rush; death price → retreat; visibility → split), the spiral
 has not emerged at M1-Max budgets; the design doc's workstation line
 (10× steps, IL warm-start) is the standing next move.
+
+⁴ The chapter's closing verdict. v20 repaired the stat-point black hole
+(auto-spend on level-up, verified in the wild: zero unspent points) and
+extended credit sight (γ 0.99→0.997, half-life 69→231 steps) — and the
+policy, reading the corrected books with long eyes, declined the entire
+deep-water enterprise: 31/32 episodes never leave L1, deaths crash to
+4/32 (safest ever), the drink key goes fully extinct (0 presses), and
+farming stays casual (21 mean kills; two-thirds of seeds don't even
+reach level 2 — leveling isn't worth maxing when you don't intend to
+dive). Registered predictions: P3's sentinel fired exactly as
+pre-written (>16/32 stay home), and P5's falsification line is met —
+the mechanism×horizon composite did not produce the spiral. The honest
+reading after five configurations: at level-1 start, 3000 steps,
+melee-warrior terms, descending is negative-EV *even in a mechanically
+sound world* — the refusal is not a failure to learn but a correct
+measurement of the task. Real Diablo agrees: nobody fights through
+depth at clvl 1-4; the leveling spiral spans hours, not 3000 steps.
+Registered fallback (v21, if the chapter continues): per-level
+calibrated-spawn curriculum à la DevilutionX-AI; otherwise the chapter
+rests here with its map complete, awaiting workstation budgets.
