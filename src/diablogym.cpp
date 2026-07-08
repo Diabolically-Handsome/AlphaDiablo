@@ -452,6 +452,26 @@ py::dict Reset(uint32_t seed)
 	return Observe();
 }
 
+// v20:属性点自动分配——修复"属性点黑洞"。引擎每级发 5 属性点
+// (NextPlrLevel 只累积 _pStatPts,花点历来靠人类点 UI),本桥十九代从未
+// 调用过花点路径,等级→生存力的兑换链断裂,"先农后潜"在力学上不成立
+// (clvl3 裸身打 L3 中位怪包负期望;唯一翻盘线需要 +10 体力 + 穿甲)。
+// 战士口径:每批点数按 3体:2力 分配(体力主导低等级生存,力量喂伤害与
+// 负重)。ModifyPlr* 自带属性封顶与派生量重算(HP/命中/负重);封顶后的
+// 溢出点与人类玩家一致地原地作废。挂在 Step 尾部:升级发生在 tick 内,
+// 最迟一个 env step(4 tick)后点数落袋,对策略等效即时。
+static void AutoSpendStatPoints()
+{
+	Player &p = *MyPlayer;
+	const int pts = p._pStatPts;
+	if (pts <= 0)
+		return;
+	const int vit = (pts * 3 + 4) / 5; // 3/5 向上取整给体力
+	ModifyPlrVit(p, vit);
+	ModifyPlrStr(p, pts - vit);
+	p._pStatPts = 0;
+}
+
 py::dict Step(int ticks)
 {
 	if (!gInGame)
@@ -468,6 +488,7 @@ py::dict Step(int ticks)
 		}
 		gStartupTick = false;
 	}
+	AutoSpendStatPoints();
 	return Observe();
 }
 
@@ -647,6 +668,26 @@ PYBIND11_MODULE(_diablogym, m)
 	m.def("act_pickup_gear", &ActPickupGear, "走向并拾取最近的可穿戴装备(空槽+属性达标;无目标=无操作);返回 0/1");
 	m.def("sweep_backpack_gear", &SweepBackpackGear, "把因硬直时序窗沉入背包的该穿装备捞出穿上;返回上身件数");
 	m.def("end_game", &EndGame, "结束当前局(reset 会自动调用)");
+
+	// ---- 探针专用接口(只用于发车前探针/验尸,训练与评估不得调用)----
+	m.def("probe_add_experience", [](uint32_t xp) {
+		// 直接注入经验(等级差按 0 计),触发引擎原生升级链
+		// (NextPlrLevel → _pStatPts 累积 → Step 尾部 AutoSpendStatPoints)
+		MyPlayer->addExperience(xp);
+	}, py::arg("xp"), "探针:注入经验值,走原生升级路径");
+	m.def("probe_modify_vit", [](int d) { ModifyPlrVit(*MyPlayer, d); },
+	    py::arg("d"), "探针:直接调体力(带封顶,同步 HP)");
+	m.def("probe_bonus_ac", [](int d) { MyPlayer->_pIBonusAC += d; },
+	    py::arg("d"), "探针:临时附加 AC(CalcPlrInv 会重算,战斗中不换装则稳定)");
+	m.def("probe_stat_pts", []() { return (int)MyPlayer->_pStatPts; },
+	    "探针:读未花属性点(自动花点后应恒为 0)");
+	m.def("probe_stats", []() {
+		py::dict d;
+		d["vit"] = (int)MyPlayer->_pVitality;
+		d["str"] = (int)MyPlayer->_pStrength;
+		d["max_hp"] = (int)(MyPlayer->_pMaxHP >> 6);
+		return d;
+	}, "探针:读属性明细");
 
 	m.def("local_map", [](int radius) {
 		// 以玩家为中心的 (2r+1)² 局部地图:可走性 + 怪物占位 + 关闭的门

@@ -108,6 +108,9 @@ def main():
                     help="v17 深水区:下楼奖金层数递进(N→N+1 付 8×N);配合 --max-steps 3000")
     ap.add_argument("--death-ladder", action="store_true",
                     help="v18:死亡成本随层数定价(死在 N 层罚 8×N,替代恒 -2)")
+    ap.add_argument("--gamma", type=float, default=0.99,
+                    help="折扣因子。0.99 半衰期 69 步(1500 步旧章口径);"
+                         "v20 深水区用 0.997(半衰期 231 步,让递延下楼奖金对信用可见)")
     args = ap.parse_args()
 
     run_name = args.run_name or time.strftime("ppo-l1-%m%d-%H%M%S")
@@ -129,6 +132,7 @@ def main():
                  else "地牢 1 层:杀怪拿 XP,找楼梯下 2 层"),
         "deep": args.deep,
         "death_ladder": args.death_ladder,
+        "gamma": args.gamma,
     }
     print(f"== DiabloGym PPO 训练 == run={run_name}")
     print(f"   {config}")
@@ -141,7 +145,7 @@ def main():
 
     common = dict(
         learning_rate=args.lr,
-        gamma=0.99,
+        gamma=args.gamma,
         ent_coef=0.02,  # 首训 0.01 时策略塌缩成单方向面壁,提熵防锁死
         device=args.device,
         verbose=1,
