@@ -118,7 +118,7 @@ class DiabloGymEnv(gym.Env):
         self.action_space = gym.spaces.Discrete(15)
         self.observation_space = gym.spaces.Box(
             low=-np.inf, high=np.inf,
-            shape=(12 + _K_MONSTERS * 4 + 2 * side * side + 8,), dtype=np.float32,
+            shape=(12 + _K_MONSTERS * 4 + 2 * side * side + 9,), dtype=np.float32,
         )  # +8 = v13 药 4 维(腰带数+最近地面药)+ v14 装备 4 维(AC+最近可穿装备)
         self._raw = None
         self._steps = 0
@@ -665,4 +665,9 @@ class DiabloGymEnv(gym.Env):
                     max(-1.0, min(1.0, (g["y"] - py) / 20.0)), 1.0]
         else:
             vec += [ac, 0.0, 0.0, 0.0]
+        # v19:强弱仪表(教训五族)。"够不够强、该不该下"的决策变量是
+        # 等级/层数之比,但 dim5 的 char_level/50 让 1 级和 3 级只差 0.04,
+        # 对策略近乎不可见——农到多强才下楼,得先看得见"多强"。
+        # 比值 1.0 = 等级与层数持平,>1 越级碾压,<1 越级送死;封顶 2 归一。
+        vec += [min(2.0, obs["char_level"] / max(1, obs["dungeon_level"])) / 2.0]
         return np.asarray(vec, dtype=np.float32)

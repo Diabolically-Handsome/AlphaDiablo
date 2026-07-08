@@ -20,7 +20,7 @@ _N_TOKENS = 8
 _TOKEN_DIM = 4
 _MAP_SIDE = 11
 _MAP_CH = 2
-_N_EXTRA = 8  # v13 药 4 维 + v14 装备 4 维(向量尾部,并入标量分支)
+_N_EXTRA = 9  # v13 药 4 维 + v14 装备 4 维 + v19 强弱仪表 1 维(向量尾部,并入标量分支)
 
 
 class EntityAttentionExtractor(BaseFeaturesExtractor):
