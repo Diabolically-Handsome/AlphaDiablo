@@ -149,7 +149,7 @@ Four findings we did not expect:
    observability (lessons 5, 11, 12); how thoroughly a given run exploits
    it is seed lottery.
 
-### Sixteen lessons from seventeen runs (short version)
+### Seventeen lessons from twenty runs (short version)
 
 1. Don't tax the intermediate costs of the behaviour you want, and don't leave
    zero-cost sanctuaries in the reward landscape (v1's wall-hugger).
@@ -244,6 +244,23 @@ Four findings we did not expect:
     knob. Sixteen generations in, the constant: the agent solves your
     reward, never your intention; task design is where the
     intelligence lives.
+17. Audit the world before you debug the agent — and when the books
+    are honest, a refusal is a measurement. Three deep-water knobs
+    failed identically before we audited the environment and found a
+    stat-point black hole: the engine grants 5 points per level, and
+    for nineteen generations no code ever spent them, so the
+    level→power exchange our rewards priced never existed — the agents
+    had been *correctly pricing a broken economy* all along (v17's
+    stair-rush was the closed-form optimum: 8×0.99¹³⁸ ≈ two kills).
+    v20 repaired the mechanism (auto-spend, verified) and lengthened
+    credit sight (γ 0.997), and the policy answered with quiet L1
+    retirement: 31/32 never descend, deaths 4/32, the safest agent
+    ever built here. That refusal closed the chapter honestly:
+    melee descent from a level-1 start in 3000 steps is negative-EV
+    even in a sound world — real players agree; the leveling spiral
+    spans hours. Some tasks fail the agent; this agent failed the
+    task, and it was right to. (Continuation paths, pre-registered:
+    calibrated-spawn curriculum, or workstation-scale horizons.)
 
 ## Quickstart (macOS, Apple Silicon)
 
