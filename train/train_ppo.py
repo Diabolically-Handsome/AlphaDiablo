@@ -24,9 +24,15 @@ from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv
 
 
 def make_env(max_steps: int = 1500, deep: bool = False, death_ladder: bool = False,
-             options: bool = False, flat_clock: bool = False):
+             options: bool = False, flat_clock: bool = False,
+             worker: bool = False, manager_npz: str | None = None):
     from diablogym import DiabloGymEnv
 
+    if worker:
+        # v23:FARM 操作脑在位训练——episode = 冻结 H 经理选中的一个 FARM 窗口
+        # (rng_seed=None → 各子进程独立熵源,种子采样器拒采 7000/9000 段)
+        from diablogym import WorkerWindowEnv
+        return Monitor(WorkerWindowEnv(manager_npz=manager_npz, max_steps=max_steps))
     if options:
         # v22:策略脑/操作脑——OptionsEnv 自带 deep+death_ladder 默认
         from diablogym import OptionsEnv
@@ -123,6 +129,13 @@ def main():
                     help="v22:策略脑/操作脑(OptionsEnv,Discrete(3);须配 --algo mppo --gamma 1.0)")
     ap.add_argument("--flat-clock", action="store_true",
                     help="v22 恶魔臂:296 维平面(停滞钟入观测),配 --bc-init 用")
+    ap.add_argument("--worker", action="store_true",
+                    help="v23:FARM 操作脑在位训练(WorkerWindowEnv,Discrete(15) 掩 11/12;"
+                         "须配 --algo mppo --gamma 1.0,见 docs/PREREG-v23.md)")
+    ap.add_argument("--manager-npz",
+                    default=str(pathlib.Path(__file__).resolve().parent
+                                / "models" / "v22-h-manager" / "policy.npz"),
+                    help="冻结经理权重 npz(export_manager_npz.py 产出)")
     ap.add_argument("--ent-coef", type=float, default=0.02,
                     help="熵系数(v22 恶魔臂微调用 0.005 防 BC 漂移)")
     ap.add_argument("--bc-init", default=None,
@@ -156,13 +169,17 @@ def main():
         "gamma": args.gamma,
         "options": args.options,      # v22:True 时 Monitor ep_len 口径=策略脑决策数
         "flat_clock": args.flat_clock,
+        "worker": args.worker,        # v23:True 时 ep 口径=FARM 窗口,reward=工资 w
         "bc_init": args.bc_init,
+        "ent_coef": args.ent_coef,
+        "freeze_policy_steps": args.freeze_policy_steps,
     }
     print(f"== DiabloGym PPO 训练 == run={run_name}")
     print(f"   {config}")
 
     env_fn = functools.partial(make_env, args.max_steps, args.deep, args.death_ladder,
-                               args.options, args.flat_clock)
+                               args.options, args.flat_clock,
+                               args.worker, args.manager_npz)
     if args.num_envs == 1:
         vec_env = DummyVecEnv([env_fn])
     else:

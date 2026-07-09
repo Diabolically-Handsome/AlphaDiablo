@@ -73,6 +73,10 @@ _DIRS = [(0, -1), (1, -1), (1, 0), (1, 1), (0, 1), (-1, 1), (-1, 0), (-1, -1)]
 _K_MONSTERS = 8
 _MAP_RADIUS = 5  # 11×11 局部地图
 
+# 换层奖金单价(_reward 的 Δ地牢层项;v23 起为具名常量——工人工资剥薪
+# 需要在包装器侧按同一公式反算,数字只许存在一份)
+DESCEND_UNIT = 8.0
+
 _DEFAULT_ASSETS = (
     pathlib.Path(__file__).resolve().parents[2]
     / "build" / "engine" / "devilutionx.app" / "Contents" / "Resources"
@@ -586,9 +590,9 @@ class DiabloGymEnv(gym.Env):
         if self.descend_ladder and dl > 0:
             # v17:深度递进——每个 N→N+1 付 8×N(L1→2 仍是 8,锚定旧章;
             # L2→3 付 16、L3→4 付 24……越深越值钱,给"往下活着"一个未来)
-            r += 8.0 * sum(range(prev["dungeon_level"], cur["dungeon_level"]))
+            r += DESCEND_UNIT * sum(range(prev["dungeon_level"], cur["dungeon_level"]))
         else:
-            r += 8.0 * dl
+            r += DESCEND_UNIT * dl
         if cur["armor_class"] > prev["armor_class"]:
             # v15(奖励 v3——自 v6 冻结以来首次修订):穿甲一次性入账,自举塑形。
             # 动机=教训十三:护甲收益(每击少几点血,摊几百步)对 3M 步视界统计
