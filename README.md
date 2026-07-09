@@ -261,6 +261,19 @@ Four findings we did not expect:
     spans hours. Some tasks fail the agent; this agent failed the
     task, and it was right to. (Continuation paths, pre-registered:
     calibrated-spawn curriculum, or workstation-scale horizons.)
+    **Correction, one day later (lesson 18 in the making):** a scripted
+    oracle grid (8 hand-written strategies × 32 fresh seeds × 3
+    horizons) falsified this lesson's economic claim. A
+    fight-while-descending script ("spiral": clear what you can, then
+    go down, accept death around L3-L4) earns 2.5× retirement's return
+    at 3000 steps already — 39.9 vs 15.9, 26/32 paired wins — despite a
+    94% death rate. The learner's refusal was correct *among the modes
+    gradient descent could reach* (rush and retire are both local
+    optima; the winning ridge lies in the valley between them), not a
+    measurement of the task's ceiling. Amended principle: respect the
+    policy's "no" as evidence about the *optimization landscape*, never
+    about the *task ceiling* — ceilings are measured with oracles, not
+    inferred from silence.
 
 ## Quickstart (macOS, Apple Silicon)
 
