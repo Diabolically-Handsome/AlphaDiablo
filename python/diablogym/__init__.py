@@ -24,5 +24,6 @@ def _load_bridge():
 bridge = _load_bridge()
 
 from .env import DiabloGymEnv  # noqa: E402
+from .options_env import OptionsEnv, StagnationClockWrapper  # noqa: E402
 
-__all__ = ["bridge", "DiabloGymEnv"]
+__all__ = ["bridge", "DiabloGymEnv", "OptionsEnv", "StagnationClockWrapper"]

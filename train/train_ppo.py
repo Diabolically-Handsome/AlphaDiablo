@@ -23,9 +23,20 @@ from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv
 
 
-def make_env(max_steps: int = 1500, deep: bool = False, death_ladder: bool = False):
+def make_env(max_steps: int = 1500, deep: bool = False, death_ladder: bool = False,
+             options: bool = False, flat_clock: bool = False):
     from diablogym import DiabloGymEnv
 
+    if options:
+        # v22:策略脑/操作脑——OptionsEnv 自带 deep+death_ladder 默认
+        from diablogym import OptionsEnv
+        return Monitor(OptionsEnv(max_steps=max_steps))
+    if flat_clock:
+        # v22 恶魔臂 F:296 维平面(停滞钟与策略脑同一块表)
+        from diablogym import StagnationClockWrapper
+        return Monitor(StagnationClockWrapper(DiabloGymEnv(
+            ticks_per_step=4, max_steps=max_steps, start_in_dungeon=True,
+            include_raw=False, descend_ladder=True, death_ladder=True)))
     env = DiabloGymEnv(
         ticks_per_step=4,      # 每个决策 = 0.2 秒游戏时间
         max_steps=max_steps,   # 1500 = 冠军(v6)配方;3000 = v10 长局实验 + v17 深水区。
@@ -108,9 +119,17 @@ def main():
                     help="v17 深水区:下楼奖金层数递进(N→N+1 付 8×N);配合 --max-steps 3000")
     ap.add_argument("--death-ladder", action="store_true",
                     help="v18:死亡成本随层数定价(死在 N 层罚 8×N,替代恒 -2)")
+    ap.add_argument("--options", action="store_true",
+                    help="v22:策略脑/操作脑(OptionsEnv,Discrete(3);须配 --algo mppo --gamma 1.0)")
+    ap.add_argument("--flat-clock", action="store_true",
+                    help="v22 恶魔臂:296 维平面(停滞钟入观测),配 --bc-init 用")
+    ap.add_argument("--bc-init", default=None,
+                    help="行为克隆热启动:载入策略头 state_dict 路径")
+    ap.add_argument("--freeze-policy-steps", type=int, default=0,
+                    help="BC 热启动后冻结策略头只训价值头的步数")
     ap.add_argument("--gamma", type=float, default=0.99,
                     help="折扣因子。0.99 半衰期 69 步(1500 步旧章口径);"
-                         "v20 深水区用 0.997(半衰期 231 步,让递延下楼奖金对信用可见)")
+                         "v20 深水区用 0.997;--options(v22)应为 1.0")
     args = ap.parse_args()
 
     run_name = args.run_name or time.strftime("ppo-l1-%m%d-%H%M%S")
@@ -133,11 +152,15 @@ def main():
         "deep": args.deep,
         "death_ladder": args.death_ladder,
         "gamma": args.gamma,
+        "options": args.options,      # v22:True 时 Monitor ep_len 口径=策略脑决策数
+        "flat_clock": args.flat_clock,
+        "bc_init": args.bc_init,
     }
     print(f"== DiabloGym PPO 训练 == run={run_name}")
     print(f"   {config}")
 
-    env_fn = functools.partial(make_env, args.max_steps, args.deep, args.death_ladder)
+    env_fn = functools.partial(make_env, args.max_steps, args.deep, args.death_ladder,
+                               args.options, args.flat_clock)
     if args.num_envs == 1:
         vec_env = DummyVecEnv([env_fn])
     else:
@@ -178,6 +201,41 @@ def main():
         model = PPO("MlpPolicy", vec_env, n_steps=args.n_steps, batch_size=256,
                     policy_kwargs=policy_kwargs or None, **common)
 
+    if args.bc_init:
+        # v22 恶魔臂:BC 热启动策略头;冻结期只训价值头(经典雷:新价值头的
+        # 首次 PPO 更新会摧毁 BC 策略,先冻结抗住)
+        import torch
+
+        sd = torch.load(args.bc_init, map_location="cpu")
+        missing, unexpected = model.policy.load_state_dict(sd, strict=False)
+        print(f"   BC 热启动:loaded(missing={len(missing)}, unexpected={len(unexpected)})")
+        if args.freeze_policy_steps > 0:
+            from stable_baselines3.common.callbacks import BaseCallback
+
+            pi_params = (list(model.policy.mlp_extractor.policy_net.parameters())
+                         + list(model.policy.action_net.parameters()))
+            for p in pi_params:
+                p.requires_grad = False
+
+            class _Unfreeze(BaseCallback):
+                def __init__(self, when):
+                    super().__init__()
+                    self.when, self.done_ = when, False
+
+                def _on_step(self):
+                    if not self.done_ and self.num_timesteps >= self.when:
+                        for p in pi_params:
+                            p.requires_grad = True
+                        self.done_ = True
+                        print(f"   策略头解冻 @ {self.num_timesteps}")
+                    return True
+
+            unfreeze_cb = _Unfreeze(args.freeze_policy_steps)
+        else:
+            unfreeze_cb = None
+    else:
+        unfreeze_cb = None
+
     # 每 ~50 万步存一次检查点(v9 在 40% 被终止时权重全丢的教训)
     ckpt = CheckpointCallback(
         save_freq=max(1, 500_000 // args.num_envs),
@@ -185,7 +243,8 @@ def main():
     )
     callback = EpisodeJsonlCallback(run_dir, config)
     try:
-        model.learn(total_timesteps=args.total_steps, callback=[callback, ckpt])
+        cbs = [callback, ckpt] + ([unfreeze_cb] if unfreeze_cb else [])
+        model.learn(total_timesteps=args.total_steps, callback=cbs)
     finally:
         model.save(str(run_dir / "model_final"))
         # 工作进程崩溃(如引擎段错误)后,SubprocVecEnv.close() 会在断管上永久阻塞,
