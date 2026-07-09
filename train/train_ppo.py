@@ -67,8 +67,16 @@ class WorkerSentinelCallback(BaseCallback):
         self.next_at = every
         self.action_counts = None
 
+    def _on_training_start(self) -> None:
+        # v24 修正:resume 腿的全局步不从 0 起——对齐到下一个 500k 边界,防空喷
+        self.next_at = ((self.num_timesteps // self.every) + 1) * self.every
+
     def _on_step(self) -> bool:
         import numpy as np
+        # v24 G-CAL:标定探针置旗即终止本腿(驱动裁决重标定,预注册条款)
+        if getattr(self.model, "_calib_tripped", False):
+            print("   [G-CAL] teacher_diverge>20% —— 终止本腿,交驱动裁决")
+            return False
         acts = self.locals.get("actions")
         if acts is not None:
             if self.action_counts is None:
@@ -91,7 +99,11 @@ class WorkerSentinelCallback(BaseCallback):
                      if top1 >= 0 else 0.0)
             line = {"sentinel": "v23", "step": int(self.num_timesteps), **agg,
                     "dry_share": round(agg["dry"] / max(1, agg["dry"] + agg["fresh"]), 4),
-                    "reasons": reasons, "top1_action": top1, "top1_share": round(share, 4)}
+                    "reasons": reasons, "top1_action": top1, "top1_share": round(share, 4),
+                    # v24 皮筋读数(与 gate_ledger 双簿对账)
+                    "beta": getattr(self.model, "distill_beta", None),
+                    "distill_ce": getattr(self.model, "_last_distill_ce", None),
+                    "teacher_diverge": getattr(self.model, "_last_diverge", None)}
             with open(self.run_dir / "sentinel.jsonl", "a") as f:
                 f.write(json.dumps(line, ensure_ascii=False) + "\n")
             print(f"   [哨兵] {line}")
@@ -109,6 +121,12 @@ class EpisodeJsonlCallback(BaseCallback):
         self.t0 = time.time()
         self._progress = open(run_dir / "progress.jsonl", "a", buffering=1)
         self._last_status = 0.0
+        self._steps0 = 0
+
+    def _on_training_start(self) -> None:
+        # v24 修正:sps 按本腿增量计(resume 腿否则虚高几十倍,降档闸门失明)
+        self._steps0 = self.num_timesteps
+        self.t0 = time.time()
 
     def _on_step(self) -> bool:
         for info in self.locals["infos"]:
@@ -135,7 +153,7 @@ class EpisodeJsonlCallback(BaseCallback):
                 "total_steps": int(self.num_timesteps),
                 "target_steps": self.config["total_steps"],
                 "episodes": self.ep_count,
-                "sps": round(self.num_timesteps / max(1e-9, elapsed)),
+                "sps": round((self.num_timesteps - self._steps0) / max(1e-9, elapsed)),
                 "elapsed_sec": round(elapsed),
                 "updated_at": now,
                 "config": self.config,
@@ -188,7 +206,22 @@ def main():
     ap.add_argument("--gamma", type=float, default=0.99,
                     help="折扣因子。0.99 半衰期 69 步(1500 步旧章口径);"
                          "v20 深水区用 0.997;--options(v22)应为 1.0")
+    ap.add_argument("--distill-beta", type=float, default=0.0,
+                    help="v24 皮筋系数 β(CE 对冻结 BC 教师;0=纯 v23 配方,G-KL-B 证逐位等价)")
+    ap.add_argument("--teacher-sd",
+                    default=str(pathlib.Path(__file__).resolve().parent
+                                / "runs" / "bc-worker" / "policy_sd.pt"),
+                    help="v24 教师 state_dict(SB3 键名)")
+    ap.add_argument("--resume-from", default=None,
+                    help="v24 分腿续训:上一腿 model_final.zip 路径(禁与 --bc-init/--freeze 同用)")
+    ap.add_argument("--calib-probes", default="",
+                    help="v24 G-CAL 探针全局步(逗号分隔,只在腿 1 传 300000,600000)")
     args = ap.parse_args()
+
+    if args.resume_from:
+        # PREREG-v24 D4:resume 禁 bc-init(覆写已训策略)与 freeze(语义只属腿 1)
+        assert not args.bc_init and args.freeze_policy_steps == 0, (
+            "PREREG-v24:--resume-from 禁与 --bc-init/--freeze-policy-steps 同用")
 
     if args.worker:
         # PREREG-v23 D3/契约6 护栏(审查团:默认值静默违约,--options 时代靠人肉记忆)
@@ -225,6 +258,8 @@ def main():
         "bc_init": args.bc_init,
         "ent_coef": args.ent_coef,
         "freeze_policy_steps": args.freeze_policy_steps,
+        "distill_beta": args.distill_beta,    # v24 皮筋
+        "resume_from": args.resume_from,
     }
     print(f"== DiabloGym PPO 训练 == run={run_name}")
     print(f"   {config}")
@@ -265,9 +300,42 @@ def main():
         # v16:掩码采样与掩码更新都由 MaskablePPO 处理;掩码本身来自
         # env.action_masks()(经 VecEnv.env_method 收集)。注意这是算法实现的
         # 整体更换,开牌异常时首要嫌疑人(诚实账本已记)。
-        from sb3_contrib import MaskablePPO
-        model = MaskablePPO("MlpPolicy", vec_env, n_steps=args.n_steps, batch_size=256,
-                            policy_kwargs=policy_kwargs or None, **common)
+        # v24:worker 路一律走 LeashedMaskablePPO(β=0 时 G-KL-B 证与原版逐位等价)
+        calib = [int(x) for x in args.calib_probes.split(",") if x.strip()]
+        if args.resume_from:
+            from leashed_ppo import LeashedMaskablePPO
+            model = LeashedMaskablePPO.load(args.resume_from, env=vec_env,
+                                            device=args.device)
+            # PREREG-v24 D4:β 显式覆盖(load 直写 __dict__ 无校验,不许静默续命);
+            # tb 路径同理(否则腿 2-8 曲线全写进腿 1 目录);旋钮封条断言。
+            assert hasattr(model, "distill_beta"), "resume 对象不是 LeashedMaskablePPO"
+            model.distill_beta = args.distill_beta
+            model.calib_probes, model.calib_out = calib, (
+                str(run_dir / "calib.jsonl") if calib else None)
+            model.tensorboard_log = str(run_dir / "tb")
+            assert (model.ent_coef == args.ent_coef and model.gamma == args.gamma
+                    and model.n_steps == args.n_steps), (
+                "PREREG-v24 封-5:resume 腿超参与冻结配方不符")
+            assert model.target_kl is None, "PREREG-v24 D4:target_kl 必须为 None"
+            if args.distill_beta > 0:
+                assert model.teacher is not None, "β>0 但教师未随 teacher_path 重建"
+            if args.seed is not None:
+                model.set_random_seed(args.seed)
+            print(f"   [v24] resume @ {model.num_timesteps} 步,β={model.distill_beta}")
+        elif args.worker:
+            from leashed_ppo import LeashedMaskablePPO
+            model = LeashedMaskablePPO(
+                "MlpPolicy", vec_env, n_steps=args.n_steps, batch_size=256,
+                policy_kwargs=policy_kwargs or None,
+                distill_beta=args.distill_beta,
+                teacher_path=args.teacher_sd if args.distill_beta > 0 else None,
+                calib_probes=calib,
+                calib_out=str(run_dir / "calib.jsonl") if calib else None,
+                **common)
+        else:
+            from sb3_contrib import MaskablePPO
+            model = MaskablePPO("MlpPolicy", vec_env, n_steps=args.n_steps, batch_size=256,
+                                policy_kwargs=policy_kwargs or None, **common)
     else:
         model = PPO("MlpPolicy", vec_env, n_steps=args.n_steps, batch_size=256,
                     policy_kwargs=policy_kwargs or None, **common)
@@ -317,7 +385,10 @@ def main():
     try:
         cbs = ([callback, ckpt] + ([unfreeze_cb] if unfreeze_cb else [])
                + ([sentinel_cb] if sentinel_cb else []))
-        model.learn(total_timesteps=args.total_steps, callback=cbs)
+        # v24:resume 腿 reset_num_timesteps=False(False 语义 = 再训 N 步,全局步连续
+        # → ckpt 文件名全局唯一、β 日程与预算记账不断;审计 BLOCKER 2)
+        model.learn(total_timesteps=args.total_steps, callback=cbs,
+                    reset_num_timesteps=not args.resume_from)
     finally:
         model.save(str(run_dir / "model_final"))
         # 工作进程崩溃(如引擎段错误)后,SubprocVecEnv.close() 会在断管上永久阻塞,
