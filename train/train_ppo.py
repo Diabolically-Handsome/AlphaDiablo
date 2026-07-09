@@ -123,6 +123,8 @@ def main():
                     help="v22:策略脑/操作脑(OptionsEnv,Discrete(3);须配 --algo mppo --gamma 1.0)")
     ap.add_argument("--flat-clock", action="store_true",
                     help="v22 恶魔臂:296 维平面(停滞钟入观测),配 --bc-init 用")
+    ap.add_argument("--ent-coef", type=float, default=0.02,
+                    help="熵系数(v22 恶魔臂微调用 0.005 防 BC 漂移)")
     ap.add_argument("--bc-init", default=None,
                     help="行为克隆热启动:载入策略头 state_dict 路径")
     ap.add_argument("--freeze-policy-steps", type=int, default=0,
@@ -169,7 +171,7 @@ def main():
     common = dict(
         learning_rate=args.lr,
         gamma=args.gamma,
-        ent_coef=0.02,  # 首训 0.01 时策略塌缩成单方向面壁,提熵防锁死
+        ent_coef=args.ent_coef,  # 默认 0.02(首训 0.01 曾面壁塌缩);v22 恶魔臂 0.005
         device=args.device,
         verbose=1,
         tensorboard_log=str(run_dir / "tb"),
