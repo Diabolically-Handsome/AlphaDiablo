@@ -51,6 +51,9 @@ def collect():
         if (i + 1) % 16 == 0:
             print(f"  采集 {i+1}/{len(DEMO_SEEDS)} 局,{len(Y)} 对(剔除 {dropped})",
                   flush=True)
+    # 示范池纪律断言:每个示范种子恰好一局,零兜底滚局(否则数据混入未知种子)
+    assert env.stats["episodes"] == len(DEMO_SEEDS), env.stats
+    assert env.stats["reseeds"] == 0, env.stats
     print(f"示范:{len(Y)} 决策对,剔除保险丝拍 {dropped},"
           f"类分布 {dict(sorted(Counter(Y).items()))}", flush=True)
     return np.stack(X), np.asarray(Y, dtype=np.int64)
@@ -91,15 +94,17 @@ def train_bc(X, Y, class_weights=None):
             tot += float(loss) * len(yb); cnt += len(yb)
             correct += int((logits.argmax(1) == yb).sum())
         print(f"BC epoch {epoch}: loss {tot/cnt:.4f} acc {correct/cnt:.3f}", flush=True)
-    # held-out 评分 + 逐类召回
+    # held-out 评分 + 逐类召回(门槛类 = 全集样本 ≥300 的类,召回在 held-out 上量——
+    # 审查团修正:若按 held-out 内 ≥300 筛类,门槛被 10% 切片稀释十倍)
     with torch.no_grad():
         pred = model(torch.from_numpy(X[ho])).argmax(1).numpy()
     yh = Y[ho]
     top1 = float((pred == yh).mean())
+    full_counts = Counter(Y.tolist())
     recalls = {}
-    for c in np.unique(yh):
+    for c in sorted(k for k, v in full_counts.items() if v >= 300):
         m = yh == c
-        if m.sum() >= 300:
+        if m.sum() > 0:
             recalls[int(c)] = round(float((pred[m] == c).mean()), 3)
     return model, top1, recalls
 

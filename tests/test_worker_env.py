@@ -67,10 +67,18 @@ for seed in SEEDS:
         obs2, w, term, trunc, info = wwe.step(a)
         obs = wwe.next_window() if (term or trunc) else obs2
     entries = wwe.window_log[n0:]
+    from diablogym.env import DESCEND_UNIT
     for e in entries:
-        assert abs(e["W"] - (e["R"] - e["bonus"])) < 1e-6, e   # (c) 工资恒等式
-        if e["opt"] == FARM and e["reason"] != "descend":
-            assert e["bonus"] == 0.0, e
+        assert abs(e["W"] - (e["R"] - e["bonus"])) < 1e-6, e   # (c) 账本自洽
+        # (c') 剥薪公式独立对账:bonus ≡ DESCEND_UNIT×Σrange(dlvl0, dlvl_end)
+        # (七级阶梯保证换层即收窗,故逐窗 ΣΔdlvl⁺ 塌缩为端点差)
+        expect = (DESCEND_UNIT * sum(range(e["dlvl0"], e["dlvl_end"]))
+                  if e["dlvl_end"] > e["dlvl0"] else 0.0)
+        assert abs(e["bonus"] - expect) < 1e-6, e
+        if e["reason"] == "descend":
+            assert e["bonus"] > 0.0, e
+        elif e["opt"] == FARM and not e["base_done"]:
+            assert e["bonus"] == 0.0, e   # 换层拍与局终同拍时豁免(reason=death/end)
     runB[seed] = {"wins": [win_sig(e) for e in entries],
                   "steps": wwe.oe.env._steps,
                   "seq": entries[-1]["mode_seq"]}

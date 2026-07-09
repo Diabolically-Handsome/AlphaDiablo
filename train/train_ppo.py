@@ -55,6 +55,49 @@ def make_env(max_steps: int = 1500, deep: bool = False, death_ladder: bool = Fal
     return Monitor(env)
 
 
+class WorkerSentinelCallback(BaseCallback):
+    """v23 哨兵(PREREG 附录A/C):每 500k 步汇总子进程 WorkerWindowEnv.stats
+    (干/鲜层窗配比、终止原因谱、兜底滚局数)+ 累计动作份额 → sentinel.jsonl。
+    塌缩裁决本身走 2M/4M 检查点组装重放(附录C),此处只供遥测与验尸。"""
+
+    def __init__(self, run_dir: pathlib.Path, every: int = 500_000):
+        super().__init__()
+        self.run_dir = run_dir
+        self.every = every
+        self.next_at = every
+        self.action_counts = None
+
+    def _on_step(self) -> bool:
+        import numpy as np
+        acts = self.locals.get("actions")
+        if acts is not None:
+            if self.action_counts is None:
+                self.action_counts = np.zeros(15, dtype=np.int64)
+            for a in np.asarray(acts).ravel():
+                self.action_counts[int(a)] += 1
+        if self.num_timesteps >= self.next_at:
+            self.next_at += self.every
+            per_env = self.model.get_env().get_attr("stats")   # 经 Monitor.__getattr__ 透传
+            agg = {"windows": 0, "dry": 0, "fresh": 0, "ff_windows": 0,
+                   "episodes": 0, "reseeds": 0}
+            reasons = {}
+            for s in per_env:
+                for k in agg:
+                    agg[k] += s.get(k, 0)
+                for k, v in s.get("reasons", {}).items():
+                    reasons[k] = reasons.get(k, 0) + v
+            top1 = int(self.action_counts.argmax()) if self.action_counts is not None else -1
+            share = (float(self.action_counts[top1] / max(1, self.action_counts.sum()))
+                     if top1 >= 0 else 0.0)
+            line = {"sentinel": "v23", "step": int(self.num_timesteps), **agg,
+                    "dry_share": round(agg["dry"] / max(1, agg["dry"] + agg["fresh"]), 4),
+                    "reasons": reasons, "top1_action": top1, "top1_share": round(share, 4)}
+            with open(self.run_dir / "sentinel.jsonl", "a") as f:
+                f.write(json.dumps(line, ensure_ascii=False) + "\n")
+            print(f"   [哨兵] {line}")
+        return True
+
+
 class EpisodeJsonlCallback(BaseCallback):
     """逐局把战绩写进 progress.jsonl;周期性刷新 status.json(供 dashboard 轮询)。"""
 
@@ -146,6 +189,15 @@ def main():
                     help="折扣因子。0.99 半衰期 69 步(1500 步旧章口径);"
                          "v20 深水区用 0.997;--options(v22)应为 1.0")
     args = ap.parse_args()
+
+    if args.worker:
+        # PREREG-v23 D3/契约6 护栏(审查团:默认值静默违约,--options 时代靠人肉记忆)
+        assert args.algo == "mppo" and args.gamma == 1.0 and args.max_steps == 3000, (
+            "PREREG-v23:--worker 须配 --algo mppo --gamma 1.0 --max-steps 3000")
+        if args.seed is not None:
+            bad = set(range(7000, 7032)) | set(range(9000, 9032))
+            assert not any(args.seed + r in bad for r in range(64)), (
+                "PREREG-v23 种子纪律:--seed 邻域(+rank)撞探针/金种子段")
 
     run_name = args.run_name or time.strftime("ppo-l1-%m%d-%H%M%S")
     run_dir = pathlib.Path(__file__).resolve().parent / "runs" / run_name
@@ -261,8 +313,10 @@ def main():
         save_path=str(run_dir / "ckpt"), name_prefix="model",
     )
     callback = EpisodeJsonlCallback(run_dir, config)
+    sentinel_cb = WorkerSentinelCallback(run_dir) if args.worker else None
     try:
-        cbs = [callback, ckpt] + ([unfreeze_cb] if unfreeze_cb else [])
+        cbs = ([callback, ckpt] + ([unfreeze_cb] if unfreeze_cb else [])
+               + ([sentinel_cb] if sentinel_cb else []))
         model.learn(total_timesteps=args.total_steps, callback=cbs)
     finally:
         model.save(str(run_dir / "model_final"))

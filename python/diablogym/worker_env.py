@@ -68,7 +68,7 @@ class WorkerWindowEnv(gym.Env):
         self.log_windows = log_windows
         self.window_log = []      # log_windows=True 时:全部窗口(含快进窗)按序入册
         self.stats = {"windows": 0, "dry": 0, "fresh": 0, "ff_windows": 0,
-                      "episodes": 0, "reasons": {}}
+                      "episodes": 0, "reseeds": 0, "reasons": {}}
 
     # ---- 内务 ----
     def _new_episode(self, seed=None):
@@ -123,7 +123,8 @@ class WorkerWindowEnv(gym.Env):
             obs = self.next_window()
             if obs is not None:
                 return obs, {}
-            self._new_episode()
+            self.stats["reseeds"] += 1    # 兜底滚局(显式种子局零 FARM 窗时也会走到——
+            self._new_episode()           # BC 侧用 stats 断言封死示范池逃逸口)
 
     def step(self, action):
         win = self.oe._win

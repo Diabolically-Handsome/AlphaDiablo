@@ -273,6 +273,8 @@ class OptionsEnv(gym.Env):
             "cap_hits": self._cap_hits, "mode_seq": "".join(self.mode_seq),
             "R": w["R"], "W": w["W"], "bonus": w["bonus"],
             "beats": w["beats"], "overrides": w["overrides"], "drains": w["drains"],
+            "dlvl0": w["dlvl0"], "dlvl_end": self.env._raw["dungeon_level"],
+            "dry": w["floor"] > 0,      # 开窗时榨干旗在位(干层复访窗)
             "base_done": w["done"] or w["trunc"],
             "base_trunc": w["trunc"] and not w["done"],
         }
