@@ -68,6 +68,24 @@ def parse_seeds(s: str):
 def evaluate(workers, seeds):
     mgr = NumpyManager(str(NPZ))
     env = OptionsEnv(max_steps=3000, workers=workers)
+    engage = None
+    if workers:
+        # 参与度取证(2026-07-10 法证会审的后续):调用数/动作直方/与脚本分歧率,
+        # 让评测文件自带"worker 真的在开车"的证据,顺带量出 PPO 漂离教师的距离
+        from diablogym.options_env import dispatch
+        inner = workers[FARM]
+        engage = {"calls": 0, "hist": Counter(), "diverge": 0}
+
+        def instrumented(obs, mask, _inner=inner):
+            a = int(_inner(obs, mask))
+            engage["calls"] += 1
+            engage["hist"][int(a)] += 1
+            s = dispatch("farm", env.env._raw, bool(env.env.action_masks()[14]))
+            if a != s:
+                engage["diverge"] += 1
+            return a
+
+        workers[FARM] = instrumented   # env 持同一 dict 引用,原地替换生效
     rows = []
     for seed in seeds:
         obs, _ = env.reset(seed=seed)
@@ -101,7 +119,7 @@ def evaluate(workers, seeds):
         })
         print(f"  seed {seed}: ret {R:.1f} depth {raw['dungeon_level']} "
               f"died {bool(raw.get('dead'))} farmτ̄ {rows[-1]['farm_tau_mean']}", flush=True)
-    return rows
+    return rows, engage
 
 
 def digest(rows):
@@ -137,8 +155,14 @@ def main():
 
     workers, label = load_worker(args.worker)
     seeds = parse_seeds(args.seeds)
-    rows = evaluate(workers, seeds)
+    rows, engage = evaluate(workers, seeds)
     agg = digest(rows)
+    if engage:
+        agg["worker_calls"] = engage["calls"]
+        agg["worker_action_hist"] = dict(sorted(engage["hist"].items()))
+        agg["script_divergence_rate"] = round(engage["diverge"] / max(1, engage["calls"]), 4)
+        print(f"  参与度:worker 调用 {engage['calls']},动作直方 {agg['worker_action_hist']},"
+              f"与脚本分歧率 {agg['script_divergence_rate']}")
     tag = args.tag or f"{label}-{args.seeds}"
     print(f"{tag}: ret {agg['ret_mean']} (med {agg['ret_median']}) died {agg['died']}/{agg['n']} "
           f"depth_med {agg['depth_median']} | R4: 换层率 {agg['farm_descend_rate']} "
