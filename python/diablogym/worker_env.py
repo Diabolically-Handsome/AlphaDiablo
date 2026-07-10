@@ -55,7 +55,8 @@ class WorkerWindowEnv(gym.Env):
     metadata = {"render_modes": []}
 
     def __init__(self, manager_npz: str, max_steps: int = 3000,
-                 rng_seed: int | None = None, log_windows: bool = False, **env_kwargs):
+                 rng_seed: int | None = None, log_windows: bool = False,
+                 skip_dry: bool = False, **env_kwargs):
         super().__init__()
         self.oe = OptionsEnv(max_steps=max_steps, **env_kwargs)
         self.mgr = NumpyManager(manager_npz)
@@ -66,9 +67,10 @@ class WorkerWindowEnv(gym.Env):
         self._rng = np.random.default_rng(rng_seed)
         self._alive = False
         self.log_windows = log_windows
+        self.skip_dry = skip_dry   # v26 绿洲:干层复访窗由脚本代跑,不进学习分布
         self.window_log = []      # log_windows=True 时:全部窗口(含快进窗)按序入册
         self.stats = {"windows": 0, "dry": 0, "fresh": 0, "ff_windows": 0,
-                      "episodes": 0, "reseeds": 0, "reasons": {}}
+                      "ff_dry": 0, "episodes": 0, "reseeds": 0, "reasons": {}}
 
     # ---- 内务 ----
     def _new_episode(self, seed=None):
@@ -96,6 +98,16 @@ class WorkerWindowEnv(gym.Env):
             opt = self._mgr_choose()
             if opt == FARM:
                 dry = self.oe.exhausted
+                if dry and self.skip_dry:
+                    # v26 绿洲:干层复访窗(榨干旗在位)由脚本内环代跑——
+                    # 与 DIVE/RESUPPLY 同路,簿记同源,不成为学习 episode
+                    _, _, done, trunc, info = self.oe.step(FARM)
+                    self._log(info["option_extra"], fast_forward=True)
+                    self.stats["ff_dry"] += 1
+                    if done or trunc:
+                        self._alive = False
+                        return None
+                    continue
                 self.oe._win_begin(FARM)
                 reason = self.oe._drain()   # 开窗排水:工人首观测无反射态
                 if reason is None:
