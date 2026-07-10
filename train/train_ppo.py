@@ -26,14 +26,16 @@ from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv
 def make_env(max_steps: int = 1500, deep: bool = False, death_ladder: bool = False,
              options: bool = False, flat_clock: bool = False,
              worker: bool = False, manager_npz: str | None = None,
-             worker_npz: str | None = None):
+             worker_npz: str | None = None, skip_dry: bool = False):
     from diablogym import DiabloGymEnv
 
     if worker:
         # v23:FARM 操作脑在位训练——episode = 冻结 H 经理选中的一个 FARM 窗口
         # (rng_seed=None → 各子进程独立熵源,种子采样器拒采 7000/9000 段)
+        # v26:skip_dry=True 时干层复访窗由脚本代跑,不进学习分布(绿洲处方)
         from diablogym import WorkerWindowEnv
-        return Monitor(WorkerWindowEnv(manager_npz=manager_npz, max_steps=max_steps))
+        return Monitor(WorkerWindowEnv(manager_npz=manager_npz, max_steps=max_steps,
+                                       skip_dry=skip_dry))
     if options:
         # v22:策略脑/操作脑——OptionsEnv 自带 deep+death_ladder 默认
         # v25:worker_npz 非空时挂 npz 工人(NumpyManager 在本函数体内构造——
@@ -121,7 +123,7 @@ class WorkerSentinelCallback(BaseCallback):
             self.next_at += self.every
             per_env = self.model.get_env().get_attr("stats")   # 经 Monitor.__getattr__ 透传
             agg = {"windows": 0, "dry": 0, "fresh": 0, "ff_windows": 0,
-                   "episodes": 0, "reseeds": 0}
+                   "ff_dry": 0, "episodes": 0, "reseeds": 0}    # ff_dry: v26 绿洲口径
             reasons = {}
             for s in per_env:
                 for k in agg:
@@ -141,6 +143,45 @@ class WorkerSentinelCallback(BaseCallback):
             with open(self.run_dir / "sentinel.jsonl", "a") as f:
                 f.write(json.dumps(line, ensure_ascii=False) + "\n")
             print(f"   [哨兵] {line}")
+        return True
+
+
+class DryAnchorSentinel(BaseCallback):
+    """v26 干层锚哨兵(只记不裁,PREREG-v26 R26.6):demos.npz 中榨干旗=1 的教师态
+    固定抽 2000,每 500k 步测学生 argmax 对教师标签的失配率——skip_dry 下干层行为
+    无锚裸奔,这只表是它唯一的观察者。"""
+
+    def __init__(self, run_dir: pathlib.Path, demos_npz: str, every: int = 500_000):
+        super().__init__()
+        import numpy as np
+        self.run_dir = run_dir
+        self.every = every
+        self.next_at = every
+        z = np.load(demos_npz)
+        X, Y = z["X"], z["Y"]
+        m = X[:, 297] == 1.0          # 观测第 298 维 = 榨干旗(工人观测契约)
+        idx = np.random.default_rng(26).choice(
+            np.flatnonzero(m), size=min(2000, int(m.sum())), replace=False)
+        self.X, self.Y = X[idx], Y[idx]
+
+    def _on_training_start(self) -> None:
+        self.next_at = ((self.num_timesteps // self.every) + 1) * self.every
+
+    def _on_step(self) -> bool:
+        if self.num_timesteps >= self.next_at:
+            self.next_at += self.every
+            import numpy as np
+            import torch as th
+            with th.no_grad():
+                obs = th.as_tensor(self.X, device=self.model.device)
+                dist = self.model.policy.get_distribution(obs)
+                pred = dist.distribution.logits.argmax(-1).cpu().numpy()
+            mis = float((pred != self.Y).mean())
+            line = {"sentinel": "dry-anchor", "step": int(self.num_timesteps),
+                    "mismatch": round(mis, 4), "n": int(len(self.Y))}
+            with open(self.run_dir / "sentinel.jsonl", "a") as f:
+                f.write(json.dumps(line) + "\n")
+            print(f"   [干层锚] {line}")
         return True
 
 
@@ -233,6 +274,8 @@ def main():
                     help="冻结经理权重 npz(export_manager_npz.py 产出)")
     ap.add_argument("--worker-npz", default=None,
                     help="v25:经理训练时挂 npz 工人(OptionsEnv workers 组装口)")
+    ap.add_argument("--skip-dry", action="store_true",
+                    help="v26 绿洲:干层复访窗脚本代跑,工人只在鲜层窗上课")
     ap.add_argument("--ent-coef", type=float, default=0.02,
                     help="熵系数(v22 恶魔臂微调用 0.005 防 BC 漂移)")
     ap.add_argument("--bc-init", default=None,
@@ -310,7 +353,8 @@ def main():
 
     env_fn = functools.partial(make_env, args.max_steps, args.deep, args.death_ladder,
                                args.options, args.flat_clock,
-                               args.worker, args.manager_npz, args.worker_npz)
+                               args.worker, args.manager_npz, args.worker_npz,
+                               args.skip_dry)
     if args.num_envs == 1:
         vec_env = DummyVecEnv([env_fn])
     else:
@@ -426,9 +470,13 @@ def main():
     )
     callback = EpisodeJsonlCallback(run_dir, config)
     sentinel_cb = WorkerSentinelCallback(run_dir) if args.worker else None
+    dry_cb = (DryAnchorSentinel(run_dir, str(pathlib.Path(__file__).resolve().parent
+                                             / "runs" / "bc-worker" / "demos.npz"))
+              if (args.worker and args.skip_dry) else None)
     try:
         cbs = ([callback, ckpt] + ([unfreeze_cb] if unfreeze_cb else [])
-               + ([sentinel_cb] if sentinel_cb else []))
+               + ([sentinel_cb] if sentinel_cb else [])
+               + ([dry_cb] if dry_cb else []))
         # v24:resume 腿 reset_num_timesteps=False(False 语义 = 再训 N 步,全局步连续
         # → ckpt 文件名全局唯一、β 日程与预算记账不断;审计 BLOCKER 2)
         model.learn(total_timesteps=args.total_steps, callback=cbs,
