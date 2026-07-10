@@ -45,12 +45,15 @@ def np_policy_from_sd(sd_path: str) -> NumpyManager:
 
 
 def load_worker(spec: str):
-    """返回 (workers dict 或 None, 标签)。"""
+    """返回 (workers dict 或 None, 标签)。spec ∈ script | bc | *.npz | SB3 zip。"""
     if spec == "script":
         return None, "script"
     if spec == "bc":
         net = np_policy_from_sd(str(ROOT / "train" / "runs" / "bc-worker" / "policy_sd.pt"))
         return {FARM: lambda obs, mask: net.choose(obs, mask)}, "bc"
+    if spec.endswith(".npz"):
+        net = NumpyManager(spec)      # 通用 MLP 前向,298→15 同构可用(v25 G-A0)
+        return {FARM: lambda obs, mask: net.choose(obs, mask)}, pathlib.Path(spec).parent.name
     from sb3_contrib import MaskablePPO
     model = MaskablePPO.load(spec, device="cpu")
 
@@ -65,8 +68,8 @@ def parse_seeds(s: str):
     return list(range(int(lo), int(hi) + 1))
 
 
-def evaluate(workers, seeds):
-    mgr = NumpyManager(str(NPZ))
+def evaluate(workers, seeds, manager_npz=None):
+    mgr = NumpyManager(str(manager_npz or NPZ))
     env = OptionsEnv(max_steps=3000, workers=workers)
     engage = None
     if workers:
@@ -145,7 +148,9 @@ def digest(rows):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--worker", required=True, help="script | bc | ckpt 路径")
+    ap.add_argument("--worker", required=True, help="script | bc | *.npz | ckpt 路径")
+    ap.add_argument("--manager-npz", default=None,
+                    help="v25:经理 npz(默认 v22-h——旧档回归口径不变)")
     ap.add_argument("--seeds", default="7000-7031")
     ap.add_argument("--board", action="store_true", help="金评后写 leaderboard-hier.md")
     ap.add_argument("--check-probe", default=None,
@@ -155,7 +160,7 @@ def main():
 
     workers, label = load_worker(args.worker)
     seeds = parse_seeds(args.seeds)
-    rows, engage = evaluate(workers, seeds)
+    rows, engage = evaluate(workers, seeds, manager_npz=args.manager_npz)
     agg = digest(rows)
     if engage:
         agg["worker_calls"] = engage["calls"]

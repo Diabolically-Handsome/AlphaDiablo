@@ -25,7 +25,8 @@ from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv
 
 def make_env(max_steps: int = 1500, deep: bool = False, death_ladder: bool = False,
              options: bool = False, flat_clock: bool = False,
-             worker: bool = False, manager_npz: str | None = None):
+             worker: bool = False, manager_npz: str | None = None,
+             worker_npz: str | None = None):
     from diablogym import DiabloGymEnv
 
     if worker:
@@ -35,7 +36,40 @@ def make_env(max_steps: int = 1500, deep: bool = False, death_ladder: bool = Fal
         return Monitor(WorkerWindowEnv(manager_npz=manager_npz, max_steps=max_steps))
     if options:
         # v22:策略脑/操作脑——OptionsEnv 自带 deep+death_ladder 默认
-        from diablogym import OptionsEnv
+        # v25:worker_npz 非空时挂 npz 工人(NumpyManager 在本函数体内构造——
+        # spawn 子进程免 torch,PREREG-v25 D1 条款),并套种子纪律薄包装
+        import gymnasium as _gym
+        import numpy as _np
+
+        from diablogym import NumpyManager, OptionsEnv
+        from diablogym.worker_env import sample_train_seed
+
+        if worker_npz:
+            # 条款要点:工人以 npz+numpy 前向进子进程(不 pickle 网络、不 load SB3
+            # 模型、不逐拍 torch 前向)。torch 模块本身随 train_ppo 顶层 import 进入
+            # 子进程(v23 先例同),"无 torch"断言不可实现,预注册已如实修正。
+            net = NumpyManager(worker_npz)
+            env = OptionsEnv(max_steps=max_steps,
+                             workers={0: lambda obs, mask: net.choose(obs, mask)})
+
+            class _SeedDiscipline(_gym.Wrapper):
+                """v25:reset(seed=None) → 拒采 7000/9000 段(逐局种子入 info)。"""
+
+                def __init__(self, e):
+                    super().__init__(e)
+                    self._rng = _np.random.default_rng()
+
+                def reset(self, *, seed=None, options=None):
+                    if seed is None:
+                        seed = sample_train_seed(self._rng)
+                    obs, info = self.env.reset(seed=seed)
+                    info["episode_seed"] = seed
+                    return obs, info
+
+                def action_masks(self):
+                    return self.env.action_masks()
+
+            return Monitor(_SeedDiscipline(env))
         return Monitor(OptionsEnv(max_steps=max_steps))
     if flat_clock:
         # v22 恶魔臂 F:296 维平面(停滞钟与策略脑同一块表)
@@ -197,6 +231,8 @@ def main():
                     default=str(pathlib.Path(__file__).resolve().parent
                                 / "models" / "v22-h-manager" / "policy.npz"),
                     help="冻结经理权重 npz(export_manager_npz.py 产出)")
+    ap.add_argument("--worker-npz", default=None,
+                    help="v25:经理训练时挂 npz 工人(OptionsEnv workers 组装口)")
     ap.add_argument("--ent-coef", type=float, default=0.02,
                     help="熵系数(v22 恶魔臂微调用 0.005 防 BC 漂移)")
     ap.add_argument("--bc-init", default=None,
@@ -227,10 +263,17 @@ def main():
         # PREREG-v23 D3/契约6 护栏(审查团:默认值静默违约,--options 时代靠人肉记忆)
         assert args.algo == "mppo" and args.gamma == 1.0 and args.max_steps == 3000, (
             "PREREG-v23:--worker 须配 --algo mppo --gamma 1.0 --max-steps 3000")
-        if args.seed is not None:
-            bad = set(range(7000, 7032)) | set(range(9000, 9032))
-            assert not any(args.seed + r in bad for r in range(64)), (
-                "PREREG-v23 种子纪律:--seed 邻域(+rank)撞探针/金种子段")
+    if args.options:
+        # PREREG-v25:对称守护断言——终结"--options 靠人肉记忆"时代
+        assert args.algo == "mppo" and args.gamma == 1.0 and args.max_steps == 3000, (
+            "PREREG-v25:--options 须配 --algo mppo --gamma 1.0 --max-steps 3000")
+        if args.worker_npz:
+            assert args.n_steps == 64 and args.seed is not None, (
+                "PREREG-v25 D2:换届选举须 --n-steps 64(v22-H 原配方)且显式 --seed")
+    if (args.worker or args.options) and args.seed is not None:
+        bad = set(range(7000, 7032)) | set(range(9000, 9032))
+        assert not any(args.seed + r in bad for r in range(64)), (
+            "种子纪律:--seed 邻域(+rank)撞探针/金种子段")
 
     run_name = args.run_name or time.strftime("ppo-l1-%m%d-%H%M%S")
     run_dir = pathlib.Path(__file__).resolve().parent / "runs" / run_name
@@ -260,13 +303,14 @@ def main():
         "freeze_policy_steps": args.freeze_policy_steps,
         "distill_beta": args.distill_beta,    # v24 皮筋
         "resume_from": args.resume_from,
+        "worker_npz": args.worker_npz,        # v25 换届:经理训练挂 npz 工人
     }
     print(f"== DiabloGym PPO 训练 == run={run_name}")
     print(f"   {config}")
 
     env_fn = functools.partial(make_env, args.max_steps, args.deep, args.death_ladder,
                                args.options, args.flat_clock,
-                               args.worker, args.manager_npz)
+                               args.worker, args.manager_npz, args.worker_npz)
     if args.num_envs == 1:
         vec_env = DummyVecEnv([env_fn])
     else:

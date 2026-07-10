@@ -23,7 +23,7 @@
 **G-A0(发车前,三合一)**:(a) 新评测路径回归——`--worker npz(leg7) --manager 默认`
 满 32 逐种子 ret/died/depth/mode_seq ≡ v24-G3-leg7.json 存档(G0'' 32/32 先例;
 兼证仪器未坏 + npz 工人位级保真);失配 → 回退条款:双侧统一表示并重锚参考行。
-(b) 子进程无 torch 断言。(c) 每臂训后:export_manager_npz 导出 + 1000 obs parity
+(b) 子进程轻量条款(修正:torch 模块随 train_ppo 顶层 import 必然进入子进程,v23 先例同;可执行要求 = 不 pickle 网络对象、不在子进程构造 SB3 模型、工人逐拍走 numpy 前向——由 make_env 体内构造 NumpyManager 保证)。(c) 每臂训后:export_manager_npz 导出 + 1000 obs parity
 (G-KL-C 判据),不过不考试。
 
 ## D2 选举配方(v22-H status.json 存档逐字,批评者 major 修正)
