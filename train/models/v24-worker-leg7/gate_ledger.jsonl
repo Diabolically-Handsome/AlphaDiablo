@@ -1,0 +1,24 @@
+{"t": "05:52:26", "event": "start", "leg_steps": 1001472, "beta_sched": [0.5, 0.25, 0.125, 0.0625, 0.03125, 0.015625, 0.0, 0.0], "hard": 62.8, "soft": 0.97}
+{"t": "05:52:26", "event": "leg_start", "leg": 1, "attempt": 1, "beta": 0.5, "steps": 1001472, "seed": 101000, "resume": false}
+{"t": "06:16:09", "event": "g_cal", "records": [{"step": 301056, "g_pg": 0.000694515008945018, "g_ce": 0.00023319156025536358, "distill_ce": 0.0034303588327020407, "teacher_diverge": 0.0, "tripped": false}, {"step": 600064, "g_pg": 0.0003028178180102259, "g_ce": 0.00020785012748092413, "distill_ce": 0.0034861373715102673, "teacher_diverge": 0.0, "tripped": false}], "tripped": false, "probes_ok": true}
+{"t": "06:16:57", "event": "leg_exam", "leg": 1, "beta": 0.5, "score": 93.9, "died": 2, "diverge": 0.0, "sha": "8287dd0a562ca7cd", "model_sha": "ee542b0c3d463604", "p_star_prior": 93.9, "global_steps": 1001092}
+{"t": "06:16:57", "event": "leg_start", "leg": 2, "attempt": 1, "beta": 0.25, "steps": 1001472, "seed": 102000, "resume": true}
+{"t": "06:40:38", "event": "leg_exam", "leg": 2, "beta": 0.25, "score": 93.9, "died": 2, "diverge": 0.0, "sha": "8287dd0a562ca7cd", "model_sha": "597dc9e1265c6219", "p_star_prior": 93.9, "global_steps": 2002268}
+{"t": "06:40:38", "event": "leg_start", "leg": 3, "attempt": 1, "beta": 0.125, "steps": 1001472, "seed": 103000, "resume": true}
+{"t": "07:04:47", "event": "leg_exam", "leg": 3, "beta": 0.125, "score": 93.9, "died": 2, "diverge": 0.0, "sha": "8287dd0a562ca7cd", "model_sha": "bbf34503c8d253c2", "p_star_prior": 93.9, "global_steps": 3004276}
+{"t": "07:04:47", "event": "leg_start", "leg": 4, "attempt": 1, "beta": 0.0625, "steps": 1001472, "seed": 104000, "resume": true}
+{"t": "07:30:29", "event": "leg_exam", "leg": 4, "beta": 0.0625, "score": 99.5, "died": 2, "diverge": 0.0142, "sha": "e862d2557fca3163", "model_sha": "215cae3e92bb17f6", "p_star_prior": 93.9, "global_steps": 4005456}
+{"t": "07:30:29", "event": "leg_start", "leg": 5, "attempt": 1, "beta": 0.03125, "steps": 1001472, "seed": 105000, "resume": true}
+{"t": "07:55:52", "event": "leg_exam", "leg": 5, "beta": 0.03125, "score": 91.6, "died": 3, "diverge": 0.0013, "sha": "f8ffaaab24d7236b", "model_sha": "1d24062ed2030231", "p_star_prior": 93.9, "global_steps": 5006652}
+{"t": "07:55:52", "event": "leg_start", "leg": 6, "attempt": 1, "beta": 0.015625, "steps": 1001472, "seed": 106000, "resume": true}
+{"t": "08:21:04", "event": "leg_exam", "leg": 6, "beta": 0.015625, "score": 86.0, "died": 1, "diverge": 0.293, "sha": "2d3b2c6d88694720", "model_sha": "b3ddd78a9ea382e7", "p_star_prior": 93.9, "global_steps": 6008244}
+{"t": "08:21:04", "event": "soft_trip", "leg": 6, "score": 86.0, "line": 91.1, "note": "β 冻结,日程右移"}
+{"t": "08:21:04", "event": "leg_start", "leg": 7, "attempt": 1, "beta": 0.015625, "steps": 1001472, "seed": 107000, "resume": true}
+{"t": "08:46:00", "event": "leg_exam", "leg": 7, "beta": 0.015625, "score": 110.1, "died": 1, "diverge": 0.0108, "sha": "47d9adef97630722", "model_sha": "ac65d4eb91fdb678", "p_star_prior": 93.9, "global_steps": 7009868}
+{"t": "08:46:00", "event": "leg_start", "leg": 8, "attempt": 1, "beta": 0.0, "steps": 1001472, "seed": 108000, "resume": true}
+{"t": "09:07:50", "event": "leg_exam", "leg": 8, "beta": 0.0, "score": 55.6, "died": 4, "diverge": 0.7918, "sha": "69c8cc2d0354cf0b", "model_sha": "83d82dcb376fe9cb", "p_star_prior": 99.5, "global_steps": 8011132}
+{"t": "09:07:50", "event": "HARD_TRIP", "leg": 8, "score": 55.6, "why": "< 62.8,本 run 训练永久终止(回卷重训上限=0)"}
+{"t": "09:07:50", "event": "g3_candidates", "cands": [[7, 110.1, 0.015625], [4, 99.5, 0.0625]]}
+{"t": "09:09:29", "event": "g3_full32", "leg": 7, "mean": 92.0, "died": 2, "r4_ok": true, "data_void": false, "qualified": true, "diverge": 0.0134, "override": 0.0247, "descend_rate": 0.0, "tau": 39.5}
+{"t": "09:11:05", "event": "g3_full32", "leg": 4, "mean": 90.8, "died": 3, "r4_ok": true, "data_void": false, "qualified": true, "diverge": 0.0161, "override": 0.025, "descend_rate": 0.0005, "tau": 39.0}
+{"t": "09:11:05", "event": "GOLDEN_AUTHORIZED", "leg": 7, "probe32_mean": 92.0, "died": 2, "beta_of_leg": 0.015625, "diverge": 0.0134, "model": "/Users/lawrencegrey/Desktop/AlphaDiablo/diablogym/train/runs/v24-leg7/model_final.zip", "tie_band_applied": false, "note": "金牌由值夜者手启,单臂一次(金牌纪律)"}
