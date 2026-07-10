@@ -230,9 +230,9 @@ def main():
         else:
             sched_idx += 1
         # ---- sps 降档(分子含烧步,与分母同账;k<8 允许在腿 7 后砍腿 8)----
-        if res["dt_sec"] > 1800:
-            log({"event": "STOP", "why": "腿墙钟 >30 分钟——当日窗口不可行,留工作站"
-                 "(PREREG-v26 全案唯一降档机制)"})
+        if res["dt_sec"] > 7200:
+            log({"event": "STOP", "why": "腿墙钟 >2 小时——健全性上限(夜航班重划,"
+                 "PREREG-v26 附录)"})
             return
         prev_model = str(res["model"])
         k += 1
