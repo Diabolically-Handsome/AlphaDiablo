@@ -298,6 +298,9 @@ def main():
     ap.add_argument("--calib-record-only", action="store_true",
                     help="v28:G-CAL 只记不裁——tripped 位照写 calib.jsonl,旗不武装"
                          "(续航起点分歧 41.5%,20% 阈值对定居点失义;面板修正)")
+    ap.add_argument("--teacher-override", default=None,
+                    help="v30 锚随王走:resume 时以此 sd 覆写 zip 驮带的 teacher_path"
+                         "(经 load kwargs 注入,_setup_model 一次建对;仅 resume 分支有效)")
     args = ap.parse_args()
 
     if args.resume_from:
@@ -325,6 +328,13 @@ def main():
     run_dir = pathlib.Path(__file__).resolve().parent / "runs" / run_name
     run_dir.mkdir(parents=True, exist_ok=True)
 
+    def _sha16(p):
+        import hashlib
+        try:
+            return hashlib.sha256(pathlib.Path(p).read_bytes()).hexdigest()[:16]
+        except Exception:
+            return None
+
     config = {
         "total_steps": args.total_steps,
         "num_envs": args.num_envs,
@@ -350,6 +360,11 @@ def main():
         "distill_beta": args.distill_beta,    # v24 皮筋
         "resume_from": args.resume_from,
         "worker_npz": args.worker_npz,        # v25 换届:经理训练挂 npz 工人
+        # v30 接力:自证据链——本腿在谁治下、拴谁的锚,进程侧留回执(面板 minor)
+        "manager_npz": args.manager_npz,
+        "manager_npz_sha16": _sha16(args.manager_npz),
+        "teacher_override": args.teacher_override,
+        "teacher_override_sha16": _sha16(args.teacher_override),
     }
     print(f"== DiabloGym PPO 训练 == run={run_name}")
     print(f"   {config}")
@@ -395,8 +410,13 @@ def main():
         calib = [int(x) for x in args.calib_probes.split(",") if x.strip()]
         if args.resume_from:
             from leashed_ppo import LeashedMaskablePPO
+            _load_kw = {}
+            if args.teacher_override:
+                # v30 锚随王走:kwargs 在 zip data 之后、_setup_model 之前生效,
+                # 教师一次建对(post-load 重建系次优解,面板 major 裁定弃用)
+                _load_kw["teacher_path"] = args.teacher_override
             model = LeashedMaskablePPO.load(args.resume_from, env=vec_env,
-                                            device=args.device)
+                                            device=args.device, **_load_kw)
             # PREREG-v24 D4:β 显式覆盖(load 直写 __dict__ 无校验,不许静默续命);
             # tb 路径同理(否则腿 2-8 曲线全写进腿 1 目录);旋钮封条断言。
             assert hasattr(model, "distill_beta"), "resume 对象不是 LeashedMaskablePPO"
@@ -409,6 +429,12 @@ def main():
                     and model.n_steps == args.n_steps), (
                 "PREREG-v24 封-5:resume 腿超参与冻结配方不符")
             assert model.target_kl is None, "PREREG-v24 D4:target_kl 必须为 None"
+            if args.teacher_override:
+                # v30 身份链断言(面板 blocker:闸过的文件与训练吃进的文件必须同一)
+                assert model.teacher_path == args.teacher_override, "教师覆写未生效"
+                assert (model.teacher[0].in_features == 298
+                        and model.teacher[-1].out_features == 15), \
+                    "自锚教师形状异常(须 298→15 工人网)"
             if args.distill_beta > 0:
                 assert model.teacher is not None, "β>0 但教师未随 teacher_path 重建"
             if args.seed is not None:
