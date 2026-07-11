@@ -295,6 +295,9 @@ def main():
                     help="v24 分腿续训:上一腿 model_final.zip 路径(禁与 --bc-init/--freeze 同用)")
     ap.add_argument("--calib-probes", default="",
                     help="v24 G-CAL 探针全局步(逗号分隔,只在腿 1 传 300000,600000)")
+    ap.add_argument("--calib-record-only", action="store_true",
+                    help="v28:G-CAL 只记不裁——tripped 位照写 calib.jsonl,旗不武装"
+                         "(续航起点分歧 41.5%,20% 阈值对定居点失义;面板修正)")
     args = ap.parse_args()
 
     if args.resume_from:
@@ -400,6 +403,7 @@ def main():
             model.distill_beta = args.distill_beta
             model.calib_probes, model.calib_out = calib, (
                 str(run_dir / "calib.jsonl") if calib else None)
+            model.calib_record_only = args.calib_record_only
             model.tensorboard_log = str(run_dir / "tb")
             assert (model.ent_coef == args.ent_coef and model.gamma == args.gamma
                     and model.n_steps == args.n_steps), (
@@ -420,6 +424,7 @@ def main():
                 calib_probes=calib,
                 calib_out=str(run_dir / "calib.jsonl") if calib else None,
                 **common)
+            model.calib_record_only = args.calib_record_only
         else:
             from sb3_contrib import MaskablePPO
             model = MaskablePPO("MlpPolicy", vec_env, n_steps=args.n_steps, batch_size=256,

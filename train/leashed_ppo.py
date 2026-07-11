@@ -13,6 +13,8 @@ train() 系 sb3_contrib 2.x ppo_mask.py 的诚实复写(上游无损失 hook),
 标定探针(G-CAL):到达 --calib-probes 指定全局步时,对首个 minibatch 用
 autograd.grad 测 g_ce/g_pg 与 teacher_diverge,写 calib.jsonl;
 diverge>20% 置 _calib_tripped,由哨兵回调终止本腿(驱动裁决重标定)。
+v28:calib_record_only=True 时探针只记不裁(tripped 位照记入 jsonl,旗不武装
+——续航起点分歧 41.5%,20% 阈值对定居点失义;面板 blocker 修正)。
 """
 from __future__ import annotations
 
@@ -77,7 +79,7 @@ class LeashedMaskablePPO(MaskablePPO):
         # _calib_tripped=True 若被 load 驮回,会在续训第一步误杀健康腿(审查团确认项)
         return super()._excluded_save_params() + [
             "teacher", "_last_distill_ce", "_last_diverge",
-            "_calib_tripped", "_calib_done"]
+            "_calib_tripped", "_calib_done", "calib_record_only"]
 
     def _teacher_probs(self, obs: th.Tensor, action_masks: th.Tensor) -> th.Tensor:
         t_logits = self.teacher(obs)
@@ -98,8 +100,8 @@ class LeashedMaskablePPO(MaskablePPO):
                "g_ce": gnorm(self.distill_beta * distill_ce) if distill_ce.requires_grad else 0.0,
                "distill_ce": float(distill_ce), "teacher_diverge": round(diverge, 4),
                "tripped": diverge > 0.20}
-        if rec["tripped"]:
-            self._calib_tripped = True
+        if rec["tripped"] and not getattr(self, "calib_record_only", False):
+            self._calib_tripped = True   # v28 record_only:只记不裁,旗不武装
         if self.calib_out:
             with open(self.calib_out, "a") as f:
                 f.write(json.dumps(rec) + "\n")
