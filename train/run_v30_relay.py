@@ -128,14 +128,16 @@ def by_seed(rows) -> dict:
 
 def metrics(d) -> dict:
     rows, a = d["rows"], d["agg"]
-    hist = a.get("worker_action_hist") or []
-    calls = sum(hist) if hist else 0
+    hist = a.get("worker_action_hist") or {}
+    counts = ({int(k): int(v) for k, v in hist.items()} if isinstance(hist, dict)
+              else {i: int(v) for i, v in enumerate(hist)})   # JSON 字典键系字符串(06:32 尸检)
+    calls = sum(counts.values())
     return {"mean": a["ret_mean"], "died": a["died"],
             "dive_per_ep": round(sum(r["mode_seq"].count("D") for r in rows) / 32, 2),
             "depth2_seeds": sum(1 for r in rows if r["depth"] >= 2),
             "d2_deaths": sum(1 for r in rows if r["died"] and r["depth"] >= 2),
             "bonus_per_ep": round(sum(8 * sum(range(1, r["depth"])) for r in rows) / 32, 2),
-            "a13_share": round(hist[13] / calls, 4) if calls else None,
+            "a13_share": round(counts.get(13, 0) / calls, 4) if calls else None,
             "tau": a["farm_tau_mean"], "override": a["override_rate"],
             "descend": a["farm_descend_rate"], "cap": a["cap_rate"],
             "depth_median": a.get("depth_median"), "sha": a["_sha"]}
