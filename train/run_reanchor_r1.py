@@ -326,7 +326,7 @@ def main() -> int:
 
 if __name__ == "__main__":
     try:
-        sys.exit(main())
+        code = main()
     except BaseException:
         RUN.mkdir(parents=True, exist_ok=True)
         tb = traceback.format_exc()
@@ -335,3 +335,6 @@ if __name__ == "__main__":
         finally:
             attention("DRIVER_EXCEPTION:\n" + tb)
         raise
+    # sys.exit 必须在 try 之外:守卫捕 BaseException 时会把 SystemExit(0)
+    # 误记为 DRIVER_EXCEPTION(R1 案结时实发,判决附录在案)。
+    sys.exit(code)
