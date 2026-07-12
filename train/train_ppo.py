@@ -440,8 +440,8 @@ def _validate_args(args) -> None:
     _require(modes <= 1, "--worker/--options/--flat-clock 互斥")
     _require(not args.skip_dry or args.worker, "--skip-dry 只能与 --worker 同用")
     _require(not args.worker_npz or args.options, "--worker-npz 只能与 --options 同用")
-    _require(not args.teacher_override or args.resume_from,
-             "--teacher-override 只能与 --resume-from 同用")
+    _require(not args.teacher_override or (args.resume_from and args.worker),
+             "--teacher-override 只能与 worker 侧 --resume-from 同用")
     _require(not args.allow_manager_change or (args.resume_from and args.worker),
              "--allow-manager-change 只允许 worker resume 显式换经理")
     _require(not args.allow_legacy_resume or args.resume_from,
@@ -459,13 +459,18 @@ def _validate_args(args) -> None:
              "EntityAttention 只支持 295 维平面观测")
 
     if args.resume_from:
-        _require(args.worker and args.algo == "mppo",
-                 "--resume-from 当前只支持 Leashed worker/mppo 检查点")
+        _require((args.worker or args.options) and args.algo == "mppo",
+                 "--resume-from 只支持 worker/options 的 mppo 检查点")
         _require(not args.bc_init and args.freeze_policy_steps == 0,
                  "--resume-from 禁与 --bc-init/--freeze-policy-steps 同用")
         _require(_checkpoint_path(args.resume_from).is_file(),
                  f"resume 检查点不存在: {args.resume_from}")
-        _validate_leashed_checkpoint(args.resume_from)
+        if args.worker:
+            _validate_leashed_checkpoint(args.resume_from)
+        else:
+            # v31 经理续训口:通用检查点闸(CRC/关键成员/步数/权重有限性),
+            # distill_beta 系工人 Leashed 专属标记,经理检查点不作此断言。
+            _validate_checkpoint_file(args.resume_from)
     if args.bc_init:
         _require(pathlib.Path(args.bc_init).is_file(), f"BC 权重不存在: {args.bc_init}")
         if args.init_source == "bc":
@@ -1745,9 +1750,20 @@ def _main(resources: _TrainingResources):
     resume_checkpoint_bytes = None
     resume_data = None
     resume_checkpoint_sha256 = None
-    if args.resume_from:
+    if args.resume_from and args.worker:
         (resume_checkpoint_bytes, resume_data,
          resume_checkpoint_sha256) = _capture_leashed_checkpoint(args.resume_from)
+    elif args.resume_from:
+        # v31 经理续训口:通用捕获(字节冻结 + 通用闸 + sha),类保真交由加载段
+        _resume_path = _checkpoint_path(args.resume_from)
+        try:
+            resume_checkpoint_bytes = _resume_path.read_bytes()
+        except OSError as exc:
+            raise ValueError(f"resume 检查点不可读: {_resume_path}: {exc}") from exc
+        resume_data = _validate_checkpoint_bytes(
+            resume_checkpoint_bytes, str(_resume_path), False)
+        resume_checkpoint_sha256 = hashlib.sha256(
+            resume_checkpoint_bytes).hexdigest()
 
     batch_size = _select_batch_size(args.n_steps, args.num_envs)
     hierarchical = args.worker or args.options or args.flat_clock
@@ -1858,7 +1874,33 @@ def _main(resources: _TrainingResources):
         # 整体更换,开牌异常时首要嫌疑人(诚实账本已记)。
         # v24:worker 路一律走 LeashedMaskablePPO(β=0 时 G-KL-B 证与原版逐位等价)
         calib = [int(x) for x in args.calib_probes.split(",") if x.strip()]
-        if args.resume_from:
+        if args.resume_from and args.options:
+            # v31 经理续训口:类保真(存什么类续什么类,M29 系平 MaskablePPO;
+            # 不涉教师/β,无 G-KL-B 义务);封条断言照 v24 原封。
+            from sb3_contrib import MaskablePPO
+            _require(resume_checkpoint_bytes is not None and resume_data is not None,
+                     "resume checkpoint 捕获状态缺失")
+            _load_kw = {"seed": args.seed} if args.seed is not None else {}
+            model = MaskablePPO.load(io.BytesIO(resume_checkpoint_bytes), env=vec_env,
+                                     device=args.device, **_load_kw)
+            model.tensorboard_log = str(run_dir / "tb")
+            saved_lr = model.learning_rate
+            _require(not callable(saved_lr) and math.isclose(float(saved_lr), args.lr,
+                                                              rel_tol=0, abs_tol=1e-12),
+                     f"resume 学习率不符: checkpoint={saved_lr}, CLI={args.lr}")
+            _require(math.isclose(float(model.ent_coef), args.ent_coef,
+                                  rel_tol=0, abs_tol=1e-12)
+                     and math.isclose(float(model.gamma), args.gamma,
+                                      rel_tol=0, abs_tol=1e-12)
+                     and model.n_steps == args.n_steps
+                     and model.batch_size == batch_size,
+                     "PREREG-v24 封-5:resume 腿超参与冻结配方不符")
+            _require(model.target_kl is None, "PREREG-v24 D4:target_kl 必须为 None")
+            if args.seed is not None:
+                model.set_random_seed(args.seed)
+                model.seed = args.seed  # set_random_seed 不更新持久化属性,防 zip 续写旧 seed
+            print(f"   [v31] options resume @ {model.num_timesteps} 步(经理续训口)")
+        elif args.resume_from:
             from leashed_ppo import LeashedMaskablePPO
             _require(resume_checkpoint_bytes is not None and resume_data is not None,
                      "resume checkpoint 捕获状态缺失")
