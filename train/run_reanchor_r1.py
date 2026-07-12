@@ -235,7 +235,10 @@ def run_stage(stage: str, script: str) -> tuple[int, pathlib.Path]:
         try:
             code = proc.wait(timeout=STAGE_TIMEOUT_S)
         except subprocess.TimeoutExpired:
-            os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+            try:
+                os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+            except ProcessLookupError:
+                pass      # 竞态:超时判定与击杀之间子进程已自然退出(R2 面板)
             proc.wait()                       # 回收僵尸并确认组内无存活
             code = -9
             log({"event": "STAGE_TIMEOUT", "stage": stage,
