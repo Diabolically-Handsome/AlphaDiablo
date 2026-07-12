@@ -1,0 +1,14 @@
+diff --git a/Source/mpq/mpq_reader.hpp b/Source/mpq/mpq_reader.hpp
+index c56dfad..ae5ee1a 100644
+--- a/Source/mpq/mpq_reader.hpp
++++ b/Source/mpq/mpq_reader.hpp
+@@ -39,7 +39,8 @@ public:
+ 	    std::size_t &fileSize,
+ 	    int32_t &error);
+ 
+-	mpqfs_archive_t *handle() const { return archive_; }
++	mpqfs_archive_t *handle() const { return archive_; }
++	const std::string &path() const { return path_; }
+ 
+ private:
+ 	MpqArchive(std::string path, mpqfs_archive_t *archive);

@@ -12,10 +12,17 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <filesystem>
 #include <optional>
 #include <random>
 #include <stdexcept>
 #include <string>
+
+#ifdef _WIN32
+#include <process.h>
+#else
+#include <unistd.h>
+#endif
 
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
@@ -27,6 +34,7 @@
 #endif
 
 #include "DiabloUI/diabloui.h" // _uiheroinfo
+#include "control/control.hpp" // FreeControlPan
 #include "controls/control_mode.hpp"
 #include "controls/plrctrls.h" // UseBeltItem(喝药键 v12)
 #include "cursor.h"
@@ -56,6 +64,7 @@
 #include "lua/lua_event.hpp"
 #include "lua/lua_global.hpp"
 #include "menu.h" // gSaveNumber
+#include "minitext.h"
 #include "monster.h"
 #include "msg.h"
 #include "multi.h"
@@ -64,10 +73,13 @@
 #include "options.h"
 #include "pfile.h"
 #include "player.h"
+#include "panels/info_box.hpp"
 #include "portal.h"
+#include "qol/chatlog.h"
 #include "quests.h"
 #include "tables/monstdat.h"
 #include "tables/playerdat.hpp"
+#include "stores.h"
 #include "utils/display.h"
 #include "utils/paths.h"
 
@@ -85,6 +97,91 @@ bool gInGame = false;
 bool gStartupTick = true; // 对应 RunGameLoop 里的 gbGameLoopStartup
 int gHeroClass = 0;       // HeroClass::Warrior
 int gStallPrints = 0;     // 逻辑失速诊断打印限额
+std::string gAssetsDir;
+std::string gSaveDir;
+std::string gDataDir;
+uint64_t gEpisodeGeneration = 0;
+bool gLuaInitialized = false;
+bool gExitCleanupRegistered = false;
+int64_t gEnginePid = -1;
+bool gMonotonicQuestTurnInUsed = false;
+
+void EndGame();
+void EngineShutdownAtExit() noexcept;
+
+int64_t CurrentProcessId()
+{
+#ifdef _WIN32
+	return static_cast<int64_t>(_getpid());
+#else
+	return static_cast<int64_t>(getpid());
+#endif
+}
+
+void EnsureEngineProcess(const char *operation)
+{
+	if (gEngineInited && gEnginePid != CurrentProcessId())
+		throw std::runtime_error(
+		    std::string(operation)
+		    + ": 禁止在 fork 子进程复用父进程已初始化的 DevilutionX；请使用 spawn");
+}
+
+void CleanupFailedEngineInit() noexcept
+{
+	if (gLuaInitialized) {
+		try {
+			LuaShutdown();
+		} catch (...) {
+		}
+		gLuaInitialized = false;
+	}
+	try {
+		FreeItemGFX();
+	} catch (...) {
+	}
+	MpqArchives.clear();
+	if (SDL_WasInit((~0U) & ~SDL_INIT_HAPTIC) != 0)
+		SDL_Quit();
+}
+
+void EnsureInGame(const char *operation)
+{
+	EnsureEngineProcess(operation);
+	if (!gInGame || MyPlayer == nullptr)
+		throw std::runtime_error(std::string(operation) + ": 先调用 reset()");
+}
+
+bool CanAcceptPlayerAction(const char *operation)
+{
+	EnsureInGame(operation);
+	// Step 正常会在返回 Python 前结算拍尾换层；这里仍做纵深防御，覆盖
+	// probe 直接排队、异常中断或未来新增入口留下的 PM_NEWLVL 窗口。
+	// 若此时向网络命令队列塞动作，SyncLoad 会先切到新地图，随后
+	// ProcessGameMessagePackets 就会把旧场景命令施加到新场景。
+	return MyPlayer->_pmode != PM_NEWLVL && !MyPlayer->_pLvlChanging;
+}
+
+int ConceptualDungeonDepth()
+{
+	if (!setlevel)
+		return static_cast<int>(currlevel);
+	const int returnLevel = GetMapReturnLevel();
+	if (returnLevel <= 0)
+		throw std::runtime_error(
+		    "DiabloGym 遇到无法映射到主地牢深度的 set-level: "
+		    + std::to_string(static_cast<int>(setlvlnum)));
+	return returnLevel;
+}
+
+void DiscardPendingEvents()
+{
+	// 换层事件在 game_loop 的拍尾入 SDL 队列。若该拍恰好命中
+	// episode 截断，下一局 reset 会早于下一次 PumpSdlEvents；不清队列
+	// 就会把上局的 WM_DIABNEXTLVL 施加给新英雄，造成跨局状态泄漏。
+	SDL_Event event;
+	while (SDL_PollEvent(&event)) {
+	}
+}
 
 bool DummyGetHeroInfo(_uiheroinfo * /*info*/)
 {
@@ -94,6 +191,17 @@ bool DummyGetHeroInfo(_uiheroinfo * /*info*/)
 int CountBeltHeals();            // 定义在动作区(v12);Observe 的 raw 字段也要用
 bool IsHealItem(const Item &);   // 定义在动作区(v13);floor_items 的 heal 标志也要用
 bool IsWantedGear(Item &);       // 定义在动作区(v14);floor_items 的 gear 标志也要用
+
+std::string ExpectedMainArchivePath(const std::string &dataDir)
+{
+	for (const char *name : { "DIABDAT.MPQ", "diabdat.mpq", "spawn.mpq" }) {
+		const std::filesystem::path candidate = std::filesystem::path(dataDir) / name;
+		std::error_code error;
+		if (std::filesystem::is_regular_file(candidate, error) && !error)
+			return candidate.string();
+	}
+	throw std::runtime_error("data_dir 缺少 DIABDAT.MPQ/diabdat.mpq/spawn.mpq: " + dataDir);
+}
 
 // 空事件处理器:demo::FetchMessage 在 CurrentEventHandler==DisableInputEventHandler
 // 时拒绝吐出事件(demomode.cpp:727),必须装一个"游戏中"处理器才能解锁事件流。
@@ -203,6 +311,13 @@ void SyncLoad(interface_mode uMsg)
 	// ProgressEventHandler WM_DONE 分支的无头必需部分:宣告加入关卡
 	NetSendCmdLocParam2(true, CMD_PLAYER_JOINLEVEL, myPlayer.position.tile, myPlayer.plrlevel,
 	    myPlayer.plrIsOnSetLevel ? 1 : 0);
+	// 本桥固定是 loopback 单机；OnPlayerJoinLevel 对本地已激活玩家的
+	// 唯一同步效果就是清掉 _pLvlChanging。拍尾同步加载后会立即
+	// Observe，不能等到下一个 Python 动作后才处理 join 包，否则动作
+	// guard 会多吞一次新场景的合法动作。队列中的 join 包下拍再清一次
+	// 是幂等的，且仍保留与上游相同的消息路径。
+	if (!gbIsMultiplayer)
+		myPlayer._pLvlChanging = false;
 	// 复刻上游 WM_DONE 分支的 NewCursor(CURSOR_HAND)(interfac.cpp,无头下被
 	// skipRendering 跳过):拾取的到位判定要求 pcurs==CURSOR_HAND(player.cpp),
 	// 每次换层都重申,把这个隐性不变量钉死(v13 审查发现)
@@ -224,7 +339,12 @@ void PumpSdlEvents()
 		}
 		if (IsCustomEvent(event.type)) {
 			nthread_ignore_mutex(true);
-			SyncLoad(GetCustomEvent(event));
+			try {
+				SyncLoad(GetCustomEvent(event));
+			} catch (...) {
+				nthread_ignore_mutex(false);
+				throw;
+			}
 			nthread_ignore_mutex(false);
 			continue;
 		}
@@ -234,6 +354,7 @@ void PumpSdlEvents()
 
 py::dict Observe()
 {
+	EnsureInGame("observe");
 	py::dict obs;
 	const Player &player = *MyPlayer;
 
@@ -246,7 +367,14 @@ py::dict Observe()
 	obs["xp"] = static_cast<uint64_t>(player._pExperience);
 	obs["gold"] = player._pGold;
 	obs["char_level"] = static_cast<int>(player.getCharacterLevel());
-	obs["dungeon_level"] = static_cast<int>(currlevel);
+	// `currlevel` 在任务副本中会被复用为 `_setlevels` 枚举值（例如
+	// Vile Betrayer=5），绝不是主线深度。训练奖励、死亡定价和排行榜
+	// 深度必须使用该副本的返回主层；同时保留场景身份，避免进入/退出
+	// 任务副本时把整张旧地图的怪物消失误算成击杀。
+	obs["dungeon_level"] = ConceptualDungeonDepth();
+	obs["engine_level"] = static_cast<int>(currlevel);
+	obs["is_set_level"] = setlevel;
+	obs["set_level_id"] = setlevel ? static_cast<int>(setlvlnum) : 0;
 	obs["level_type"] = static_cast<int>(leveltype);
 	obs["player_mode"] = static_cast<int>(player._pmode);
 	obs["walkpath0"] = static_cast<int>(player.walkpath[0]);
@@ -258,12 +386,24 @@ py::dict Observe()
 	obs["victory"] = !IsDiabloAlive(false);
 	obs["belt_heals"] = CountBeltHeals(); // v12 起入 raw;v13 起由 env 写进观测向量(瓶盲修复)
 	obs["armor_class"] = player.GetArmor(); // v14:护甲值(_pIBonusAC + _pIAC + 敏捷/5)
+	// 单向训练任务不能回城找 Cain，但原版单机的 Lazarus 主线硬性要求
+	// “捡法杖→回城交给 Cain→再下 L15”。桥在拾取法杖后只自动执行这一次
+	// 等价交付（见 Step）；把任务状态与是否用过适配器留在 raw，便于探针和
+	// 轨迹审计。它们不进入策略向量，也不伪装成原版自然流程。
+	const Quest &betrayerQuest = Quests[Q_BETRAYER];
+	obs["betrayer_quest_active"] = static_cast<int>(betrayerQuest._qactive);
+	obs["betrayer_quest_stage"] = static_cast<int>(betrayerQuest._qvar1);
+	obs["betrayer_portal_stage"] = static_cast<int>(betrayerQuest._qvar2);
+	obs["monotonic_quest_turn_in_used"] = gMonotonicQuestTurnInUsed;
 
 	py::list monsters;
 	for (size_t i = 0; i < ActiveMonsterCount; i++) {
 		const unsigned monsterId = ActiveMonsters[i];
 		const Monster &monster = Monsters[monsterId];
-		if (monster.hitPoints <= 0)
+		// 引擎以定点 HP 的整数部分判死(hasNoLife)。只比较 raw
+		// hitPoints<=0 会把 0<HP<1 的已死怪以 hp=0 多暴露一拍，使 Python
+		// 侧在它下拍消失时丢掉击杀奖励。
+		if (monster.hasNoLife())
 			continue;
 		py::dict m;
 		m["id"] = monsterId;
@@ -288,6 +428,78 @@ py::dict Observe()
 	}
 	obs["floor_items"] = items;
 
+	// action 10/11 共用的“下一项必需剧情目标”。白名单只包含不完成便
+	// 无法抵达 Diablo 的交互，绝不把普通箱子/神龛/支线物体变成全知
+	// 自动操作。goal 是实际应抵达的格；Vile 两本书尤其要求玩家精确站在
+	// 书西南方的法阵上，直接从任意相邻格操作会被上游静默拒绝。
+	py::list progressionTargets;
+	auto appendProgression = [&progressionTargets](const char *kind, const char *action,
+	                              Point target, Point goal, bool exact) {
+		py::dict p;
+		p["kind"] = kind;
+		p["action"] = action;
+		p["x"] = static_cast<int>(target.x);
+		p["y"] = static_cast<int>(target.y);
+		p["goal_x"] = static_cast<int>(goal.x);
+		p["goal_y"] = static_cast<int>(goal.y);
+		p["exact"] = exact;
+		progressionTargets.append(p);
+	};
+
+	if (!gbIsSpawn) {
+		if (!setlevel && betrayerQuest._qactive == QUEST_INIT) {
+			for (int i = 0; i < ActiveObjectCount; i++) {
+				const Object &object = Objects[ActiveObjects[i]];
+				if (object._otype == OBJ_LAZSTAND && object.canInteractWith())
+					appendProgression("lazarus_stand", "operate", object.position, object.position, false);
+			}
+			for (int i = 0; i < ActiveItemCount; i++) {
+				const Item &item = Items[ActiveItems[i]];
+				if (item.IDidx == IDI_LAZSTAFF)
+					appendProgression("lazarus_staff", "pickup", item.position, item.position, true);
+			}
+		}
+
+		if (!setlevel
+		    && currlevel == betrayerQuest._qlevel
+		    && betrayerQuest._qactive == QUEST_ACTIVE
+		    && betrayerQuest._qvar1 >= 2
+		    && betrayerQuest._qvar1 <= 3) {
+			appendProgression("vile_entrance", "walk", betrayerQuest.position,
+			    betrayerQuest.position, true);
+		}
+
+		if (setlevel && setlvlnum == SL_VILEBETRAYER
+		    && betrayerQuest._qactive == QUEST_ACTIVE) {
+			for (int i = 0; i < ActiveObjectCount; i++) {
+				const Object &object = Objects[ActiveObjects[i]];
+				if (object._otype == OBJ_BOOK2L && object.canInteractWith()) {
+					const Point circle = object.position + Direction::SouthWest;
+					appendProgression("vile_book", "operate", object.position, circle, true);
+				}
+				if (object.position == Point { 35, 36 }
+				    && IsAnyOf(object._otype, OBJ_MCIRCLE1, OBJ_MCIRCLE2)
+				    && object._oVar5 == 3
+				    && betrayerQuest._qvar1 <= 4) {
+					appendProgression("vile_center_circle", "walk", object.position,
+					    object.position, true);
+				}
+			}
+		}
+
+		if (!setlevel && currlevel == 16) {
+			for (int i = 0; i < ActiveObjectCount; i++) {
+				const Object &object = Objects[ActiveObjects[i]];
+				if (IsAnyOf(object._otype, OBJ_LEVER, OBJ_SWITCHSKL)
+				    && object.canInteractWith()) {
+					appendProgression("diablo_switch", "operate", object.position,
+					    object.position, false);
+				}
+			}
+		}
+	}
+	obs["progression_targets"] = progressionTargets;
+
 	// 关卡出入口(楼梯/传送点)—— agent 的导航目标
 	py::list triggers;
 	for (int i = 0; i < numtrigs; i++) {
@@ -304,9 +516,16 @@ py::dict Observe()
 
 void EngineInit(const std::string &assetsDir, const std::string &saveDir, const std::string &dataDir, int heroClass, bool verbose)
 {
-	if (gEngineInited)
+	if (heroClass != static_cast<int>(HeroClass::Warrior))
+		throw std::invalid_argument("当前动作/自动加点契约只支持 hero_class=0(战士)");
+	if (gEngineInited) {
+		EnsureEngineProcess("init");
+		if (assetsDir != gAssetsDir || saveDir != gSaveDir || dataDir != gDataDir || heroClass != gHeroClass)
+			throw std::runtime_error("DevilutionX 是进程内单例，不能用不同配置重复 init()");
 		return;
+	}
 	gHeroClass = heroClass;
+	const std::string expectedMainArchive = ExpectedMainArchivePath(dataDir);
 
 	// 最先置无头,任何后续错误路径都不得弹 GUI 对话框(对齐 test/main.cpp:84)
 	HeadlessMode = true;
@@ -326,6 +545,14 @@ void EngineInit(const std::string &assetsDir, const std::string &saveDir, const 
 #endif
 	)
 		throw std::runtime_error(std::string("SDL_Init: ") + SDL_GetError());
+	struct InitGuard {
+		bool committed = false;
+		~InitGuard()
+		{
+			if (!committed)
+				CleanupFailedEngineInit();
+		}
+	} initGuard;
 
 	// 上游只在创建窗口时注册自定义 SDL 事件(display.cpp);无头嵌入必须自己注册,
 	// 否则关卡切换事件(WM_DIABNEXTLVL 等)推送后无法被识别,玩家会卡死在 PM_NEWLVL
@@ -343,10 +570,53 @@ void EngineInit(const std::string &assetsDir, const std::string &saveDir, const 
 	if (!HaveMainData())
 		throw std::runtime_error("diabdat.mpq / spawn.mpq 均未找到(默认搜索含 "
 		                         "~/Library/Application Support/diasurgical/devilution/)");
+#ifndef UNPACKED_MPQS
+	// LoadGameArchives 还会搜索 scratch、系统目录和当前工作目录。若那里
+	// 恰有更高优先级/同名 MPQ，单纯哈希 data_dir 会把评测身份绑到错误
+	// 文件。嵌入模式必须只接受调用方显式 data_dir 中按引擎优先级选中的
+	// 主档案，使训练/评测的 content SHA 与真正加载的字节一一对应。
+	const auto mainArchive = MpqArchives.find(MainMpqPriority);
+	if (mainArchive == MpqArchives.end()
+	    || mainArchive->second.path() != expectedMainArchive) {
+		const std::string actual = mainArchive == MpqArchives.end()
+		    ? "<missing>"
+		    : mainArchive->second.path();
+		MpqArchives.clear();
+		if (SDL_WasInit((~0U) & ~SDL_INIT_HAPTIC) != 0)
+			SDL_Quit();
+		throw std::runtime_error("实际主 MPQ 未来自 data_dir: actual=" + actual
+		                         + ", expected=" + expectedMainArchive);
+	}
+#endif
 
 	InitKeymapActions();
 	LoadOptions();
-	LuaInitialize();
+	gLuaInitialized = true;
+	try {
+		LuaInitialize();
+	} catch (...) {
+		// LuaInitialize may already have emplaced CurrentLuaState and lazily
+		// constructed sol usertype-name statics. Tear it down while unwinding;
+		// otherwise the same cross-TU exit-order UAF reappears on init errors.
+		try {
+			LuaShutdown();
+		} catch (...) {
+		}
+		gLuaInitialized = false;
+		throw;
+	}
+	// The embedded bridge has no application main() that can call
+	// DiabloDeinit().  Register after LuaInitialize(): sol's lazily-created
+	// usertype-name statics have already registered their destructors, so the
+	// LIFO atexit order destroys the Lua state while those strings are still
+	// alive.  Leaving CurrentLuaState to cross-translation-unit static
+	// destruction causes a deterministic heap-use-after-free under ASan.
+	if (!gExitCleanupRegistered && std::atexit(EngineShutdownAtExit) != 0) {
+		LuaShutdown();
+		gLuaInitialized = false;
+		throw std::runtime_error("无法注册 DevilutionX 进程退出清理");
+	}
+	gExitCleanupRegistered = true;
 
 	gbIsHellfire = false;
 	gbMusicOn = false;
@@ -357,6 +627,9 @@ void EngineInit(const std::string &assetsDir, const std::string &saveDir, const 
 	// (plrctrls.cpp:1744),导致走路命令只能执行一步。
 	ControlMode = ControlTypes::KeyboardAndMouse;
 	ControlDevice = ControlTypes::KeyboardAndMouse;
+	// DiabloGym 的任务空间只允许向下推进。否则 FARM/工人的普通走位
+	// 会偶然踩中上楼触发格，回到城镇后把余下 3000 步空耗掉。
+	DisableLevelBacktracking = true;
 
 	// v14:装备自动上身。引擎拾取链(AutoGetItem)会先试 AutoEquip,但盔甲/
 	// 头盔/首饰的自动装备选项默认是关的(options.cpp)——不开的话,捡到的
@@ -375,18 +648,88 @@ void EngineInit(const std::string &assetsDir, const std::string &saveDir, const 
 	pfile_ui_set_hero_infos(DummyGetHeroInfo);
 	AdjustToScreenGeometry(forceResolution);
 
+	gAssetsDir = assetsDir;
+	gSaveDir = saveDir;
+	gDataDir = dataDir;
 	gEngineInited = true;
+	gEnginePid = CurrentProcessId();
+	initGuard.committed = true;
+}
+
+void CleanupGameResources()
+{
+	FreeMonsterHealthBar();
+	FreeXPBar();
+	FreeControlPan();
+	FreeInvGFX();
+	FreeGMenu();
+	FreeQuestText();
+	FreeInfoBoxGfx();
+	FreeStoreMem();
+	// NetInit appends two global chat-history entries every episode. Upstream's
+	// chat log is process-lifetime state and is otherwise never cleared, so a
+	// long vectorized training worker retains memory linearly with reset count.
+	ClearChatLog();
+	for (Player &player : Players)
+		ResetPlayerGFX(player);
+	FreeCursor();
+	FreeGameMem();
+	stream_stop();
+	music_stop();
 }
 
 void EndGame()
 {
-	if (!gInGame)
+	EnsureEngineProcess("end_game");
+	if (!gInGame) {
+		if (gEngineInited)
+			DiscardPendingEvents();
 		return;
+	}
 	gbRunGame = false;
-	// 上游 RunGameLoop 尾声还会调 FreeGame()(UI 贴图清理),但它在匿名命名空间里
-	// 且无头模式下重开局时 Init* 会重建这些资源,故略过
+	// 复刻上游 RunGameLoop 尾声的 FreeGame()。它在 diablo.cpp 匿名
+	// 命名空间中无法直接调用，但不能省略：InitCursor 明确要求
+	// 上一局已 FreeCursor，任务字幕/面板/玩家图形缓存也不得跨 episode。
+	CleanupGameResources();
 	NetClose(); // 外层 StartGame 尾声(会清空 Players)
 	gInGame = false;
+	gEpisodeGeneration++; // 使直接 end_game() 立即作废 Python wrapper 的 raw 缓存
+	DiscardPendingEvents();
+}
+
+void EngineShutdownAtExit() noexcept
+{
+	// fork 后只有调用线程存活；继承来的 SDL/network/Lua 锁与线程状态不能
+	// 在子进程析构。仅仅 return 仍会继续执行上游 CurrentLuaState 等 C++
+	// 全局静态析构，重新暴露跨翻译单元析构顺序 UAF。fork child 的合法
+	// 终点只有 exec/os._exit；若误走普通 exit/SystemExit，这里 fail-closed
+	// 直接终止且返回失败，跳过其余 atexit 与所有静态析构。
+	if (gEngineInited && gEnginePid != CurrentProcessId())
+		std::_Exit(EXIT_FAILURE);
+	// atexit callbacks must never unwind through the C runtime.  Each phase is
+	// deliberately independent so a best-effort game cleanup cannot prevent
+	// the ordering-critical Lua shutdown.
+	try {
+		EndGame();
+	} catch (...) {
+	}
+	try {
+		FreeItemGFX();
+	} catch (...) {
+	}
+	if (gLuaInitialized) {
+		try {
+			LuaShutdown();
+		} catch (...) {
+		}
+		gLuaInitialized = false;
+	}
+	try {
+		init_cleanup();
+	} catch (...) {
+	}
+	if (SDL_WasInit((~0U) & ~SDL_INIT_HAPTIC) != 0)
+		SDL_Quit();
 }
 
 py::dict Reset(uint32_t seed)
@@ -394,12 +737,27 @@ py::dict Reset(uint32_t seed)
 	if (!gEngineInited)
 		throw std::runtime_error("先调用 init()");
 	EndGame();
+	gStallPrints = 0;
+	gMonotonicQuestTurnInUsed = false;
 
 	CreateFreshHeroSave();
 	gbLoadGame = false;
 
 	if (!NetInit(/*bSinglePlayer=*/true))
 		throw std::runtime_error("NetInit failed");
+	struct ResetGuard {
+		bool committed = false;
+		~ResetGuard()
+		{
+			if (committed)
+				return;
+			gbRunGame = false;
+			CleanupGameResources();
+			NetClose();
+			gInGame = false;
+			DiscardPendingEvents();
+		}
+	} resetGuard;
 
 	// 确定性:用用户种子覆写全部地牢种子(引擎在 NetInit 里刚按熵源填过一遍)
 	std::mt19937 rng(seed);
@@ -426,30 +784,38 @@ py::dict Reset(uint32_t seed)
 	// 其中内层 StartGame(uMsg) 在匿名命名空间,以下为其公开 API 复刻
 	SetEventHandler(GymEventHandler);
 	nthread_ignore_mutex(true);
-	CalcViewportGeometry();
-	cineflag = false;
-	InitCursor();
-	music_stop();
-	InitMonsterHealthBar();
-	InitXPBar();
-	SyncLoad(WM_DIABNEWGAME);
-	gmenu_init_menu();
-	InitLevelCursor();
-	sgbMouseDown = CLICK_NONE;
-	LastPlayerAction = PlayerActionType::None;
-	run_delta_info();
-	gbRunGame = true;
-	gbProcessPlayers = true;
-	gbRunGameResult = true;
-	LoadPWaterPalette();
-	InitBackbufferState();
-	RedrawEverything();
+	try {
+		CalcViewportGeometry();
+		cineflag = false;
+		InitCursor();
+		music_stop();
+		InitMonsterHealthBar();
+		InitXPBar();
+		SyncLoad(WM_DIABNEWGAME);
+		gmenu_init_menu();
+		InitLevelCursor();
+		sgbMouseDown = CLICK_NONE;
+		LastPlayerAction = PlayerActionType::None;
+		run_delta_info();
+		gbRunGame = true;
+		gbProcessPlayers = true;
+		gbRunGameResult = true;
+		LoadPWaterPalette();
+		InitBackbufferState();
+		RedrawEverything();
+	} catch (...) {
+		nthread_ignore_mutex(false);
+		throw;
+	}
 	nthread_ignore_mutex(false);
 	lua::GameStart();
 	gStartupTick = true;
 
 	gInGame = true;
-	return Observe();
+	gEpisodeGeneration++;
+	py::dict result = Observe();
+	resetGuard.committed = true;
+	return result;
 }
 
 // v20:属性点自动分配——修复"属性点黑洞"。引擎每级发 5 属性点
@@ -472,10 +838,32 @@ static void AutoSpendStatPoints()
 	p._pStatPts = 0;
 }
 
+// 原版单机主线要求把 Staff of Lazarus 带回城交给 Cain。DiabloGym 的
+// 训练任务自 L1 起严格单向下潜，既没有回城动作也不允许层级回退；若仍
+// 保留该 UI 前置，完整通关在动作图上就是不可达的。这里只复刻
+// TalkToStoryteller 中该物品的一次性交付状态迁移，不跳过法杖台、拾取、
+// L15 入口、Vile 机关或战斗，并在 raw 中永久标记本局用过适配器。
+static void AutoTurnInBetrayerStaffForMonotonicTask()
+{
+	if (gbIsSpawn || UseMultiplayerQuests())
+		return;
+	Quest &quest = Quests[Q_BETRAYER];
+	if (quest._qactive != QUEST_INIT)
+		return;
+	if (!RemoveInventoryItemById(*MyPlayer, IDI_LAZSTAFF))
+		return;
+	quest._qlog = true;
+	quest._qactive = QUEST_ACTIVE;
+	quest._qvar1 = 2;
+	NetSendCmdQuest(true, quest);
+	gMonotonicQuestTurnInUsed = true;
+}
+
 py::dict Step(int ticks)
 {
-	if (!gInGame)
-		throw std::runtime_error("先调用 reset()");
+	EnsureInGame("step");
+	if (ticks <= 0)
+		throw std::invalid_argument("ticks 必须是正整数");
 	for (int i = 0; i < ticks && gbRunGame; i++) {
 		PumpSdlEvents();
 		if (!gbRunGame)
@@ -488,27 +876,50 @@ py::dict Step(int ticks)
 		}
 		gStartupTick = false;
 	}
+	// StartNewLvl 可在最后一个 game_loop 拍尾才把自定义事件
+	// 放入 SDL 队列。返回 Python 前再泵一次，使换层场景与奖励
+	// 归属于真正触发楼梯的这一次 env step，而不是下一个被
+	// 迫空拍的策略动作。这里只加载，不额外消耗游戏逻辑 tick。
+	if (gbRunGame)
+		PumpSdlEvents();
 	AutoSpendStatPoints();
+	AutoTurnInBetrayerStaffForMonotonicTask();
 	return Observe();
 }
 
 void ActWalk(int x, int y)
 {
+	if (!CanAcceptPlayerAction("act_walk"))
+		return;
+	if (x < 0 || x >= MAXDUNX || y < 0 || y >= MAXDUNY)
+		return; // 地图边缘的越界走格按 Gym 无效动作处理
 	NetSendCmdLoc(MyPlayerId, true, CMD_WALKXY, { x, y });
 }
 
 void ActAttackMonster(uint16_t monsterId)
 {
+	if (!CanAcceptPlayerAction("act_attack_monster"))
+		return;
+	if (monsterId >= MaxMonsters)
+		throw std::out_of_range("monster_id 越界");
 	NetSendCmdParam1(true, CMD_ATTACKID, monsterId);
 }
 
 void ActAttackTile(int x, int y)
 {
+	if (!CanAcceptPlayerAction("act_attack_tile"))
+		return;
+	if (x < 0 || x >= MAXDUNX || y < 0 || y >= MAXDUNY)
+		return;
 	NetSendCmdLoc(MyPlayerId, true, CMD_SATTACKXY, { x, y });
 }
 
 void ActOperate(int x, int y)
 {
+	if (!CanAcceptPlayerAction("act_operate"))
+		return;
+	if (x < 0 || x >= MAXDUNX || y < 0 || y >= MAXDUNY)
+		return;
 	// 操作目标格上的物体(门/箱子/杠杆):引擎自动走过去再操作——与鼠标点击同路
 	NetSendCmdLoc(MyPlayerId, true, CMD_OPOBJXY, { x, y });
 }
@@ -533,6 +944,8 @@ int CountBeltHeals()
 
 int ActDrink()
 {
+	if (!CanAcceptPlayerAction("act_drink"))
+		return 0;
 	// 喝腰带上的第一瓶治疗类药水(与手柄快捷键 UseBeltItem 同路);
 	// 无药时不发任何命令(空拍)。返回按键前的腰带治疗药数量
 	const int heals = CountBeltHeals();
@@ -543,6 +956,8 @@ int ActDrink()
 
 int ActPickup()
 {
+	if (!CanAcceptPlayerAction("act_pickup"))
+		return 0;
 	// 走向并拾取最近的地面治疗药(与鼠标点击拾取同路 CMD_GOTOAGETITEM:
 	// 引擎自动寻路、到位拾取、药水经 AutoPlaceItemInBelt 自动进腰带)。
 	// 无目标时不发任何命令(空拍)。返回 0/1 = 是否发出了拾取命令
@@ -603,6 +1018,8 @@ bool IsWantedGear(Item &item)
 
 int SweepBackpackGear()
 {
+	if (!CanAcceptPlayerAction("sweep_backpack_gear"))
+		return 0;
 	// PM_GOTHIT 时序窗(v14 审查确认):拾取请求与执行隔一个 tick,若中间挨了
 	// 一记硬直(dam>>6 >= 等级),CanEquip 拒绝 _pmode>PM_WALK_SIDEWAYS,盔甲
 	// 又进不了腰带(非 usable),于是静默沉入背包——对观测与动作双盲的价值
@@ -626,6 +1043,8 @@ int SweepBackpackGear()
 
 int ActPickupGear()
 {
+	if (!CanAcceptPlayerAction("act_pickup_gear"))
+		return 0;
 	// 走向并拾取最近的"值得穿"的地面装备(与捡药同路 CMD_GOTOAGETITEM;
 	// 引擎 AutoEquip 自动上身——EngineInit 已开启盔甲/头盔/首饰自动装备)。
 	// 无目标时不发任何命令(空拍)。返回 0/1
@@ -648,14 +1067,38 @@ int ActPickupGear()
 	return 1;
 }
 
+int ActPickupProgression(int x, int y)
+{
+	if (!CanAcceptPlayerAction("act_pickup_progression"))
+		return 0;
+	if (x < 0 || x >= MAXDUNX || y < 0 || y >= MAXDUNY)
+		return 0;
+	for (int i = 0; i < ActiveItemCount; i++) {
+		const int itemId = ActiveItems[i];
+		const Item &item = Items[itemId];
+		if (item.IDidx != IDI_LAZSTAFF || item.position != Point { x, y })
+			continue;
+		NetSendCmdLocParam1(true, CMD_GOTOAGETITEM, item.position,
+		    static_cast<uint16_t>(itemId));
+		return 1;
+	}
+	return 0;
+}
+
 } // namespace
 
 PYBIND11_MODULE(_diablogym, m)
 {
 	m.doc() = "DiabloGym v0 —— DevilutionX 无头 RL 桥";
+	m.def("engine_config", []() -> py::object {
+		if (!gEngineInited)
+			return py::none();
+		EnsureEngineProcess("engine_config");
+		return py::make_tuple(gAssetsDir, gSaveDir, gDataDir, gHeroClass);
+	}, "读取已提交的原生单例配置；未初始化返回 None，用于 Python 异步异常恢复");
 	m.def("init", &EngineInit, py::arg("assets_dir"), py::arg("save_dir"), py::arg("data_dir"),
 	    py::arg("hero_class") = 0, py::arg("verbose") = false,
-	    "一次性引擎初始化。data_dir 为 diabdat.mpq 所在目录。hero_class: 0=战士 1=游侠 2=法师");
+	    "一次性引擎初始化。data_dir 为 diabdat.mpq 所在目录；当前仅支持 hero_class=0(战士)");
 	m.def("reset", &Reset, py::arg("seed"), "新开一局(全新 1 级英雄,确定性地牢种子),返回观测");
 	m.def("step", &Step, py::arg("ticks") = 1, "推进游戏逻辑 N 个 tick(20 tick = 游戏内 1 秒),返回观测");
 	m.def("observe", &Observe, "只读当前观测");
@@ -666,22 +1109,44 @@ PYBIND11_MODULE(_diablogym, m)
 	m.def("act_drink", &ActDrink, "喝腰带上的第一瓶治疗药(无药=无操作);返回按键前腰带治疗药数");
 	m.def("act_pickup", &ActPickup, "走向并拾取最近的地面治疗药(无目标=无操作);返回 0/1");
 	m.def("act_pickup_gear", &ActPickupGear, "走向并拾取最近的可穿戴装备(空槽+属性达标;无目标=无操作);返回 0/1");
+	m.def("act_pickup_progression", &ActPickupProgression, py::arg("x"), py::arg("y"),
+	    "仅拾取指定格的 Staff of Lazarus；供 action 10/11 必需剧情白名单使用");
 	m.def("sweep_backpack_gear", &SweepBackpackGear, "把因硬直时序窗沉入背包的该穿装备捞出穿上;返回上身件数");
 	m.def("end_game", &EndGame, "结束当前局(reset 会自动调用)");
+	m.def("episode_generation", []() {
+		EnsureEngineProcess("episode_generation");
+		return gEpisodeGeneration;
+	},
+	    "当前原生游戏状态世代号(reset/end_game 时改变,用于缓存安全检查)");
 
 	// ---- 探针专用接口(只用于发车前探针/验尸,训练与评估不得调用)----
 	m.def("probe_add_experience", [](uint32_t xp) {
+		EnsureInGame("probe_add_experience");
 		// 直接注入经验(等级差按 0 计),触发引擎原生升级链
 		// (NextPlrLevel → _pStatPts 累积 → Step 尾部 AutoSpendStatPoints)
 		MyPlayer->addExperience(xp);
 	}, py::arg("xp"), "探针:注入经验值,走原生升级路径");
-	m.def("probe_modify_vit", [](int d) { ModifyPlrVit(*MyPlayer, d); },
+	m.def("probe_modify_vit", [](int d) {
+		EnsureInGame("probe_modify_vit");
+		ModifyPlrVit(*MyPlayer, d);
+	},
 	    py::arg("d"), "探针:直接调体力(带封顶,同步 HP)");
-	m.def("probe_bonus_ac", [](int d) { MyPlayer->_pIBonusAC += d; },
+	m.def("probe_bonus_ac", [](int d) {
+		EnsureInGame("probe_bonus_ac");
+		MyPlayer->_pIBonusAC += d;
+	},
 	    py::arg("d"), "探针:临时附加 AC(CalcPlrInv 会重算,战斗中不换装则稳定)");
-	m.def("probe_stat_pts", []() { return (int)MyPlayer->_pStatPts; },
+	m.def("probe_invincible", [](bool enabled) {
+		EnsureInGame("probe_invincible");
+		MyPlayer->_pInvincible = enabled;
+	}, py::arg("enabled"), "探针:切换无敌，仅供真实资源剧情/寻路验收");
+	m.def("probe_stat_pts", []() {
+		EnsureInGame("probe_stat_pts");
+		return (int)MyPlayer->_pStatPts;
+	},
 	    "探针:读未花属性点(自动花点后应恒为 0)");
 	m.def("probe_stats", []() {
+		EnsureInGame("probe_stats");
 		py::dict d;
 		d["vit"] = (int)MyPlayer->_pVitality;
 		d["str"] = (int)MyPlayer->_pStrength;
@@ -690,6 +1155,10 @@ PYBIND11_MODULE(_diablogym, m)
 	}, "探针:读属性明细");
 
 	m.def("local_map", [](int radius) {
+		EnsureInGame("local_map");
+		const int maxRadius = std::max(static_cast<int>(MAXDUNX), static_cast<int>(MAXDUNY));
+		if (radius < 0 || radius > maxRadius)
+			throw std::invalid_argument("radius 必须在 [0, max(MAXDUNX, MAXDUNY)] 内");
 		// 以玩家为中心的 (2r+1)² 局部地图:可走性 + 怪物占位 + 关闭的门
 		// (C++ 端单次调用,避免逐格 probe 的开销)。
 		// 注意:观测向量只消费 walkable/monster 两通道;door 通道仅供宏内部导航,
@@ -727,6 +1196,7 @@ PYBIND11_MODULE(_diablogym, m)
 	}, py::arg("radius") = 5, "以玩家为中心的局部地图通道");
 
 	m.def("probe_asset", [](const std::string &path) {
+		EnsureEngineProcess("probe_asset");
 		size_t size = 0;
 		AssetHandle handle = OpenAsset(std::string_view(path), size);
 		py::dict d;
@@ -736,6 +1206,9 @@ PYBIND11_MODULE(_diablogym, m)
 	}, py::arg("path"), "调试:检查资产能否打开及其大小");
 
 	m.def("probe_tile", [](int x, int y) {
+		EnsureInGame("probe_tile");
+		if (x < 0 || x >= MAXDUNX || y < 0 || y >= MAXDUNY)
+			throw std::out_of_range("probe_tile 坐标越界");
 		py::dict d;
 		d["piece"] = static_cast<int>(dPiece[x][y]);
 		d["monster"] = static_cast<int>(dMonster[x][y]);
@@ -751,9 +1224,53 @@ PYBIND11_MODULE(_diablogym, m)
 		return d;
 	}, py::arg("x"), py::arg("y"), "调试:读取单格的占位/碰撞/物体状态");
 
+	m.def("probe_is_spawn", []() {
+		EnsureEngineProcess("probe_is_spawn");
+		return gbIsSpawn;
+	},
+	    "探针:当前是否使用 shareware spawn.mpq");
+	m.def("probe_warp_main_level", [](int level) {
+		EnsureInGame("probe_warp_main_level");
+		if (setlevel || level < 1 || level > 16)
+			throw std::invalid_argument("探针主层须在 [1,16] 且当前不在 set-level");
+		StartNewLvl(*MyPlayer, WM_DIABNEXTLVL, level);
+	}, py::arg("level"), "探针:排队切换到指定主地牢层");
+	m.def("probe_enter_set_level", [](int level) {
+		EnsureInGame("probe_enter_set_level");
+		if (setlevel)
+			throw std::runtime_error("探针进入 set-level 前必须位于主地牢");
+		const auto setLevel = static_cast<_setlevels>(level);
+		switch (setLevel) {
+		case SL_SKELKING:
+			setlvltype = Quests[Q_SKELKING]._qlvltype;
+			break;
+		case SL_BONECHAMB:
+			setlvltype = Quests[Q_SCHAMB]._qlvltype;
+			break;
+		case SL_POISONWATER:
+			setlvltype = Quests[Q_PWATER]._qlvltype;
+			break;
+		case SL_VILEBETRAYER:
+			setlvltype = Quests[Q_BETRAYER]._qlvltype;
+			break;
+		default:
+			throw std::invalid_argument("探针只支持四个正式任务 set-level");
+		}
+		StartNewLvl(*MyPlayer, WM_DIABSETLVL, level);
+	}, py::arg("level"), "探针:排队进入正式任务 set-level(1/2/4/5)");
+	m.def("probe_return_set_level", []() {
+		EnsureInGame("probe_return_set_level");
+		if (!setlevel)
+			throw std::runtime_error("探针返回前当前必须位于 set-level");
+		StartNewLvl(*MyPlayer, WM_DIABRTNLVL, GetMapReturnLevel());
+	}, "探针:排队从任务 set-level 返回对应主地牢层");
+
 	// 触发点消息类型常量(观测 triggers[].msg 的取值)
 	m.attr("WM_DIABNEXTLVL") = static_cast<int>(WM_DIABNEXTLVL);
 	m.attr("WM_DIABPREVLVL") = static_cast<int>(WM_DIABPREVLVL);
+	m.attr("WM_DIABSETLVL") = static_cast<int>(WM_DIABSETLVL);
+	m.attr("WM_DIABRTNLVL") = static_cast<int>(WM_DIABRTNLVL);
 	m.attr("WM_DIABTOWNWARP") = static_cast<int>(WM_DIABTOWNWARP);
 	m.attr("WM_DIABTWARPUP") = static_cast<int>(WM_DIABTWARPUP);
+	m.attr("PM_NEWLVL") = static_cast<int>(PM_NEWLVL);
 }

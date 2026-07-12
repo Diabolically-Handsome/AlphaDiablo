@@ -1,10 +1,10 @@
 """DiabloGymEnv —— Gymnasium 包装(v0:结构化向量观测 + 离散动作)。
 
-观测向量(float32,长度 12 + K*4 + 2*(2R+1)² + 8,R=5 时共 294):
+观测向量(float32,长度 12 + K*4 + 2*(2R+1)² + 9,R=5 时共 295):
   [hp/maxhp, mana/maxmana, xp(log1p/10), gold/1000, char_level/50,
    dungeon_level/16, player_x/112, player_y/112,
    存活怪数/50, 最近怪距离/30(无怪=1),
-   最近下行楼梯方向 dx/56, dy/56(本层无则 0,0)]
+   下一项必需主线目标方向 dx/56, dy/56(普通层即下行楼梯;无则 0,0)]
   + K 个最近怪物的 (dx/20, dy/20, hp/max_hp, 1存在标志)
   + 11×11 局部地图两通道(可走性、怪物占位)——run4 教训:没有空间感知,
     奖励再好也是"盲人拿完美账本"(隔墙锁定、穿墙塑形、找不到房门)
@@ -13,16 +13,19 @@
     按键纪律)
   + [护甲值/50(截断至 1), 最近可穿装备 dx/20, dy/20(截断至 ±1), 存在标志]
     (v14,装备章:存在标志已预判"槽位为空+属性达标",=1 即值得按)
+  + [min(2, 角色等级/max(1,地牢层数))/2]——v19 强弱仪表
 
 动作(Discrete(15)):
   0      原地不动
   1-8    朝八方向走一格(寻路)
   9      交战宏:锁定最近怪物持续追击,直到它死/自己死/换层/超时(≤10 拍)
          (v2 教训:单拍攻击会被下一个走位动作打断,策略学不会"坚持进攻")
-  10     探索宏:走向 25×25 视野内最近的"可走且未踏足"边疆点;发现猎物
+  10     探索宏:若存在通关必需剧情目标,先走严格白名单剧情宏;否则走向
+         25×25 视野内最近的"可走且未踏足"边疆点;发现猎物
          (最近怪 ≤6 格)立即交还控制权;无边疆点时朝下行楼梯走
          (run5 教训:出生区无可达怪时,反应式策略不会"换个房间找")
-  11     下楼宏(v11):接力寻路走向本层最近的下行楼梯并站上去等触发。
+  11     主线推进宏(v11+):优先完成法杖台/法杖/L15 任务入口/Vile 书与
+         法阵/L16 机关的严格白名单,无待办时再走下行或任务返回触发点。
          与探索宏不同,发现猎物**不**打断——这是策略主动选择的撤离/换层键
          (困局的逃生舱 + 清层后的下一章按钮);12 拍后控制权自然归还。
          (v10 教训:困局是死的 0,多给时间没用——得给一扇门)
@@ -59,9 +62,12 @@
 from __future__ import annotations
 
 import math
+import os
 import pathlib
+import shutil
 import tempfile
 from collections import deque
+from contextlib import contextmanager
 
 import gymnasium as gym
 import numpy as np
@@ -81,10 +87,161 @@ _DEFAULT_ASSETS = (
     pathlib.Path(__file__).resolve().parents[2]
     / "build" / "engine" / "devilutionx.app" / "Contents" / "Resources"
 )
+_TEMP_SAVE_LEGACY_PREFIX = "diablogym-saves-"
+_TEMP_SAVE_PREFIX = "diablogym-saves-v2-"
+_TEMP_SAVE_LOCK = ".owner.lock"
+_TEMP_SAVE_REGISTRY_LOCK = (
+    f".diablogym-saves-v2.{os.getuid() if hasattr(os, 'getuid') else 0}.global.lock"
+)
+
+
+def _scene_identity(raw) -> tuple[int, bool, int]:
+    """主线深度相同的任务副本仍是另一张地图，不能跨图做差分。"""
+    depth = int(raw["dungeon_level"])
+    is_set = bool(raw.get("is_set_level", False))
+    set_id = int(raw.get("set_level_id", 0)) if is_set else 0
+    return depth, is_set, set_id
+
+
+@contextmanager
+def _temp_save_registry_lock(root: pathlib.Path):
+    """Serialize scratch publication and reclamation across spawn workers.
+
+    The registry file is intentionally persistent and outside the scratch glob.
+    Unlinking it would let waiters retain the old inode while newcomers lock a
+    new inode, splitting the critical section in two.
+    """
+    import fcntl
+
+    flags = os.O_CREAT | os.O_RDWR
+    if hasattr(os, "O_CLOEXEC"):
+        flags |= os.O_CLOEXEC
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    fd = os.open(root / _TEMP_SAVE_REGISTRY_LOCK, flags, 0o600)
+    try:
+        registry = os.fdopen(fd, "a+", encoding="utf-8")
+    except Exception:
+        os.close(fd)
+        raise
+    acquired = False
+    try:
+        fcntl.flock(registry.fileno(), fcntl.LOCK_EX)
+        acquired = True
+        yield
+    finally:
+        if acquired:
+            fcntl.flock(registry.fileno(), fcntl.LOCK_UN)
+        registry.close()
+
+
+def _cleanup_stale_temp_save_dirs_locked(base: pathlib.Path) -> int:
+    """Reclaim stale scratch while the caller holds the registry lock."""
+    import fcntl
+
+    removed = 0
+    for candidate in base.glob(f"{_TEMP_SAVE_LEGACY_PREFIX}*"):
+        if not candidate.is_dir():
+            continue
+        marker = candidate / _TEMP_SAVE_LOCK
+        if not marker.is_file():
+            # A v2 creator publishes the directory and owner marker while
+            # holding the same registry lock.  Therefore a visible markerless
+            # v2 directory can only be debris from a crashed creator.  Older
+            # directories predate that invariant and remain fail-closed.
+            if candidate.name.startswith(_TEMP_SAVE_PREFIX):
+                try:
+                    shutil.rmtree(candidate)
+                    removed += 1
+                except OSError:
+                    pass
+            continue
+        try:
+            owner = open(marker, "a+", encoding="utf-8")
+        except OSError:
+            continue
+        acquired = False
+        try:
+            try:
+                fcntl.flock(owner.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                acquired = True
+            except BlockingIOError:
+                continue
+            try:
+                shutil.rmtree(candidate)
+                removed += 1
+            except OSError:
+                # The owner may have completed cleanup after our path lookup;
+                # genuine I/O failures remain for a later startup to retry.
+                pass
+        finally:
+            if acquired:
+                fcntl.flock(owner.fileno(), fcntl.LOCK_UN)
+            owner.close()
+    return removed
+
+
+def _cleanup_stale_temp_save_dirs(root: pathlib.Path | None = None) -> int:
+    """回收被 SIGKILL 遗留、且已没有进程持锁的新式 scratch 目录。
+
+    v2 的创建/清理由全局事务锁串行化，因此可回收崩溃留下的无 marker
+    半成品；旧版本没有这项所有权证据，宁可保留也不猜。flock 由内核在
+    进程死亡时释放，因此 PID 复用不会导致误删或漏删。
+    """
+    base = (pathlib.Path(root) if root is not None
+            else pathlib.Path(tempfile.gettempdir()))
+    with _temp_save_registry_lock(base):
+        return _cleanup_stale_temp_save_dirs_locked(base)
+
+
+def _create_locked_temp_save_dir():
+    import fcntl
+
+    base = pathlib.Path(tempfile.gettempdir())
+    with _temp_save_registry_lock(base):
+        _cleanup_stale_temp_save_dirs_locked(base)
+        directory = tempfile.TemporaryDirectory(
+            prefix=_TEMP_SAVE_PREFIX, dir=base)
+        owner = open(pathlib.Path(directory.name) / _TEMP_SAVE_LOCK,
+                     "a+", encoding="utf-8")
+        try:
+            fcntl.flock(owner.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            owner.write(f"pid={os.getpid()}\n")
+            owner.flush()
+            os.fsync(owner.fileno())
+        except Exception:
+            owner.close()
+            directory.cleanup()
+            raise
+    return directory, owner
 
 
 class DiabloGymEnv(gym.Env):
     metadata = {"render_modes": []}
+
+    # DevilutionX 是进程内全局单例，不是可重入的多实例引擎。同一
+    # 进程可以顺序复用多个 wrapper，但不能交错 step；多环境必须用
+    # SubprocVecEnv 之类的多进程方案。在这里显式记账，把静默串状态
+    # 变成响亮的异常。
+    _engine_initialized = False
+    _engine_pid: int | None = None
+    _engine_config: tuple[str, str, str, int] | None = None
+    _active_token = None
+    _temp_save_dir: tempfile.TemporaryDirectory | None = None
+    _temp_save_lock = None
+    _atfork_registered = False
+
+    @classmethod
+    def _after_fork_child(cls) -> None:
+        """子进程不得析构父进程仍在使用的 scratch 或原生引擎。"""
+        directory, cls._temp_save_dir = cls._temp_save_dir, None
+        owner, cls._temp_save_lock = cls._temp_save_lock, None
+        if directory is not None:
+            finalizer = getattr(directory, "_finalizer", None)
+            if finalizer is not None and finalizer.alive:
+                finalizer.detach()  # 只取消子进程副本；不能 rmtree 父进程目录
+        if owner is not None:
+            owner.close()
 
     def __init__(
         self,
@@ -97,18 +254,103 @@ class DiabloGymEnv(gym.Env):
         include_raw: bool = True,
         descend_ladder: bool = False,
         death_ladder: bool = False,
+        hero_class: int = 0,
     ):
         super().__init__()
-        assets = str(assets_dir or _DEFAULT_ASSETS)
-        saves = save_dir or tempfile.mkdtemp(prefix="diablogym-saves-")
-        data = str(
+        if (isinstance(ticks_per_step, bool)
+                or not isinstance(ticks_per_step, (int, np.integer))
+                or int(ticks_per_step) <= 0):
+            raise ValueError(f"ticks_per_step 必须是正整数，收到 {ticks_per_step!r}")
+        if (isinstance(max_steps, bool)
+                or not isinstance(max_steps, (int, np.integer))
+                or int(max_steps) <= 0):
+            raise ValueError(f"max_steps 必须是正整数，收到 {max_steps!r}")
+        if (isinstance(hero_class, bool)
+                or not isinstance(hero_class, (int, np.integer))
+                or int(hero_class) != 0):
+            raise ValueError(
+                "当前动作/自动加点契约只支持 hero_class=0(战士)；"
+                f"收到 {hero_class!r}")
+
+        assets = str(pathlib.Path(assets_dir or _DEFAULT_ASSETS).expanduser().resolve())
+        data = str(pathlib.Path(
             data_dir
             or pathlib.Path.home() / "Library/Application Support/diasurgical/devilution"
-        )
-        bridge.init(assets_dir=assets, save_dir=saves, data_dir=data, hero_class=0)
+        ).expanduser().resolve())
+        cls = DiabloGymEnv
+        pid = os.getpid()
+        if not cls._atfork_registered and hasattr(os, "register_at_fork"):
+            os.register_at_fork(after_in_child=cls._after_fork_child)
+            cls._atfork_registered = True
+        if cls._engine_initialized and cls._engine_pid != pid:
+            raise RuntimeError(
+                "DiabloGym 引擎已在父进程初始化，不能 fork 后复用；"
+                "fork 子进程只能立即 exec/os._exit，多环境训练请使用 spawn")
 
-        self.ticks_per_step = ticks_per_step
-        self.max_steps = max_steps
+        # bridge.init() 是一个长 C++ 调用，SIGINT 可能恰在它成功返回、
+        # Python 尚未来得及写三个 class 属性时转成 KeyboardInterrupt。
+        # 原生配置是提交事实源；每次构造都先据此修复可能被异步异常撕裂的
+        # Python 账本，不能误删原生仍在使用的临时存档目录。
+        native_config = bridge.engine_config()
+        if native_config is not None:
+            recovered = (str(native_config[0]), str(native_config[1]),
+                         str(native_config[2]), int(native_config[3]))
+            cls._engine_config = recovered
+            cls._engine_pid = pid
+            cls._engine_initialized = True
+        elif cls._engine_initialized:
+            raise RuntimeError(
+                "DiabloGym Python/原生单例账本不一致：Python 标为已初始化，"
+                "原生桥却未初始化")
+        if cls._engine_initialized:
+            if cls._engine_config is None:
+                raise RuntimeError("DiabloGym 引擎单例状态损坏: 已初始化但配置缺失")
+            _, old_saves, _, _ = cls._engine_config
+            requested_save = (str(pathlib.Path(save_dir).expanduser().resolve())
+                              if save_dir is not None else old_saves)
+            requested = (assets, requested_save, data, int(hero_class))
+            if requested != cls._engine_config:
+                raise RuntimeError(
+                    "DevilutionX 是进程内单例，不能用不同的 assets/save/data/"
+                    f"hero_class 重复初始化；已有={cls._engine_config!r}, 请求={requested!r}")
+            saves = old_saves
+        else:
+            if save_dir is not None:
+                saves = str(pathlib.Path(save_dir).expanduser().resolve())
+            else:
+                # 存档 scratch 要活到进程内引擎退出，但不应像
+                # mkdtemp 那样在每次多进程训练结束后永久遗留磁盘垃圾。
+                cls._temp_save_dir, cls._temp_save_lock = _create_locked_temp_save_dir()
+                saves = cls._temp_save_dir.name
+            try:
+                bridge.init(assets_dir=assets, save_dir=saves, data_dir=data,
+                            hero_class=int(hero_class))
+            except BaseException:
+                # 若异步异常发生在原生提交之后，保留 native 与 scratch，
+                # 并把 Python 账本补齐；只有原生确实未提交时才回滚磁盘。
+                committed = bridge.engine_config()
+                if committed is not None:
+                    cls._engine_config = (
+                        str(committed[0]), str(committed[1]),
+                        str(committed[2]), int(committed[3]))
+                    cls._engine_pid = pid
+                    cls._engine_initialized = True
+                elif save_dir is None and cls._temp_save_dir is not None:
+                    cls._temp_save_dir.cleanup()
+                    cls._temp_save_dir = None
+                    if cls._temp_save_lock is not None:
+                        cls._temp_save_lock.close()
+                        cls._temp_save_lock = None
+                raise
+            cls._engine_config = (assets, saves, data, int(hero_class))
+            cls._engine_pid = pid
+            # 提交位必须最后写：若 SIGINT 落在配置/PID 两次赋值之间，下一次
+            # 构造会从原生 engine_config 恢复；反过来先置 True 会把缺失 PID
+            # 误判成 fork，甚至进不到恢复逻辑。
+            cls._engine_initialized = True
+
+        self.ticks_per_step = int(ticks_per_step)
+        self.max_steps = int(max_steps)
         self.start_in_dungeon = start_in_dungeon
         self.include_raw = include_raw
         # v17 深水区:下楼奖金层数递进(N→N+1 付 8×N;False = v6-v16 的扁平 8.0,
@@ -123,8 +365,12 @@ class DiabloGymEnv(gym.Env):
         self.observation_space = gym.spaces.Box(
             low=-np.inf, high=np.inf,
             shape=(12 + _K_MONSTERS * 4 + 2 * side * side + 9,), dtype=np.float32,
-        )  # +8 = v13 药 4 维(腰带数+最近地面药)+ v14 装备 4 维(AC+最近可穿装备)
+        )  # +9 = v13 药 4 维 + v14 装备 4 维 + v19 强弱仪表 1 维
+        self._token = object()
         self._raw = None
+        self._native_generation: int | None = None
+        self._episode_seed: int | None = None
+        self._episode_ended = True
         self._steps = 0
         self._ep_kills = 0
         self._ep_start_xp = 0
@@ -133,17 +379,46 @@ class DiabloGymEnv(gym.Env):
     # ---------- gymnasium API ----------
 
     def reset(self, *, seed: int | None = None, options=None):
+        if (DiabloGymEnv._engine_initialized
+                and DiabloGymEnv._engine_pid != os.getpid()):
+            raise RuntimeError(
+                "禁止在 fork 子进程 reset 父进程已初始化的 DevilutionX；"
+                "多环境训练必须使用 spawn")
         super().reset(seed=seed)
         actual_seed = seed if seed is not None else int(self.np_random.integers(2**31))
-        self._raw = bridge.reset(seed=actual_seed)
-        if self.start_in_dungeon:
-            # 城镇布局固定,脚本化走到教堂楼梯(约 500-900 tick,~0.05s)
-            self._raw = nav.descend_to_dungeon(bridge)
-        self._steps = 0
-        self._ep_kills = 0
-        self._ep_start_xp = int(self._raw["xp"])
-        self._visited = {(self._raw["player_x"], self._raw["player_y"])}
-        return self._vectorize(self._raw), self._info(self._raw)
+        actual_seed = int(actual_seed)
+        if not 0 <= actual_seed <= np.iinfo(np.uint32).max:
+            raise ValueError(f"seed 必须在 uint32 范围 [0, 2**32-1] 内，收到 {actual_seed}")
+        try:
+            DiabloGymEnv._active_token = self._token
+            self._raw = bridge.reset(seed=actual_seed)
+            self._native_generation = int(bridge.episode_generation())
+            if self.start_in_dungeon:
+                # 城镇布局固定,脚本化走到教堂楼梯(约 500-900 tick,~0.05s)
+                self._raw = nav.descend_to_dungeon(bridge)
+            self._steps = 0
+            self._episode_seed = actual_seed
+            self._episode_ended = False
+            self._ep_kills = 0
+            self._ep_start_xp = int(self._raw["xp"])
+            self._visited = {(self._raw["player_x"], self._raw["player_y"])}
+            obs = self._vectorize(self._raw)
+            info = self._info(self._raw)
+        except BaseException:
+            # 导航/观测构造也是 reset 事务的一部分；中途失败时不得
+            # 留下一个看似可 step 的半初始化 episode。
+            try:
+                bridge.end_game()
+            except Exception:
+                pass
+            if DiabloGymEnv._active_token is self._token:
+                DiabloGymEnv._active_token = None
+            self._raw = None
+            self._native_generation = None
+            self._episode_seed = None
+            self._episode_ended = True
+            raise
+        return obs, info
 
     def action_masks(self) -> np.ndarray:
         """v16:无效动作掩码(MaskablePPO 协议方法;SubprocVecEnv 经
@@ -155,27 +430,32 @@ class DiabloGymEnv(gym.Env):
         12/13 号键保持自由:"何时不按"是 v13 已学会的真本事(尽管是风格
         彩票),掩掉等于换考卷,四手牌基线全作废。掩码不保证宏走得完——
         它消灭空按,不消灭白按(路径受阻/12 拍超时/半路挨打仍会失败)。"""
+        self._ensure_active(allow_ended=True)
         mask = np.ones(15, dtype=bool)
         mask[14] = any(it.get("gear") for it in self._raw.get("floor_items", []))
         return mask
 
     def step(self, action: int):
+        self._ensure_active()
+        if not self.action_space.contains(action):
+            raise ValueError(f"动作必须是 {self.action_space}中的整数，收到 {action!r}")
         prev = self._raw
         action = int(action)
+        remaining = self.max_steps - self._steps
         if action == 9:
-            self._raw, micro = self._macro_engage()
+            self._raw, micro = self._macro_engage(max_beats=min(10, remaining))
         elif action == 10:
-            self._raw, micro = self._macro_explore()
+            self._raw, micro = self._macro_explore(max_beats=min(12, remaining))
         elif action == 11:
-            self._raw, micro = self._macro_descend()
+            self._raw, micro = self._macro_descend(max_beats=min(12, remaining))
         elif action == 12:
             bridge.act_drink()  # 无药时引擎侧为空操作;站桩惩罚由奖励函数自然覆盖
             self._raw = bridge.step(ticks=self.ticks_per_step)
             micro = 1
         elif action == 13:
-            self._raw, micro = self._macro_pickup("heal")
+            self._raw, micro = self._macro_pickup("heal", max_beats=min(12, remaining))
         elif action == 14:
-            self._raw, micro = self._macro_pickup("gear")
+            self._raw, micro = self._macro_pickup("gear", max_beats=min(12, remaining))
             if bridge.sweep_backpack_gear():
                 # PM_GOTHIT 时序窗(审查确认):拾取执行前挨硬直会让装备静默
                 # 沉入背包;打捞穿上后刷新观测(无 tick 成本)
@@ -184,15 +464,32 @@ class DiabloGymEnv(gym.Env):
             self._apply_action(action)
             self._raw = bridge.step(ticks=self.ticks_per_step)
             micro = 1
+        if (self.start_in_dungeon
+                and self._raw["dungeon_level"] < prev["dungeon_level"]):
+            # 未来若出现新的回城/向上传送路径，宁可终止训练也
+            # 不能把 depth=0 空耗轨迹静默喂给 PPO。原生触发层已封住
+            # 常见上楼与回城楼梯，这里是第二道 fail-closed 不变量。
+            bad_transition = (prev["dungeon_level"], self._raw["dungeon_level"])
+            try:
+                bridge.end_game()
+            finally:
+                if DiabloGymEnv._active_token is self._token:
+                    DiabloGymEnv._active_token = None
+                self._raw = None
+                self._native_generation = None
+                self._episode_ended = True
+            raise RuntimeError(
+                f"DiabloGym 禁止地牢层级回退: {bad_transition[0]}→{bad_transition[1]}")
         self._steps += micro
-        if self._raw["dungeon_level"] != prev["dungeon_level"]:
-            # 新一层:足迹清零。各层共用同一坐标系,不清的话探索宏在新层
-            # 会把旧层足迹当"已踏足",边疆逻辑整层失效
+        same_scene = _scene_identity(self._raw) == _scene_identity(prev)
+        if not same_scene:
+            # 新主层或任务副本:足迹清零。不同地图共用同一坐标系,不清的话
+            # 探索宏会把旧图足迹当"已踏足",边疆逻辑整层失效。
             self._visited = set()
         self._visited.add((self._raw["player_x"], self._raw["player_y"]))
 
         # 击杀统计:同层内 id 消失即击杀(换层时基线失效,跳过)
-        if self._raw["dungeon_level"] == prev["dungeon_level"]:
+        if same_scene:
             cur_ids = {m["id"] for m in self._raw["monsters"]}
             self._ep_kills += sum(1 for m in prev["monsters"] if m["id"] not in cur_ids)
 
@@ -210,10 +507,60 @@ class DiabloGymEnv(gym.Env):
                 "died": bool(self._raw["dead"]),
                 "gold": self._raw["gold"],
             }
-        return self._vectorize(self._raw), reward, terminated, truncated, info
+        obs = self._vectorize(self._raw)
+        if terminated or truncated:
+            self._episode_ended = True
+        return obs, reward, terminated, truncated, info
 
     def _info(self, raw):
-        return {"raw": raw} if self.include_raw else {}
+        info = {"episode_seed": self._episode_seed}
+        if self.include_raw:
+            # info 属于调用方；不得把内部奖励/宏状态依赖的可变 raw
+            # 直接泄露出去，否则回调或调试代码修改 info["raw"] 会篡改下一拍奖励。
+            # raw 的嵌套结构只有这些 list[dict]；定向拷贝比泛化
+            # deepcopy 快两个数量级，避免 include_raw 默认路径吞掉训练吞吐。
+            snapshot = dict(raw)
+            for key in ("monsters", "floor_items", "triggers", "progression_targets"):
+                snapshot[key] = [dict(entry) for entry in raw.get(key, ())]
+            info["raw"] = snapshot
+        return info
+
+    def _ensure_active(self, *, allow_ended: bool = False) -> None:
+        if (DiabloGymEnv._engine_initialized
+                and DiabloGymEnv._engine_pid != os.getpid()):
+            raise RuntimeError(
+                "禁止在 fork 子进程使用父进程已初始化的 DevilutionX；"
+                "多环境训练必须使用 spawn")
+        if self._raw is None:
+            raise gym.error.ResetNeeded("step/action_masks 前必须先调用 reset()")
+        if DiabloGymEnv._active_token is not self._token:
+            raise RuntimeError(
+                "检测到同进程多个 DiabloGymEnv 交错使用；引擎是全局单例。"
+                "请顺序 reset/使用，或改用 SubprocVecEnv")
+        if int(bridge.episode_generation()) != self._native_generation:
+            raise RuntimeError(
+                "引擎已被直接 bridge.reset() 或其他 wrapper 重置，"
+                "当前环境缓存已失效；请对本环境重新 reset()")
+        if self._episode_ended and not allow_ended:
+            raise gym.error.ResetNeeded("episode 已终止/截断，继续 step() 前必须 reset()")
+
+    def close(self):
+        if (DiabloGymEnv._engine_initialized
+                and DiabloGymEnv._engine_pid != os.getpid()):
+            # 子进程继承的是父进程多线程引擎的一份不安全快照；绝不能
+            # 在这里进入 SDL/NetClose/Lua。OS 会回收子进程地址空间。
+            if DiabloGymEnv._active_token is self._token:
+                DiabloGymEnv._active_token = None
+            self._raw = None
+            self._native_generation = None
+            self._episode_ended = True
+            return
+        if DiabloGymEnv._active_token is self._token:
+            bridge.end_game()
+            DiabloGymEnv._active_token = None
+        self._raw = None
+        self._native_generation = None
+        self._episode_ended = True
 
     # ---------- 内部 ----------
 
@@ -230,14 +577,14 @@ class DiabloGymEnv(gym.Env):
         if target is None:
             return bridge.step(ticks=self.ticks_per_step), 1
         tid = target["id"]
-        start_level = self._raw["dungeon_level"]
+        start_scene = _scene_identity(self._raw)
         raw = prev = self._raw
         beats = 0
         for beats in range(1, max_beats + 1):
             bridge.act_attack_monster(tid)
             raw = bridge.step(ticks=self.ticks_per_step)
             cur_target = next((m for m in raw["monsters"] if m["id"] == tid), None)
-            if cur_target is None or raw["dead"] or raw["dungeon_level"] != start_level:
+            if cur_target is None or raw["dead"] or _scene_identity(raw) != start_scene:
                 break
             # 止损:连续 2 拍既没接近目标也没造成伤害(多半隔墙不可达)→ 提前放弃,
             # 把决策权还给策略,避免 run3 式"对着墙白烧 10 拍"
@@ -253,8 +600,193 @@ class DiabloGymEnv(gym.Env):
 
     _EXPLORE_RADIUS = 12  # 25×25 搜索窗
 
+    _PROGRESSION_PRIORITY = {
+        "lazarus_stand": 0,
+        "lazarus_staff": 1,
+        "vile_entrance": 2,
+        "vile_book": 3,
+        "vile_center_circle": 4,
+        "diablo_switch": 5,
+    }
+
+    @staticmethod
+    def _progression_present(raw, target) -> bool:
+        """坐标+种类是单场景内稳定身份；目标消失即本次交互已提交。"""
+        return any(
+            p.get("kind") == target.get("kind")
+            and int(p.get("x", -1)) == int(target["x"])
+            and int(p.get("y", -1)) == int(target["y"])
+            for p in raw.get("progression_targets", ())
+        )
+
+    @staticmethod
+    def _progression_ready(raw, target) -> bool:
+        px, py = int(raw["player_x"]), int(raw["player_y"])
+        tx, ty = int(target["x"]), int(target["y"])
+        gx, gy = int(target["goal_x"]), int(target["goal_y"])
+        action = target["action"]
+        if action == "walk":
+            return (px, py) == (gx, gy)
+        if action == "pickup":
+            return max(abs(px - tx), abs(py - ty)) <= 2
+        if action == "operate" and bool(target.get("exact")):
+            return (px, py) == (gx, gy)
+        if action == "operate":
+            return max(abs(px - tx), abs(py - ty)) <= 1
+        raise RuntimeError(f"未知剧情目标动作: {action!r}")
+
+    @staticmethod
+    def _issue_progression(target) -> None:
+        action = target["action"]
+        if action == "operate":
+            bridge.act_operate(int(target["x"]), int(target["y"]))
+        elif action == "pickup":
+            bridge.act_pickup_progression(int(target["x"]), int(target["y"]))
+        elif action == "walk":
+            bridge.act_walk(int(target["goal_x"]), int(target["goal_y"]))
+        else:
+            raise RuntimeError(f"未知剧情目标动作: {action!r}")
+
+    def _macro_progression(self, max_beats: int = 12):
+        """推进严格白名单中的下一项通关必需交互。
+
+        action 10/11 都调用此宏：平坦策略、FARM 工人与 DIVE 经理因此不会
+        在不同控制路径上得到两套可达性。Vile 书要求精确站圈；普通机关只
+        要相邻。全局 BFS 仍只把门/桶当软墙，不传送、不穿墙。
+        """
+        raw = self._raw
+        targets = [dict(p) for p in raw.get("progression_targets", ())]
+        if not targets:
+            return bridge.step(ticks=self.ticks_per_step), 1
+
+        candidates = []
+        for target in targets:
+            required = {"kind", "action", "x", "y", "goal_x", "goal_y", "exact"}
+            if set(target) != required:
+                raise RuntimeError(f"剧情目标 schema 异常: {target!r}")
+            ready = self._progression_ready(raw, target)
+            path = [] if ready else self._plan_descend_path(
+                raw, int(target["goal_x"]), int(target["goal_y"]),
+                avoid_monsters=True)
+            px, py = int(raw["player_x"]), int(raw["player_y"])
+
+            def assess(candidate_path):
+                ex, ey = ((candidate_path[-1][0], candidate_path[-1][1])
+                          if candidate_path else (px, py))
+                if target["action"] == "operate" and not bool(target["exact"]):
+                    remaining_ = max(abs(ex - int(target["x"])),
+                                     abs(ey - int(target["y"])))
+                    limit = 1
+                elif target["action"] == "pickup":
+                    remaining_ = max(abs(ex - int(target["x"])),
+                                     abs(ey - int(target["y"])))
+                    limit = 2
+                else:
+                    remaining_ = max(abs(ex - int(target["goal_x"])),
+                                     abs(ey - int(target["goal_y"])))
+                    limit = 0
+                reachable_ = ready or (
+                    candidate_path is not None and remaining_ <= limit)
+                return remaining_, reachable_
+
+            remaining, reachable = assess(path)
+            if not ready and not reachable:
+                # “避怪 BFS”即使只能走到怪物墙前也会返回一条 partial path，
+                # 不是 None。若只在 None 时回退，L16 会把真正可达的第二个
+                # switch 错判为远目标，反复走向另一扇尚未开放的墙。
+                fallback = self._plan_descend_path(
+                    raw, int(target["goal_x"]), int(target["goal_y"]))
+                fallback_remaining, fallback_reachable = assess(fallback)
+                old_rank = (not reachable, remaining,
+                            len(path) if path is not None else 10**9)
+                new_rank = (not fallback_reachable, fallback_remaining,
+                            len(fallback) if fallback is not None else 10**9)
+                if new_rank < old_rank:
+                    path = fallback
+                    remaining, reachable = fallback_remaining, fallback_reachable
+            priority = self._PROGRESSION_PRIORITY.get(target["kind"], 999)
+            candidates.append((not reachable, priority, remaining,
+                               len(path) if path is not None else 10**9,
+                               target, path))
+
+        _, _, _, _, target, path = min(candidates, key=lambda c: c[:4])
+        if path is None and not self._progression_ready(raw, target):
+            return bridge.step(ticks=self.ticks_per_step), 1
+
+        start_scene = _scene_identity(raw)
+        pi = 0
+        command = None  # ("open"/"walk"/"progress", x, y, path_index)
+        last_pos = (raw["player_x"], raw["player_y"])
+        stall = 0
+        beats = 0
+        for beats in range(1, max_beats + 1):
+            if not self._progression_present(raw, target):
+                break
+            if command is None:
+                if self._progression_ready(raw, target):
+                    self._issue_progression(target)
+                    command = ("progress", int(target["x"]), int(target["y"]), pi)
+                elif pi >= len(path):
+                    break
+                else:
+                    nxt = None
+                    for j in range(pi, min(pi + 8, len(path))):
+                        if path[j][2]:
+                            nxt = ("open", path[j][0], path[j][1], j)
+                            break
+                    if nxt is None:
+                        j = min(pi + 7, len(path) - 1)
+                        nxt = ("walk", path[j][0], path[j][1], j)
+                    command = nxt
+                    if command[0] == "open":
+                        bridge.act_operate(command[1], command[2])
+                    else:
+                        bridge.act_walk(command[1], command[2])
+
+            raw = bridge.step(ticks=self.ticks_per_step)
+            pos = (raw["player_x"], raw["player_y"])
+            self._visited.add(pos)
+            if raw["dead"] or _scene_identity(raw) != start_scene:
+                break
+            if not self._progression_present(raw, target):
+                break
+
+            if command[0] == "open":
+                if bridge.probe_tile(command[1], command[2])["walkable"]:
+                    path[command[3]] = (command[1], command[2], False)
+                    pi = command[3]
+                    command = None
+                    stall = 0
+                    last_pos = pos
+                    continue
+            elif command[0] == "walk":
+                if max(abs(pos[0] - command[1]), abs(pos[1] - command[2])) <= 1:
+                    pi = command[3] + 1
+                    command = None
+                    stall = 0
+                    last_pos = pos
+                    continue
+
+            if pos == last_pos:
+                stall += 1
+                if stall == 3:
+                    if command[0] == "open":
+                        bridge.act_operate(command[1], command[2])
+                    elif command[0] == "walk":
+                        bridge.act_walk(command[1], command[2])
+                    else:
+                        self._issue_progression(target)
+                if stall >= 6:
+                    break
+            else:
+                stall = 0
+            last_pos = pos
+        return raw, beats
+
     def _macro_explore(self, max_beats: int = 12):
         """探索宏:走向最近的未踏足可走边疆点;发现猎物立即交还控制权。"""
+        if self._raw.get("progression_targets"):
+            return self._macro_progression(max_beats=max_beats)
         raw = self._raw
         px, py = raw["player_x"], raw["player_y"]
         r = self._EXPLORE_RADIUS
@@ -278,12 +810,15 @@ class DiabloGymEnv(gym.Env):
             _, tx, ty = min(candidates)  # 最近的边疆点(便宜且稳)
         else:
             # 本窗内已探明:朝下行楼梯推进(层级目标),没有就原地一拍
-            stairs = [t for t in raw.get("triggers", []) if t["msg"] == 0]
+            transition = (bridge.WM_DIABRTNLVL if raw.get("is_set_level")
+                          else bridge.WM_DIABNEXTLVL)
+            stairs = [t for t in raw.get("triggers", [])
+                      if t["msg"] == transition]
             if not stairs:
                 return bridge.step(ticks=self.ticks_per_step), 1
             tx, ty = stairs[0]["x"], stairs[0]["y"]
 
-        start_level = raw["dungeon_level"]
+        start_scene = _scene_identity(raw)
         last_pos = (px, py)
         stall = 0
         beats = 0
@@ -293,7 +828,7 @@ class DiabloGymEnv(gym.Env):
             pos = (raw["player_x"], raw["player_y"])
             self._visited.add(pos)
             nd = self._nearest_dist(raw)
-            if (raw["dead"] or raw["dungeon_level"] != start_level
+            if (raw["dead"] or _scene_identity(raw) != start_scene
                     or (nd is not None and nd <= 6)          # 发现猎物,交还控制权
                     or max(abs(pos[0] - tx), abs(pos[1] - ty)) <= 1):  # 到达
                 break
@@ -367,14 +902,19 @@ class DiabloGymEnv(gym.Env):
         发现猎物不打断(这是主动撤离键);换层/阵亡/持续失速提前结束;
         12 拍耗尽自然归还控制权,下次按键重新规划。全程无随机数,确定性。
         """
+        if self._raw.get("progression_targets"):
+            return self._macro_progression(max_beats=max_beats)
         raw = self._raw
-        stairs = [t for t in raw.get("triggers", []) if t["msg"] == 0]
+        transition = (bridge.WM_DIABRTNLVL if raw.get("is_set_level")
+                      else bridge.WM_DIABNEXTLVL)
+        stairs = [t for t in raw.get("triggers", [])
+                  if t["msg"] == transition]
         if not stairs:
             return bridge.step(ticks=self.ticks_per_step), 1
         px, py = raw["player_x"], raw["player_y"]
         st = min(stairs, key=lambda t: max(abs(t["x"] - px), abs(t["y"] - py)))
         sx, sy = st["x"], st["y"]
-        start_level = raw["dungeon_level"]
+        start_scene = _scene_identity(raw)
 
         path = self._plan_descend_path(raw, sx, sy, avoid_monsters=True)
         if path is None:
@@ -408,7 +948,7 @@ class DiabloGymEnv(gym.Env):
             raw = bridge.step(ticks=self.ticks_per_step)
             pos = (raw["player_x"], raw["player_y"])
             self._visited.add(pos)
-            if raw["dead"] or raw["dungeon_level"] != start_level:
+            if raw["dead"] or _scene_identity(raw) != start_scene:
                 break  # 换层成功(或阵亡);足迹由 step() 统一按层重置
             if pos == (sx, sy):
                 continue  # 已站上楼梯格,等触发换层——站桩不算失速
@@ -463,7 +1003,7 @@ class DiabloGymEnv(gym.Env):
         h = min(targets, key=lambda it: max(abs(it["x"] - px), abs(it["y"] - py)))
         hx, hy = h["x"], h["y"]
         start_belt = raw["belt_heals"]
-        start_level = raw["dungeon_level"]
+        start_scene = _scene_identity(raw)
 
         near0 = max(abs(hx - px), abs(hy - py)) <= 2
         path = self._plan_descend_path(raw, hx, hy, avoid_monsters=True)
@@ -508,7 +1048,7 @@ class DiabloGymEnv(gym.Env):
             raw = bridge.step(ticks=self.ticks_per_step)
             pos = (raw["player_x"], raw["player_y"])
             self._visited.add(pos)
-            if raw["dead"] or raw["dungeon_level"] != start_level:
+            if raw["dead"] or _scene_identity(raw) != start_scene:
                 break
             if kind == "heal" and raw["belt_heals"] > start_belt:
                 break  # 到手
@@ -602,11 +1142,12 @@ class DiabloGymEnv(gym.Env):
             # 不可刷。近似势函数塑形,取正半边(死亡掉装的负 Δ 不罚,死亡已有
             # -2.0)。v15b 计划:学会后拆塑形微调,检验行为是否内化。
             r += 0.5 * (cur["armor_class"] - prev["armor_class"])
-        if cur["dungeon_level"] == prev["dungeon_level"]:
+        same_scene = _scene_identity(cur) == _scene_identity(prev)
+        if same_scene:
             r += cls._combat_reward(prev, cur)
         # 接近塑形:仅当是"自己走近"才有奖励(v2 教训:怪主动贴脸也计分,
         # 会训出"站桩钓鱼却不开打"的白嫖策略)
-        if cur["dungeon_level"] == prev["dungeon_level"]:
+        if same_scene:
             moved = (cur["player_x"], cur["player_y"]) != (prev["player_x"], prev["player_y"])
             d0, d1 = cls._nearest_dist(prev), cls._nearest_dist(cur)
             if moved and d0 is not None and d1 is not None:
@@ -623,10 +1164,21 @@ class DiabloGymEnv(gym.Env):
     def _vectorize(cls, obs) -> np.ndarray:
         px, py = obs["player_x"], obs["player_y"]
         nearest = cls._nearest_dist(obs)
-        stairs = [t for t in obs.get("triggers", []) if t["msg"] == 0]  # WM_DIABNEXTLVL
-        if stairs:
-            st = min(stairs, key=lambda t: max(abs(t["x"] - px), abs(t["y"] - py)))
-            stair_dx, stair_dy = (st["x"] - px) / 56.0, (st["y"] - py) / 56.0
+        advance = list(obs.get("progression_targets", ()))
+        if advance:
+            st = min(advance, key=lambda t: max(
+                abs(t["goal_x"] - px), abs(t["goal_y"] - py)))
+            sx, sy = st["goal_x"], st["goal_y"]
+        else:
+            transition = (bridge.WM_DIABRTNLVL if obs.get("is_set_level")
+                          else bridge.WM_DIABNEXTLVL)
+            stairs = [t for t in obs.get("triggers", [])
+                      if t["msg"] == transition]
+            st = min(stairs, key=lambda t: max(
+                abs(t["x"] - px), abs(t["y"] - py))) if stairs else None
+            sx, sy = (st["x"], st["y"]) if st is not None else (px, py)
+        if advance or st is not None:
+            stair_dx, stair_dy = (sx - px) / 56.0, (sy - py) / 56.0
         else:
             stair_dx = stair_dy = 0.0
         vec = [
@@ -661,7 +1213,7 @@ class DiabloGymEnv(gym.Env):
         else:
             vec += [obs.get("belt_heals", 0) / 8.0, 0.0, 0.0, 0.0]
         gears = [it for it in obs.get("floor_items", []) if it.get("gear")]
-        ac = min(1.0, obs.get("armor_class", 0) / 50.0)
+        ac = max(0.0, min(1.0, obs.get("armor_class", 0) / 50.0))
         if gears:  # v14:装备章——捡装备键的前置条件入观测(教训十一验收单)
             g = min(gears, key=lambda it: max(abs(it["x"] - px), abs(it["y"] - py)))
             vec += [ac,

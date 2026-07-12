@@ -5,8 +5,10 @@
 train_ppo --options --bc-init 使用;附重放检查(303 维无记忆假设,选项级)。
 """
 import json
+import hashlib
 import pathlib
 import sys
+import time
 
 import numpy as np
 import torch
@@ -17,11 +19,40 @@ sys.path.insert(0, str(ROOT / "python"))
 
 from diablogym import OptionsEnv
 from diablogym.options_env import DIVE, FARM
+from eval_contract import PROTOCOL_VERSION, exclusive_lock
+from train_ppo import _BC_REPORT_SCHEMA_VERSION, _implementation_bundle_sha256
 
 OUT = ROOT / "train" / "runs" / "bc-manager"
 OUT.mkdir(parents=True, exist_ok=True)
 DEMO_SEEDS = list(range(100, 228))
 REPLAY_SEEDS = list(range(7000, 7032))
+
+
+def artifact_provenance():
+    return {
+        "schema_version": _BC_REPORT_SCHEMA_VERSION,
+        "protocol_version": PROTOCOL_VERSION,
+        "implementation_sha256": _implementation_bundle_sha256(),
+        "generator_sha256": hashlib.sha256(
+            pathlib.Path(__file__).read_bytes()).hexdigest(),
+    }
+
+
+def begin_output_attempt():
+    old = [OUT / name for name in ("policy_sd.pt", "bc_report.json")
+           if (OUT / name).exists()]
+    if old:
+        archive = OUT / "_previous" / str(time.time_ns())
+        archive.mkdir(parents=True)
+        for path in old:
+            path.replace(archive / path.name)
+    (OUT / "bc_report.json").write_text(json.dumps({"hypothesis": "RUNNING"}))
+
+
+def write_report(record):
+    tmp = OUT / "bc_report.tmp.json"
+    tmp.write_text(json.dumps(record))
+    tmp.replace(OUT / "bc_report.json")
 
 
 def teacher(env):
@@ -56,6 +87,8 @@ class MgrHead(nn.Module):
 
 
 def main():
+    provenance = artifact_provenance()
+    begin_output_attempt()
     env = OptionsEnv(max_steps=3000)
     X, Y, rets = [], [], []
     for seed in DEMO_SEEDS:
@@ -71,18 +104,20 @@ def main():
     model = MgrHead(X.shape[1])
     opt = torch.optim.Adam(model.parameters(), lr=3e-4)
     dl = torch.utils.data.DataLoader(torch.utils.data.TensorDataset(X, Y),
-                                     batch_size=256, shuffle=True)
+                                     batch_size=256, shuffle=True,
+                                     generator=torch.Generator().manual_seed(22))
     for ep in range(10):
         tot = n = corr = 0
         for xb, yb in dl:
             logits = model(xb)
             loss = nn.functional.cross_entropy(logits, yb)
             opt.zero_grad(); loss.backward(); opt.step()
-            tot += float(loss) * len(yb); n += len(yb)
+            tot += loss.item() * len(yb); n += len(yb)
             corr += int((logits.argmax(1) == yb).sum())
         print(f"BC ep{ep}: loss {tot/n:.4f} acc {corr/n:.3f}", flush=True)
 
     # 重放(7000 池,选项级无记忆假设)
+    model.eval()
     def bc_policy(e, o, m):
         with torch.no_grad():
             lg = model(torch.from_numpy(np.asarray(o, dtype=np.float32)).unsqueeze(0))[0]
@@ -92,22 +127,38 @@ def main():
     # 教师同池基准(公平比)
     t7000 = [rollout(env, lambda e, o, m: teacher(e), s)[0] for s in REPLAY_SEEDS]
     bc_mean, t7_mean = sum(replay) / 32, sum(t7000) / 32
-    ratio = bc_mean / t7_mean if t7_mean else 0
+    if t7_mean <= 0:
+        raise RuntimeError(f"同池教师均回报 {t7_mean:.3f} <= 0，比值闸无定义")
+    ratio = bc_mean / t7_mean
     print(f"重放:BC {bc_mean:.1f} vs 同池教师 {t7_mean:.1f} = {ratio:.2f} 倍(线 0.85)", flush=True)
 
+    ok = ratio >= 0.85
+    report = {
+        "pairs": len(Y), "teacher_demo_mean": t_mean,
+        "bc_replay_7000": bc_mean, "teacher_7000": t7_mean, "ratio": ratio,
+        "hypothesis": "PASS" if ok else "FAIL", **provenance}
+    if not ok:
+        write_report(report)
+        raise RuntimeError(
+            f"无记忆函数闸 FAIL(ratio={ratio:.3f});拒绝覆写 policy_sd.pt")
     sd = {"mlp_extractor.policy_net.0.weight": model.net[0].weight,
           "mlp_extractor.policy_net.0.bias": model.net[0].bias,
           "mlp_extractor.policy_net.2.weight": model.net[2].weight,
           "mlp_extractor.policy_net.2.bias": model.net[2].bias,
           "action_net.weight": model.head.weight,
           "action_net.bias": model.head.bias}
-    torch.save({k: v.detach().clone() for k, v in sd.items()}, OUT / "policy_sd.pt")
-    (OUT / "bc_report.json").write_text(json.dumps({
-        "pairs": len(Y), "teacher_demo_mean": t_mean,
-        "bc_replay_7000": bc_mean, "teacher_7000": t7_mean, "ratio": ratio,
-        "hypothesis": "PASS" if ratio >= 0.85 else "FAIL"}))
+    if artifact_provenance() != provenance:
+        raise RuntimeError("BC manager 运行期间实现/引擎/内容发生漂移")
+    policy_tmp = OUT / "policy_sd.tmp.pt"
+    torch.save({k: v.detach().clone() for k, v in sd.items()}, policy_tmp)
+    policy_tmp.replace(OUT / "policy_sd.pt")
+    report["policy_sha256"] = hashlib.sha256(
+        (OUT / "policy_sd.pt").read_bytes()).hexdigest()
+    write_report(report)
+    env.close()
     print(f"已存 {OUT}/policy_sd.pt", flush=True)
 
 
 if __name__ == "__main__":
-    main()
+    with exclusive_lock(OUT / ".bc.lock", "BC manager 产物"):
+        main()

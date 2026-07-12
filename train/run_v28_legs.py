@@ -27,11 +27,18 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import pathlib
+import signal
 import subprocess
 import time
 import traceback
 import zipfile
+
+from eval_contract import (PROTOCOL_VERSION, OutputReservationError,
+                           exclusive_lock, expected_eval_identity,
+                           freeze_eval_identity, read_eval_archive,
+                           verify_eval_identity)
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 PY = str(ROOT / ".venv" / "bin" / "python")
@@ -39,10 +46,14 @@ RUNS = ROOT / "train" / "runs"
 V28 = RUNS / "v28"
 V28.mkdir(parents=True, exist_ok=True)
 LEDGER = V28 / "gate_ledger.jsonl"
+DRIVER_LOCK = V28 / ".driver.lock"
+DRIVER_LOCK_PURPOSE = "v28 驱动"
 EVAL = RUNS / "eval-assembled"
 
 LEG = 244 * 2048              # 499,712(v26 腿制原封)
+QUANTUM = 2048
 N_LEGS = 8
+BUDGET_STEPS = N_LEGS * LEG     # 只计 START 之后的新步
 BETA = 0.015625               # 恒定,永不撒手(教训十九 + v27「不可定居」)
 HARD_LINE = 62.8
 FINISH_LINE = 103.1           # =round(0.9×114.5,1),16 种子腿考口径(勿与满32口径 103 混读)
@@ -52,15 +63,53 @@ START = 2_998_272             # v26-leg6 zip num_timesteps(6×499,712;发车断�
 BASE_CKPT = RUNS / "v26-leg6" / "model_final.zip"
 BC_SD = str(RUNS / "bc-worker" / "policy_sd.pt")
 ANCHOR = EVAL / "v24-G3-leg7.json"
-ANCHOR_SHA = "22d9442257d3a3c7"       # 预注册钉死;漂移即 STOP
+ANCHOR_SHA = "22d9442257d3a3c79feb5b40918890917772e11036e4026ca4d3cc2005318359"
+ANCHOR_WORKER = ROOT / "train" / "models" / "v24-worker-leg7" / "model.zip"
 BASELINE = EVAL / "v26-G3-leg6.json"
-BASELINE_SHA = "24a905a7baf0f70a"     # 宽度基线 5/16、尸检对照的来源档案
+BASELINE_SHA = "24a905a7baf0f70ab09a8103721757f10eec0692b64b81f9880abedd2e0325dd"
+DEFAULT_MANAGER_SHA = "0f2264860b0960e7951efd424836b90c09c002cebca7bf8109fd669b13be63d7"
 
 G3_MEAN = 74.6
 G3_DEATHS = 6
 R4 = {"farm_descend_rate": 0.0204, "override_sentinel": 0.03, "override_void": 0.08,
       "cap_rate": 0.05, "farm_tau_lo": 27.8, "farm_tau_hi": 46.4}
 SIDELINE_BACK16 = 8           # 仅宽度通道候选的出样本副线(零假设 P(≥8)≈16%)
+CALIBRATED_PROTOCOL_VERSION = 2
+
+
+class OperationalFailure(RuntimeError):
+    """基础设施/接线失败；与正常科学绊线区分，进程必须非零退出。"""
+
+
+def budgeted_leg_steps(spent_steps: int, cap: int = LEG) -> int:
+    remaining = max(0, BUDGET_STEPS - spent_steps)
+    return min(cap, (remaining // QUANTUM) * QUANTUM)
+
+
+def ensure_retry_budget(spent_steps: int, cap: int = LEG) -> None:
+    if budgeted_leg_steps(spent_steps, cap) == 0:
+        raise OperationalFailure("失败尝试已耗尽硬预算，无法完成当前腿")
+
+
+def observed_attempt_steps(base: int, result: dict, allocated: int) -> int:
+    observed = max(int(result.get("global_steps", 0)),
+                   int(result.get("status_steps", 0)))
+    delta = max(0, observed - base)
+    if delta > allocated:
+        raise OperationalFailure(
+            f"步数越过本次配额:base={base}, observed={observed}, allocated={allocated}")
+    return delta
+
+
+def failed_attempt_charge(observed: int, allocated: int) -> int:
+    if not 0 <= observed <= allocated:
+        raise OperationalFailure("异常尝试观测步数越界")
+    return allocated
+
+
+def candidate_probe_eligible(probes_ok: bool | None) -> bool:
+    """只有显式 PASS 能进候选；空探针的 SKIPPED 必须 fail closed。"""
+    return probes_ok is True
 
 
 def log(event: dict):
@@ -75,32 +124,124 @@ def attention(why: str):
         f.write(time.strftime("%F %T ") + why + "\n")
 
 
+def sha256(p: pathlib.Path) -> str:
+    return hashlib.sha256(p.read_bytes()).hexdigest()
+
+
 def sha16(p: pathlib.Path) -> str:
-    return hashlib.sha256(p.read_bytes()).hexdigest()[:16]
+    return sha256(p)[:16]
+
+
+def require(condition: bool, message: str) -> None:
+    if not condition:
+        raise ValueError(message)
+
+
+def require_calibrated_protocol() -> None:
+    if PROTOCOL_VERSION != CALIBRATED_PROTOCOL_VERSION:
+        raise OperationalFailure(
+            "v28 的 HARD_LINE/G3/R4/平台与候选静态阈值仅在 pre-v3 环境语义标定；"
+            "必须先重跑 protocol-v3 基线并人工更新预注册，禁止混用旧阈值"
+        )
+
+
+def parse_seed_range(seeds: str) -> list[int]:
+    """按 eval_assembled 的 LO-HI 契约解析，拒绝额外分隔符与负数。"""
+    parts = seeds.split("-") if isinstance(seeds, str) else []
+    require(len(parts) == 2 and all(p.isascii() and p.isdigit() for p in parts),
+            f"非法 seed 范围:{seeds!r}")
+    lo, hi = (int(p) for p in parts)
+    require(lo <= hi, f"非法 seed 范围:{seeds!r}")
+    return list(range(lo, hi + 1))
+
+
+def read_comparable_reference(path: pathlib.Path, *, tag: str,
+                              worker: pathlib.Path, label: str) -> dict:
+    """活动锚只接受当前语义、固定组装体和完整 runtime/content 身份。"""
+    try:
+        snapshot = freeze_eval_identity(ROOT, worker, None)
+        expected = expected_eval_identity(
+            snapshot, tag=tag, seeds=range(7000, 7032))
+        document = read_eval_archive(path, **expected)
+        verify_eval_identity(snapshot, ROOT)
+        return document
+    except (OSError, KeyError, TypeError, ValueError, RuntimeError) as exc:
+        raise OperationalFailure(
+            f"{label} 不满足当前 schema-v2 可比性契约；"
+            "环境语义变更后须用固定 worker + 默认 manager 重跑基线"
+        ) from exc
+
+
+def read_comparable_anchor() -> dict:
+    return read_comparable_reference(
+        ANCHOR, tag="v24-G3-leg7", worker=ANCHOR_WORKER, label="续航配对锚")
+
+
+def read_comparable_baseline() -> dict:
+    return read_comparable_reference(
+        BASELINE, tag="v26-G3-leg6", worker=BASE_CKPT, label="续航起点基线")
+
+
+def zip_steps(p: pathlib.Path) -> int:
+    try:
+        with zipfile.ZipFile(p) as zf:
+            return int(json.loads(zf.read("data"))["num_timesteps"])
+    except (OSError, KeyError, ValueError, zipfile.BadZipFile):
+        return 0
+
+
+def reachable_probes(start: int, leg_steps: int,
+                     offsets=(250_000, 450_000)) -> list[int]:
+    """只保留能在本腿某个 rollout 收官点触发的绝对探针步。"""
+    end = start + leg_steps
+    probes = []
+    for offset in offsets:
+        target = start + offset
+        first_rollout = start + ((offset + QUANTUM - 1) // QUANTUM) * QUANTUM
+        if first_rollout <= end:
+            probes.append(target)
+    return probes
+
+
+def run_process(cmd, logfile, timeout: int) -> int:
+    with open(logfile, "w") as lf:
+        proc = subprocess.Popen(cmd, cwd=ROOT, stdout=lf, stderr=subprocess.STDOUT,
+                                start_new_session=True)
+        try:
+            return proc.wait(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            try:
+                os.killpg(proc.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            proc.wait()
+            return 124
 
 
 def preflight():
-    assert BASE_CKPT.exists(), f"起点检查点缺失:{BASE_CKPT}"
-    with zipfile.ZipFile(BASE_CKPT) as z:
-        nt = json.loads(z.read("data"))["num_timesteps"]
-    assert nt == START, f"START 断言失败:zip num_timesteps={nt} != {START}"
+    require_calibrated_protocol()
+    require(BASE_CKPT.exists(), f"起点检查点缺失:{BASE_CKPT}")
+    nt = zip_steps(BASE_CKPT)
+    require(nt == START, f"START 断言失败:zip num_timesteps={nt} != {START}")
     st = json.loads((RUNS / "v26-leg6" / "status.json").read_text())["total_steps"]
-    assert START - 2048 <= st <= START, f"status 计数器滞后越界:{st}"
-    for p, s in ((ANCHOR, ANCHOR_SHA), (BASELINE, BASELINE_SHA)):
-        assert p.exists() and sha16(p) == s, f"存档 sha 漂移:{p}(档案不可变性条款)"
+    require(START - 2048 <= st <= START, f"status 计数器滞后越界:{st}")
+    read_comparable_anchor()
+    read_comparable_baseline()
     for k in range(1, N_LEGS + 1):
         for tag in (f"v28-leg{k}", f"v28-G3-leg{k}"):
-            assert not (EVAL / f"{tag}.json").exists(), f"目标档案已存在:{tag}"
-        assert not (RUNS / f"v28-leg{k}").exists(), (
-            f"运行目录残留:v28-leg{k}(重启协议:整体归档后再发车)")
-    assert not (EVAL / "v28-golden.json").exists(), "金评目标档案已存在(金牌至多一次)"
+            require(not (EVAL / f"{tag}.json").exists(), f"目标档案已存在:{tag}")
+        require(not (RUNS / f"v28-leg{k}").exists(),
+                f"运行目录残留:v28-leg{k}(重启协议:整体归档后再发车)")
+    require(not (EVAL / "v28-golden.json").exists(), "金评目标档案已存在(金牌至多一次)")
     log({"event": "preflight_ok", "start_nt": nt, "status_lag": START - st,
-         "anchor_sha": ANCHOR_SHA, "baseline_sha": BASELINE_SHA})
+         "anchor_sha": sha16(ANCHOR), "baseline_sha": sha16(BASELINE)})
 
 
 def run_leg(k: int, resume_from: str, leg_steps: int, probes: list[int],
             run_name: str, attempt: int, seed_k: int) -> dict:
     run_dir = RUNS / run_name
+    model_path = run_dir / "model_final.zip"
+    old_mtime = model_path.stat().st_mtime_ns if model_path.exists() else None
     stale = run_dir / "status.json"
     if stale.exists():
         stale.unlink()            # 重跑不许读上次尝试的步数
@@ -118,42 +259,53 @@ def run_leg(k: int, resume_from: str, leg_steps: int, probes: list[int],
         cmd += ["--calib-probes", ",".join(str(p) for p in probes),
                 "--calib-record-only"]
     t0 = time.time()
-    with open(V28 / f"{run_name}.try{attempt}.log", "w") as lf:  # per-attempt 尸检留档
-        try:  # 挂死护栏 3h(>2h 健全线;运维护栏非判决输入):超时杀进程按崩溃互锁落账
-            rc = subprocess.run(cmd, cwd=ROOT, stdout=lf, stderr=subprocess.STDOUT,
-                                timeout=10_800).returncode
-        except subprocess.TimeoutExpired:
-            rc = 124
+    # 挂死护栏 3h(>2h 健全线)；进程组整组终止，避免 SubprocVecEnv 孤儿继续占机。
+    rc = run_process(cmd, V28 / f"{run_name}.try{attempt}.log", timeout=10_800)
     dt = time.time() - t0
     sp = run_dir / "status.json"
     try:
         gsteps = json.loads(sp.read_text())["total_steps"] if sp.exists() else 0
     except Exception:
         gsteps = 0                # 半截 status(写入中被杀):按崩溃条款落账
-    return {"rc": rc, "dt_sec": round(dt), "global_steps": gsteps,
-            "model": run_dir / "model_final.zip"}
+    fresh_model = model_path.exists() and model_path.stat().st_mtime_ns != old_mtime
+    model_steps = zip_steps(model_path) if fresh_model else 0
+    return {"rc": rc, "dt_sec": round(dt), "global_steps": model_steps,
+            "status_steps": gsteps, "model": model_path, "model_fresh": fresh_model}
 
 
 def exam(model_path: pathlib.Path, tag: str, seeds: str) -> tuple[dict, list] | None:
     out = EVAL / f"{tag}.json"
-    assert not out.exists(), f"档案不可变性:{out} 已存在,拒绝覆写"
-    with open(V28 / f"{tag}.eval.{time.strftime('%H%M%S')}.log", "w") as lf:  # 评测侧尸检留档
-        try:
-            rc = subprocess.run([PY, "train/eval_assembled.py", "--worker",
-                                 str(model_path).replace(".zip", ""), "--seeds", seeds,
-                                 "--tag", tag], cwd=ROOT,
-                                stdout=lf, stderr=subprocess.STDOUT,
-                                timeout=1_800).returncode
-        except subprocess.TimeoutExpired:
-            rc = 124
+    require(not out.exists(), f"档案不可变性:{out} 已存在,拒绝覆写")
+    try:
+        seed_values = parse_seed_range(seeds)
+        snapshot = freeze_eval_identity(ROOT, model_path, None)
+        require(snapshot["manager"]["sha256"] == DEFAULT_MANAGER_SHA,
+                "默认 manager sha 漂移")
+        expected = expected_eval_identity(snapshot, tag=tag, seeds=seed_values)
+        command = [PY, "train/eval_assembled.py",
+                   "--worker", snapshot["worker"]["path"],
+                   "--manager-npz", snapshot["manager"]["path"],
+                   "--seeds", seeds, "--tag", tag]
+        rc = run_process(
+            command, V28 / f"{tag}.eval.{time.time_ns()}.log", timeout=1_800)
+    except (OSError, KeyError, TypeError, ValueError, RuntimeError):
+        if out.exists():
+            out.rename(out.with_suffix(f".{time.time_ns()}.void"))
+        return None
     if rc != 0:
         if out.exists():      # 半截档案轮转,给重考让路
-            out.rename(out.with_suffix(f".{time.strftime('%H%M%S')}.void"))
+            out.rename(out.with_suffix(f".{time.time_ns()}.void"))
         return None
-    j = json.loads(out.read_text())
-    agg = j["agg"]
-    agg["_sha"] = sha16(out)
-    return agg, j["rows"]
+    try:
+        document = read_eval_archive(out, **expected)
+        verify_eval_identity(snapshot, ROOT)
+        agg = document["agg"]
+        agg["_sha"] = sha16(out)
+    except (OSError, KeyError, TypeError, ValueError, RuntimeError):
+        if out.exists():
+            out.rename(out.with_suffix(f".{time.time_ns()}.void"))
+        return None
+    return agg, document["rows"]
 
 
 def exam_retry(model_path: pathlib.Path, tag: str, seeds: str, what: str):
@@ -166,13 +318,20 @@ def exam_retry(model_path: pathlib.Path, tag: str, seeds: str, what: str):
 
 def breadth_wins(rows: list, anchor_by_seed: dict, lo: int, hi: int) -> int:
     by_seed = {r["seed"]: r["ret"] for r in rows}
+    require(len(rows) == len(by_seed), "评测档案含重复 seed")
+    require(set(range(lo, hi + 1)) <= set(by_seed), "评测档案缺少所需 seed")
     return sum(1 for s in range(lo, hi + 1)
                if s in by_seed and by_seed[s] > anchor_by_seed[s])
 
 
 def main():
     try:
-        _main()
+        with exclusive_lock(DRIVER_LOCK, DRIVER_LOCK_PURPOSE):
+            _main()
+    except (OperationalFailure, OutputReservationError) as e:
+        log({"event": "OPERATIONAL_FAILURE", "why": str(e)})
+        attention("运维失败:\n" + str(e))
+        raise SystemExit(2) from e
     except Exception as e:   # 条款⑧兜底:任何未预期异常必须入册,不许无声死亡
         log({"event": "DRIVER_EXCEPTION", "why": repr(e)})
         attention("驱动异常死亡:\n" + traceback.format_exc())
@@ -181,14 +340,21 @@ def main():
 
 def _main():
     preflight()
-    anchor = json.loads(ANCHOR.read_text())
+    anchor = read_comparable_anchor()
     anchor_by_seed = {r["seed"]: r["ret"] for r in anchor["rows"]}
-    assert set(anchor_by_seed) == set(range(7000, 7032)), "锚种子集合异常"
+    require(len(anchor["rows"]) == len(anchor_by_seed), "锚档案含重复种子")
+    require(set(anchor_by_seed) == set(range(7000, 7032)), "锚种子集合异常")
+    baseline = read_comparable_baseline()
+    baseline_front16 = sum(r["ret"] for r in baseline["rows"][:16]) / 16
+    finish_line = round(0.9 * baseline_front16, 1)
+    intrinsic_line = baseline["agg"]["ret_mean"]
     log({"event": "start", "leg_steps": LEG, "beta_const": BETA, "hard": HARD_LINE,
-         "finish": FINISH_LINE, "start_nt": START, "base": str(BASE_CKPT)})
+         "finish": finish_line, "intrinsic": intrinsic_line,
+         "start_nt": START, "base": str(BASE_CKPT)})
 
     nt_chain = START            # SB3 真链计数(单一计数源)
-    burned = 0                  # 崩溃部分步,从腿 8 扣,入新步硬预算 8×499,712
+    burned = 0                  # 崩溃部分步审计口径；实时扣后续可开配额
+    spent_steps = 0             # START 之后所有成功/失败尝试的观测新步
     train_secs = 0.0
     prev_model = str(BASE_CKPT)
     leg_models = {}             # k -> (score16, model_path, breadth16)
@@ -198,15 +364,16 @@ def _main():
     k = 1
     while k <= N_LEGS:
         cap = LEG
-        leg_steps = max(0, min(cap, LEG - burned)) if k == N_LEGS and burned else cap
-        if k == N_LEGS and burned and leg_steps < LEG:
-            log({"event": "leg8_shrunk", "steps": leg_steps, "note": "烧步扣减(预注册)"})
+        leg_steps = budgeted_leg_steps(spent_steps, cap)
+        if leg_steps < cap:
+            log({"event": "leg_budget_shrunk", "leg": k, "steps": leg_steps,
+                 "spent": spent_steps, "remaining": BUDGET_STEPS - spent_steps,
+                 "note": "所有既成新步与失败烧步逐次扣减硬预算"})
         if leg_steps == 0:
-            log({"event": "leg8_skipped"})
+            log({"event": "budget_exhausted", "leg": k, "spent": spent_steps})
             break
         seed_k = 281_000 + 1_000 * (k - 1)      # 唯一定义点(cmd 与日志同源)
-        probes = [p for p in (nt_chain + 250_000, nt_chain + 450_000)
-                  if p + 2048 <= nt_chain + leg_steps]
+        probes = reachable_probes(nt_chain, leg_steps)
         if len(probes) < 2:
             log({"event": "calib_trimmed", "leg": k, "probes": probes,
                  "note": "短腿探针不可达部分裁掉(预注册;probes_ok 按余量裁决)"})
@@ -220,21 +387,30 @@ def _main():
         expected = nt_chain + leg_steps
 
         # ---- 崩溃互锁(先于一切裁决;计数 = SB3 真链 ±2048 slack 覆盖 status 滞后)----
-        clean = res["rc"] == 0 and res["global_steps"] >= expected - 2048
+        clean = (res["rc"] == 0 and res["model_fresh"]
+                 and res["global_steps"] == expected)
+        sampled = observed_attempt_steps(nt_chain, res, leg_steps)
         if not clean:
-            partial = max(0, res["global_steps"] - nt_chain)
-            burned += partial
+            partial = sampled
+            charged = failed_attempt_charge(partial, leg_steps)
+            spent_steps += charged
+            burned += charged
             log({"event": "leg_crash", "leg": k, "attempt": attempts[k],
                  "rc": res["rc"], "global_steps": res["global_steps"],
-                 "burned_partial": partial, "burned_total": burned,
-                 "note": "原配置重跑;烧步入新步硬预算(从腿 8 扣);收官计数不计不清零"})
+                 "burned_observed": partial, "burned_charged": charged,
+                 "burned_total": burned,
+                 "spent_total": spent_steps,
+                 "note": "原配置重跑;烧步实时扣后续配额;收官计数不计不清零"})
+            ensure_retry_budget(spent_steps, cap)
             if attempts[k] >= 4:  # 陈旧 calib/sentinel 由下次尝试进场清桌,此处无须轮转
                 stop_reason = (f"腿 {k} 连崩 {attempts[k]} 次——训练止步(重试上限 4 系"
-                               "运维自护护栏、非预注册闸门);已完成腿按预算保护条款照常进 G3")
+                               "运维自护护栏、非预注册闸门)")
                 log({"event": "crash_halt", "why": stop_reason})
                 attention(stop_reason)
-                break
+                raise OperationalFailure(stop_reason)
             continue
+        require(sampled == leg_steps, "干净收官的观测步数与配额不一致")
+        spent_steps += sampled
         nt_chain = expected      # 真链推进(status 滞后不入链)
 
         # ---- G-绿洲(仅腿 1;3.0M 整点保证哨兵行存在,无行即失败——v26 静默跳过事故的修正)----
@@ -252,7 +428,7 @@ def _main():
                 stop_reason = "G-绿洲失败:无哨兵行(v26 曾静默跳过,v28 硬性要求)"
                 log({"event": "STOP", "why": stop_reason})
                 attention(stop_reason)
-                return
+                raise OperationalFailure(stop_reason)
             last = lines[-1]
             oasis_ok = last.get("dry", 1) == 0 and last.get("ff_dry", 0) > 0
             log({"event": "g_oasis", "dry": last.get("dry"), "ff_dry": last.get("ff_dry"),
@@ -261,23 +437,26 @@ def _main():
                 stop_reason = "G-绿洲失败:学习窗含 dry 或 ff_dry=0"
                 log({"event": "STOP", "why": stop_reason})
                 attention(stop_reason)
-                return
+                raise OperationalFailure(stop_reason)
 
         # ---- G-CAL 接线闸(每腿;只记不裁,tripped 位入账不裁决)----
         calib_p = RUNS / run_name / "calib.jsonl"
         recs = ([json.loads(l) for l in calib_p.read_text().splitlines()]
                 if calib_p.exists() else [])
-        probes_ok = all(any(p <= r["step"] < p + 2048 and r["g_ce"] > 0
-                            and r["distill_ce"] > 0 for r in recs)
-                        for p in probes)
+        probes_ok = (all(any(p <= r["step"] < p + QUANTUM and r["g_ce"] > 0
+                             and r["distill_ce"] > 0 for r in recs)
+                         for p in probes) if probes else None)
+        probe_status = ("SKIPPED" if probes_ok is None
+                        else "PASS" if probes_ok else "FAIL")
         log({"event": "g_cal", "leg": k, "records": [
-                {kk: r[kk] for kk in ("step", "g_pg", "g_ce", "teacher_diverge", "tripped")}
-                for r in recs], "probes_ok": probes_ok, "record_only": True})
-        if probes and not probes_ok:
+                {kk: r.get(kk) for kk in ("step", "g_pg", "g_ce", "teacher_diverge", "tripped")}
+                for r in recs], "probes_ok": probes_ok, "probe_status": probe_status,
+             "record_only": True})
+        if probes_ok is False:
             stop_reason = f"G-CAL 接线失败(腿 {k} 双探针未见 ce/g_ce>0)——人工介入"
             log({"event": "STOP", "why": stop_reason})
             attention(stop_reason)
-            return
+            raise OperationalFailure(stop_reason)
 
         # ---- 腿考 + 宽度探针(纯后处理)----
         r = exam_retry(res["model"], f"v28-leg{k}", "7000-7015", f"腿 {k} 考试")
@@ -285,11 +464,17 @@ def _main():
             stop_reason = f"腿 {k} 考试连败 2 次——人工验尸"
             log({"event": "STOP", "why": stop_reason})
             attention(stop_reason)
-            return
+            raise OperationalFailure(stop_reason)
         agg, rows = r
         score = round(agg["ret_mean"], 1)
+        anchor_by_seed = {r["seed"]: r["ret"]
+                          for r in read_comparable_anchor()["rows"]}
         bw = breadth_wins(rows, anchor_by_seed, 7000, 7015)
-        leg_models[k] = (score, str(res["model"]), bw)
+        if candidate_probe_eligible(probes_ok):
+            leg_models[k] = (score, str(res["model"]), bw)
+        else:
+            log({"event": "candidate_ineligible", "leg": k,
+                 "why": "G-CAL probes SKIPPED；该模型不得进入候选池"})
         log({"event": "leg_exam", "leg": k, "beta": BETA, "score": score,
              "died": agg["died"], "diverge": agg.get("script_divergence_rate"),
              "breadth16": bw, "sha": agg["_sha"], "model_sha": sha16(res["model"]),
@@ -301,10 +486,10 @@ def _main():
                  "why": f"< {HARD_LINE},训练永久终止,已完成腿照常进入 G3 候选池"})
             attention(f"硬绊:腿 {k} = {score}")
             break
-        consec_low = consec_low + 1 if score < FINISH_LINE else 0
+        consec_low = consec_low + 1 if score < finish_line else 0
         if consec_low >= 2:
             log({"event": "early_finish", "leg": k, "score": score,
-                 "why": f"连续 {consec_low} 条干净腿 < {FINISH_LINE}——提前收官进 G3"
+                 "why": f"连续 {consec_low} 条干净腿 < {finish_line}——提前收官进 G3"
                         "(预算保护,非惩罚)"})
             attention(f"提前收官于腿 {k}")
             break
@@ -318,9 +503,10 @@ def _main():
 
     # ---- G3:均值 top-2 ∪ 宽度 top-1(去重 ≤3;起点本尊不入池)----
     if not leg_models:
-        log({"event": "STOP", "why": "无任何完成腿"})
-        attention("无任何完成腿")
-        return
+        why = "无任何接线 PASS 的完成腿"
+        log({"event": "STOP", "why": why})
+        attention(why)
+        raise OperationalFailure(why)
     by_mean = sorted(leg_models.items(), key=lambda kv: (-kv[1][0], kv[0]))
     by_breadth = sorted(leg_models.items(), key=lambda kv: (-kv[1][2], -kv[1][0], kv[0]))
     cand_legs = []
@@ -340,10 +526,13 @@ def _main():
             stop_reason = f"G3 满32考试连败 2 次(腿 {kk})——人工验尸"
             log({"event": "STOP", "why": stop_reason})
             attention(stop_reason)
-            return
+            raise OperationalFailure(stop_reason)
         agg, rows = r
+        anchor_by_seed = {row["seed"]: row["ret"]
+                          for row in read_comparable_anchor()["rows"]}
         by_seed = {row["seed"]: row["ret"] for row in rows}
-        assert set(by_seed) == set(range(7000, 7032)), f"G3 腿 {kk} 种子集合异常"
+        require(len(rows) == len(by_seed), f"G3 腿 {kk} 含重复种子")
+        require(set(by_seed) == set(range(7000, 7032)), f"G3 腿 {kk} 种子集合异常")
         diffs = [by_seed[s] - anchor_by_seed[s] for s in range(7000, 7032)]
         mean_diff = sum(diffs) / 32
         wins = sum(d > 0 for d in diffs)
@@ -376,7 +565,7 @@ def _main():
         band = [f for f in launchers if launchers[0]["mean"] - f["mean"] <= 0.05]
         w = sorted(band, key=lambda f: (-f["wins"], f["leg"]))[0]
         golden_cmd = (f"{PY} {ROOT / 'train' / 'eval_assembled.py'} --worker "
-                      f"{w['model'].replace('.zip', '')} --seeds 9000-9031 "
+                      f"{pathlib.Path(w['model']).with_suffix('')} --seeds 9000-9031 "
                       f"--tag v28-golden --board")
         log({"event": "GOLDEN_AUTHORIZED", "leg": w["leg"], "probe32_mean": w["mean"],
              "died": w["died"], "wins": w["wins"], "mean_diff": round(w["mean_diff"], 2),
@@ -405,11 +594,12 @@ def _main():
                    f"{SIDELINE_BACK16})——不烧牌,选择膨胀防线生效")
     elif wv["wins"] >= 18 and wv["mean_diff"] < 4.0:
         verdict = "宽度达标而幅度未达——点估宽度改进,不烧牌,留工作站"
-    elif wv["mean"] >= INTRINSIC_LINE:
-        verdict = ("宽度病确认内禀(功效内):均值保持/超越起点 108.2 而宽度未达"
-                   "——欠训假说否定,机制处方(锚随王走/课程采样)升格工作站")
+    elif wv["mean"] >= intrinsic_line:
+        verdict = (f"宽度病确认内禀(功效内):均值保持/超越起点 {intrinsic_line} "
+                   "而宽度未达——欠训假说否定,机制处方(锚随王走/课程采样)升格工作站")
     elif wv["mean"] >= PLATEAU_LINE:
-        verdict = "续航无均值增益([103,108.2) 档),宽度考题未答——不判内禀不判退化"
+        verdict = (f"续航无均值增益([{PLATEAU_LINE},{intrinsic_line}) 档),"
+                   "宽度考题未答——不判内禀不判退化")
     else:
         verdict = "续航退化(<103),leg-6 为该配方局部峰"
     log({"event": "VERDICT_PATH", "golden_authorized": False, "verdict": verdict,

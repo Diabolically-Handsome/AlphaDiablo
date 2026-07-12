@@ -13,31 +13,83 @@
 """
 from __future__ import annotations
 
+import hashlib
+import io
+import pathlib
+
 import gymnasium as gym
 import numpy as np
 
 from .options_env import FARM, N_EXTRA_WORKER, OptionsEnv
 
 _FORBIDDEN = ((7000, 7032), (9000, 9032))
+_MAX_EMPTY_FARM_EPISODES = 8
 
 
 class NumpyManager:
     """冻结 v22-H 的 numpy 前向(MlpPolicy(64,64) 策略侧;G0' 与 SB3 逐位对账)。"""
 
-    def __init__(self, npz_path: str):
-        z = np.load(npz_path)
-        self.w0, self.b0 = z["w0"].astype(np.float32), z["b0"].astype(np.float32)
-        self.w1, self.b1 = z["w1"].astype(np.float32), z["b1"].astype(np.float32)
-        self.wa, self.ba = z["wa"].astype(np.float32), z["ba"].astype(np.float32)
+    def __init__(self, npz_path: str | pathlib.Path,
+                 expected_sha256: str | None = None):
+        path = pathlib.Path(npz_path)
+        payload = path.read_bytes()
+        actual_sha256 = hashlib.sha256(payload).hexdigest()
+        if expected_sha256 is not None:
+            if not isinstance(expected_sha256, str) or len(expected_sha256) != 64:
+                raise ValueError("NumpyManager expected_sha256 必须是 64 位字符串")
+            if actual_sha256 != expected_sha256:
+                raise ValueError(
+                    f"{path} SHA256 不匹配: {actual_sha256} != {expected_sha256}")
+        # Hash and parse the exact same immutable byte string.  Opening the
+        # path once for validation and again for np.load would leave a replace
+        # race in which subprocesses could silently consume different brains.
+        self.source_sha256 = actual_sha256
+        with np.load(io.BytesIO(payload), allow_pickle=False) as z:
+            required = {"w0", "b0", "w1", "b1", "wa", "ba"}
+            missing = required.difference(z.files)
+            if missing:
+                raise ValueError(f"{path} 缺少权重: {sorted(missing)}")
+            self.w0, self.b0 = z["w0"].astype(np.float32), z["b0"].astype(np.float32)
+            self.w1, self.b1 = z["w1"].astype(np.float32), z["b1"].astype(np.float32)
+            self.wa, self.ba = z["wa"].astype(np.float32), z["ba"].astype(np.float32)
+        if (self.w0.ndim != 2 or self.b0.shape != (self.w0.shape[0],)
+                or self.w1.ndim != 2 or self.w1.shape[1] != self.w0.shape[0]
+                or self.b1.shape != (self.w1.shape[0],)
+                or self.wa.ndim != 2 or self.wa.shape[1] != self.w1.shape[0]
+                or self.ba.shape != (self.wa.shape[0],)):
+            raise ValueError(f"{path} 权重形状不构成可连接的 MLP")
+        if not all(np.isfinite(a).all()
+                   for a in (self.w0, self.b0, self.w1, self.b1, self.wa, self.ba)):
+            raise ValueError(f"{path} 权重包含 NaN/Inf")
+
+    def require_io_shape(self, observation_dim: int, action_count: int,
+                         label: str = "NumpyManager") -> None:
+        actual = (int(self.w0.shape[1]), int(self.wa.shape[0]))
+        expected = (int(observation_dim), int(action_count))
+        if actual != expected:
+            raise ValueError(
+                f"{label} 输入→动作形状必须为 {expected[0]}→{expected[1]}，"
+                f"实际 {actual[0]}→{actual[1]}")
 
     def logits(self, obs: np.ndarray) -> np.ndarray:
-        h = np.tanh(self.w0 @ obs.astype(np.float32) + self.b0)
+        obs = np.asarray(obs, dtype=np.float32)
+        if obs.shape != (self.w0.shape[1],):
+            raise ValueError(f"观测形状应为 {(self.w0.shape[1],)}，收到 {obs.shape}")
+        h = np.tanh(self.w0 @ obs + self.b0)
         h = np.tanh(self.w1 @ h + self.b1)
-        return self.wa @ h + self.ba
+        logits = self.wa @ h + self.ba
+        if not np.isfinite(logits).all():
+            raise FloatingPointError("NumpyManager 前向产生 NaN/Inf logits")
+        return logits
 
     def choose(self, obs: np.ndarray, mask: np.ndarray) -> int:
         lg = self.logits(obs)
-        lg = np.where(np.asarray(mask, dtype=bool), lg, -np.inf)
+        mask = np.asarray(mask, dtype=bool)
+        if mask.shape != lg.shape:
+            raise ValueError(f"掩码形状应为 {lg.shape}，收到 {mask.shape}")
+        if not mask.any():
+            raise ValueError("动作掩码不能全为 False")
+        lg = np.where(mask, lg, -np.inf)
         return int(np.argmax(lg))
 
 
@@ -56,16 +108,19 @@ class WorkerWindowEnv(gym.Env):
 
     def __init__(self, manager_npz: str, max_steps: int = 3000,
                  rng_seed: int | None = None, log_windows: bool = False,
-                 skip_dry: bool = False, **env_kwargs):
+                 skip_dry: bool = False, manager_sha256: str | None = None,
+                 **env_kwargs):
         super().__init__()
+        self.mgr = NumpyManager(manager_npz, expected_sha256=manager_sha256)
+        self.mgr.require_io_shape(303, 3, "WorkerWindow manager")
         self.oe = OptionsEnv(max_steps=max_steps, **env_kwargs)
-        self.mgr = NumpyManager(manager_npz)
         base = self.oe.env.observation_space.shape[0]
         self.observation_space = gym.spaces.Box(
             low=-np.inf, high=np.inf, shape=(base + N_EXTRA_WORKER,), dtype=np.float32)
         self.action_space = gym.spaces.Discrete(15)
         self._rng = np.random.default_rng(rng_seed)
         self._alive = False
+        self._episode_seed: int | None = None
         self.log_windows = log_windows
         self.skip_dry = skip_dry   # v26 绿洲:干层复访窗由脚本代跑,不进学习分布
         self.window_log = []      # log_windows=True 时:全部窗口(含快进窗)按序入册
@@ -73,9 +128,10 @@ class WorkerWindowEnv(gym.Env):
                       "ff_dry": 0, "episodes": 0, "reseeds": 0, "reasons": {}}
 
     # ---- 内务 ----
-    def _new_episode(self, seed=None):
+    def _new_episode(self, seed=None, options=None):
         s = int(seed) if seed is not None else sample_train_seed(self._rng)
-        self.oe.reset(seed=s)
+        self.oe.reset(seed=s, options=options)
+        self._episode_seed = s
         self._alive = True
         self.stats["episodes"] += 1
 
@@ -129,19 +185,42 @@ class WorkerWindowEnv(gym.Env):
 
     # ---- gym 接口 ----
     def reset(self, *, seed=None, options=None):
+        # SB3/VecEnv 只会通过 reset(seed) 给环境定种。若不用这个
+        # seed 重置工人的局种子采样器，那么 --seed 只能控制首局，
+        # 后续自动滚局仍来自系统熵，整段训练无法复现。
+        super().reset(seed=seed)
+        if seed is not None:
+            self._rng = np.random.default_rng(int(seed))
+        # Gym 允许调用方在 episode 尚未结束时主动 reset。此时 _win 仍在，
+        # 若沿用同一底层局直接 next_window()，会覆盖未结算窗口并把经理状态、
+        # 工资账本和新 Gym episode 串在一起。显式放弃旧局，从干净边界重开。
+        interrupted_window = self.oe._win is not None
+        if interrupted_window:
+            self._alive = False
         if seed is not None or not self._alive:
-            self._new_episode(seed)
+            self._new_episode(seed, options=options)
+        empty_episodes = 0
         while True:
             obs = self.next_window()
             if obs is not None:
-                return obs, {}
+                return obs, {"episode_seed": self._episode_seed}
             self.stats["reseeds"] += 1    # 兜底滚局(显式种子局零 FARM 窗时也会走到——
+            empty_episodes += 1
+            if empty_episodes >= _MAX_EMPTY_FARM_EPISODES:
+                raise RuntimeError(
+                    "冻结 manager 连续 "
+                    f"{empty_episodes} 局未产生 FARM 窗口，拒绝无限滚局；"
+                    f"manager_sha256={self.mgr.source_sha256}")
             self._new_episode()           # BC 侧用 stats 断言封死示范池逃逸口)
 
     def step(self, action):
+        if self.oe._win is None:
+            raise gym.error.ResetNeeded("WorkerWindowEnv.step() 前必须 reset() 开启 FARM 窗口")
+        if not self.action_space.contains(action):
+            raise ValueError(f"动作必须是 {self.action_space}中的整数，收到 {action!r}")
         win = self.oe._win
         w_before, o_before = win["W"], win["overrides"]
-        reason = self.oe._win_step_worker(int(action))
+        reason = self.oe._win_step_worker(action)
         wage = win["W"] - w_before
         overridden = win["overrides"] > o_before   # 本步含保险丝强制拍(BC 剔除用)
         obs = self.oe._worker_obs()          # 收窗前取终观测(窗口仍持有 τ)
@@ -157,4 +236,9 @@ class WorkerWindowEnv(gym.Env):
                                                      "overridden": overridden}
 
     def action_masks(self) -> np.ndarray:
+        if self.oe._win is None:
+            raise gym.error.ResetNeeded("WorkerWindowEnv.action_masks() 前必须 reset()")
         return self.oe._worker_masks()
+
+    def close(self):
+        self.oe.close()

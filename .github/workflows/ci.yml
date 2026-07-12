@@ -9,7 +9,9 @@ on:
 
 jobs:
   macos-smoke:
-    runs-on: macos-14
+    # macos-14 entered deprecation in July 2026.  macos-15 is the explicit
+    # GitHub-hosted arm64 label, preserving the architecture exercised here.
+    runs-on: macos-15
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
@@ -20,13 +22,15 @@ jobs:
       - name: Set up Python venv
         run: |
           python3 -m venv .venv
-          .venv/bin/pip install --quiet numpy gymnasium pybind11 "stable-baselines3>=2.4" torch
+          .venv/bin/pip install --quiet -e ".[train,build]"
 
       - name: Fetch shareware game data (spawn.mpq)
         run: |
           mkdir -p "$HOME/Library/Application Support/diasurgical/devilution"
           curl -sL -o "$HOME/Library/Application Support/diasurgical/devilution/spawn.mpq" \
             https://github.com/diasurgical/devilutionx-assets/releases/download/v5/spawn.mpq
+          echo "64427cd7c1ba904eaa2e0031c16a6b136d0ecef9abc888c5ff8344b459356e38  $HOME/Library/Application Support/diasurgical/devilution/spawn.mpq" \
+            | shasum -a 256 -c -
 
       - name: Bootstrap engine source (clone-only)
         # 只 clone 钉死版源码 + brew 依赖;引擎编译统一由 build.sh 完成(避免编两遍)。
@@ -39,5 +43,44 @@ jobs:
       - name: Smoke test (random agent + determinism)
         run: cd tests && ../.venv/bin/python smoke_random_agent.py
 
-      - name: Descend + seed differentiation test
-        run: cd tests && ../.venv/bin/python descend_seed_test.py
+      - name: Shareware runtime probes
+        run: |
+          cd tests
+          ../.venv/bin/python descend_seed_test.py
+          ../.venv/bin/python _reset_probe.py
+          ../.venv/bin/python _piece_probe.py
+          ../.venv/bin/python _asset_probe.py
+          ../.venv/bin/python _archive_origin_probe.py
+          ../.venv/bin/python _transition_action_probe.py
+          # These two probes report an explicit SKIP with shareware data;
+          # their full DIABDAT paths are exercised by the local release gate.
+          ../.venv/bin/python _set_level_probe.py
+          ../.venv/bin/python _progression_probe.py
+
+      - name: Training environment contract tests
+        run: |
+          .venv/bin/python -m compileall -q python train tests
+          .venv/bin/python tests/test_build_contracts.py
+          .venv/bin/python -O tests/test_build_contracts.py
+          .venv/bin/python tests/test_eval_pipeline.py
+          .venv/bin/python -O tests/test_eval_pipeline.py
+          .venv/bin/python tests/test_eval_driver_contracts.py
+          .venv/bin/python -O tests/test_eval_driver_contracts.py
+          .venv/bin/python tests/test_legacy_eval_driver_contracts_a.py
+          .venv/bin/python -O tests/test_legacy_eval_driver_contracts_a.py
+          .venv/bin/python tests/test_legacy_eval_driver_contracts_b.py
+          .venv/bin/python -O tests/test_legacy_eval_driver_contracts_b.py
+          .venv/bin/python tests/test_legacy_evaluators.py
+          .venv/bin/python -O tests/test_legacy_evaluators.py
+          .venv/bin/python tests/test_driver_contracts.py
+          .venv/bin/python -O tests/test_driver_contracts.py
+          .venv/bin/python tests/test_active_reference_contracts.py
+          .venv/bin/python -O tests/test_active_reference_contracts.py
+          .venv/bin/python tests/test_training_core.py
+          .venv/bin/python -O tests/test_training_core.py
+          .venv/bin/python tests/test_scene_semantics.py
+          .venv/bin/python -O tests/test_scene_semantics.py
+          .venv/bin/python tests/test_resource_cleanup.py
+          .venv/bin/python -O tests/test_resource_cleanup.py
+          .venv/bin/python tests/test_options_env.py
+          .venv/bin/python tests/test_worker_env.py

@@ -3,7 +3,7 @@
 克隆差异表(PREREG-v29 D2 逐条对应):
 - 班底:工人 = v28-worker-leg1(zip+npz);锚 = v28-G3-leg1.json(112.4,sha 钉死)
 - M-warm 臂与 warm-sd 导出段物理删除;两臂 = fresh(ent .02)/explore(ent .08),160k 决策
-- FLOOR_REPRO 85→103.4;标签 v29-*;配对按 seed 键 join + 集合断言
+- FLOOR_REPRO 85→103.9(面板勘误终值);标签 v29-*;配对按 seed 键 join + 集合断言
 - v28 运维护栏全套:顶层异常兜底、训练 4h/评测 30min 超时、exam 拒覆写+.void 轮转
   +评测日志、preflight(锚 sha/工人在位/目标档案含 v29-golden 不存在)、NEEDS_ATTENTION
 - 满 32 事件新增深度仪表:depth≥2 种子数 / DIVE/局 / 下楼奖金兑现/局
@@ -24,6 +24,11 @@ import time
 import traceback
 import zipfile
 
+from eval_contract import (PROTOCOL_VERSION, OperationalFailure, OutputReservationError,
+                           exclusive_lock, expected_eval_identity,
+                           freeze_eval_identity, read_eval_archive,
+                           verify_eval_identity)
+
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 PY = str(ROOT / ".venv" / "bin" / "python")
 RUNS = ROOT / "train" / "runs"
@@ -35,7 +40,9 @@ EVAL = RUNS / "eval-assembled"
 W_ZIP = str(ROOT / "train" / "models" / "v28-worker-leg1" / "model_final")  # eval 侧自动补 .zip
 W_NPZ = ROOT / "train" / "models" / "v28-worker-leg1" / "policy.npz"
 ARCHIVE = EVAL / "v28-G3-leg1.json"        # 参考行 112.4(现任 v22-H × 同一工人,逐种子)
-ARCHIVE_SHA = "6fc6a44c7862424a"
+ARCHIVE_SHA = "6fc6a44c7862424ab5f71ff3a5031adfd34a3e33f9f4f2f8aee781a07711e59d"
+W_ZIP_SHA = "2f7bc9dd810956c3feeb330575c9a03ddff0b476333ac429a411935985b04f42"
+W_NPZ_SHA = "976b6c05edaa0a32bb30bd372782e1201c72b029cedcbb3a5bf2361d34f27f8a"
 
 STEPS = 160_000       # 4× v22-H 自身预算(时钟锚 27.5 决策/s ≈ 97 分钟/臂)
 ABANDON = 75.0        # 提前放弃闸(双臂 16 种子均 < 此值)
@@ -44,6 +51,7 @@ PAIRED_WINS = 18      # 且配对赢 ≥ 18/32
 DEATHS_MAX = 6
 FLOOR_REPRO = 103.9   # 胜者 < 此值 → "重训未复现参考水平,命题未考"(=0.9239×112.4,严格沿 v25 比例 85/92)
 R4 = {"descend": 0.0204, "override_sentinel": 0.03, "override_void": 0.08, "cap": 0.05}
+CALIBRATED_PROTOCOL_VERSION = 2
 
 ARMS = {
     "v29-mfresh": ["--ent-coef", "0.02", "--lr", "3e-4", "--seed", "22"],
@@ -67,6 +75,39 @@ def sha16(p) -> str:
     return hashlib.sha256(pathlib.Path(p).read_bytes()).hexdigest()[:16]
 
 
+def sha256(p) -> str:
+    return hashlib.sha256(pathlib.Path(p).read_bytes()).hexdigest()
+
+
+def require(condition: bool, message: str) -> None:
+    if not condition:
+        raise ValueError(message)
+
+
+def require_calibrated_protocol() -> None:
+    if PROTOCOL_VERSION != CALIBRATED_PROTOCOL_VERSION:
+        raise OperationalFailure(
+            "v29 的 ABANDON/资格/R4 等裁决线仅在 pre-v3 环境语义标定；"
+            "必须先重跑 protocol-v3 基线并人工更新预注册，禁止混用旧阈值"
+        )
+
+
+def read_comparable_anchor() -> dict:
+    """v28 现任锚只在固定 worker/default-manager 与当前运行时下可比较。"""
+    try:
+        snapshot = freeze_eval_identity(ROOT, W_ZIP, None)
+        expected = expected_eval_identity(
+            snapshot, tag="v28-G3-leg1", seeds=range(7000, 7032))
+        document = read_eval_archive(ARCHIVE, **expected)
+        verify_eval_identity(snapshot, ROOT)
+        return document
+    except (OSError, KeyError, TypeError, ValueError, RuntimeError) as exc:
+        raise OperationalFailure(
+            "v28-G3-leg1 不满足当前 schema-v2 可比性契约；"
+            "环境语义变更后须用固定 v28 leg1 worker + 默认 manager 重跑基线"
+        ) from exc
+
+
 def run(cmd, logfile, timeout) -> int:
     with open(V29 / logfile, "w") as lf:
         proc = subprocess.Popen(cmd, cwd=ROOT, stdout=lf, stderr=subprocess.STDOUT,
@@ -74,7 +115,10 @@ def run(cmd, logfile, timeout) -> int:
         try:
             return proc.wait(timeout=timeout)
         except subprocess.TimeoutExpired:
-            os.killpg(proc.pid, signal.SIGKILL)   # 连锅端:SubprocVecEnv 孙进程防孤儿
+            try:
+                os.killpg(proc.pid, signal.SIGKILL)   # 连锅端:SubprocVecEnv 孙进程防孤儿
+            except ProcessLookupError:
+                pass
             proc.wait()
             return 124    # 挂死护栏:按崩溃/失败落账(运维护栏,非判决输入)
 
@@ -90,15 +134,28 @@ def zip_steps(p: pathlib.Path) -> int:
 
 def exam(worker, tag, seeds, manager_npz=None):
     out = EVAL / f"{tag}.json"
-    assert not out.exists(), f"档案不可变性:{out} 已存在,拒绝覆写"
-    cmd = [PY, "train/eval_assembled.py", "--worker", worker, "--seeds", seeds, "--tag", tag]
-    if manager_npz:
-        cmd += ["--manager-npz", manager_npz]
-    if run(cmd, f"exam-{tag}.{time.strftime('%H%M%S')}.log", timeout=1_800) != 0:
+    require(not out.exists(), f"档案不可变性:{out} 已存在,拒绝覆写")
+    lo, hi = (int(x) for x in seeds.split("-", 1))
+    seed_values = list(range(lo, hi + 1))
+    require(seed_values and lo >= 0, f"非法 seed 范围:{seeds}")
+    snapshot = freeze_eval_identity(ROOT, worker, manager_npz)
+    expected = expected_eval_identity(snapshot, tag=tag, seeds=seed_values)
+    worker_arg = (worker if snapshot["worker"]["kind"] in {"script", "bc"}
+                  else snapshot["worker"]["path"])
+    cmd = [PY, "train/eval_assembled.py", "--worker", str(worker_arg),
+           "--manager-npz", snapshot["manager"]["path"],
+           "--seeds", seeds, "--tag", tag]
+    if run(cmd, f"exam-{tag}.{time.time_ns()}.log", timeout=1_800) != 0:
         if out.exists():    # 半截档案轮转,给重考让路
-            out.rename(out.with_suffix(f".{time.strftime('%H%M%S')}.void"))
+            out.rename(out.with_suffix(f".{time.time_ns()}.void"))
         return None
-    d = json.loads(out.read_text())
+    try:
+        d = read_eval_archive(out, **expected)
+        verify_eval_identity(snapshot, ROOT)
+    except (OSError, KeyError, TypeError, ValueError):
+        if out.exists():
+            out.rename(out.with_suffix(f".{time.time_ns()}.void"))
+        return None
     d["agg"]["_sha"] = sha16(out)
     return d
 
@@ -126,26 +183,36 @@ def bonus_per_ep(rows) -> float:
 
 def by_seed(rows) -> dict:
     m = {r["seed"]: r for r in rows}
-    assert set(m) == set(range(7000, 7032)), "种子集合异常(须为 7000-7031)"
+    require(len(rows) == len(m), "种子集合异常(含重复 seed)")
+    require(set(m) == set(range(7000, 7032)), "种子集合异常(须为 7000-7031)")
     return m
 
 
 def preflight():
-    assert pathlib.Path(W_ZIP + ".zip").exists(), "工人 zip 缺失"
-    assert W_NPZ.exists(), "工人 npz 缺失(发车日 parity 0/1000 导出件)"
-    assert ARCHIVE.exists() and sha16(ARCHIVE) == ARCHIVE_SHA, "锚档案 sha 漂移"
+    require_calibrated_protocol()
+    worker_zip = pathlib.Path(W_ZIP + ".zip")
+    require(worker_zip.exists() and sha256(worker_zip) == W_ZIP_SHA,
+            "工人 zip 缺失或 sha 漂移")
+    require(W_NPZ.exists() and sha256(W_NPZ) == W_NPZ_SHA,
+            "工人 npz 缺失或 sha 漂移(发车日 parity 0/1000 导出件)")
+    read_comparable_anchor()
     tags = ["v29-GA0", "v29-golden"] + [f"{a}-{s}" for a in ARMS for s in ("s16", "full32")]
     for t in tags:
-        assert not (EVAL / f"{t}.json").exists(), f"目标档案已存在:{t}(重启协议:先 .void)"
+        require(not (EVAL / f"{t}.json").exists(), f"目标档案已存在:{t}(重启协议:先 .void)")
     for a in ARMS:
-        assert not (RUNS / a).exists(), f"运行目录残留:{a}(重启协议:先归档)"
-    log({"event": "preflight_ok", "archive_sha": ARCHIVE_SHA,
+        require(not (RUNS / a).exists(), f"运行目录残留:{a}(重启协议:先归档)")
+    log({"event": "preflight_ok", "archive_sha": sha16(ARCHIVE),
          "worker_npz_sha": sha16(W_NPZ)})
 
 
 def main():
     try:
-        _main()
+        with exclusive_lock(V29 / ".driver.lock", "v29 驱动"):
+            _main()
+    except (OperationalFailure, OutputReservationError) as e:
+        log({"event": "OPERATIONAL_FAILURE", "why": str(e)})
+        attention("运维失败:\n" + str(e))
+        raise SystemExit(2) from e
     except Exception as e:   # 条款兜底:任何未预期异常必须入册,不许无声死亡
         log({"event": "DRIVER_EXCEPTION", "why": repr(e)})
         attention("驱动异常死亡:\n" + traceback.format_exc())
@@ -154,26 +221,31 @@ def main():
 
 def _main():
     preflight()
+    ref = read_comparable_anchor()
+    floor_repro = round(ref["agg"]["ret_mean"] * 85.0 / 92.0, 1)
     log({"event": "start", "prereg": "docs/PREREG-v29.md", "steps": STEPS,
-         "paired_line": PAIRED_DIFF, "wins_line": PAIRED_WINS, "floor": FLOOR_REPRO})
-    ref = json.loads(ARCHIVE.read_text())
+         "paired_line": PAIRED_DIFF, "wins_line": PAIRED_WINS,
+         "floor": floor_repro})
     ref_rows = by_seed(ref["rows"])
 
     # ---- G-A0:仪器回归(npz 工人 + 默认经理 ≡ 112.4 锚,32/32)----
     ga0 = exam_retry(str(W_NPZ), "v29-GA0", "7000-7031")
     if ga0 is None:
-        log({"event": "STOP", "why": "G-A0 考试进程连败"})
-        attention("G-A0 考试进程连败")
-        return
+        why = "G-A0 考试进程连败"
+        log({"event": "STOP", "why": why})
+        attention(why)
+        raise OperationalFailure(why)
     bad = [s for s, r in by_seed(ga0["rows"]).items()
            if (abs(r["ret"] - ref_rows[s]["ret"]) > 0.01
                or r["died"] != ref_rows[s]["died"]
+               or r["depth"] != ref_rows[s]["depth"]
                or r["mode_seq"] != ref_rows[s]["mode_seq"])]
     log({"event": "g_a0", "mismatch_seeds": bad, "n_ok": 32 - len(bad)})
     if bad:
-        log({"event": "STOP", "why": "G-A0 位级回归失配——按预注册回退条款人工重锚"})
+        why = "G-A0 位级回归失配——按预注册回退条款人工重锚"
+        log({"event": "STOP", "why": why})
         attention(f"G-A0 失配种子:{bad}")
-        return
+        raise OperationalFailure(why)
 
     # ---- 两臂串行训练 ----
     npz = {}
@@ -194,17 +266,19 @@ def _main():
         log({"event": "arm_done", "arm": name, "rc": rc, "nt_zip": nt,
              "steps_status": steps, "dt_min": round((time.time() - t0) / 60, 1)})
         if rc != 0 or nt != STEPS:
-            log({"event": "STOP", "why": f"{name} 训练未达标(rc={rc}, nt_zip={nt}, "
-                 f"status={steps})——命题未考,本版不追加重训(v25 条款)"})
-            attention(f"{name} 训练未达标")
-            return
+            why = (f"{name} 训练未达标(rc={rc}, nt_zip={nt}, "
+                   f"status={steps})——命题未考,本版不追加重训(v25 条款)")
+            log({"event": "STOP", "why": why})
+            attention(why)
+            raise OperationalFailure(why)
         out = RUNS / name / "policy.npz"
         if run([PY, "train/export_manager_npz.py",
                 str(RUNS / name / "model_final.zip"), str(out)],
-               f"export-{name}.log", timeout=600) != 0:
-            log({"event": "STOP", "why": f"{name} npz 导出/parity 失败"})
-            attention(f"{name} G-A0m parity 失败")
-            return
+               f"export-{name}.log", timeout=600) != 0 or not out.exists():
+            why = f"{name} npz 导出/parity 失败"
+            log({"event": "STOP", "why": why})
+            attention(why)
+            raise OperationalFailure(why)
         npz[name] = str(out)
         log({"event": "g_a0m", "arm": name, "npz_sha": sha16(out)})
 
@@ -213,9 +287,10 @@ def _main():
     for name in ARMS:
         d = exam_retry(W_ZIP, f"{name}-s16", "7000-7015", manager_npz=npz[name])
         if d is None:
-            log({"event": "STOP", "why": f"{name} 初筛考试连败"})
-            attention(f"{name} 初筛考试连败")
-            return
+            why = f"{name} 初筛考试连败"
+            log({"event": "STOP", "why": why})
+            attention(why)
+            raise OperationalFailure(why)
         s16[name] = d["agg"]["ret_mean"]
         log({"event": "screen16", "arm": name, "score": d["agg"]["ret_mean"],
              "died": d["agg"]["died"]})
@@ -230,9 +305,10 @@ def _main():
     for name in ARMS:
         d = exam_retry(W_ZIP, f"{name}-full32", "7000-7031", manager_npz=npz[name])
         if d is None:
-            log({"event": "STOP", "why": f"{name} 满 32 考试连败"})
-            attention(f"{name} 满 32 考试连败")
-            return
+            why = f"{name} 满 32 考试连败"
+            log({"event": "STOP", "why": why})
+            attention(why)
+            raise OperationalFailure(why)
         full[name] = d
         a = d["agg"]
         log({"event": "full32", "arm": name, "mean": a["ret_mean"], "died": a["died"],
@@ -303,9 +379,12 @@ def _main():
          "note": "副判;王座与 Mark-I 认定另按 D3-6 与 ROADMAP 条款(防过度叙事)"})
 
     # ---- 复现地板 ----
-    if wa["ret_mean"] < FLOOR_REPRO:
+    ref = read_comparable_anchor()
+    ref_rows = by_seed(ref["rows"])
+    floor_repro = round(ref["agg"]["ret_mean"] * 85.0 / 92.0, 1)
+    if wa["ret_mean"] < floor_repro:
         log({"event": "VERDICT_PATH", "golden_authorized": False,
-             "why": f"胜者 {wa['ret_mean']} < {FLOOR_REPRO}——重训未复现参考水平,"
+             "why": f"胜者 {wa['ret_mean']} < {floor_repro}——重训未复现参考水平,"
                     f"再教育命题未考;深度副判:{depth_verdict}"})
         attention("判决:未复现参考水平")
         return

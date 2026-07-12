@@ -1,0 +1,60 @@
+diff --git a/Source/levels/trigs.cpp b/Source/levels/trigs.cpp
+index c3b88ae..e31e462 100644
+--- a/Source/levels/trigs.cpp
++++ b/Source/levels/trigs.cpp
+@@ -24,8 +24,9 @@
+ 
+ namespace devilution {
+ 
+-bool trigflag;
+-int numtrigs;
++bool trigflag;
++bool DisableLevelBacktracking = false;
++int numtrigs;
+ TriggerStruct trigs[MAXTRIGGERS];
+ int TWarpFrom;
+ 
+@@ -884,9 +885,10 @@ void CheckTriggers()
+ 				StartNewLvl(myPlayer, trigs[i]._tmsg, currlevel + 1);
+ 			}
+ 			break;
+-		case WM_DIABPREVLVL:
+-			StartNewLvl(myPlayer, trigs[i]._tmsg, currlevel - 1);
+-			break;
++		case WM_DIABPREVLVL:
++			if (!DisableLevelBacktracking)
++				StartNewLvl(myPlayer, trigs[i]._tmsg, currlevel - 1);
++			break;
+ 		case WM_DIABRTNLVL:
+ 			StartNewLvl(myPlayer, trigs[i]._tmsg, GetMapReturnLevel());
+ 			break;
+@@ -921,6 +923,8 @@ void CheckTriggers()
+ 			StartNewLvl(myPlayer, trigs[i]._tmsg, trigs[i]._tlvl);
+ 			break;
+-		case WM_DIABTWARPUP:
+-			TWarpFrom = currlevel;
+-			StartNewLvl(myPlayer, trigs[i]._tmsg, 0);
++		case WM_DIABTWARPUP:
++			if (DisableLevelBacktracking)
++				break;
++			TWarpFrom = currlevel;
++			StartNewLvl(myPlayer, trigs[i]._tmsg, 0);
+ 			break;
+diff --git a/Source/levels/trigs.h b/Source/levels/trigs.h
+index e255c9b..2944f38 100644
+--- a/Source/levels/trigs.h
++++ b/Source/levels/trigs.h
+@@ -19,8 +19,11 @@ struct TriggerStruct {
+ 	int _tlvl;
+ };
+ 
+-extern bool trigflag;
+-extern int numtrigs;
++extern bool trigflag;
++// Embedders that expose only forward dungeon progression can disable the
++// upstairs trigger without changing ordinary DevilutionX behavior.
++extern bool DisableLevelBacktracking;
++extern int numtrigs;
+ extern TriggerStruct trigs[MAXTRIGGERS];
+ extern int TWarpFrom;
+ 

@@ -18,8 +18,11 @@ v28:calib_record_only=True 时探针只记不裁(tripped 位照记入 jsonl,旗�
 """
 from __future__ import annotations
 
+import hashlib
+import io
 import json
 import pathlib
+from importlib.metadata import version
 
 import numpy as np
 import torch as th
@@ -29,22 +32,52 @@ from sb3_contrib import MaskablePPO
 from stable_baselines3.common.utils import explained_variance
 
 HUGE_NEG = -1e8
+_COPIED_SB3_CONTRIB_VERSION = "2.9.0"
+if version("sb3-contrib") != _COPIED_SB3_CONTRIB_VERSION:
+    raise RuntimeError(
+        "leashed_ppo.py 只审计过 sb3-contrib "
+        f"{_COPIED_SB3_CONTRIB_VERSION}；当前为 {version('sb3-contrib')}，"
+        "请锁回该版本或重新完成 G-KL-B 上游等价审计")
 
 
-def build_teacher(sd_path: str) -> th.nn.Module:
+def build_teacher(sd_path: str | pathlib.Path | bytes) -> th.nn.Module:
     """从 SB3 键名 state_dict 组装冻结教师(PiHead 298→64→64→15 同构)。"""
-    sd = th.load(sd_path, map_location="cpu")
+    source = io.BytesIO(sd_path) if isinstance(sd_path, bytes) else sd_path
+    sd = th.load(source, map_location="cpu", weights_only=True)
+    required = (
+        "mlp_extractor.policy_net.0.weight", "mlp_extractor.policy_net.0.bias",
+        "mlp_extractor.policy_net.2.weight", "mlp_extractor.policy_net.2.bias",
+        "action_net.weight", "action_net.bias",
+    )
+    if not isinstance(sd, dict):
+        raise ValueError("教师文件必须是 policy state_dict")
+    missing = [k for k in required if k not in sd]
+    if missing:
+        raise ValueError(f"教师 state_dict 缺键: {missing}")
+
+    w0, b0 = sd[required[0]], sd[required[1]]
+    w1, b1 = sd[required[2]], sd[required[3]]
+    wa, ba = sd[required[4]], sd[required[5]]
+    if not all(isinstance(t, th.Tensor) for t in (w0, b0, w1, b1, wa, ba)):
+        raise ValueError("教师 state_dict 的策略头值必须都是 Tensor")
+    if (w0.ndim != 2 or w1.ndim != 2 or wa.ndim != 2
+            or b0.shape != (w0.shape[0],) or b1.shape != (w1.shape[0],)
+            or ba.shape != (wa.shape[0],) or w1.shape[1] != w0.shape[0]
+            or wa.shape[1] != w1.shape[0]):
+        raise ValueError("教师 state_dict 的 MLP 形状不自洽")
+    if not all(th.isfinite(t).all().item() for t in (w0, b0, w1, b1, wa, ba)):
+        raise ValueError("教师 state_dict 含 NaN/Inf")
     net = th.nn.Sequential(
-        th.nn.Linear(sd["mlp_extractor.policy_net.0.weight"].shape[1], 64), th.nn.Tanh(),
-        th.nn.Linear(64, 64), th.nn.Tanh(),
-        th.nn.Linear(64, sd["action_net.weight"].shape[0]))
+        th.nn.Linear(w0.shape[1], w0.shape[0]), th.nn.Tanh(),
+        th.nn.Linear(w1.shape[1], w1.shape[0]), th.nn.Tanh(),
+        th.nn.Linear(wa.shape[1], wa.shape[0]))
     with th.no_grad():
-        net[0].weight.copy_(sd["mlp_extractor.policy_net.0.weight"])
-        net[0].bias.copy_(sd["mlp_extractor.policy_net.0.bias"])
-        net[2].weight.copy_(sd["mlp_extractor.policy_net.2.weight"])
-        net[2].bias.copy_(sd["mlp_extractor.policy_net.2.bias"])
-        net[4].weight.copy_(sd["action_net.weight"])
-        net[4].bias.copy_(sd["action_net.bias"])
+        net[0].weight.copy_(w0)
+        net[0].bias.copy_(b0)
+        net[2].weight.copy_(w1)
+        net[2].bias.copy_(b1)
+        net[4].weight.copy_(wa)
+        net[4].bias.copy_(ba)
     net.eval()
     net.requires_grad_(False)
     return net
@@ -52,9 +85,19 @@ def build_teacher(sd_path: str) -> th.nn.Module:
 
 class LeashedMaskablePPO(MaskablePPO):
     def __init__(self, *args, distill_beta: float = 0.0, teacher_path: str | None = None,
+                 teacher_sha256: str | None = None,
                  calib_probes: list | None = None, calib_out: str | None = None, **kwargs):
         self.distill_beta = float(distill_beta)
+        if not np.isfinite(self.distill_beta) or self.distill_beta < 0:
+            raise ValueError(f"distill_beta 必须是有限非负数,实得 {distill_beta!r}")
         self.teacher_path = teacher_path
+        self.teacher_sha256 = teacher_sha256
+        if teacher_path:
+            actual = hashlib.sha256(pathlib.Path(teacher_path).read_bytes()).hexdigest()
+            if teacher_sha256 is not None and teacher_sha256 != actual:
+                raise ValueError(
+                    f"教师 SHA 不匹配: {actual} != {teacher_sha256}")
+            self.teacher_sha256 = actual
         self.calib_probes = list(calib_probes or [])
         self.calib_out = calib_out
         self._calib_done = set()
@@ -67,7 +110,31 @@ class LeashedMaskablePPO(MaskablePPO):
         # fresh 与 resume 两条路径此处都成立(预注册 D4,审计 BLOCKER 4)
         self.teacher = None
         if getattr(self, "teacher_path", None):
-            self.teacher = build_teacher(self.teacher_path).to(self.device)
+            teacher_path = pathlib.Path(self.teacher_path)
+            try:
+                payload = teacher_path.read_bytes()
+                actual_sha = hashlib.sha256(payload).hexdigest()
+            except OSError as exc:
+                raise ValueError(f"教师文件缺失/不可读: {teacher_path}") from exc
+            expected_sha = getattr(self, "teacher_sha256", None)
+            if not isinstance(expected_sha, str) or len(expected_sha) != 64:
+                raise ValueError(
+                    "检查点缺少 teacher_sha256；旧检查点续训须由入口提供可信教师绑定")
+            if actual_sha != expected_sha:
+                raise ValueError(f"教师 SHA 漂移: {actual_sha} != {expected_sha}")
+            # Hash and deserialize the exact same immutable payload.  Reopening
+            # teacher_path here would permit an atomic replacement between the
+            # integrity check and torch.load().
+            self.teacher = build_teacher(payload).to(self.device)
+            obs_shape = getattr(self.observation_space, "shape", None)
+            obs_dim = int(np.prod(obs_shape)) if obs_shape else None
+            n_actions = getattr(self.action_space, "n", None)
+            if (obs_dim != self.teacher[0].in_features
+                    or n_actions != self.teacher[-1].out_features):
+                raise ValueError(
+                    "教师与训练环境形状不匹配: "
+                    f"teacher={self.teacher[0].in_features}→{self.teacher[-1].out_features}, "
+                    f"env={obs_dim}→{n_actions}")
         # _excluded_save_params 成员在 load 后不存在,兜底重建
         for attr, dv in (("_calib_done", set()), ("_calib_tripped", False),
                          ("_last_distill_ce", None), ("_last_diverge", None)):
@@ -84,6 +151,8 @@ class LeashedMaskablePPO(MaskablePPO):
     def _teacher_probs(self, obs: th.Tensor, action_masks: th.Tensor) -> th.Tensor:
         t_logits = self.teacher(obs)
         mask = action_masks.reshape(t_logits.shape).bool()
+        if not bool(mask.any(dim=-1).all().item()):
+            raise ValueError("动作掩码存在全 False 行,无法定义教师/学生分布")
         t_logits = th.where(mask, t_logits, th.full_like(t_logits, HUGE_NEG))
         return th.softmax(t_logits, dim=-1)
 
@@ -92,13 +161,19 @@ class LeashedMaskablePPO(MaskablePPO):
         params = [p for p in self.policy.parameters() if p.requires_grad]
 
         def gnorm(scalar):
+            if not params or not scalar.requires_grad:
+                return 0.0
             grads = th.autograd.grad(scalar, params, retain_graph=True, allow_unused=True)
-            return float(th.sqrt(sum((g ** 2).sum() for g in grads if g is not None)))
+            sq_norms = [(g ** 2).sum() for g in grads if g is not None]
+            if not sq_norms:
+                return 0.0
+            return float(th.sqrt(th.stack(sq_norms).sum()).detach().cpu())
 
         rec = {"step": int(self.num_timesteps),
                "g_pg": gnorm(policy_loss),
                "g_ce": gnorm(self.distill_beta * distill_ce) if distill_ce.requires_grad else 0.0,
-               "distill_ce": float(distill_ce), "teacher_diverge": round(diverge, 4),
+               "distill_ce": float(distill_ce.detach().cpu()),
+               "teacher_diverge": round(diverge, 4),
                "tripped": diverge > 0.20}
         if rec["tripped"] and not getattr(self, "calib_record_only", False):
             self._calib_tripped = True   # v28 record_only:只记不裁,旗不武装
@@ -109,6 +184,8 @@ class LeashedMaskablePPO(MaskablePPO):
 
     def train(self) -> None:
         # ===== sb3_contrib ppo_mask.py train() 诚实复写;“皮筋”段以 β>0 守卫 =====
+        if not np.isfinite(self.distill_beta) or self.distill_beta < 0:
+            raise ValueError(f"distill_beta 必须是有限非负数,实得 {self.distill_beta!r}")
         self.policy.set_training_mode(True)
         self._update_learning_rate(self.policy.optimizer)
         clip_range = self.clip_range(self._current_progress_remaining)
@@ -173,7 +250,8 @@ class LeashedMaskablePPO(MaskablePPO):
 
                 # ===== 皮筋(v24 唯一插入段;β=0 整段跳过 → G-KL-B 逐位等价)=====
                 if self.distill_beta > 0:
-                    assert self.teacher is not None, "β>0 但教师未挂载(fail-loud 条款)"
+                    if self.teacher is None:
+                        raise RuntimeError("β>0 但教师未挂载(fail-loud 条款)")
                     with th.no_grad():
                         t_probs = self._teacher_probs(rollout_data.observations,
                                                       rollout_data.action_masks)
@@ -199,6 +277,13 @@ class LeashedMaskablePPO(MaskablePPO):
                     log_ratio = log_prob - rollout_data.old_log_prob
                     approx_kl_div = th.mean((th.exp(log_ratio) - 1) - log_ratio).cpu().numpy()
                     approx_kl_divs.append(approx_kl_div)
+
+                # 主动 G-CAL 已裁决停腿时，连当前 minibatch 也不应再更新。
+                # 原实现要继续跑完本轮多个 epoch，到下一次 rollout 的
+                # callback 才停，裁决后仍可改变权重数百次。
+                if self._calib_tripped:
+                    continue_training = False
+                    break
 
                 if self.target_kl is not None and approx_kl_div > 1.5 * self.target_kl:
                     continue_training = False

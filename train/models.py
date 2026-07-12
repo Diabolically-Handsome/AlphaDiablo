@@ -27,8 +27,10 @@ class EntityAttentionExtractor(BaseFeaturesExtractor):
     def __init__(self, observation_space: spaces.Box, features_dim: int = 256):
         super().__init__(observation_space, features_dim)
         expected = _N_SCALAR + _N_TOKENS * _TOKEN_DIM + _MAP_CH * _MAP_SIDE * _MAP_SIDE + _N_EXTRA
-        assert observation_space.shape[0] == expected, \
-            f"观测布局不匹配: {observation_space.shape[0]} != {expected}"
+        if observation_space.shape != (expected,):
+            raise ValueError(f"观测布局不匹配: {observation_space.shape} != ({expected},)")
+        if features_dim <= 0:
+            raise ValueError(f"features_dim 必须 > 0，实得 {features_dim}")
 
         self.scalar_net = nn.Sequential(nn.Linear(_N_SCALAR + _N_EXTRA, 64), nn.ReLU())
 
@@ -38,7 +40,11 @@ class EntityAttentionExtractor(BaseFeaturesExtractor):
             d_model=64, nhead=4, dim_feedforward=128,
             dropout=0.0, batch_first=True, norm_first=True,
         )
-        self.attn = nn.TransformerEncoder(encoder_layer, num_layers=2)
+        # norm_first=True 与 PyTorch 的 nested-tensor 快速路径不兼容；当前
+        # 版本会自动退回普通路径并发出警告。显式固定该选择，避免未来版本
+        # 的启发式变化悄悄改变训练执行路径。
+        self.attn = nn.TransformerEncoder(
+            encoder_layer, num_layers=2, enable_nested_tensor=False)
 
         self.map_net = nn.Sequential(
             nn.Conv2d(_MAP_CH, 16, 3, padding=1), nn.ReLU(),
@@ -56,7 +62,7 @@ class EntityAttentionExtractor(BaseFeaturesExtractor):
         map_lo = _N_SCALAR + _N_TOKENS * _TOKEN_DIM
         map_hi = map_lo + _MAP_CH * _MAP_SIDE * _MAP_SIDE
         maps = obs[:, map_lo:map_hi].reshape(b, _MAP_CH, _MAP_SIDE, _MAP_SIDE)
-        extras = obs[:, -_N_EXTRA:]  # v13 药 4 维 + v14 装备 4 维(向量尾部)
+        extras = obs[:, -_N_EXTRA:]  # v13 药 4 + v14 装备 4 + v19 强弱仪表 1
 
         s = self.scalar_net(torch.cat([scalars, extras], dim=1))
 

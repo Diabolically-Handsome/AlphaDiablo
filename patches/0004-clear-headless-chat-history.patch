@@ -1,0 +1,48 @@
+diff --git a/Source/qol/chatlog.cpp b/Source/qol/chatlog.cpp
+index 218e7bd..9ce125a 100644
+--- a/Source/qol/chatlog.cpp
++++ b/Source/qol/chatlog.cpp
+@@ -89,10 +89,19 @@ int NumVisibleLines()
+ 
+ } // namespace
+ 
+-bool ChatLogFlag = false;
+-
+-void ToggleChatLog()
+-{
++bool ChatLogFlag = false;
++
++void ClearChatLog()
++{
++	ChatLogFlag = false;
++	UnreadFlag = false;
++	SkipLines = 0;
++	MessageCounter = 0;
++	std::vector<MultiColoredText>().swap(ChatLogLines);
++}
++
++void ToggleChatLog()
++{
+ 	if (ChatLogFlag) {
+ 		ChatLogFlag = false;
+ 	} else {
+diff --git a/Source/qol/chatlog.h b/Source/qol/chatlog.h
+index 5291684..47ecdb5 100644
+--- a/Source/qol/chatlog.h
++++ b/Source/qol/chatlog.h
+@@ -11,10 +11,11 @@
+ 
+ namespace devilution {
+ 
+-extern bool ChatLogFlag;
+-
+-void ToggleChatLog();
+-void AddMessageToChatLog(std::string_view message, Player *player = nullptr, UiFlags flags = UiFlags::ColorWhite);
++extern bool ChatLogFlag;
++
++void ToggleChatLog();
++void ClearChatLog();
++void AddMessageToChatLog(std::string_view message, Player *player = nullptr, UiFlags flags = UiFlags::ColorWhite);
+ void DrawChatLog(const Surface &out);
+ void ChatLogScrollUp();
+ void ChatLogScrollDown();

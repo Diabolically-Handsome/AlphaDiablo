@@ -17,6 +17,26 @@ FORCED_RUN: pathlib.Path | None = None
 MAX_EPISODES = 800  # 返回给前端的最多局数(尾部)
 
 
+def tail_lines(path: pathlib.Path, limit: int) -> list[str]:
+    """只读取 JSONL 尾部，避免面板每两秒扫描完整训练日志拖慢采样。"""
+    if limit <= 0:
+        return []
+    with open(path, "rb") as f:
+        f.seek(0, 2)
+        pos = f.tell()
+        chunks = []
+        newlines = 0
+        while pos > 0 and newlines <= limit:
+            size = min(64 * 1024, pos)
+            pos -= size
+            f.seek(pos)
+            chunk = f.read(size)
+            chunks.append(chunk)
+            newlines += chunk.count(b"\n")
+    data = b"".join(reversed(chunks))
+    return data.decode("utf-8", errors="replace").splitlines()[-limit:]
+
+
 def latest_run() -> pathlib.Path | None:
     if FORCED_RUN is not None:
         return FORCED_RUN
@@ -37,7 +57,7 @@ def collect() -> dict:
     episodes = []
     progress = run / "progress.jsonl"
     if progress.exists():
-        lines = progress.read_text().splitlines()[-MAX_EPISODES:]
+        lines = tail_lines(progress, MAX_EPISODES)
         for line in lines:
             try:
                 episodes.append(json.loads(line))
@@ -177,7 +197,18 @@ def main():
     ap.add_argument("--run-dir", default=None, help="固定监控某个 run(默认自动追最新)")
     args = ap.parse_args()
     if args.run_dir:
-        FORCED_RUN = pathlib.Path(args.run_dir).resolve()
+        p = pathlib.Path(args.run_dir).expanduser()
+        if not p.is_absolute():
+            cwd_path = p.resolve()
+            if cwd_path.exists():
+                p = cwd_path       # 例如从仓库根传 train/runs/foo
+            elif p.parts[:1] == ("runs",):
+                p = RUNS_DIR.parent / p   # 文档中的 runs/foo 相对于 train/
+            else:
+                p = RUNS_DIR / p          # 裸 run 名
+        FORCED_RUN = p.resolve()
+        if not FORCED_RUN.is_dir():
+            ap.error(f"run 目录不存在: {FORCED_RUN}")
 
     server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
     print(f"Dashboard: http://127.0.0.1:{args.port}  (自动追踪 {RUNS_DIR} 最新训练)")

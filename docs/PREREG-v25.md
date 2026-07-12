@@ -29,7 +29,7 @@
 ## D2 选举配方(v22-H status.json 存档逐字,批评者 major 修正)
 
 共用:`--options --algo mppo --gamma 1.0 --max-steps 3000 --n-steps 64 --num-envs 4
---total-steps 40000 --worker-npz train/models/v24-worker-leg7/policy.npz`
+--total-steps 40192 --worker-npz train/models/v24-worker-leg7/policy.npz`
 (SB3 量子化 ≈40.2k 决策,如实注册;两臂串行,决策率锚 v22-H 实测 29/s ≈ 25 分钟/臂)。
 
 - **M-fresh**:从零,lr 3e-4,ent 0.02,--seed 22(v22-H 原种子,最近复刻)。

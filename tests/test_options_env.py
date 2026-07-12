@@ -14,6 +14,8 @@ env = OptionsEnv(max_steps=3000)
 # --- 1. 形状与掩码基本面 ---
 obs, _ = env.reset(seed=7000)
 assert obs.shape == (303,), obs.shape
+assert obs.dtype == np.float32 and env.observation_space.contains(obs)
+assert env.np_random is not None, "OptionsEnv.reset(seed) 未建立自身 RNG"
 m = env.action_masks()
 assert m.shape == (3,) and m.dtype == bool and m[FARM], m
 print("G0.1 PASS: obs 303 维,掩码 3 位,FARM 保底恒真")
@@ -61,6 +63,7 @@ for i in range(200):
     assert m.any(), f"决策 {i}:掩码全假"
     opt = int(rng.choice(np.flatnonzero(m)))
     obs, R, done, trunc, info = env.step(opt)
+    assert env.env._steps <= env.max_steps, (env.env._steps, env.max_steps)
     taus.append(info["option_extra"]["tau"])
     assert info["option_extra"]["tau"] >= 1
     if done or trunc:
@@ -73,6 +76,14 @@ s0 = env.env._steps
 obs, R, done, trunc, info = env.step(FARM)
 assert info["option_extra"]["tau"] == env.env._steps - s0
 print("G0.5 PASS: τ 与微步差分逐位一致")
+
+# --- 5b. 宏动作不得越过基础局微步上限 ---
+short = OptionsEnv(max_steps=1)
+obs, _ = short.reset(seed=7004)
+obs, R, done, trunc, info = short.step(FARM)
+assert short.env._steps == short.max_steps == 1, short.env._steps
+assert done or trunc
+print("G0.5b PASS: 宏动作在 max_steps 剩余预算内截断,无微步越界")
 
 # --- 6. MaskablePPO 冒烟(γ=1)---
 from sb3_contrib import MaskablePPO

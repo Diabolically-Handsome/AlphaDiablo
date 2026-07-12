@@ -1,8 +1,11 @@
-"""v24 G-KL 闸门(docs/PREREG-v24.md):A 焊死端 / B 零化端 / C 教师保真 / fail-loud。
-纯脚本断言,同 G0 惯例。前置:bc-worker/policy_sd.pt 与 v22-h-manager/policy.npz。
+"""v24 G-KL 长程人工闸门:A 焊死端 / B 零化端 / C 教师保真。
+
+前置是按当前协议重建的 bc-worker/policy_sd.pt。无需训练产物的 beta、mask、
+G-CAL 即时停止和零 beta 回归都在 test_training_core.py 中由 CI 独立覆盖。
 """
 import pathlib
 import sys
+import tempfile
 
 import numpy as np
 import torch as th
@@ -12,10 +15,30 @@ sys.path.insert(0, str(ROOT / "python"))
 sys.path.insert(0, str(ROOT / "train"))
 
 from leashed_ppo import HUGE_NEG, LeashedMaskablePPO, build_teacher
+from train_ppo import (_GEAR_PRESENT_INDEX, _select_batch_size,
+                       _validate_bc_report)
+from bc_worker import split_by_episode
 
 SD = ROOT / "train" / "runs" / "bc-worker" / "policy_sd.pt"
 NPZ = ROOT / "train" / "models" / "v22-h-manager" / "policy.npz"
-assert SD.exists() and NPZ.exists()
+if not SD.is_file() or not NPZ.is_file():
+    print("SKIP: test_leash.py 是 BC 重建后的长程人工闸门；当前缺少训练产物")
+    raise SystemExit(0)
+
+# ---------- 训练入口边界回归 ----------
+assert _select_batch_size(512, 4) == 256
+tail_safe = _select_batch_size(257, 1)
+assert 257 % tail_safe != 1, tail_safe
+assert _GEAR_PRESENT_INDEX == 293
+groups = np.repeat(np.arange(20), 3)
+tr, ho, _ = split_by_episode(groups)
+assert not set(groups[tr]).intersection(groups[ho])
+try:
+    _validate_bc_report(SD, "data_gate")
+except ValueError as exc:
+    print(f"SKIP: BC 产物不满足当前协议，先重跑 train/bc_worker.py: {exc}")
+    raise SystemExit(0) from None
+print("训练入口 PASS:batch 无 singleton 尾批;装备位 293;BC held-out 整局隔离")
 
 # ---------- G-KL-C:教师保真(torch ≡ numpy 载荷) ----------
 from eval_assembled import np_policy_from_sd
@@ -102,9 +125,38 @@ m_bad._setup_learn(total_timesteps=64)
 fill_buffer(m_bad, seed=12)
 try:
     m_bad.train()
-    raise SystemExit("fail-loud FAIL: β>0 无教师竟未断言")
-except AssertionError:
-    print("G-KL.fail-loud PASS: β>0 无教师 assert 炸裂")
+    raise SystemExit("fail-loud FAIL: β>0 无教师竟未拒绝")
+except RuntimeError:
+    print("G-KL.fail-loud PASS: β>0 无教师显式拒绝")
+
+# ---------- 非法 β / 全无效 mask / 冻结期空梯度探针 ----------
+try:
+    LeashedMaskablePPO("MlpPolicy", venv, distill_beta=-0.1, **kw)
+    raise SystemExit("negative-beta FAIL:负 β 竟未拒绝")
+except ValueError:
+    pass
+m_guard = LeashedMaskablePPO("MlpPolicy", venv, distill_beta=1.0,
+                             teacher_path=str(SD), **kw)
+try:
+    m_guard._teacher_probs(obs_b[:2], th.zeros(2, 15, dtype=th.bool))
+    raise SystemExit("all-false-mask FAIL:全 False mask 竟未拒绝")
+except ValueError:
+    pass
+m_guard._calib_probe(th.tensor(0.0), th.tensor(0.0), 0.0)
+print("Leash 防护 PASS:负 β/全 False mask 拒绝;空梯度探针记 0 不崩溃")
+
+# ---------- 主动 G-CAL 裁决后不得再更新当前 minibatch ----------
+with tempfile.TemporaryDirectory() as td:
+    m_trip = LeashedMaskablePPO(
+        "MlpPolicy", venv, distill_beta=1.0, teacher_path=str(SD),
+        calib_probes=[0], calib_out=str(pathlib.Path(td) / "calib.jsonl"), **kw)
+    m_trip._setup_learn(total_timesteps=64)
+    fill_buffer(m_trip, seed=14)
+    before = {k: v.detach().clone() for k, v in m_trip.policy.state_dict().items()}
+    m_trip.train()
+    assert m_trip._calib_tripped
+    assert all(th.equal(before[k], v) for k, v in m_trip.policy.state_dict().items())
+print("G-CAL immediate-stop PASS:裁决 minibatch 未产生权重更新")
 
 # ---------- G-KL-A:焊死端(随机初始化 + β=100,30k 步收敛到教师) ----------
 mA = LeashedMaskablePPO("MlpPolicy", venv, distill_beta=100.0, teacher_path=str(SD),

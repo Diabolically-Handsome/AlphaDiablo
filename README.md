@@ -16,12 +16,13 @@ dungeon* — fourteen documented runs, one diagnosed failure mode eliminated
   see protocol notes in [train/evaluate.py](train/evaluate.py)); engine source
   pinned to an exact upstream commit by [bootstrap.sh](bootstrap.sh)
 - 🧩 **Gymnasium API**: structured observations (entity features + 11×11 local
-  map + potion/gear preconditions), macro-actions (engage / explore / descend /
+  map + potion/gear preconditions), macro-actions (engage / explore / advance /
   drink / pick-up-potion / pick-up-gear)
 - 📊 **Zero-dependency live dashboard** for training runs
-- 🩹 Ships **upstream fixes** for six DevilutionX headless-mode bugs — asset
-  fallbacks, monster-missile anims (a bat swoop was the first crash), the
-  unloaded SFX table (the Butcher's greeting was the second) — in `patches/`
+- 🩹 Ships registered, reproducible **DevilutionX integration patches** — asset
+  fallbacks, monster-missile anims (a bat swoop was the first crash), unloaded
+  SFX handling, and headless in-game-movie suppression (Lazarus was another
+  deterministic crash) — in `patches/`
 
 ![learning curves](docs/assets/learning-curves.png)
 
@@ -277,6 +278,10 @@ Four findings we did not expect:
 
 ## Quickstart (macOS, Apple Silicon)
 
+The native bridge links a separately built DevilutionX dylib, so this project is
+currently supported from a source checkout with an editable install only. A
+standalone wheel is not a portable/runtime-complete artifact.
+
 ```bash
 # 0. Requirements: Homebrew, Xcode CLT, Python ≥3.11
 python3 -m venv .venv && .venv/bin/pip install -e ".[train,build]"
@@ -286,6 +291,8 @@ python3 -m venv .venv && .venv/bin/pip install -e ".[train,build]"
 mkdir -p "$HOME/Library/Application Support/diasurgical/devilution"
 curl -L -o "$HOME/Library/Application Support/diasurgical/devilution/spawn.mpq" \
   https://github.com/diasurgical/devilutionx-assets/releases/download/v5/spawn.mpq
+echo "64427cd7c1ba904eaa2e0031c16a6b136d0ecef9abc888c5ff8344b459356e38  $HOME/Library/Application Support/diasurgical/devilution/spawn.mpq" \
+  | shasum -a 256 -c -
 #    - Full game: buy Diablo on GOG, extract DIABDAT.MPQ with `brew install innoextract`,
 #      drop it in the same folder (see docs/DESIGN.md notes).
 
@@ -297,23 +304,64 @@ curl -L -o "$HOME/Library/Application Support/diasurgical/devilution/spawn.mpq" 
 .venv/bin/python tests/descend_seed_test.py
 
 # 4. Train + watch
-.venv/bin/python train/train_ppo.py --total-steps 3000000 --num-envs 4
+.venv/bin/python train/train_ppo.py --total-steps 2998272 --num-envs 4
 .venv/bin/python train/dashboard.py        # → http://127.0.0.1:8787
 
 # 5. Evaluate against the leaderboard protocol (idle machine!)
 .venv/bin/python train/evaluate.py train/runs/<run>/model_final
 ```
 
+Training checkpoints are published atomically and only after a complete PPO
+rollout update. `--resume-from` restores the policy, optimizer and global step,
+then starts a new environment trajectory; it is a safe weight-continuation
+mechanism, not a bit-for-bit crash snapshot of engine state or Python/NumPy/
+Torch RNG state. Checkpoints without the current training contract are rejected
+by default; `--allow-legacy-resume` is an explicit one-time migration escape
+hatch, not a reproducibility claim.
+`--total-steps` must be an exact multiple of `--n-steps × --num-envs`; the
+trainer rejects any remainder instead of letting SB3 silently overshoot it.
+Checkpoint-derived warm starts and teacher overrides retain a manifest, but the
+manifest is not trusted on its own: the source checkpoint must still exist, its
+hash and archive must validate, and every exported policy tensor must exactly
+match the source. Keep the source ZIP beside any long-lived export.
+
+BC `PASS` JSON is likewise treated as a claim, not evidence. The worker gate
+requires exactly the 128 registered demonstration seeds, rejects actions that
+are permanently masked for workers, and recomputes held-out metrics from the
+hashed demonstrations and policy. Manager and flat gates deterministically
+re-run their registered demo and 7000–7031 replay pools against the frozen
+policy before training; the verified result is cached only for that exact
+policy/runtime identity within the process.
+
+Evaluation protocol v3 also makes dungeon depth monotonic: ordinary FARM/worker
+movement can no longer trigger an upstairs/town-return tile. Because that task
+cannot naturally carry the Staff of Lazarus back to Cain, the bridge performs
+one narrow, observable equivalent turn-in after the agent has genuinely operated
+the stand and picked up the staff. Actions 10/11 then route only the mandatory
+L15/Vile/L16 interactions; they do not auto-clear combat or optional content.
+The full-game resource probe exercises this chain against a real DIABDAT.MPQ.
+Pre-v3 archives remain useful as immutable forensic records, but they are not valid baselines
+for new training or model-selection runs and must be re-evaluated first. The
+training/evaluation identity now includes the actual main MPQ and the complete
+Resources tree, exact numerical package versions and the native binaries that
+are actually mapped into the process; the bridge also rejects a main archive
+found through cwd/system fallback instead of the explicit `data_dir`.
+
+This semantic break intentionally invalidates pre-v3 BC reports/demos and the
+v24–v30 calibrated thresholds. Re-run `train/bc_worker.py`, then regenerate the
+protocol-v3 baselines and update the preregistered thresholds before re-enabling
+those experiment drivers; until then they fail closed before launching training.
+
 ## How it works
 
 | Layer | Where | What |
 |---|---|---|
 | C++ bridge | `src/diablogym.cpp` | Embeds the whole engine as a shared library (`HeadlessMode`), drives the game loop tick-by-tick from Python, injects actions at the **network command layer** (same path as multiplayer — a trained agent can later join a TCP co-op game as a headless client) |
-| Env | `python/diablogym/env.py` | Gymnasium env: 294-dim obs (player/monster entities + stairs direction + 11×11 walkability & monster-occupancy map + belt/floor-potion fields + AC/nearest-gear fields), `Discrete(15)` with engage/explore/descend/drink/pickup-heal/pickup-gear macro-actions, per-hit damage rewards |
+| Env | `python/diablogym/env.py` | Gymnasium env: 295-dim obs (player/monster entities + next mandatory-objective direction + 11×11 walkability & monster-occupancy map + belt/floor-potion fields + AC/nearest-gear fields + level/depth power gauge), `Discrete(15)` with engage/explore/advance/drink/pickup-heal/pickup-gear macro-actions, per-hit damage rewards |
 | Training | `train/train_ppo.py` | SB3 PPO, subprocess vec-envs, per-episode JSONL metrics |
 | Evaluation | `train/evaluate.py` | Frozen 32-seed deterministic protocol; appends to the leaderboard |
 | Monitoring | `train/dashboard.py` | stdlib-only live dashboard (SVG charts, 2s polling) |
-| Engine fixes | `patches/` | Headless asset-fallback fixes (town cel/til/sol/min), applied idempotently by `build.sh` |
+| Engine fixes | `patches/` | Registered headless/integration fixes, including town asset fallbacks and skipping Lazarus' movie without an SDL video subsystem; applied idempotently and drift-audited by `build.sh` |
 
 Determinism notes: the engine reseeds its global RNG from the wall clock when
 creating a hero (`CreatePlayer`) and paces turns against real time
@@ -330,6 +378,9 @@ quirks are documented in [train/evaluate.py](train/evaluate.py).
   the walkability channel; the v11 descend option (door/barrel-aware BFS)
   cut zero-kill episodes 15/32 → 2/32
 - [x] Descend to L2 — 27/32 episodes reach it now (deepest runs chain to L4)
+- [x] Make the complete single-player action graph structurally reachable with
+  the existing 15 actions: Staff/Cain adaptation, Vile books/circles, set-level
+  return and all four L16 switches are covered by a real-DIABDAT probe
 - [x] Survive down there: v12's blind drink action cut deaths at a kill-rate
   cost (lesson 11); v13 made the potion system *learnable* (belt count +
   nearest floor heal into the observation, door-aware pickup macro) —
@@ -353,7 +404,8 @@ quirks are documented in [train/evaluate.py](train/evaluate.py).
 - [ ] Clear-rate objective
 - [ ] The Butcher 🥩 (his greeting already crashed our headless engine once —
   see patches/0003; killing him is next)
-- [ ] Cross-class generalization (Rogue / Sorcerer — `hero_class` already exposed)
+- [ ] Cross-class generalization (Rogue / Sorcerer; the current contract rejects
+  non-Warriors until class-specific action/stat semantics are implemented)
 - [ ] Multiplayer co-op deployment (carry your creator through the game)
 
 ## Related work
@@ -376,13 +428,14 @@ documented with the lesson it taught. The roguelike-RL canon
 ([NLE](https://github.com/facebookresearch/nle),
 [MiniHack](https://github.com/facebookresearch/minihack)) offers
 turn-based, purpose-built research environments; DiabloGym instead wraps a
-commercial real-time ARPG engine, unmodified at the game-rules level.
+commercial real-time ARPG engine with an explicitly documented monotonic-task
+adapter for the otherwise impossible Cain round trip.
 
 ## 中文速览
 
 基于 DevilutionX 的暗黑破坏神 I 强化学习环境:无头引擎裸跑 ~13,000 倍实时
 (含观测的 env.step 约 7,500 步/秒,~1,500 倍实时)、种子级确定性(评估跨进程
-位级可复现)、Gymnasium 接口、宏动作(交战/探索/下楼/喝药/捡药)、零依赖训练
+位级可复现)、Gymnasium 接口、宏动作(交战/探索/主线推进/喝药/捡药)、零依赖训练
 监控面板。十四轮迭代把 PPO 从"面壁思过"练到"开门、砸桶、捡药续命、一路下杀"
 (32 种子金标准均击杀 **35.2**,较上代冠军近乎翻倍;实喝纪律 0.5%→93.4%),
 并留下十三课教训:奖励税、塑形归因、动作时序、防磨刀、感知天花板、探索

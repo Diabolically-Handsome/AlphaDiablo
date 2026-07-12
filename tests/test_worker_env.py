@@ -9,6 +9,7 @@
 """
 import pathlib
 import sys
+import tempfile
 
 import numpy as np
 
@@ -17,6 +18,7 @@ sys.path.insert(0, str(ROOT / "python"))
 
 from diablogym import NumpyManager, OptionsEnv, WorkerWindowEnv
 from diablogym.options_env import FARM, dispatch
+from diablogym.worker_env import sample_train_seed
 
 NPZ = ROOT / "train" / "models" / "v22-h-manager" / "policy.npz"
 assert NPZ.exists(), f"缺 {NPZ} —— 先跑 train/export_manager_npz.py"
@@ -42,6 +44,20 @@ for i in range(1000):
     a_sb, _ = sb3_mgr.predict(o, action_masks=mask3, deterministic=True)
     assert a_np == int(a_sb), f"obs {i}: numpy {a_np} != sb3 {int(a_sb)}"
 print("G0'.d PASS: numpy 经理与 SB3 predict 1000 obs 逐位一致")
+
+with tempfile.TemporaryDirectory() as td:
+    bad = {name: getattr(np_mgr, name).copy()
+           for name in ("w0", "b0", "w1", "b1", "wa", "ba")}
+    bad["w0"][0, 0] = np.nan
+    bad_path = pathlib.Path(td) / "bad.npz"
+    np.savez(bad_path, **bad)
+    try:
+        NumpyManager(str(bad_path))
+    except ValueError as exc:
+        assert "NaN/Inf" in str(exc)
+    else:
+        raise AssertionError("NumpyManager 接受了非有限权重")
+print("G0'.d2 PASS: 损坏/NaN 权重在加载边界 fail-loud")
 
 # --- (a)+(c) 等价性 + 工资恒等式 ---
 oe = OptionsEnv(max_steps=3000)
@@ -102,6 +118,22 @@ assert not m[11] and not m[12], m
 assert m[14] == base[14]
 assert obs.shape == (298,), obs.shape
 print("G0'.b PASS: 掩码恒掩 11/12、14 透传;工人观测 298 维")
+
+# --- (b2) Gym seed 必须接管后续自动滚局的采样器 ---
+wwe_seed = WorkerWindowEnv(str(NPZ), max_steps=3000, rng_seed=999)
+obs, info = wwe_seed.reset(seed=7008)
+assert info["episode_seed"] == 7008 and wwe_seed.np_random is not None
+expected_rng = np.random.default_rng(7008)
+assert sample_train_seed(wwe_seed._rng) == sample_train_seed(expected_rng)
+print("G0'.b2 PASS: reset(seed) 同步工人滚局 RNG,后续局可复现")
+
+# --- (b3) 窗口中途 reset 必须丢弃旧局，不能覆盖未结算窗口后串账 ---
+episodes_before = wwe_seed.stats["episodes"]
+assert wwe_seed.oe._win is not None
+_, reset_info = wwe_seed.reset()
+assert wwe_seed.stats["episodes"] == episodes_before + 1
+assert wwe_seed.oe._win is not None and reset_info["episode_seed"] == wwe_seed._episode_seed
+print("G0'.b3 PASS: 活跃窗口中途 reset 强制新开底层局,不串经理/工资状态")
 
 # --- (e) terminated / truncated 语义 + VecEnv TimeLimit.truncated ---
 seen_term = seen_trunc = False

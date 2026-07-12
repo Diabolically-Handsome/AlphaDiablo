@@ -1,0 +1,15 @@
+diff --git a/Source/monster.cpp b/Source/monster.cpp
+--- a/Source/monster.cpp
++++ b/Source/monster.cpp
+@@ -2890,8 +2890,9 @@ void LazarusAi(Monster &monster)
+ 		if (!UseMultiplayerQuests()) {
+ 			const Player &myPlayer = *MyPlayer;
+ 			if (monster.talkMsg == TEXT_VILE13 && monster.goal == MonsterGoal::Inquiring && myPlayer.position.tile == Point { 35, 46 }) {
+-				if (!gbIsMultiplayer) {
+-					// Playing ingame movies is currently not supported in multiplayer
++				if (!gbIsMultiplayer && !HeadlessMode) {
++					// Playing ingame movies is not supported in multiplayer or
++					// headless mode (which intentionally has no SDL video subsystem).
+ 					PlayInGameMovie("gendata\\fprst3.smk");
+ 				}
+ 				monster.mode = MonsterMode::Talk;

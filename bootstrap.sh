@@ -20,8 +20,10 @@ JOBS="$(sysctl -n hw.physicalcpu)"
 ENGINE_REF="${DEVILUTIONX_REF:-34c4cfc2e733240ac717f23bba2def887c793008}"
 
 echo "==> [1/5] 检查游戏数据 ($DATA_DIR)"
-ls "$DATA_DIR/diabdat.mpq" >/dev/null 2>&1 || ls "$DATA_DIR/spawn.mpq" >/dev/null 2>&1 \
-  || { echo "错误:缺少 diabdat.mpq 或 spawn.mpq,先准备数据文件"; exit 1; }
+ls "$DATA_DIR/DIABDAT.MPQ" >/dev/null 2>&1 \
+  || ls "$DATA_DIR/diabdat.mpq" >/dev/null 2>&1 \
+  || ls "$DATA_DIR/spawn.mpq" >/dev/null 2>&1 \
+  || { echo "错误:缺少 DIABDAT.MPQ/diabdat.mpq/spawn.mpq,先准备数据文件"; exit 1; }
 
 echo "==> [2/5] 获取上游源码 @ ${ENGINE_REF:0:12} -> $DEV_DIR"
 if [ ! -d "$DEV_DIR/.git" ]; then
@@ -32,7 +34,12 @@ fi
 if ! git -C "$DEV_DIR" rev-parse --quiet --verify "$ENGINE_REF^{commit}" >/dev/null; then
   git -C "$DEV_DIR" fetch --depth 1 origin "$ENGINE_REF"
 fi
-if [ "$(git -C "$DEV_DIR" rev-parse HEAD 2>/dev/null || true)" != "$ENGINE_REF" ]; then
+if [ "${BOOTSTRAP_CLEAN:-0}" = "1" ]; then
+  # 上游位于专用系统临时 clone；显式恢复模式才丢弃已跟踪/未跟踪源码漂移。
+  # git clean 不加 -x，保留 .gitignore 中的大型 build 缓存。
+  git -C "$DEV_DIR" reset --hard -q "$ENGINE_REF"
+  git -C "$DEV_DIR" clean -fd
+elif [ "$(git -C "$DEV_DIR" rev-parse HEAD 2>/dev/null || true)" != "$ENGINE_REF" ]; then
   # 换版本时丢弃工作区改动对齐过去(补丁由 build.sh 幂等重涂);
   # 已在钉死版本上则不动工作区,免得每次都触发全量重编译
   git -C "$DEV_DIR" reset --hard -q "$ENGINE_REF"

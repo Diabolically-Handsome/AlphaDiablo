@@ -11,10 +11,18 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import pathlib
-import shutil
+import signal
 import subprocess
 import time
+import traceback
+import zipfile
+
+from eval_contract import (PROTOCOL_VERSION, OutputReservationError,
+                           exclusive_lock, expected_eval_identity,
+                           freeze_eval_identity, read_eval_archive,
+                           verify_eval_identity)
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 PY = str(ROOT / ".venv" / "bin" / "python")
@@ -22,9 +30,13 @@ RUNS = ROOT / "train" / "runs"
 V24 = RUNS / "v24"
 V24.mkdir(parents=True, exist_ok=True)
 LEDGER = V24 / "gate_ledger.jsonl"
+DRIVER_LOCK = V24 / ".driver.lock"
+DRIVER_LOCK_PURPOSE = "v24 驱动"
 
 LEG = 489 * 2048          # 1,001,472(【腿-1】步数量子化如实注册)
+QUANTUM = 2048            # n_steps × num_envs；短腿必须向下量化，禁止硬预算超采
 N_LEGS = 8
+BUDGET_STEPS = N_LEGS * LEG
 BETA_SCHED = [0.5, 0.25, 0.125, 0.0625, 0.03125, 0.015625, 0.0, 0.0]
 HARD_LINE = 62.8          # 【硬-3】(0.8×G1,满32衍生;套 16 种子考更松,沿用不放松)
 SOFT_MULT = 0.97          # 【软-4】
@@ -33,12 +45,74 @@ SPS_FLOOR = 1_800_000     # 实步/小时(降档条款;分子=实训步含烧步
 TAIL_CUT_STEPS = 244 * 2048
 PROBES = (300_000, 600_000)
 BC_SD = str(RUNS / "bc-worker" / "policy_sd.pt")
+DEFAULT_MANAGER_NPZ = ROOT / "train" / "models" / "v22-h-manager" / "policy.npz"
 
 # G3/金评资格(v23 附录 B 解释版原文数字;override:3% 哨兵线过闸,8% 另记数据作废)
 G3_MEAN = 74.6
 G3_DEATHS = 6
 R4 = {"farm_descend_rate": 0.0204, "override_sentinel": 0.03, "override_void": 0.08,
       "cap_rate": 0.05, "farm_tau_lo": 27.8, "farm_tau_hi": 46.4}
+CALIBRATED_PROTOCOL_VERSION = 2
+
+
+class OperationalFailure(RuntimeError):
+    """基础设施/接线失败；与正常科学绊线区分，进程必须非零退出。"""
+
+
+def budgeted_leg_steps(spent_steps: int, cap: int = LEG) -> int:
+    """按所有已观测实训步实时扣硬预算，而不是只缩最后一腿。"""
+    remaining = max(0, BUDGET_STEPS - spent_steps)
+    return min(cap, (remaining // QUANTUM) * QUANTUM)
+
+
+def ensure_retry_budget(spent_steps: int, cap: int = LEG) -> None:
+    if budgeted_leg_steps(spent_steps, cap) == 0:
+        raise OperationalFailure("失败尝试已耗尽硬预算，无法完成当前腿")
+
+
+def observed_attempt_steps(base: int, result: dict, allocated: int) -> int:
+    """从 zip/status 两个单调全局计数器保守取本次尝试的观测增量。"""
+    observed = max(int(result.get("global_steps", 0)),
+                   int(result.get("status_steps", 0)))
+    delta = max(0, observed - base)
+    if delta > allocated:
+        raise OperationalFailure(
+            f"步数越过本次配额:base={base}, observed={observed}, allocated={allocated}")
+    return delta
+
+
+def failed_attempt_charge(observed: int, allocated: int) -> int:
+    """status 只是下界；异常尝试按完整获批配额占用硬预算。"""
+    if not 0 <= observed <= allocated:
+        raise OperationalFailure("异常尝试观测步数越界")
+    return allocated
+
+
+def is_gcal_stop(k: int, result: dict, base: int, expected: int,
+                 records: list[dict]) -> bool:
+    """G-CAL 半 rollout 早停不发布终点 zip；以 status 与当前记录识别。"""
+    status = int(result.get("status_steps", 0))
+    return (k == 1 and result.get("rc") == 0 and base < status <= expected
+            and any(r.get("tripped") for r in records))
+
+
+def reset_recalibration_attempts(attempts: dict[int, int]) -> None:
+    attempts[1] = 0
+
+
+def run_process(cmd, logfile, timeout: int) -> int:
+    with open(logfile, "w") as lf:
+        proc = subprocess.Popen(cmd, cwd=ROOT, stdout=lf, stderr=subprocess.STDOUT,
+                                start_new_session=True)
+        try:
+            return proc.wait(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            try:
+                os.killpg(proc.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            proc.wait()
+            return 124
 
 
 def log(event: dict):
@@ -52,12 +126,50 @@ def sha16(p: pathlib.Path) -> str:
     return hashlib.sha256(p.read_bytes()).hexdigest()[:16]
 
 
+def require(condition: bool, message: str) -> None:
+    if not condition:
+        raise ValueError(message)
+
+
+def require_calibrated_protocol() -> None:
+    if PROTOCOL_VERSION != CALIBRATED_PROTOCOL_VERSION:
+        raise OperationalFailure(
+            "v24 的 HARD_LINE/SCRIPT_SUBSET/G3/R4 静态阈值仅在 pre-v3 环境语义标定；"
+            "必须先重跑 protocol-v3 基线并人工更新预注册，禁止混用旧阈值"
+        )
+
+
+def zip_steps(p: pathlib.Path) -> int:
+    try:
+        with zipfile.ZipFile(p) as zf:
+            return int(json.loads(zf.read("data"))["num_timesteps"])
+    except (OSError, KeyError, ValueError, zipfile.BadZipFile):
+        return 0
+
+
+def preflight() -> None:
+    require_calibrated_protocol()
+    require(pathlib.Path(BC_SD).is_file(), f"BC 教师缺失:{BC_SD}")
+    eval_dir = RUNS / "eval-assembled"
+    for k in range(1, N_LEGS + 1):
+        require(not (RUNS / f"v24-leg{k}").exists(), f"运行目录残留:v24-leg{k}")
+        for tag in (f"v24-leg{k}", f"v24-G3-leg{k}"):
+            require(not (eval_dir / f"{tag}.json").exists(), f"评测档案已存在:{tag}")
+    require(not (RUNS / "v24-leg1r").exists(), "运行目录残留:v24-leg1r")
+
+
 def run_leg(k: int, beta: float, resume_from: str | None, leg_steps: int,
             run_name: str, attempt: int) -> dict:
     run_dir = RUNS / run_name
+    model_path = run_dir / "model_final.zip"
+    old_mtime = model_path.stat().st_mtime_ns if model_path.exists() else None
     stale = run_dir / "status.json"
     if stale.exists():
         stale.unlink()            # 重跑不许读上次尝试的步数
+    for fn in ("calib.jsonl", "sentinel.jsonl"):
+        p = run_dir / fn
+        if p.exists():
+            p.rename(p.with_suffix(f".pre{attempt}.{time.time_ns()}.void"))
     cmd = [PY, "train/train_ppo.py", "--worker", "--algo", "mppo", "--gamma", "1.0",
            "--max-steps", "3000", "--num-envs", "4", "--n-steps", "512", "--lr", "3e-4",
            "--ent-coef", "0.005", "--seed", str(100_000 + 1000 * k),
@@ -69,26 +181,46 @@ def run_leg(k: int, beta: float, resume_from: str | None, leg_steps: int,
         cmd += ["--bc-init", BC_SD, "--freeze-policy-steps", "200000",
                 "--calib-probes", ",".join(str(p) for p in PROBES)]
     t0 = time.time()
-    with open(V24 / f"{run_name}.try{attempt}.log", "w") as lf:  # per-attempt 尸检留档
-        rc = subprocess.run(cmd, cwd=ROOT, stdout=lf, stderr=subprocess.STDOUT).returncode
+    rc = run_process(cmd, V24 / f"{run_name}.try{attempt}.log", timeout=21_600)
     dt = time.time() - t0
     sp = run_dir / "status.json"
-    gsteps = json.loads(sp.read_text())["total_steps"] if sp.exists() else 0
-    return {"rc": rc, "dt_sec": round(dt), "global_steps": gsteps,
-            "model": run_dir / "model_final.zip"}
+    try:
+        status_steps = int(json.loads(sp.read_text())["total_steps"]) if sp.exists() else 0
+    except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError):
+        status_steps = 0
+    fresh_model = model_path.exists() and model_path.stat().st_mtime_ns != old_mtime
+    model_steps = zip_steps(model_path) if fresh_model else 0
+    return {"rc": rc, "dt_sec": round(dt), "global_steps": model_steps,
+            "status_steps": status_steps, "model": model_path, "model_fresh": fresh_model}
 
 
 def exam(model_path: pathlib.Path, tag: str, seeds: str) -> dict | None:
-    rc = subprocess.run([PY, "train/eval_assembled.py", "--worker",
-                         str(model_path).replace(".zip", ""), "--seeds", seeds,
-                         "--tag", tag], cwd=ROOT,
-                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode
-    if rc != 0:
-        return None
+    worker = model_path.with_suffix("") if model_path.suffix == ".zip" else model_path
     j = RUNS / "eval-assembled" / f"{tag}.json"
-    agg = json.loads(j.read_text())["agg"]
-    agg["_sha"] = sha16(j)
-    return agg
+    existed_before = j.exists()
+    try:
+        lo, hi = (int(x) for x in seeds.split("-", 1))
+        seed_values = list(range(lo, hi + 1))
+        require(seed_values and lo >= 0, f"非法 seed 范围:{seeds}")
+        snapshot = freeze_eval_identity(ROOT, worker, DEFAULT_MANAGER_NPZ)
+        expected = expected_eval_identity(snapshot, tag=tag, seeds=seed_values)
+        rc = run_process(
+            [PY, "train/eval_assembled.py",
+             "--worker", snapshot["worker"]["path"],
+             "--manager-npz", snapshot["manager"]["path"],
+             "--seeds", seeds, "--tag", tag],
+            V24 / f"exam-{tag}.{time.time_ns()}.log", timeout=1_800)
+        if rc != 0:
+            raise OSError(f"评测子进程失败: rc={rc}")
+        doc = read_eval_archive(j, **expected)
+        verify_eval_identity(snapshot, ROOT)
+        agg = doc["agg"]
+        agg["_sha"] = sha16(j)
+        return agg
+    except (OSError, KeyError, TypeError, ValueError):
+        if not existed_before and j.exists():
+            j.rename(j.with_suffix(f".{time.time_ns()}.void"))
+        return None
 
 
 def second_largest(vals):
@@ -97,14 +229,28 @@ def second_largest(vals):
 
 
 def main():
+    try:
+        with exclusive_lock(DRIVER_LOCK, DRIVER_LOCK_PURPOSE):
+            _main()
+    except (OperationalFailure, OutputReservationError) as exc:
+        log({"event": "OPERATIONAL_FAILURE", "why": str(exc)})
+        raise SystemExit(2) from exc
+    except Exception as exc:
+        log({"event": "DRIVER_EXCEPTION", "why": repr(exc),
+             "traceback": traceback.format_exc()})
+        raise
+
+
+def _main():
+    preflight()
     log({"event": "start", "leg_steps": LEG, "beta_sched": list(BETA_SCHED),
          "hard": HARD_LINE, "soft": SOFT_MULT})
     scores = []                 # 已完成腿考分(1 位小数)
     sched_idx = 0               # 软绊冻结 = 指针不进
     recalibrated = False
-    burned = 0                  # 烧步(重标定 + 崩溃部分步),从腿 8 扣,入 8M 硬预算
+    burned = 0                  # 被丢弃的重标定/崩溃步(审计口径)
+    spent_steps = 0             # 所有尝试的观测新步；逐次约束 BUDGET_STEPS
     chain_steps = 0             # 当前计数链上应有的累计步(重标定后归零)
-    extra_steps = 0             # 已烧但不在当前计数链上的实训步(sps 同账用)
     train_secs = 0.0
     prev_model = None
     leg_models = {}
@@ -114,12 +260,13 @@ def main():
     while k <= N_LEGS:
         beta = BETA_SCHED[min(sched_idx, len(BETA_SCHED) - 1)]
         cap = TAIL_CUT_STEPS if (tail_cut and k >= 7) else LEG
-        leg_steps = max(0, min(cap, LEG - burned)) if k == N_LEGS and burned else cap
-        if k == N_LEGS and burned and leg_steps < 500_000:
-            log({"event": "leg8_shrunk", "steps": leg_steps,
-                 "note": "烧步扣减:P-拐杖-真自动降格半档(预注册 G-CAL/终-6)"})
+        leg_steps = budgeted_leg_steps(spent_steps, cap)
+        if leg_steps < cap:
+            log({"event": "leg_budget_shrunk", "leg": k, "steps": leg_steps,
+                 "spent": spent_steps, "remaining": BUDGET_STEPS - spent_steps,
+                 "note": "所有既成新步与失败/重标定烧步逐次扣减硬预算"})
         if leg_steps == 0:
-            log({"event": "leg8_skipped"})
+            log({"event": "budget_exhausted", "leg": k, "spent": spent_steps})
             break
         attempts[k] = attempts.get(k, 0) + 1
         run_name = f"v24-leg{k}" + ("r" if (k == 1 and recalibrated) else "")
@@ -130,31 +277,56 @@ def main():
         expected = chain_steps + leg_steps
 
         # ---- 【考-2】崩溃互锁(先于一切裁决——审查团 blocker 修正)----
-        clean = res["rc"] == 0 and res["global_steps"] >= expected - 2048
-        if not clean:
-            partial = max(0, res["global_steps"] - chain_steps)
-            burned += partial
-            extra_steps += partial
+        calib_p = RUNS / run_name / "calib.jsonl"
+        try:
+            calib_recs = ([json.loads(l) for l in calib_p.read_text().splitlines()]
+                          if k == 1 and calib_p.exists() else [])
+        except (OSError, json.JSONDecodeError):
+            calib_recs = []
+        # G-CAL 触线会正常结束 learn，但半 rollout 不发布 model_final；当前尝试的
+        # rc/status 区间/tripped 三证足以识别，不能再依赖 fresh_model。
+        gcal_stop = is_gcal_stop(k, res, chain_steps, expected, calib_recs)
+        clean = (res["rc"] == 0 and res["model_fresh"]
+                 and res["global_steps"] == expected)
+        sampled = observed_attempt_steps(chain_steps, res, leg_steps)
+        if clean:
+            require(sampled == leg_steps, "干净收官的观测步数与配额不一致")
+            spent_steps += sampled
+            chain_steps = res["global_steps"]
+        elif gcal_stop:
+            spent_steps += sampled
+            burned += sampled
+            log({"event": "gcal_early_stop", "leg": k, "observed_steps": sampled,
+                 "status_steps": res["status_steps"], "burned_total": burned,
+                 "spent_total": spent_steps})
+        else:
+            # 非正常退出只留下 status 下界；最后一次刷新后的样本不可观测。
+            # 为使硬预算成为真正上界，按本次完整配额保守占账。
+            partial = sampled
+            charged = failed_attempt_charge(partial, leg_steps)
+            spent_steps += charged
+            burned += charged
             log({"event": "leg_crash", "leg": k, "attempt": attempts[k],
                  "rc": res["rc"], "global_steps": res["global_steps"],
-                 "burned_partial": partial, "burned_total": burned,
-                 "note": "按【终-6】原配置重跑,烧步计入 8M 硬预算(从腿 8 扣)"})
+                 "burned_observed": partial, "burned_charged": charged,
+                 "burned_total": burned,
+                 "spent_total": spent_steps,
+                 "note": "按【终-6】原配置重跑；烧步实时扣减后续可开配额"})
             if k == 1:
                 calib = RUNS / run_name / "calib.jsonl"
                 if calib.exists():   # 崩溃尝试的探针记录轮转,不污染 G-CAL 裁决
                     calib.rename(calib.with_suffix(f".try{attempts[k]}.void"))
+            ensure_retry_budget(spent_steps, cap)
             if attempts[k] >= 4:
-                log({"event": "STOP", "why": f"腿 {k} 连崩 {attempts[k]} 次——驱动自护"
-                     "停机(注:此上限系运维自护,非预注册闸门,触发即人工验尸)"})
-                return
+                why = (f"腿 {k} 连崩 {attempts[k]} 次——驱动自护停机"
+                       "(非预注册科学闸门,需人工验尸)")
+                log({"event": "STOP", "why": why})
+                raise OperationalFailure(why)
             continue
-        chain_steps = res["global_steps"]
 
-        # ---- G-CAL(仅腿 1,且仅裁决干净收官的腿——审查团 blocker 修正)----
+        # ---- G-CAL(仅腿 1；完整收官或三证齐全的正常早停)----
         if k == 1:
-            calib_p = RUNS / run_name / "calib.jsonl"
-            recs = ([json.loads(l) for l in calib_p.read_text().splitlines()]
-                    if calib_p.exists() else [])
+            recs = calib_recs
             tripped = any(r.get("tripped") for r in recs)
             probes_ok = all(any(p <= r["step"] < p + 2048 and r["g_ce"] > 0
                                 and r["distill_ce"] > 0 for r in recs)
@@ -166,21 +338,24 @@ def main():
                     log({"event": "STOP", "why": "G-CAL 二次触发 = 设计判死,停机写判决"})
                     return
                 recalibrated = True
-                burned += res["global_steps"]
-                extra_steps += res["global_steps"]
+                # 完整腿触发时尚未计为烧步；正常早停已在上方按 status 增量落账。
+                if not gcal_stop:
+                    burned += sampled
                 BETA_SCHED[:] = [2.0 * 0.5 ** i for i in range(6)] + [0.0, 0.0]
                 log({"event": "recalibrate", "beta0": 2.0,
                      "new_sched": list(BETA_SCHED), "burned": burned,
                      "note": "唯一一次 β₀×4:整条日程按 β_k=β₀·2^{-(k-1)} 重排"
-                             "(腿 7/8 钉 0 不动,拍板记录补条),烧步从腿 8 扣"})
+                             "(腿 7/8 钉 0 不动,拍板记录补条),烧步实时扣后续配额"})
                 prev_model = None
                 chain_steps = 0
                 sched_idx = 0
+                reset_recalibration_attempts(attempts)  # 新日程拥有独立运维重试额度
                 continue    # k 仍为 1
             if not probes_ok:
-                log({"event": "STOP", "why": "G-CAL 接线失败(双探针未见 ce/g_ce>0)"
-                     "——修码后按崩溃条款重跑,需人工介入"})
-                return
+                why = ("G-CAL 接线失败(双探针未见 ce/g_ce>0)"
+                       "——修码后按崩溃条款重跑,需人工介入")
+                log({"event": "STOP", "why": why})
+                raise OperationalFailure(why)
 
         # ---- 腿考 ----
         agg = exam(res["model"], f"v24-leg{k}", "7000-7015")
@@ -188,8 +363,9 @@ def main():
             log({"event": "exam_crash", "leg": k, "note": "考试进程失败,按崩溃条款重考"})
             agg = exam(res["model"], f"v24-leg{k}", "7000-7015")
             if agg is None:
-                log({"event": "STOP", "why": "考试连败 2 次——人工验尸"})
-                return
+                why = "考试连败 2 次——人工验尸"
+                log({"event": "STOP", "why": why})
+                raise OperationalFailure(why)
         score = round(agg["ret_mean"], 1)
         p_star = second_largest([SCRIPT_SUBSET] + scores)   # 排除受审腿(审查团修正:
         scores.append(score)                                 # 腿 1 软绊线 = 0.97×93.9 = 91.1)
@@ -211,7 +387,7 @@ def main():
         else:
             sched_idx += 1
         # ---- sps 降档(分子含烧步,与分母同账;k<8 允许在腿 7 后砍腿 8)----
-        rate = (res["global_steps"] + extra_steps) / max(1e-9, train_secs) * 3600
+        rate = spent_steps / max(1e-9, train_secs) * 3600
         if rate < SPS_FLOOR and k < 8 and not tail_cut:
             tail_cut = True
             log({"event": "sps_downshift", "rate_per_h": round(rate),
@@ -221,16 +397,18 @@ def main():
 
     # ---- G3:候选写死 = 腿末 ckpt 按腿考分 top-2 ----
     if not leg_models:
-        log({"event": "STOP", "why": "无任何完成腿"})
-        return
+        why = "无任何完成腿"
+        log({"event": "STOP", "why": why})
+        raise OperationalFailure(why)
     top2 = sorted(leg_models.items(), key=lambda kv: kv[1][0], reverse=True)[:2]
     log({"event": "g3_candidates", "cands": [(kk, v[0], v[2]) for kk, v in top2]})
     finals = []
     for kk, (sc16, mp, bt) in top2:
         agg = exam(pathlib.Path(mp), f"v24-G3-leg{kk}", "7000-7031")
         if agg is None:
-            log({"event": "STOP", "why": f"G3 满32考试失败(腿 {kk})——人工验尸"})
-            return
+            why = f"G3 满32考试失败(腿 {kk})——人工验尸"
+            log({"event": "STOP", "why": why})
+            raise OperationalFailure(why)
         void = agg["override_rate"] >= R4["override_void"]
         r4_ok = (agg["farm_descend_rate"] <= R4["farm_descend_rate"]
                  and agg["override_rate"] < R4["override_sentinel"]   # 3% 哨兵线过闸

@@ -29,6 +29,7 @@ a3 = probe_walk("A-reset#3")
 
 print(f"\n结论 A: reset#1 走 {a1} 格, #2 走 {a2} 格, #3 走 {a3} 格")
 if a2 >= 3 and a3 >= 3:
-    print("→ 纯城镇多次 reset 正常;脏状态来自『下地牢后再 reset』的路径")
+    print("→ 纯城镇多次 reset 正常;继续由 _piece_probe 覆盖『下地牢后再 reset』路径")
 else:
-    print("→ 第二次 reset 本身就坏:NetInit/teardown 重入问题")
+    raise AssertionError(
+        f"第二次 reset 本身就坏:NetInit/teardown 重入问题(moves={a1,a2,a3})")

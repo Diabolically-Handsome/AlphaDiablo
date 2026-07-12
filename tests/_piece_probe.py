@@ -20,7 +20,7 @@ from descend_seed_test import walk_to_target
 obs = bridge.reset(seed=1001)
 ep1 = sample()
 # 下到地牢 1 层再回来重开,复现污染路径
-stairs = [t for t in obs["triggers"] if t["msg"] == 0][0]
+stairs = [t for t in obs["triggers"] if t["msg"] == bridge.WM_DIABNEXTLVL][0]
 obs, _ = walk_to_target(stairs["x"], stairs["y"])
 assert obs["dungeon_level"] == 1, "先决条件:ep1 要成功下到 L1"
 print(f"(ep1 已下到 L1,怪物 {len(obs['monsters'])} 只;现在重开 ep2)\n")
@@ -41,3 +41,5 @@ if same_piece and not same_walk:
     print("→ 地块相同但通行性不同:坏的是『地块属性表』(SOLData / TileProperties)")
 elif not same_piece:
     print("→ 地块本身不同:坏的是『城镇地图创建』(dPiece/dungeon 数据)")
+if not (same_piece and same_walk):
+    raise AssertionError(f"下地牢后 reset 的城镇地块/通行性漂移: {ep1=}, {ep2=}")

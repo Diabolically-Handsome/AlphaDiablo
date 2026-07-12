@@ -9,20 +9,22 @@ authors = [{ name = "Lawrence Grey" }]
 keywords = ["reinforcement-learning", "gymnasium", "diablo", "devilutionx", "game-ai"]
 
 dependencies = [
-  "numpy>=2.0",
-  "gymnasium>=1.0",
+  "numpy==2.5.0",
+  "gymnasium==1.3.0",
 ]
 
 [project.optional-dependencies]
 train = [
-  "torch>=2.5",
-  "stable-baselines3>=2.4",
-  "sb3-contrib>=2.4",  # RecurrentPPO —— evaluate.py 评 LSTM 检查点时需要
-  "tensorboard",
-  "matplotlib",        # train/plot_figures.py(从本地 runs/ 重生成 README 图)
+  "torch==2.12.1",
+  # leashed_ppo.py 逐行复写了 2.9.0 的 MaskablePPO.train；升级必须重新做
+  # G-KL-B 上游等价审计，不能让 fresh install 静默换掉训练算法。
+  "stable-baselines3==2.9.0",
+  "sb3-contrib==2.9.0",
+  "tensorboard==2.21.0",
+  "matplotlib==3.11.0", # train/plot_figures.py(从本地 runs/ 重生成 README 图)
 ]
 build = [
-  "pybind11>=3.0",
+  "pybind11==3.0.4",
 ]
 
 [tool.setuptools]

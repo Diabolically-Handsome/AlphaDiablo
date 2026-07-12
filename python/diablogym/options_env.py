@@ -11,7 +11,8 @@
 
 选项词表 Discrete(3):
   0 FARM     清剿本层:有怪交战,无怪捡药/捡装/探索。终止:升级/停滞 140/换层。
-  1 DIVE     战斗下潜一层:挡路者(<3 格)打穿,否则下楼宏。终止:降层/停滞 140。
+  1 DIVE     战斗推进下一主线目标:挡路者(<3 格)打穿,否则剧情/下楼宏。
+             终止:换场景/降层/停滞 140。
   2 RESUPPLY 潜前补给:连续捡药。掩码:无地面药或腰带满。终止:满/无/零进展。
 通用终止:死亡/截断/TAU_CAP=600 微拍(命中率入 info,>5% 报警)。
 反藏身处:FARM 永不掩码(保底);榨干旗置位后复选 FARM 强制 ≥25 拍地板。
@@ -33,7 +34,8 @@ from __future__ import annotations
 import gymnasium as gym
 import numpy as np
 
-from .env import DESCEND_UNIT, DiabloGymEnv
+from . import bridge
+from .env import DESCEND_UNIT, DiabloGymEnv, _scene_identity
 
 FARM, DIVE, RESUPPLY = 0, 1, 2
 KILL_PATIENCE = 140   # 微拍:本层无新杀即"榨干"(与神谕同价;DIVE 的下降停滞同价)
@@ -69,6 +71,11 @@ def dispatch(mode: str, raw, gear_available: bool) -> int:
             return 9
         return 11
     # farm
+    near = _nearest(raw)
+    if raw.get("progression_targets") and (near is None or near > 6):
+        # 先清贴身威胁；只剩远处/门后怪时必须推进剧情机关，否则全图
+        # monsters 列表会让 FARM 对着不可达目标无限按交战键。
+        return 10
     if len(raw.get("monsters", [])) > 0:
         return 9
     if belt < 8 and _floor_heals(raw):
@@ -123,11 +130,11 @@ class OptionsEnv(gym.Env):
 
     def _sig(self, a, raw):
         return (a, raw["player_x"], raw["player_y"], raw.get("belt_heals", 0),
-                raw["char_level"], self.env._ep_kills, raw["dungeon_level"])
+                raw["char_level"], self.env._ep_kills, _scene_identity(raw))
 
-    def _tick_layer_clock(self, kills_before, lvl_before, steps_delta):
+    def _tick_layer_clock(self, kills_before, scene_before, steps_delta):
         raw = self.env._raw
-        if raw["dungeon_level"] != lvl_before:
+        if _scene_identity(raw) != scene_before:
             self.layer_clock = 0
             self.exhausted = False
             self._layer_kills0 = self.env._ep_kills
@@ -140,24 +147,37 @@ class OptionsEnv(gym.Env):
 
     # ---- gym 接口 ----
     def reset(self, *, seed=None, options=None):
-        obs, info = self.env.reset(seed=seed)
+        # OptionsEnv 自身也是 Gym Env，必须建立它自己的 np_random；
+        # 只给内层 env 传 seed 会被 env_checker 判为不符合 Gymnasium 契约。
+        super().reset(seed=seed)
+        obs, info = self.env.reset(seed=seed, options=options)
         self._reset_wrapper_state()
         self._last_base_obs = obs
         return self._mgr_obs(obs), info
 
     def action_masks(self) -> np.ndarray:
+        if self._last_base_obs is None:
+            raise gym.error.ResetNeeded("OptionsEnv.action_masks() 前必须 reset()")
+        self.env._ensure_active(allow_ended=True)
         raw = self.env._raw
         m = np.ones(3, dtype=bool)
-        # DIVE:本层无下行楼梯才掩(引擎级 triggers,几乎恒可选)
-        m[DIVE] = any(t.get("msg") == 0 for t in raw.get("triggers", []))
+        # DIVE = 推进下一项主线目标，而不再狭义等于 NEXT 楼梯：任务入口、
+        # Vile 机关、L16 开门机关及 set-level 返回都属于同一职权。
+        transition = (bridge.WM_DIABRTNLVL if raw.get("is_set_level")
+                      else bridge.WM_DIABNEXTLVL)
+        m[DIVE] = bool(raw.get("progression_targets")) or any(
+            t.get("msg") == transition for t in raw.get("triggers", []))
         m[RESUPPLY] = _floor_heals(raw) and raw.get("belt_heals", 0) < 8
         m[FARM] = True  # 保底位,永不掩码
         return m
 
     # ---- 共享窗口核(v23:OptionsEnv 与 WorkerWindowEnv 唯一实现)----
     def _win_begin(self, option: int):
+        if not self.action_space.contains(option):
+            raise ValueError(f"选项必须是 {self.action_space}中的整数，收到 {option!r}")
         option = int(option)
-        assert self.action_masks()[option], f"选项 {option} 被掩码却被选择"
+        if not self.action_masks()[option]:
+            raise ValueError(f"选项 {option} 被掩码却被选择")
         raw = self.env._raw
         self._win = {
             "opt": option,
@@ -165,6 +185,7 @@ class OptionsEnv(gym.Env):
             "t0": self.env._steps,
             "clvl0": raw["char_level"],
             "dlvl0": raw["dungeon_level"],
+            "scene0": _scene_identity(raw),
             "floor": REVISIT_FLOOR if (option == FARM and self.exhausted) else 0,
             "resupply_stall": 0,
             "R": 0.0, "W": 0.0, "bonus": 0.0,
@@ -186,11 +207,12 @@ class OptionsEnv(gym.Env):
         self._fuse_sig = self._sig(a, raw)
         kills_b = self.env._ep_kills
         lvl_b = raw["dungeon_level"]
+        scene_b = _scene_identity(raw)
         steps_b = self.env._steps
         belt_b = raw.get("belt_heals", 0)
         obs, r, done, trunc, info = self.env.step(a)
         self._last_base_obs = obs
-        self._tick_layer_clock(kills_b, lvl_b, self.env._steps - steps_b)
+        self._tick_layer_clock(kills_b, scene_b, self.env._steps - steps_b)
         return float(r), done, trunc, info, a != requested, lvl_b, belt_b
 
     def _win_term(self, done, trunc, belt_b):
@@ -200,8 +222,11 @@ class OptionsEnv(gym.Env):
         tau = self.env._steps - w["t0"]
         if done or trunc:
             return "death" if raw.get("dead") else "end"
-        if raw["dungeon_level"] != w["dlvl0"]:
-            return "descend"      # 换层必归还(显式不变量)
+        if _scene_identity(raw) != w["scene0"]:
+            # 进入/离开任务副本同样必须归还控制权，但只有主线深度增加
+            # 才叫 descend、才可领取下潜奖金。
+            return ("descend" if raw["dungeon_level"] > w["dlvl0"]
+                    else "scene")
         if tau < w["floor"]:
             return None
         opt = w["opt"]
@@ -253,6 +278,9 @@ class OptionsEnv(gym.Env):
 
     def _win_step_worker(self, a: int):
         """工人一步 = 工人动作一拍 + 反射尾部排水。返回 reason 或 None。"""
+        if not self.env.action_space.contains(a):
+            raise ValueError(f"工人动作必须是 {self.env.action_space}中的整数，收到 {a!r}")
+        a = int(a)
         if not self._worker_masks()[a]:
             raise ValueError(f"工人动作 {a} 被掩码却被执行")
         reason = self._win_beat(a)
@@ -295,18 +323,21 @@ class OptionsEnv(gym.Env):
 
     def _worker_masks(self) -> np.ndarray:
         m = np.array(self.env.action_masks(), dtype=bool)
-        m[11] = False   # 下楼归经理(DIVE 职权;走格踩楼梯由剥薪封死激励)
+        m[11] = False   # 主线推进归经理(DIVE 职权;走格踩楼梯由剥薪封死激励)
         m[12] = False   # 喝药归脑干
         return m
 
     def step(self, option: int):
+        if self._win is not None:
+            raise RuntimeError("上一个选项窗口尚未收束")
+        self.env._ensure_active()
         self._win_begin(option)
         mode = self._win["mode"]
         worker = self._workers.get(int(option))
         if worker is not None:
             reason = self._drain()      # 开窗排水:工人首个观测必须是无反射态
             while reason is None:
-                a = int(worker(self._worker_obs(), self._worker_masks()))
+                a = worker(self._worker_obs(), self._worker_masks())
                 reason = self._win_step_worker(a)
         else:
             while True:
@@ -327,7 +358,7 @@ class OptionsEnv(gym.Env):
         if self._last_opt >= 0:
             one_hot[self._last_opt] = 1.0
         extra = np.asarray([
-            1.0 - self.env._steps / max(1, self.max_steps),          # 余时
+            max(0.0, 1.0 - self.env._steps / max(1, self.max_steps)), # 余时
             min(1.0, self.layer_clock / KILL_PATIENCE),              # 停滞钟(核心决策变量)
             min(1.0, (self.env._ep_kills - self._layer_kills0) / 50.0),
             min(1.0, (self.env._steps - self._layer_steps0) / 1500.0),
@@ -335,6 +366,9 @@ class OptionsEnv(gym.Env):
             min(1.0, self._last_tau / TAU_CAP),
         ], dtype=np.float32)
         return np.concatenate([np.asarray(base_obs, dtype=np.float32), extra])
+
+    def close(self):
+        self.env.close()
 
 
 class StagnationClockWrapper(gym.Wrapper):
@@ -347,11 +381,12 @@ class StagnationClockWrapper(gym.Wrapper):
             low=-np.inf, high=np.inf, shape=(base + 1,), dtype=np.float32)
         self._clock = 0
         self._kills = 0
-        self._lvl = None
+        self._scene = None
 
     def reset(self, *, seed=None, options=None):
-        obs, info = self.env.reset(seed=seed)
-        self._clock, self._kills, self._lvl = 0, 0, self.env._raw["dungeon_level"]
+        obs, info = self.env.reset(seed=seed, options=options)
+        self._clock, self._kills = 0, 0
+        self._scene = _scene_identity(self.env._raw)
         return self._obs(obs), info
 
     def action_masks(self):
@@ -361,9 +396,9 @@ class StagnationClockWrapper(gym.Wrapper):
         steps_b = self.env._steps
         obs, r, done, trunc, info = self.env.step(action)
         raw = self.env._raw
-        if raw["dungeon_level"] != self._lvl or self.env._ep_kills > self._kills:
+        if _scene_identity(raw) != self._scene or self.env._ep_kills > self._kills:
             self._clock = 0
-            self._lvl = raw["dungeon_level"]
+            self._scene = _scene_identity(raw)
             self._kills = self.env._ep_kills
         else:
             self._clock += self.env._steps - steps_b
