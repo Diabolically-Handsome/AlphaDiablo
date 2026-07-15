@@ -1,0 +1,28 @@
+{
+ "obs_count": 166383,
+ "demos_sha256": "3bf892d611e41853eca8fce0cb146753af41ad2c3a21b6c581df1041fb1d9363",
+ "obs_distribution_note": "BC demos(脚本工人示范窗分布);非部署轨迹、非金池",
+ "runtime_five": {
+  "bridge": "8c45da3ea4121eab13da2b1a62ba52a189a25e6ea36833fa98d58d0b46140ba1",
+  "engine": "be59473ea7db0a122350b179d1509454bd05ebf0e7d07946f24b2f57ff1890ce",
+  "game_data": "63fb47d9c76484024c7640d90ab6b7ec5e13f567a7e1a917b6c03a6631d3f2b0",
+  "assets": "b344b24f7743a88b5bf3dcc9635d096e41ee14172f687383f46a9002882b954d",
+  "protocol": "91beb61e08198f5e4e9f0d13cf01b8025867cd8a474601c9cbd23321edcfcba2"
+ },
+ "workers": {
+  "v28-leg1(现任)": {
+   "npz_sha256": "976b6c05edaa0a32bb30bd372782e1201c72b029cedcbb3a5bf2361d34f27f8a",
+   "argmax_flips": 0,
+   "a12_wins_all": 0,
+   "a12_rank_mean": 5.79,
+   "a12_rank_max": 9
+  },
+  "v24-leg7(王座)": {
+   "npz_sha256": "a31fa7c6b18b5c3593f4e1753d97aac9386689aa6ad8b158c526b673c57fbc2a",
+   "argmax_flips": 0,
+   "a12_wins_all": 0,
+   "a12_rank_mean": 0.38,
+   "a12_rank_max": 7
+  }
+ }
+}

@@ -97,7 +97,8 @@ def collect():
     if not np.array_equal(np.unique(groups_array), np.asarray(DEMO_SEEDS)):
         raise RuntimeError("示范集没有精确覆盖固定种子 100..227")
     if np.isin(labels, _WORKER_BC_FORBIDDEN_ACTIONS).any():
-        raise RuntimeError("示范集含工人恒掩动作 11/12")
+        raise RuntimeError("示范集含禁采动作 11/12(11 恒掩归经理;12 系脚本教师"
+                           "排水后不采——主权世代示范池纪律)")
     return np.stack(X), labels, groups_array
 
 

@@ -1,0 +1,335 @@
+[
+ {
+  "seed": 7000,
+  "sha": "bac9945bfedb5a57b2e6b5799f76ce3971834d5a4b272c2206dc3394ef41ca2e",
+  "steps": 476,
+  "wages": 101.976889,
+  "final": "d1,dead0,hp74,xp2734",
+  "stats": {
+   "windows": 5,
+   "dry": 3,
+   "fresh": 2,
+   "ff_windows": 131,
+   "ff_dry": 0,
+   "episodes": 1,
+   "reseeds": 0,
+   "reasons": {
+    "exhausted": 4,
+    "levelup": 1
+   }
+  }
+ },
+ {
+  "seed": 7001,
+  "sha": "dbb3e4514f221cedf86df916b4697e01f3f02af11935718626f84230e9386f78",
+  "steps": 674,
+  "wages": 91.785587,
+  "final": "d2,dead0,hp41,xp2854",
+  "stats": {
+   "windows": 10,
+   "dry": 7,
+   "fresh": 3,
+   "ff_windows": 104,
+   "ff_dry": 0,
+   "episodes": 1,
+   "reseeds": 0,
+   "reasons": {
+    "exhausted": 9,
+    "levelup": 1
+   }
+  }
+ },
+ {
+  "seed": 7002,
+  "sha": "7d5dd2b920715d8edebeb3e5c3f65c42d05d2f12f2c35484b7d29bf5cf9703b6",
+  "steps": 2788,
+  "wages": 25.343444,
+  "final": "d1,dead0,hp70,xp789",
+  "stats": {
+   "windows": 106,
+   "dry": 105,
+   "fresh": 1,
+   "ff_windows": 0,
+   "ff_dry": 0,
+   "episodes": 1,
+   "reseeds": 0,
+   "reasons": {
+    "exhausted": 105,
+    "end": 1
+   }
+  }
+ },
+ {
+  "seed": 7003,
+  "sha": "cc1cc45e083f8ffc484b806eb9b30a9de78485d0d3007f92e067245741a34a17",
+  "steps": 2517,
+  "wages": 64.271889,
+  "final": "d1,dead0,hp66,xp1979",
+  "stats": {
+   "windows": 97,
+   "dry": 95,
+   "fresh": 2,
+   "ff_windows": 1,
+   "ff_dry": 0,
+   "episodes": 1,
+   "reseeds": 0,
+   "reasons": {
+    "cap": 1,
+    "exhausted": 95,
+    "end": 1
+   }
+  }
+ },
+ {
+  "seed": 7004,
+  "sha": "3038070f0dee501daa7300148b68af338c2db7060756209a55f5b077092598dc",
+  "steps": 1375,
+  "wages": 221.451611,
+  "final": "d2,dead0,hp62,xp6039",
+  "stats": {
+   "windows": 24,
+   "dry": 18,
+   "fresh": 6,
+   "ff_windows": 6,
+   "ff_dry": 0,
+   "episodes": 1,
+   "reseeds": 0,
+   "reasons": {
+    "cap": 1,
+    "exhausted": 20,
+    "levelup": 2,
+    "end": 1
+   }
+  }
+ },
+ {
+  "seed": 7005,
+  "sha": "a053a543bac9ab738df979db2263fbbd5b24582e396acb2981e9e73fcbbbb352",
+  "steps": 1404,
+  "wages": 137.442722,
+  "final": "d1,dead0,hp69,xp3762",
+  "stats": {
+   "windows": 50,
+   "dry": 48,
+   "fresh": 2,
+   "ff_windows": 3,
+   "ff_dry": 0,
+   "episodes": 1,
+   "reseeds": 0,
+   "reasons": {
+    "levelup": 1,
+    "exhausted": 48,
+    "end": 1
+   }
+  }
+ },
+ {
+  "seed": 7006,
+  "sha": "1d77047a73b993b2514c0fcc4506d7cd71066fab181c96da5b65f9bef562fb32",
+  "steps": 2438,
+  "wages": 85.230333,
+  "final": "d1,dead0,hp71,xp2677",
+  "stats": {
+   "windows": 86,
+   "dry": 84,
+   "fresh": 2,
+   "ff_windows": 1,
+   "ff_dry": 0,
+   "episodes": 1,
+   "reseeds": 0,
+   "reasons": {
+    "levelup": 1,
+    "exhausted": 84,
+    "end": 1
+   }
+  }
+ },
+ {
+  "seed": 7007,
+  "sha": "5a28e5bdde7baed8b4971e4157ecbd67eb67b3fc1050fe5a1faeb97cf3e6a5eb",
+  "steps": 1506,
+  "wages": 149.501278,
+  "final": "d1,dead0,hp63,xp4153",
+  "stats": {
+   "windows": 72,
+   "dry": 70,
+   "fresh": 2,
+   "ff_windows": 0,
+   "ff_dry": 0,
+   "episodes": 1,
+   "reseeds": 0,
+   "reasons": {
+    "levelup": 1,
+    "exhausted": 70,
+    "end": 1
+   }
+  }
+ },
+ {
+  "seed": 7008,
+  "sha": "b59e80be93a34c19a274e80df9d95c0fb08415e1ac7e95795e38fcacd007b007",
+  "steps": 2179,
+  "wages": 89.628667,
+  "final": "d1,dead0,hp73,xp2547",
+  "stats": {
+   "windows": 76,
+   "dry": 74,
+   "fresh": 2,
+   "ff_windows": 1,
+   "ff_dry": 0,
+   "episodes": 1,
+   "reseeds": 0,
+   "reasons": {
+    "exhausted": 74,
+    "levelup": 1,
+    "end": 1
+   }
+  }
+ },
+ {
+  "seed": 7009,
+  "sha": "a45ee0cab96207515e86edb3b936f4f25bf14b33ac561dd223ed312d0f4dfbd1",
+  "steps": 1457,
+  "wages": 164.982111,
+  "final": "d1,dead0,hp65,xp4275",
+  "stats": {
+   "windows": 68,
+   "dry": 66,
+   "fresh": 2,
+   "ff_windows": 5,
+   "ff_dry": 0,
+   "episodes": 1,
+   "reseeds": 0,
+   "reasons": {
+    "exhausted": 66,
+    "levelup": 1,
+    "end": 1
+   }
+  }
+ },
+ {
+  "seed": 7010,
+  "sha": "8584e5c01401d63f20666b3a2f366e0c6a15f249e5c648f0899a0706caceda72",
+  "steps": 2107,
+  "wages": 108.956,
+  "final": "d1,dead0,hp70,xp3038",
+  "stats": {
+   "windows": 71,
+   "dry": 68,
+   "fresh": 3,
+   "ff_windows": 3,
+   "ff_dry": 0,
+   "episodes": 1,
+   "reseeds": 0,
+   "reasons": {
+    "cap": 1,
+    "exhausted": 68,
+    "levelup": 1,
+    "end": 1
+   }
+  }
+ },
+ {
+  "seed": 7011,
+  "sha": "a085148a941f25839d0c5837697faa65f1eea19225de6f48de011f8fa586f8f2",
+  "steps": 1508,
+  "wages": 60.404444,
+  "final": "d1,dead0,hp65,xp1727",
+  "stats": {
+   "windows": 88,
+   "dry": 87,
+   "fresh": 1,
+   "ff_windows": 2,
+   "ff_dry": 0,
+   "episodes": 1,
+   "reseeds": 0,
+   "reasons": {
+    "exhausted": 87,
+    "end": 1
+   }
+  }
+ },
+ {
+  "seed": 7012,
+  "sha": "f635f8215696aa6aea729930b736229ece3237961c3d370cca01cd3341dd6966",
+  "steps": 2209,
+  "wages": 131.859778,
+  "final": "d1,dead0,hp71,xp3785",
+  "stats": {
+   "windows": 71,
+   "dry": 69,
+   "fresh": 2,
+   "ff_windows": 4,
+   "ff_dry": 0,
+   "episodes": 1,
+   "reseeds": 0,
+   "reasons": {
+    "exhausted": 69,
+    "levelup": 1,
+    "end": 1
+   }
+  }
+ },
+ {
+  "seed": 7013,
+  "sha": "2bef115c832f0fce519e24bb1b466037dee02c9de32ab48cde48c12c44c201e3",
+  "steps": 2065,
+  "wages": 88.866833,
+  "final": "d1,dead0,hp78,xp2345",
+  "stats": {
+   "windows": 88,
+   "dry": 86,
+   "fresh": 2,
+   "ff_windows": 2,
+   "ff_dry": 0,
+   "episodes": 1,
+   "reseeds": 0,
+   "reasons": {
+    "levelup": 1,
+    "exhausted": 86,
+    "end": 1
+   }
+  }
+ },
+ {
+  "seed": 7014,
+  "sha": "c150a952ecd5c9ee5e6d2f686b32b65234a465d1d8c08f7bad3f8287a629e4bc",
+  "steps": 2372,
+  "wages": 127.509389,
+  "final": "d1,dead0,hp66,xp3710",
+  "stats": {
+   "windows": 79,
+   "dry": 77,
+   "fresh": 2,
+   "ff_windows": 3,
+   "ff_dry": 0,
+   "episodes": 1,
+   "reseeds": 0,
+   "reasons": {
+    "levelup": 1,
+    "exhausted": 77,
+    "end": 1
+   }
+  }
+ },
+ {
+  "seed": 7015,
+  "sha": "fb64525f01372f3605baaaf2f84516b3721600ef8d56c7508f22fec1220eb911",
+  "steps": 1504,
+  "wages": 18.368,
+  "final": "d1,dead0,hp64,xp545",
+  "stats": {
+   "windows": 108,
+   "dry": 107,
+   "fresh": 1,
+   "ff_windows": 0,
+   "ff_dry": 0,
+   "episodes": 1,
+   "reseeds": 0,
+   "reasons": {
+    "exhausted": 107,
+    "end": 1
+   }
+  }
+ }
+]

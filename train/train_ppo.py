@@ -367,7 +367,7 @@ def _training_contract(args, model, batch_size: int,
     action_count = getattr(model.action_space, "n", None)
     return {
         "schema_version": 2,
-        "contract_revision": 3,
+        "contract_revision": 4,   # v32:+drink_sovereignty(④丙 环境语义入契约)
         "implementation_sha256": implementation_sha256,
         "mode": mode,
         "arch": args.arch,
@@ -380,6 +380,7 @@ def _training_contract(args, model, batch_size: int,
         "ent_coef": args.ent_coef,
         "device": str(model.device),
         "skip_dry": bool(args.skip_dry),
+        "drink_sovereignty": not args.no_drink_sovereignty,
         "manager_npz_sha256": manager_npz_sha256,
         "worker_npz_sha256": worker_npz_sha256,
         "demos_sha256": demos_sha256,
@@ -400,7 +401,7 @@ def _validate_resume_contract(saved: dict | None, current: dict,
         _require(allow_legacy_resume,
                  "resume checkpoint 无 training_contract，无法证明原训练环境/资源；"
                  "如确需一次性迁移，请显式传 --allow-legacy-resume")
-        print("   [legacy migration] 已显式允许无契约 checkpoint；本腿将写入 v3 契约")
+        print("   [legacy migration] 已显式允许无契约 checkpoint；本腿将写入 contract_revision 4 契约")
         return
     _require(isinstance(saved, dict), "checkpoint training_contract 不是对象")
     allowed = {"manager_npz_sha256"} if allow_manager_change else set()
@@ -696,7 +697,7 @@ def _validate_worker_bc_evidence(rec: dict, demos_payload: bytes,
     _require(bool(((0 <= y) & (y < 15)).all()),
              "BC worker demos Y 含越界动作")
     _require(not np.isin(y, _WORKER_BC_FORBIDDEN_ACTIONS).any(),
-             "BC worker demos Y 含工人契约恒掩的动作 11/12")
+             "BC worker demos Y 含禁采动作 11/12(11 恒掩;12 系教师排水后不采)")
     _require(bool((episode_id >= 0).all()),
              "BC worker demos episode_id 不能为负")
 
@@ -1261,6 +1262,7 @@ def make_env(max_steps: int = 1500, deep: bool = False, death_ladder: bool = Fal
              options: bool = False, flat_clock: bool = False,
              worker: bool = False, manager_npz: str | None = None,
              worker_npz: str | None = None, skip_dry: bool = False,
+             drink_sovereignty: bool = True,
              manager_npz_sha256: str | None = None,
              worker_npz_sha256: str | None = None,
              implementation_sha256: str | None = None):
@@ -1305,6 +1307,7 @@ def make_env(max_steps: int = 1500, deep: bool = False, death_ladder: bool = Fal
         from diablogym import WorkerWindowEnv
         return Monitor(WorkerWindowEnv(manager_npz=manager_npz, max_steps=max_steps,
                                        skip_dry=skip_dry,
+                                       drink_sovereignty=drink_sovereignty,
                                        manager_sha256=manager_npz_sha256))
     if options:
         # v22:策略脑/操作脑——OptionsEnv 自带 deep+death_ladder 默认
@@ -1319,9 +1322,11 @@ def make_env(max_steps: int = 1500, deep: bool = False, death_ladder: bool = Fal
             net = NumpyManager(worker_npz, expected_sha256=worker_npz_sha256)
             net.require_io_shape(298, 15, "Options worker")
             env = OptionsEnv(max_steps=max_steps,
+                             drink_sovereignty=drink_sovereignty,
                              workers={0: lambda obs, mask: net.choose(obs, mask)})
         else:
-            env = OptionsEnv(max_steps=max_steps)
+            env = OptionsEnv(max_steps=max_steps,
+                             drink_sovereignty=drink_sovereignty)
 
         # 无论是否挂 npz 工人，经理训练都必须遵守同一种子纪律。
         return with_seed_discipline(env)
@@ -1522,8 +1527,10 @@ class DryAnchorSentinel(BaseCallback):
             return
         with th.no_grad():
             obs = th.as_tensor(self.X, device=self.model.device)
-            # WorkerWindowEnv 恒掩 11/12；哨兵必须与部署分布同口径，
-            # 否则无效键的高 raw logit 会被误报为教师偏离。
+            # 干层锚系只记不裁遥测:掩码保留 v28-v30 旧口径(11/12 恒掩)
+            # 以维持跨腿失配曲线同尺——v32 主权后部署掩码含 12,但教师
+            # 标签(demos)无 12,主权行为由评测 a12 仪表另量(PREREG-v32
+            # 口径注);改此口径会断代历史遥测,故如实登记不改。
             masks = th.ones((len(self.X), 15), dtype=th.bool,
                             device=self.model.device)
             masks[:, 11] = masks[:, 12] = False
@@ -1663,6 +1670,9 @@ def _main(resources: _TrainingResources):
                     help="v25:经理训练时挂 npz 工人(OptionsEnv workers 组装口)")
     ap.add_argument("--skip-dry", action="store_true",
                     help="v26 绿洲:干层复访窗脚本代跑,工人只在鲜层窗上课")
+    ap.add_argument("--no-drink-sovereignty", action="store_true",
+                    help="v32 对照腿:关闭工人喝药主权(m[12] 恢复恒掩);"
+                         "默认开 = ④丙 新协议常态,0.5 反射恒兜底")
     ap.add_argument("--ent-coef", type=float, default=0.02,
                     help="熵系数(v22 恶魔臂微调用 0.005 防 BC 漂移)")
     ap.add_argument("--bc-init", default=None,
@@ -1790,6 +1800,8 @@ def _main(resources: _TrainingResources):
         "flat_clock": args.flat_clock,
         "worker": args.worker,        # v23:True 时 ep 口径=FARM 窗口,reward=工资 w
         "skip_dry": args.skip_dry,
+        "drink_sovereignty": not args.no_drink_sovereignty,   # v32 ④丙
+
         "bc_init": args.bc_init,
         "init_source": args.init_source,
         "ent_coef": args.ent_coef,
@@ -1824,6 +1836,7 @@ def _main(resources: _TrainingResources):
         manager_npz=args.manager_npz,
         worker_npz=args.worker_npz,
         skip_dry=args.skip_dry,
+        drink_sovereignty=not args.no_drink_sovereignty,
         manager_npz_sha256=manager_npz_sha256,
         worker_npz_sha256=worker_npz_sha256,
         implementation_sha256=implementation_sha256,

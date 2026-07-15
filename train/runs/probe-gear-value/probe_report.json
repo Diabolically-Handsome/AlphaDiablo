@@ -1,0 +1,606 @@
+{
+ "summary": {
+  "paired_mean_armed_minus_deprived": 0.0,
+  "wins_armed": 0,
+  "per_depth_paired_mean": {
+   "1": [
+    0.0,
+    28
+   ],
+   "2": [
+    0.0,
+    4
+   ]
+  },
+  "a14_per_ep_armed": 0.0,
+  "opps_per_ep": 464.69,
+  "died": {
+   "armed": 4,
+   "deprived": 4
+  },
+  "ac_mean": {
+   "armed": 6.6,
+   "deprived": 6.6
+  }
+ },
+ "armed": [
+  {
+   "seed": 7000,
+   "ret": 119.36,
+   "depth": 1,
+   "died": false,
+   "a14": 0,
+   "opps": 0,
+   "ac": 7
+  },
+  {
+   "seed": 7001,
+   "ret": 18.53,
+   "depth": 1,
+   "died": false,
+   "a14": 0,
+   "opps": 0,
+   "ac": 7
+  },
+  {
+   "seed": 7002,
+   "ret": 75.79,
+   "depth": 1,
+   "died": false,
+   "a14": 0,
+   "opps": 1473,
+   "ac": 7
+  },
+  {
+   "seed": 7003,
+   "ret": 74.09,
+   "depth": 1,
+   "died": false,
+   "a14": 0,
+   "opps": 0,
+   "ac": 7
+  },
+  {
+   "seed": 7004,
+   "ret": 174.76,
+   "depth": 1,
+   "died": false,
+   "a14": 0,
+   "opps": 0,
+   "ac": 7
+  },
+  {
+   "seed": 7005,
+   "ret": 130.02,
+   "depth": 1,
+   "died": false,
+   "a14": 0,
+   "opps": 1157,
+   "ac": 7
+  },
+  {
+   "seed": 7006,
+   "ret": 135.45,
+   "depth": 1,
+   "died": false,
+   "a14": 0,
+   "opps": 1195,
+   "ac": 7
+  },
+  {
+   "seed": 7007,
+   "ret": 130.64,
+   "depth": 1,
+   "died": false,
+   "a14": 0,
+   "opps": 1360,
+   "ac": 7
+  },
+  {
+   "seed": 7008,
+   "ret": 155.99,
+   "depth": 1,
+   "died": false,
+   "a14": 0,
+   "opps": 0,
+   "ac": 7
+  },
+  {
+   "seed": 7009,
+   "ret": -0.53,
+   "depth": 1,
+   "died": false,
+   "a14": 0,
+   "opps": 0,
+   "ac": 7
+  },
+  {
+   "seed": 7010,
+   "ret": 93.64,
+   "depth": 1,
+   "died": false,
+   "a14": 0,
+   "opps": 0,
+   "ac": 7
+  },
+  {
+   "seed": 7011,
+   "ret": 55.77,
+   "depth": 1,
+   "died": false,
+   "a14": 0,
+   "opps": 0,
+   "ac": 7
+  },
+  {
+   "seed": 7012,
+   "ret": 13.79,
+   "depth": 1,
+   "died": false,
+   "a14": 0,
+   "opps": 0,
+   "ac": 7
+  },
+  {
+   "seed": 7013,
+   "ret": 104.53,
+   "depth": 2,
+   "died": true,
+   "a14": 0,
+   "opps": 58,
+   "ac": 4
+  },
+  {
+   "seed": 7014,
+   "ret": 156.04,
+   "depth": 1,
+   "died": false,
+   "a14": 0,
+   "opps": 0,
+   "ac": 7
+  },
+  {
+   "seed": 7015,
+   "ret": 64.88,
+   "depth": 2,
+   "died": true,
+   "a14": 0,
+   "opps": 137,
+   "ac": 4
+  },
+  {
+   "seed": 7016,
+   "ret": 115.24,
+   "depth": 1,
+   "died": false,
+   "a14": 0,
+   "opps": 0,
+   "ac": 7
+  },
+  {
+   "seed": 7017,
+   "ret": 14.04,
+   "depth": 1,
+   "died": false,
+   "a14": 0,
+   "opps": 0,
+   "ac": 7
+  },
+  {
+   "seed": 7018,
+   "ret": 194.78,
+   "depth": 1,
+   "died": false,
+   "a14": 0,
+   "opps": 1250,
+   "ac": 7
+  },
+  {
+   "seed": 7019,
+   "ret": 194.9,
+   "depth": 1,
+   "died": false,
+   "a14": 0,
+   "opps": 1254,
+   "ac": 7
+  },
+  {
+   "seed": 7020,
+   "ret": -0.23,
+   "depth": 1,
+   "died": false,
+   "a14": 0,
+   "opps": 1506,
+   "ac": 7
+  },
+  {
+   "seed": 7021,
+   "ret": 1.76,
+   "depth": 1,
+   "died": false,
+   "a14": 0,
+   "opps": 0,
+   "ac": 7
+  },
+  {
+   "seed": 7022,
+   "ret": -2.98,
+   "depth": 1,
+   "died": false,
+   "a14": 0,
+   "opps": 0,
+   "ac": 7
+  },
+  {
+   "seed": 7023,
+   "ret": -0.34,
+   "depth": 1,
+   "died": false,
+   "a14": 0,
+   "opps": 481,
+   "ac": 7
+  },
+  {
+   "seed": 7024,
+   "ret": -8.48,
+   "depth": 1,
+   "died": true,
+   "a14": 0,
+   "opps": 0,
+   "ac": 4
+  },
+  {
+   "seed": 7025,
+   "ret": 122.78,
+   "depth": 1,
+   "died": false,
+   "a14": 0,
+   "opps": 1408,
+   "ac": 7
+  },
+  {
+   "seed": 7026,
+   "ret": 3.91,
+   "depth": 1,
+   "died": false,
+   "a14": 0,
+   "opps": 0,
+   "ac": 7
+  },
+  {
+   "seed": 7027,
+   "ret": 38.32,
+   "depth": 1,
+   "died": false,
+   "a14": 0,
+   "opps": 0,
+   "ac": 7
+  },
+  {
+   "seed": 7028,
+   "ret": 34.68,
+   "depth": 1,
+   "died": false,
+   "a14": 0,
+   "opps": 1365,
+   "ac": 7
+  },
+  {
+   "seed": 7029,
+   "ret": 172.83,
+   "depth": 2,
+   "died": false,
+   "a14": 0,
+   "opps": 0,
+   "ac": 7
+  },
+  {
+   "seed": 7030,
+   "ret": 8.91,
+   "depth": 1,
+   "died": false,
+   "a14": 0,
+   "opps": 1486,
+   "ac": 7
+  },
+  {
+   "seed": 7031,
+   "ret": 137.08,
+   "depth": 2,
+   "died": true,
+   "a14": 0,
+   "opps": 740,
+   "ac": 4
+  }
+ ],
+ "deprived": [
+  {
+   "seed": 7000,
+   "ret": 119.36,
+   "depth": 1,
+   "died": false,
+   "a14": 0,
+   "opps": 0,
+   "ac": 7
+  },
+  {
+   "seed": 7001,
+   "ret": 18.53,
+   "depth": 1,
+   "died": false,
+   "a14": 0,
+   "opps": 0,
+   "ac": 7
+  },
+  {
+   "seed": 7002,
+   "ret": 75.79,
+   "depth": 1,
+   "died": false,
+   "a14": 0,
+   "opps": 1473,
+   "ac": 7
+  },
+  {
+   "seed": 7003,
+   "ret": 74.09,
+   "depth": 1,
+   "died": false,
+   "a14": 0,
+   "opps": 0,
+   "ac": 7
+  },
+  {
+   "seed": 7004,
+   "ret": 174.76,
+   "depth": 1,
+   "died": false,
+   "a14": 0,
+   "opps": 0,
+   "ac": 7
+  },
+  {
+   "seed": 7005,
+   "ret": 130.02,
+   "depth": 1,
+   "died": false,
+   "a14": 0,
+   "opps": 1157,
+   "ac": 7
+  },
+  {
+   "seed": 7006,
+   "ret": 135.45,
+   "depth": 1,
+   "died": false,
+   "a14": 0,
+   "opps": 1195,
+   "ac": 7
+  },
+  {
+   "seed": 7007,
+   "ret": 130.64,
+   "depth": 1,
+   "died": false,
+   "a14": 0,
+   "opps": 1360,
+   "ac": 7
+  },
+  {
+   "seed": 7008,
+   "ret": 155.99,
+   "depth": 1,
+   "died": false,
+   "a14": 0,
+   "opps": 0,
+   "ac": 7
+  },
+  {
+   "seed": 7009,
+   "ret": -0.53,
+   "depth": 1,
+   "died": false,
+   "a14": 0,
+   "opps": 0,
+   "ac": 7
+  },
+  {
+   "seed": 7010,
+   "ret": 93.64,
+   "depth": 1,
+   "died": false,
+   "a14": 0,
+   "opps": 0,
+   "ac": 7
+  },
+  {
+   "seed": 7011,
+   "ret": 55.77,
+   "depth": 1,
+   "died": false,
+   "a14": 0,
+   "opps": 0,
+   "ac": 7
+  },
+  {
+   "seed": 7012,
+   "ret": 13.79,
+   "depth": 1,
+   "died": false,
+   "a14": 0,
+   "opps": 0,
+   "ac": 7
+  },
+  {
+   "seed": 7013,
+   "ret": 104.53,
+   "depth": 2,
+   "died": true,
+   "a14": 0,
+   "opps": 58,
+   "ac": 4
+  },
+  {
+   "seed": 7014,
+   "ret": 156.04,
+   "depth": 1,
+   "died": false,
+   "a14": 0,
+   "opps": 0,
+   "ac": 7
+  },
+  {
+   "seed": 7015,
+   "ret": 64.88,
+   "depth": 2,
+   "died": true,
+   "a14": 0,
+   "opps": 137,
+   "ac": 4
+  },
+  {
+   "seed": 7016,
+   "ret": 115.24,
+   "depth": 1,
+   "died": false,
+   "a14": 0,
+   "opps": 0,
+   "ac": 7
+  },
+  {
+   "seed": 7017,
+   "ret": 14.04,
+   "depth": 1,
+   "died": false,
+   "a14": 0,
+   "opps": 0,
+   "ac": 7
+  },
+  {
+   "seed": 7018,
+   "ret": 194.78,
+   "depth": 1,
+   "died": false,
+   "a14": 0,
+   "opps": 1250,
+   "ac": 7
+  },
+  {
+   "seed": 7019,
+   "ret": 194.9,
+   "depth": 1,
+   "died": false,
+   "a14": 0,
+   "opps": 1254,
+   "ac": 7
+  },
+  {
+   "seed": 7020,
+   "ret": -0.23,
+   "depth": 1,
+   "died": false,
+   "a14": 0,
+   "opps": 1506,
+   "ac": 7
+  },
+  {
+   "seed": 7021,
+   "ret": 1.76,
+   "depth": 1,
+   "died": false,
+   "a14": 0,
+   "opps": 0,
+   "ac": 7
+  },
+  {
+   "seed": 7022,
+   "ret": -2.98,
+   "depth": 1,
+   "died": false,
+   "a14": 0,
+   "opps": 0,
+   "ac": 7
+  },
+  {
+   "seed": 7023,
+   "ret": -0.34,
+   "depth": 1,
+   "died": false,
+   "a14": 0,
+   "opps": 481,
+   "ac": 7
+  },
+  {
+   "seed": 7024,
+   "ret": -8.48,
+   "depth": 1,
+   "died": true,
+   "a14": 0,
+   "opps": 0,
+   "ac": 4
+  },
+  {
+   "seed": 7025,
+   "ret": 122.78,
+   "depth": 1,
+   "died": false,
+   "a14": 0,
+   "opps": 1408,
+   "ac": 7
+  },
+  {
+   "seed": 7026,
+   "ret": 3.91,
+   "depth": 1,
+   "died": false,
+   "a14": 0,
+   "opps": 0,
+   "ac": 7
+  },
+  {
+   "seed": 7027,
+   "ret": 38.32,
+   "depth": 1,
+   "died": false,
+   "a14": 0,
+   "opps": 0,
+   "ac": 7
+  },
+  {
+   "seed": 7028,
+   "ret": 34.68,
+   "depth": 1,
+   "died": false,
+   "a14": 0,
+   "opps": 1365,
+   "ac": 7
+  },
+  {
+   "seed": 7029,
+   "ret": 172.83,
+   "depth": 2,
+   "died": false,
+   "a14": 0,
+   "opps": 0,
+   "ac": 7
+  },
+  {
+   "seed": 7030,
+   "ret": 8.91,
+   "depth": 1,
+   "died": false,
+   "a14": 0,
+   "opps": 1486,
+   "ac": 7
+  },
+  {
+   "seed": 7031,
+   "ret": 137.08,
+   "depth": 2,
+   "died": true,
+   "a14": 0,
+   "opps": 740,
+   "ac": 4
+  }
+ ]
+}

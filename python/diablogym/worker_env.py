@@ -102,18 +102,20 @@ def sample_train_seed(rng: np.random.Generator) -> int:
 
 
 class WorkerWindowEnv(gym.Env):
-    """SB3 视角:obs 298 维,Discrete(15) 恒掩 11/12,episode = 一个 FARM 窗口。"""
+    """SB3 视角:obs 298 维,Discrete(15) 恒掩 11(12 依主权旋钮,v32 ④丙),
+    episode = 一个 FARM 窗口。"""
 
     metadata = {"render_modes": []}
 
     def __init__(self, manager_npz: str, max_steps: int = 3000,
                  rng_seed: int | None = None, log_windows: bool = False,
                  skip_dry: bool = False, manager_sha256: str | None = None,
-                 **env_kwargs):
+                 drink_sovereignty: bool = True, **env_kwargs):
         super().__init__()
         self.mgr = NumpyManager(manager_npz, expected_sha256=manager_sha256)
         self.mgr.require_io_shape(303, 3, "WorkerWindow manager")
-        self.oe = OptionsEnv(max_steps=max_steps, **env_kwargs)
+        self.oe = OptionsEnv(max_steps=max_steps,
+                             drink_sovereignty=drink_sovereignty, **env_kwargs)
         base = self.oe.env.observation_space.shape[0]
         self.observation_space = gym.spaces.Box(
             low=-np.inf, high=np.inf, shape=(base + N_EXTRA_WORKER,), dtype=np.float32)

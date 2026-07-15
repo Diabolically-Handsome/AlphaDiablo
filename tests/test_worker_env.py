@@ -109,15 +109,25 @@ print(f"G0'.a PASS: {len(SEEDS)} 种子窗口序列/τ/逐窗R/mode_seq/微步�
       f"(共 {sum(len(runA[s]['wins']) for s in SEEDS)} 窗)")
 print("G0'.c PASS: 工资恒等式 Σw ≡ R − bonus 全窗成立")
 
-# --- (b) 工人掩码 ---
+# --- (b) 工人掩码(v32 ④丙:12 依主权旋钮,默认透传;11 恒掩不变)---
 obs, _ = wwe.reset(seed=7008)
 m = wwe.action_masks()
 base = wwe.oe.env.action_masks()
 assert m.shape == (15,) and m.dtype == bool
-assert not m[11] and not m[12], m
+assert not m[11], m
+raw_b = wwe.oe.env._raw
+assert m[12] == (base[12] and raw_b.get("belt_heals", 0) > 0), (
+    m[12], base[12], raw_b.get("belt_heals"))
 assert m[14] == base[14]
 assert obs.shape == (298,), obs.shape
-print("G0'.b PASS: 掩码恒掩 11/12、14 透传;工人观测 298 维")
+legacy = WorkerWindowEnv(str(NPZ), max_steps=3000, rng_seed=0,
+                         drink_sovereignty=False)
+legacy.reset(seed=7008)
+lm = legacy.action_masks()
+assert not lm[11] and not lm[12], lm
+legacy.close()
+print("G0'.b PASS: 掩码恒掩 11、12 主权透传(旧协议旋钮恒掩)、14 透传;"
+      "工人观测 298 维")
 
 # --- (b2) Gym seed 必须接管后续自动滚局的采样器 ---
 wwe_seed = WorkerWindowEnv(str(NPZ), max_steps=3000, rng_seed=999)

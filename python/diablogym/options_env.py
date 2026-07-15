@@ -96,8 +96,13 @@ class OptionsEnv(gym.Env):
 
     N_EXTRA_MGR = 8  # time_remaining/停滞钟/本层杀/本层耗时/上选项 one-hot(3)/上选项 τ
 
-    def __init__(self, max_steps: int = 3000, workers: dict | None = None, **env_kwargs):
+    def __init__(self, max_steps: int = 3000, workers: dict | None = None,
+                 drink_sovereignty: bool = True, **env_kwargs):
         super().__init__()
+        # v32 喝药主权(④丙):默认 True = 新协议常态,工人可主动按 12;
+        # 0.5 反射(_drain/dispatch 内嵌)一字不动,永为兜底。False 系
+        # 对照腿/旧协议复现专用旋钮。
+        self.drink_sovereignty = bool(drink_sovereignty)
         env_kwargs.setdefault("descend_ladder", True)
         env_kwargs.setdefault("death_ladder", True)
         env_kwargs.setdefault("start_in_dungeon", True)
@@ -324,7 +329,12 @@ class OptionsEnv(gym.Env):
     def _worker_masks(self) -> np.ndarray:
         m = np.array(self.env.action_masks(), dtype=bool)
         m[11] = False   # 主线推进归经理(DIVE 职权;走格踩楼梯由剥薪封死激励)
-        m[12] = False   # 喝药归脑干
+        if self.drink_sovereignty:
+            # v32 ④丙:主权开,12 合法但设 belt 前置(对齐 14 号"有装备才
+            # 合法"先例;空腰带空拍系搅拌键,会被保险丝强改而撞 R4 哨兵)
+            m[12] = m[12] and self.env._raw.get("belt_heals", 0) > 0
+        else:
+            m[12] = False   # 喝药归脑干(v32 前旧协议;反射仍兜底)
         return m
 
     def step(self, option: int):
