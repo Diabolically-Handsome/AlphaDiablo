@@ -1,0 +1,41 @@
+{"t": "18:24:52", "event": "CASE_RUNTIME", "five": {"bridge": "8c45da3ea4121eab13da2b1a62ba52a189a25e6ea36833fa98d58d0b46140ba1", "engine": "be59473ea7db0a122350b179d1509454bd05ebf0e7d07946f24b2f57ff1890ce", "game_data": "63fb47d9c76484024c7640d90ab6b7ec5e13f567a7e1a917b6c03a6631d3f2b0", "assets": "b344b24f7743a88b5bf3dcc9635d096e41ee14172f687383f46a9002882b954d", "protocol": "91beb61e08198f5e4e9f0d13cf01b8025867cd8a474601c9cbd23321edcfcba2"}}
+{"t": "18:24:52", "event": "FREEZE_SHA", "sha": "db7d26ccd7997c6cf599f2e66f547b85fd35e5ca"}
+{"t": "18:24:52", "event": "preflight_ok", "king_zip": "2f7bc9dd810956c3", "bc_sd": "f052067a589cfcde", "throne_bridge": 97.7, "script_bridge": 94.2}
+{"t": "18:24:52", "event": "G0_BASELINE", "sha": "2f567d7abfc5b4714cac4ff3236b09ab67e22485d2b05b52d9dc956692a26d6f", "seeds": "7000-7015", "captured": "变更前(E1 施工前,stash 纯净码)"}
+{"t": "18:24:52", "event": "E1_SCOPE_NOTE", "note": "belt 前置系批文外裁量施工(④丙精神+14号先例+幽灵实测必要性),无专项应答;呈报单列待追认"}
+{"t": "18:26:14", "event": "G0_REPLAY", "verdict": "PASS", "seeds": "7000-7015", "workers": ["king", "throne"]}
+{"t": "18:26:20", "event": "G0_GHOST", "verdict": "PASS"}
+{"t": "18:32:08", "event": "BC_REGEN", "held_out_top1": 1.0, "pairs": 166383, "policy_sha256": "f052067a589cfcdedaf1754ae6d241d736bb97f6fc798683f395c76cb0ff98e6"}
+{"t": "18:32:10", "event": "KING_SD_OK", "sha256": "009aaad29d2653cde3f4e8ed2fafd8861a0f1f572a140c64118df9e3fa3df35d"}
+{"t": "18:33:26", "event": "REF_BITEQ", "ref": "launch", "rows": 32, "agg_core": "equal"}
+{"t": "18:33:26", "event": "exam_ok", "tag": "v32-ref-launch", "mean": 113.0, "died": 0, "sha": "48033577f8f124ae"}
+{"t": "18:34:38", "event": "REF_BITEQ", "ref": "science", "rows": 32, "agg_core": "equal"}
+{"t": "18:34:38", "event": "exam_ok", "tag": "v32-ref-science", "mean": 140.9, "died": 3, "sha": "1736185e286c1f2a"}
+{"t": "18:34:38", "event": "refs", "R": 113.0, "abandon": 75.4, "floor": 104.4, "science_ref": 140.9, "science_died": 3}
+{"t": "18:34:38", "event": "leg_start", "leg": "v32-sov", "seed": 303000, "sovereignty": true}
+{"t": "10:59:44", "event": "OPS_INCIDENT", "leg": "v32-sov", "note": "宿主会话换代连坐击杀训练进程组;末笔遥测 19:18:37 step 3984272/3997696,无 leg_done;中止目录封存 v32-sov-abort1;按台账额度第二次点火,launcher 加固 nohup+caffeinate", "author": "值守"}
+{"t": "10:59:45", "event": "preflight_ok", "king_zip": "2f7bc9dd810956c3", "bc_sd": "f052067a589cfcde", "throne_bridge": 97.7, "script_bridge": 94.2}
+{"t": "11:01:10", "event": "G0_REPLAY", "verdict": "PASS", "seeds": "7000-7015", "workers": ["king", "throne"]}
+{"t": "11:01:16", "event": "G0_GHOST", "verdict": "PASS"}
+{"t": "11:01:18", "event": "exam_adopted", "tag": "v32-ref-launch", "sha": "48033577f8f124ae"}
+{"t": "11:01:18", "event": "REF_BITEQ", "ref": "launch", "rows": 32, "agg_core": "equal"}
+{"t": "11:01:19", "event": "exam_adopted", "tag": "v32-ref-science", "sha": "1736185e286c1f2a"}
+{"t": "11:01:19", "event": "REF_BITEQ", "ref": "science", "rows": 32, "agg_core": "equal"}
+{"t": "11:01:19", "event": "refs", "R": 113.0, "abandon": 75.4, "floor": 104.4, "science_ref": 140.9, "science_died": 3}
+{"t": "11:01:19", "event": "leg_start", "leg": "v32-sov", "seed": 303000, "sovereignty": true}
+{"t": "11:46:36", "event": "leg_done", "leg": "v32-sov", "rc": 0, "nt_zip": 3997696, "dt_min": 45.3}
+{"t": "11:46:38", "event": "npz_exported", "leg": "v32-sov", "sha256": "04636e1ac0bd6794cbd37e9e227f653d5abe311dd44c1ef0a462a795b1f94f59"}
+{"t": "11:46:38", "event": "leg_start", "leg": "v32-ctrl", "seed": 303000, "sovereignty": false}
+{"t": "12:29:51", "event": "leg_done", "leg": "v32-ctrl", "rc": 0, "nt_zip": 3997696, "dt_min": 43.2}
+{"t": "12:29:53", "event": "npz_exported", "leg": "v32-ctrl", "sha256": "e26cda87f5f9dee0b92fe53c47f6212053804615467eda0e97fe6ee224087a13"}
+{"t": "12:30:39", "event": "exam_ok", "tag": "v32-sov-s16", "mean": 86.4, "died": 0, "sha": "5288b2404f0c517f"}
+{"t": "12:31:12", "event": "exam_ok", "tag": "v32-ctrl-s16", "mean": 104.0, "died": 0, "sha": "34f0defc2053f641"}
+{"t": "12:32:24", "event": "exam_ok", "tag": "v32-sov-full32", "mean": 79.2, "died": 2, "a12_per_ep": 0.0, "a13_per_ep": 639.69, "rwin_per_ep": 23.03, "depth2": 1, "dive": 0.22, "override": 0.0234, "sha": "f2ca74b5db4ea4d1"}
+{"t": "12:33:31", "event": "exam_ok", "tag": "v32-sov-m29", "mean": 108.3, "died": 8, "a12_per_ep": 0.0, "a13_per_ep": 242.38, "rwin_per_ep": 16.66, "depth2": 16, "sha": "8c6336f966ace5fd"}
+{"t": "12:34:29", "event": "exam_ok", "tag": "v32-ctrl-full32", "mean": 92.3, "died": 2, "a12_per_ep": 0.0, "a13_per_ep": 806.31, "rwin_per_ep": 12.53, "depth2": 3, "dive": 0.16, "override": 0.0229, "sha": "1c3f683476d1b612"}
+{"t": "12:35:34", "event": "exam_ok", "tag": "v32-ctrl-m29", "mean": 125.2, "died": 8, "a12_per_ep": 0.0, "a13_per_ep": 200.78, "rwin_per_ep": 20.06, "depth2": 20, "sha": "cd198545a2723a11"}
+{"t": "12:35:34", "event": "R32_SPLIT", "paired_sov_minus_ctrl": -13.07, "wins_sov": 17, "direction": "方向读数", "triangle": {"ctrl_minus_ref": -20.74, "sov_minus_ref": -33.8, "note": "三角对账;禁以 sov−ctrl 单读数代言主权效应"}, "died": {"sov": 2, "ctrl": 2}, "a12": {"sov": 0.0, "ctrl": 0.0}, "口径": "同种子仅保证初始权重与 env 流等价,主权掩码自首个重归一化分布即改变抽样,轨迹随即分岔——'唯一变量'系配置层陈述;两腿步数账恒等(各+499712),免双口径"}
+{"t": "12:35:34", "event": "R32_MAIN", "verdict": "档3(低用量劣化(重训/协议连带候选,a12=0.0)):a12/局 0.0,died 8(线 3),均差 -32.59(带 -2.0)——触发解耦条款,转捆绑评估案(批文'不行的话'义)", "died": 8, "a12_per_ep": 0.0, "paired_mean_vs_sciref": -32.59, "wins": 11, "binom_note": "P(died≤2|n=32,p=3/32)≈0.41——died 档位系方向读数非显著性证据(与 18/32 线注记同纪律)", "ctrl_m29": {"mean": 125.2, "died": 8, "a12": 0.0}, "death_seed_sets": {"rescued": [], "new_deaths": [7005, 7020, 7024, 7026, 7028]}, "depth_vectors": {"sov_m29": [1, 2, 1, 2, 2, 2, 2, 1, 2, 1, 1, 2, 1, 1, 2, 1, 1, 1, 1, 1, 2, 1, 1, 1, 2, 2, 2, 2, 2, 3, 1, 2], "sciref": [1, 2, 1, 2, 1, 1, 2, 1, 2, 2, 2, 2, 2, 1, 1, 1, 1, 2, 2, 3, 1, 1, 1, 1, 1, 2, 1, 2, 1, 2, 1, 2]}, "belt_econ": {"sov_m29_a13": 242.38, "sciref_a13": 374.03}}
+{"t": "12:35:34", "event": "quals", "v32-sov": {"qual_ok": true, "void": false, "dual_attr": false}, "v32-ctrl": {"qual_ok": true, "void": false, "dual_attr": false}}
+{"t": "12:35:34", "event": "winner", "leg": "v32-ctrl", "mean": 92.3, "died": 2, "substituted": false}
+{"t": "12:35:34", "event": "VERDICT_PATH", "golden_authorized": false, "why": "胜者 92.3 < 104.4(=(85/92)×113.0)——未复现参考水平,换届命题未考", "arms_full32": {"v32-sov": 79.2, "v32-ctrl": 92.3}, "R": 113.0, "main_verdict": "档3(低用量劣化(重训/协议连带候选,a12=0.0)):a12/局 0.0,died 8(线 3),均差 -32.59(带 -2.0)——触发解耦条款,转捆绑评估案(批文'不行的话'义)"}
