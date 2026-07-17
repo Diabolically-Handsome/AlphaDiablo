@@ -199,7 +199,7 @@ def w1_freeze_check(led: Ledger, dry: bool) -> Optional[int]:
     if porcelain:
         led.log("PREFLIGHT_FAIL", gate="W1", why="porcelain 不净", detail=porcelain[:500])
         return 3
-    prior_freeze = [e for e in led.events() if e.get("event") == "FREEZE_SHA"]
+    prior_freeze = [e for e in led.events if e.get("event") == "FREEZE_SHA"]
     if prior_freeze:
         if head != prior_freeze[0]["sha"]:
             led.log("PREFLIGHT_FAIL", gate="W1", why="HEAD != 台账 FREEZE_SHA(链式冻结失配)",
