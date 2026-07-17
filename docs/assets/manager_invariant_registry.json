@@ -1,0 +1,380 @@
+{
+ "registry": "manager_invariant_seed_registry",
+ "version": 1,
+ "generated_utc": "2026-07-16",
+ "provenance": {
+  "source_archives_dir": "train/runs/eval-assembled",
+  "forensics_ref": "docs/FORENSICS-F2-重训连带劣化.md",
+  "task": "P4"
+ },
+ "criterion": {
+  "name": "manager_invariant_row",
+  "preconditions": [
+   "两档案 worker sha256 逐字节相同",
+   "两档案 manager sha256 不同(H=0f2264… vs M29=894413…)",
+   "协议 deterministic=true 且 seeds 集合相同(eval_assembled v3, argmax_with_action_masks)"
+  ],
+  "rule": "同一 seed 的两行在下列全部 13 字段上精确相等(数值按存档面值,不做容差)",
+  "fields": [
+   "ret",
+   "depth",
+   "died",
+   "kills",
+   "farm_n",
+   "farm_tau_mean",
+   "farm_tau_sum",
+   "farm_descend",
+   "windows",
+   "beats",
+   "overrides",
+   "cap",
+   "mode_seq"
+  ],
+  "semantics": "确定性评测下 13 字段(含 mode_seq 逐字符与 overrides)全同 ⇒ 两经理在该种子产出同一决策序列 ⇒ 该种子结果对经理交换不敏感;若其中低分,则失败归因于工人/环境层,与经理无关(纯工人级失效判别,单向:不变≠经理无责的逆命题不成立)",
+  "one_sided_warning": "非不变 ⇏ 经理主因;不变 ⇏ 工人健康(仅指经理不背锅)"
+ },
+ "low_score_rule": {
+  "low_abs": {
+   "rule": "ret < 50.0",
+   "rationale": "王座-H 参照 (v32-ref-launch) ret Q1=55.19,取整 50 为登记阈"
+  },
+  "regression": {
+   "rule": "ret − ref_H(seed) <= -30.0(仅 7000 池,参照 v32-ref-launch 同种子)",
+   "rationale": "排除王座慢性种子;Δ≤−30 视为超噪声回归"
+  },
+  "classification": {
+   "pure_worker_regression": "invariant ∧ (regression 成立)",
+   "chronic_seed": "invariant ∧ low_abs ∧ ¬regression(王座参照同样低,血统慢性)",
+   "benign_invariant": "invariant ∧ ¬low_abs ∧ ¬regression"
+  }
+ },
+ "pairs": [
+  {
+   "worker": "v32-sov",
+   "pool_H": "v32-sov-full32",
+   "pool_M29": "v32-sov-m29",
+   "seed_pool": "7000",
+   "worker_sha256_prefix": "04636e1ac0bd",
+   "manager_H_sha256_prefix": "0f2264860b09",
+   "manager_M29_sha256_prefix": "894413884d04",
+   "n_seeds": 32,
+   "n_invariant": 6,
+   "invariant_seeds": [
+    7002,
+    7007,
+    7010,
+    7013,
+    7015,
+    7022
+   ],
+   "low_score_invariant_seeds": [
+    7002,
+    7007,
+    7013,
+    7015,
+    7022
+   ],
+   "pure_worker_regression_seeds": [
+    7007,
+    7013
+   ],
+   "rows": [
+    {
+     "seed": 7002,
+     "ret": 28.02,
+     "depth": 1,
+     "died": false,
+     "kills": 13,
+     "windows": 102,
+     "overrides": 53,
+     "mode_set": "F",
+     "ref_H_ret": 25.34,
+     "delta_vs_ref_H": 2.68,
+     "class": "chronic_seed"
+    },
+    {
+     "seed": 7007,
+     "ret": 85.46,
+     "depth": 1,
+     "died": false,
+     "kills": 36,
+     "windows": 96,
+     "overrides": 49,
+     "mode_set": "F",
+     "ref_H_ret": 149.5,
+     "delta_vs_ref_H": -64.04,
+     "class": "pure_worker_regression"
+    },
+    {
+     "seed": 7010,
+     "ret": 110.43,
+     "depth": 1,
+     "died": false,
+     "kills": 47,
+     "windows": 78,
+     "overrides": 7,
+     "mode_set": "FR",
+     "ref_H_ret": 109.01,
+     "delta_vs_ref_H": 1.42,
+     "class": "benign_invariant"
+    },
+    {
+     "seed": 7013,
+     "ret": -2.88,
+     "depth": 1,
+     "died": false,
+     "kills": 0,
+     "windows": 113,
+     "overrides": 51,
+     "mode_set": "F",
+     "ref_H_ret": 88.87,
+     "delta_vs_ref_H": -91.75,
+     "class": "pure_worker_regression"
+    },
+    {
+     "seed": 7015,
+     "ret": 18.21,
+     "depth": 1,
+     "died": false,
+     "kills": 9,
+     "windows": 106,
+     "overrides": 2,
+     "mode_set": "F",
+     "ref_H_ret": 18.37,
+     "delta_vs_ref_H": -0.16,
+     "class": "chronic_seed"
+    },
+    {
+     "seed": 7022,
+     "ret": -5.73,
+     "depth": 1,
+     "died": false,
+     "kills": 0,
+     "windows": 116,
+     "overrides": 110,
+     "mode_set": "F",
+     "ref_H_ret": -5.73,
+     "delta_vs_ref_H": 0.0,
+     "class": "chronic_seed"
+    }
+   ]
+  },
+  {
+   "worker": "v32-ctrl",
+   "pool_H": "v32-ctrl-full32",
+   "pool_M29": "v32-ctrl-m29",
+   "seed_pool": "7000",
+   "worker_sha256_prefix": "e26cda87f5f9",
+   "manager_H_sha256_prefix": "0f2264860b09",
+   "manager_M29_sha256_prefix": "894413884d04",
+   "n_seeds": 32,
+   "n_invariant": 2,
+   "invariant_seeds": [
+    7021,
+    7022
+   ],
+   "low_score_invariant_seeds": [
+    7021,
+    7022
+   ],
+   "pure_worker_regression_seeds": [
+    7021
+   ],
+   "rows": [
+    {
+     "seed": 7021,
+     "ret": -1.12,
+     "depth": 1,
+     "died": false,
+     "kills": 2,
+     "windows": 114,
+     "overrides": 2,
+     "mode_set": "F",
+     "ref_H_ret": 74.1,
+     "delta_vs_ref_H": -75.22,
+     "class": "pure_worker_regression"
+    },
+    {
+     "seed": 7022,
+     "ret": -5.73,
+     "depth": 1,
+     "died": false,
+     "kills": 0,
+     "windows": 116,
+     "overrides": 110,
+     "mode_set": "F",
+     "ref_H_ret": -5.73,
+     "delta_vs_ref_H": 0.0,
+     "class": "chronic_seed"
+    }
+   ]
+  },
+  {
+   "worker": "v28-throne-7000",
+   "pool_H": "v32-ref-launch",
+   "pool_M29": "v32-ref-science",
+   "seed_pool": "7000",
+   "worker_sha256_prefix": "976b6c05edaa",
+   "manager_H_sha256_prefix": "0f2264860b09",
+   "manager_M29_sha256_prefix": "894413884d04",
+   "n_seeds": 32,
+   "n_invariant": 5,
+   "invariant_seeds": [
+    7002,
+    7007,
+    7015,
+    7022,
+    7026
+   ],
+   "low_score_invariant_seeds": [
+    7002,
+    7015,
+    7022,
+    7026
+   ],
+   "pure_worker_regression_seeds": [],
+   "rows": [
+    {
+     "seed": 7002,
+     "ret": 25.34,
+     "depth": 1,
+     "died": false,
+     "kills": 13,
+     "windows": 106,
+     "overrides": 103,
+     "mode_set": "F",
+     "ref_H_ret": 25.34,
+     "delta_vs_ref_H": 0.0,
+     "class": "chronic_seed"
+    },
+    {
+     "seed": 7007,
+     "ret": 149.5,
+     "depth": 1,
+     "died": false,
+     "kills": 63,
+     "windows": 72,
+     "overrides": 39,
+     "mode_set": "F",
+     "ref_H_ret": 149.5,
+     "delta_vs_ref_H": 0.0,
+     "class": "benign_invariant"
+    },
+    {
+     "seed": 7015,
+     "ret": 18.37,
+     "depth": 1,
+     "died": false,
+     "kills": 9,
+     "windows": 108,
+     "overrides": 55,
+     "mode_set": "F",
+     "ref_H_ret": 18.37,
+     "delta_vs_ref_H": 0.0,
+     "class": "chronic_seed"
+    },
+    {
+     "seed": 7022,
+     "ret": -5.73,
+     "depth": 1,
+     "died": false,
+     "kills": 0,
+     "windows": 116,
+     "overrides": 110,
+     "mode_set": "F",
+     "ref_H_ret": -5.73,
+     "delta_vs_ref_H": 0.0,
+     "class": "chronic_seed"
+    },
+    {
+     "seed": 7026,
+     "ret": 4.55,
+     "depth": 1,
+     "died": false,
+     "kills": 4,
+     "windows": 108,
+     "overrides": 2,
+     "mode_set": "F",
+     "ref_H_ret": 4.55,
+     "delta_vs_ref_H": 0.0,
+     "class": "chronic_seed"
+    }
+   ]
+  },
+  {
+   "worker": "v28-throne-9000",
+   "pool_H": "r2-launch",
+   "pool_M29": "r2-science",
+   "seed_pool": "9000",
+   "worker_sha256_prefix": "976b6c05edaa",
+   "manager_H_sha256_prefix": "0f2264860b09",
+   "manager_M29_sha256_prefix": "894413884d04",
+   "n_seeds": 32,
+   "n_invariant": 2,
+   "invariant_seeds": [
+    9001,
+    9009
+   ],
+   "low_score_invariant_seeds": [
+    9001
+   ],
+   "pure_worker_regression_seeds": [],
+   "rows": [
+    {
+     "seed": 9001,
+     "ret": -5.74,
+     "depth": 1,
+     "died": false,
+     "kills": 0,
+     "windows": 116,
+     "overrides": 110,
+     "mode_set": "F",
+     "ref_H_ret": null,
+     "delta_vs_ref_H": null,
+     "class": "chronic_seed"
+    },
+    {
+     "seed": 9009,
+     "ret": 215.08,
+     "depth": 2,
+     "died": true,
+     "kills": 83,
+     "windows": 9,
+     "overrides": 7,
+     "mode_set": "DF†",
+     "ref_H_ret": null,
+     "delta_vs_ref_H": null,
+     "class": "benign_invariant"
+    }
+   ]
+  }
+ ],
+ "cross_validation": {
+  "forensics_expected": {
+   "v32-sov": 6,
+   "v32-ctrl": 2,
+   "v28-throne-7000": 5
+  },
+  "observed": {
+   "v32-sov": 6,
+   "v32-ctrl": 2,
+   "v28-throne-7000": 5,
+   "v28-throne-9000": 2
+  },
+  "match": true,
+  "residual_seed_checks": {
+   "7013": "sov 不变式且 ret=-2.88(Δ=-91.75)⇒ 纯工人级,sov 特有 ✓;ctrl 侧 7013 经理敏感(H 23.1 vs M29 225.6),不入 ctrl 名单 ✓",
+   "7021": "ctrl 不变式且 ret=-1.12(Δ=-75.22)⇒ 纯工人级,ctrl 特有 ✓;sov 侧 7021 非不变式(72.1 vs 72.3)✓",
+   "7017": "严格不变式判据未捕获:sov 两经理 9 字段不同;ctrl 两经理 ret 同为 58.3 但 4 个轨迹字段(farm_tau/windows/mode_seq)不同 ⇒ 属'分数不变、轨迹可变'近失级;四配置全低分(55.9-63.0 vs 参照 258.6)仍支持工人级结论,但需经近失判据或 P5 重放确认",
+   "7007": "sov 不变式 ret=85.46 Δ=-64.04 ⇒ 纯工人级回归,与 FORENSICS'sov 名单外大额损失 7007 −64'吻合 ✓",
+   "v31_ref_vs_v32_ref": "launch/science 各 32 行逐字段同一,证实 FORENSICS'重标签'认定 ✓"
+  }
+ },
+ "caveats": [
+  "7022(7000 池)与 9001(9000 池)为死种子:行对经理且对工人(sov/ctrl/王座逐字段同一)全不变,ret≈-5.7、0 kills、全 F——属环境级坏种子,任何名单统计应剔除或单列",
+  "9009(9000 池)为高分不变式(ret=215.08, depth=2, died=true):不变式≠低分,判别器只对低分子集给'纯工人级'标签",
+  "近失判据(建议入工具箱 v2):ret 及 depth/died/kills 相等但轨迹字段不同 ⇒ '分数不变行',7017-ctrl 属此类",
+  "判据依赖 deterministic=true 与 argmax;任何采样评测下不可用",
+  "s16 池只有 H 经理,无成对档案,不在本名单库范围"
+ ]
+}
