@@ -205,11 +205,11 @@ def w1_freeze_check(led: Ledger, dry: bool) -> Optional[int]:
             led.log("PREFLIGHT_FAIL", gate="W1", why="HEAD != 台账 FREEZE_SHA(链式冻结失配)",
                     head=head, frozen=prior_freeze[0]["sha"])
             raise SystemExit(3)
-        return head
+        return None
     if FROZEN_HEAD is None:
         # 家法链式冻结(R2/B1 同款):首跑 porcelain 净时以当前 HEAD 落 FREEZE_SHA
         led.log("FREEZE_SHA", sha=head, note="链式冻结首落(W1)")
-        return head
+        return None
     if False:
         led.log("PREFLIGHT_FAIL", gate="W1", why="FROZEN_HEAD 冻结常量未落(链式重冻结照 P6)")
         return 3
