@@ -259,7 +259,7 @@ class TrainingCoreTests(unittest.TestCase):
         args = types.SimpleNamespace(
             worker=False, options=False, flat_clock=False, arch="mlp",
             max_steps=8, num_envs=1, n_steps=8, gamma=0.99, lr=3e-4,
-            ent_coef=0.02, skip_dry=False,
+            ent_coef=0.02, skip_dry=False, no_drink_sovereignty=False,
         )
         contract = train_module._training_contract(args, model, batch_size=8)
         json.dumps(contract)
@@ -645,7 +645,7 @@ class TrainingCoreTests(unittest.TestCase):
                 episode_id=canonical_groups)
             forbidden = _valid_worker_bc_report(policy)
             report.write_text(json.dumps(forbidden))
-            with self.assertRaisesRegex(ValueError, "恒掩.*11/12"):
+            with self.assertRaisesRegex(ValueError, "禁采动作 11/12"):
                 _validate_bc_report(policy, "data_gate")
             demos.write_bytes(canonical_demos)
             report.write_text(json.dumps(valid_record))

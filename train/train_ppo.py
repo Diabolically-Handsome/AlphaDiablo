@@ -428,6 +428,9 @@ def _validate_args(args) -> None:
     _require(math.isfinite(args.distill_beta) and args.distill_beta >= 0,
              "--distill-beta 必须是有限非负数")
     _require(args.freeze_policy_steps >= 0, "--freeze-policy-steps 不能为负")
+    _require(args.ckpt_every_steps > 0, "--ckpt-every-steps 必须 > 0")
+    _require(args.sentinel_every > 0, "--sentinel-every 必须 > 0")
+    _require(args.dry_anchor_every > 0, "--dry-anchor-every 必须 > 0")
     if args.run_name is not None:
         _require(bool(args.run_name) and pathlib.Path(args.run_name).name == args.run_name
                  and args.run_name not in (".", ".."),
@@ -1704,6 +1707,16 @@ def _main(resources: _TrainingResources):
                     help="显式允许 worker resume 更换 manager_npz；默认契约禁止")
     ap.add_argument("--allow-legacy-resume", action="store_true",
                     help="一次性迁移无 training_contract 的旧 checkpoint；默认拒绝")
+    # B1-E0 仪表旋钮(封闭枚举三枚,PREREG-B1;皆纯读+IO,不触 RNG/梯度/env 流/
+    # 掩码/契约字段;默认值逐字承继原写死常量,缺省行为零漂移,W-G0 实弹钉死)
+    ap.add_argument("--ckpt-every-steps", type=int, default=250_000,
+                    help="B1-E0:暴露 AtomicRolloutCheckpointCallback.every_steps"
+                         "(全局步;量子对齐与拒发半更新 ckpt 由回调原逻辑保证)")
+    ap.add_argument("--sentinel-every", type=int, default=500_000,
+                    help="B1-E0:WorkerSentinelCallback 汇总间隔(全局步,纯读+IO)")
+    ap.add_argument("--dry-anchor-every", type=int, default=500_000,
+                    help="B1-E0:DryAnchorSentinel 间隔(全局步;自有 rng(26),"
+                         "不碰训练 RNG)")
     args = ap.parse_args()
 
     try:
@@ -1821,6 +1834,10 @@ def _main(resources: _TrainingResources):
         "implementation_sha16": implementation_sha256[:16],
         "allow_manager_change": args.allow_manager_change,
         "allow_legacy_resume": args.allow_legacy_resume,
+        # B1-E0 仪表旋钮回执(只读遥测,不入 training_contract,契约零触碰)
+        "ckpt_every_steps": args.ckpt_every_steps,
+        "sentinel_every": args.sentinel_every,
+        "dry_anchor_every": args.dry_anchor_every,
     }
     print(f"== DiabloGym PPO 训练 == run={run_name}")
     print(f"   {config}")
@@ -2075,13 +2092,15 @@ def _main(resources: _TrainingResources):
         unfreeze_cb = None
 
     # 每 ~25 万个已完成更新的样本存一次原子检查点；499,712 步腿至少有中点保护。
+    # B1-E0:三处间隔改由 CLI 旋钮供值(默认逐字承旧常量,缺省行为零漂移)。
     ckpt = AtomicRolloutCheckpointCallback(
-        run_dir, every_steps=250_000,
+        run_dir, every_steps=args.ckpt_every_steps,
         implementation_sha256=implementation_sha256)
-    sentinel_cb = WorkerSentinelCallback(run_dir) if args.worker else None
+    sentinel_cb = (WorkerSentinelCallback(run_dir, every=args.sentinel_every)
+                   if args.worker else None)
     dry_cb = (DryAnchorSentinel(run_dir, str(pathlib.Path(__file__).resolve().parent
                                              / "runs" / "bc-worker" / "demos.npz"),
-                                  demos_sha256)
+                                  demos_sha256, every=args.dry_anchor_every)
               if (args.worker and args.skip_dry) else None)
     # 让唯一持有文件句柄的 callback 最后构造；其后的 setup 不再有可失败 I/O。
     callback = EpisodeJsonlCallback(run_dir, config)

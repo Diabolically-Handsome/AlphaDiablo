@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- B1-E6:launchd 直挂模板(孤儿化终极形:launchd 本身即父进程,PPID=1)。
+     用法:替换 __CASE__ / __REPO__ / __DRIVER__ 三个占位符后:
+       cp 本文件 ~/Library/LaunchAgents/com.alphadiablo.__CASE__.plist
+       launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.alphadiablo.__CASE__.plist
+     卸载:
+       launchctl bootout gui/$(id -u)/com.alphadiablo.__CASE__
+     说明:
+     - ProcessType=Interactive + caffeinate -is 双保险防降频/防睡眠;
+     - KeepAlive=false:驱动器自带幂等续跑,崩溃后由值守按 P 线人工裁量重启,
+       不自动复活(防止无人值守时额度被自动重试烧穿——台账制额度是人裁的);
+     - RunAtLoad=true:bootstrap 即点火一次;
+     - 日志与心跳检查细则见 docs/OPS-launcher.md。 -->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.alphadiablo.__CASE__</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/bin/caffeinate</string>
+    <string>-is</string>
+    <string>__REPO__/.venv/bin/python</string>
+    <string>__REPO__/__DRIVER__</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>__REPO__</string>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <false/>
+  <key>ProcessType</key>
+  <string>Interactive</string>
+  <key>StandardOutPath</key>
+  <string>__REPO__/train/runs/infra-b1/driver.launchd.log</string>
+  <key>StandardErrorPath</key>
+  <string>__REPO__/train/runs/infra-b1/driver.launchd.log</string>
+</dict>
+</plist>

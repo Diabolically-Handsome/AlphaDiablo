@@ -1,11 +1,13 @@
 {
  "registry": "manager_invariant_seed_registry",
- "version": 1,
+ "version": 2,
  "generated_utc": "2026-07-16",
+ "updated_utc": "2026-07-17",
  "provenance": {
   "source_archives_dir": "train/runs/eval-assembled",
   "forensics_ref": "docs/FORENSICS-F2-重训连带劣化.md",
-  "task": "P4"
+  "task": "P4",
+  "v2_change": "B1-E5 工具箱 v2:增设 near_miss 近失判据(P4 之 7017-ctrl 型'分数不变、轨迹可变'漏检勘正)+ 判别器语义收窄条款;v1 严格判据与全部登记行原样保留;机器判别器 = train/probe_composite_signature.py(invariant_class_v2)"
  },
  "criterion": {
   "name": "manager_invariant_row",
@@ -33,6 +35,33 @@
   "semantics": "确定性评测下 13 字段(含 mode_seq 逐字符与 overrides)全同 ⇒ 两经理在该种子产出同一决策序列 ⇒ 该种子结果对经理交换不敏感;若其中低分,则失败归因于工人/环境层,与经理无关(纯工人级失效判别,单向:不变≠经理无责的逆命题不成立)",
   "one_sided_warning": "非不变 ⇏ 经理主因;不变 ⇏ 工人健康(仅指经理不背锅)"
  },
+ "near_miss_criterion": {
+  "name": "manager_invariant_near_miss_v2",
+  "since_version": 2,
+  "prereg_ref": "docs/PREREG-B1-捆绑评测基建.md E5(承 P4:7017-ctrl 型漏检勘正)",
+  "outcome_fields": [
+   "ret",
+   "depth",
+   "died",
+   "kills"
+  ],
+  "trajectory_fields": [
+   "farm_n",
+   "farm_tau_mean",
+   "farm_tau_sum",
+   "farm_descend",
+   "windows",
+   "beats",
+   "overrides",
+   "cap",
+   "mode_seq"
+  ],
+  "rule": "结局字段(outcome_fields)逐项精确相等 ∧ 轨迹字段(trajectory_fields)至少一项可变 ⇒ near_miss('分数不变、轨迹可变'近失级);13 字段全等仍判 strict_invariant(v1 判据不变);结局字段即不等 ⇒ variable(轨迹可变)",
+  "exemplar": "7017-ctrl:两经理 ret 同为 58.3 但 farm_tau/windows/mode_seq 等 4 个轨迹字段不同(P4 residual_seed_checks 在册)",
+  "triage_semantics": "复合签名分诊后件(PREREG-B1 D3):判'variable(轨迹可变)'→ F-lock 型;判'strict_invariant 或 near_miss(不变,含近失)'→ 工人损伤候选",
+  "discriminator": "train/probe_composite_signature.py::invariant_class_v2"
+ },
+ "semantic_narrowing_clause": "判别器语义收窄条款(承 P7 裁定三,B1-E5 立法):'经理不变式'只证'换考官无效',不证'损失不可回收'——一切引用判词强制携此限定",
  "low_score_rule": {
   "low_abs": {
    "rule": "ret < 50.0",
