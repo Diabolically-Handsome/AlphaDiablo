@@ -109,7 +109,7 @@ class SmokeStepTableTests(unittest.TestCase):
     def test_window_and_quantum(self):
         self.assertEqual(b1.SMOKE_STEPS % 2_048, 0)
         self.assertEqual(b1.SMOKE_END, b1.KING_STEPS + b1.SMOKE_STEPS)
-        self.assertEqual(b1.SMOKE_SEED, 305_000)
+        self.assertEqual(b1.SMOKE_SEED, 307_000)  # 承 4ad4aac 勘正(305000 撞 v30 leg_start,台账 PREFLIGHT_FAIL×2 在案)
 
     def test_at_least_one_of_each_instrument_fires_in_window(self):
         window = range(b1.KING_STEPS + 1, b1.SMOKE_END + 1)
@@ -137,7 +137,7 @@ class SmokeStepTableTests(unittest.TestCase):
             "--dry-anchor-every", str(b1.DRY_ANCHOR_EVERY)])
         for cmd in (bare, knobs):
             self.assertIn("--seed", cmd)
-            self.assertEqual(cmd[cmd.index("--seed") + 1], "305000")
+            self.assertEqual(cmd[cmd.index("--seed") + 1], "307000")  # 承 4ad4aac 勘正
             self.assertNotIn("--board", cmd)
 
 
