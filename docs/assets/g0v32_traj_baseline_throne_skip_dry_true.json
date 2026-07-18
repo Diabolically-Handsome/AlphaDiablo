@@ -1,0 +1,310 @@
+[
+ {
+  "seed": 7000,
+  "sha": "93fc3829a3d0ddd7f418454f79ef1ad0a541b5b39b16ab05fd7dce4a83aef92a",
+  "steps": 356,
+  "wages": 97.552222,
+  "final": "d1,dead0,hp74,xp2720",
+  "stats": {
+   "windows": 2,
+   "dry": 0,
+   "fresh": 2,
+   "ff_windows": 138,
+   "ff_dry": 4,
+   "episodes": 1,
+   "reseeds": 0,
+   "reasons": {
+    "levelup": 1,
+    "exhausted": 1
+   }
+  }
+ },
+ {
+  "seed": 7001,
+  "sha": "b2ed62e134d7f3c36c4b3ac30357ea64b9acf4108512ce71ddd1e7e5e5fb0e4c",
+  "steps": 127,
+  "wages": 14.171,
+  "final": "d1,dead0,hp58,xp1956",
+  "stats": {
+   "windows": 1,
+   "dry": 0,
+   "fresh": 1,
+   "ff_windows": 88,
+   "ff_dry": 86,
+   "episodes": 1,
+   "reseeds": 0,
+   "reasons": {
+    "exhausted": 1
+   }
+  }
+ },
+ {
+  "seed": 7002,
+  "sha": "fb8fe0279f08c667e3b5013cf7a032b1cf08ed27a66229babfe4d6cc6c38e334",
+  "steps": 168,
+  "wages": 14.903625,
+  "final": "d2,dead0,hp66,xp1262",
+  "stats": {
+   "windows": 2,
+   "dry": 0,
+   "fresh": 2,
+   "ff_windows": 87,
+   "ff_dry": 83,
+   "episodes": 1,
+   "reseeds": 0,
+   "reasons": {
+    "exhausted": 2
+   }
+  }
+ },
+ {
+  "seed": 7003,
+  "sha": "9edd5d5c877a58aec4c4cc04e9f1ab46df81f01dcd41796fe4d81c9b6cd9bdbd",
+  "steps": 213,
+  "wages": 24.110111,
+  "final": "d1,dead0,hp75,xp2206",
+  "stats": {
+   "windows": 2,
+   "dry": 0,
+   "fresh": 2,
+   "ff_windows": 90,
+   "ff_dry": 86,
+   "episodes": 1,
+   "reseeds": 0,
+   "reasons": {
+    "exhausted": 2
+   }
+  }
+ },
+ {
+  "seed": 7004,
+  "sha": "36541177df6674ef9809061ce296130a913464b7c336cc28c2610fd7093275df",
+  "steps": 332,
+  "wages": 38.314,
+  "final": "d1,dead0,hp68,xp3304",
+  "stats": {
+   "windows": 2,
+   "dry": 0,
+   "fresh": 2,
+   "ff_windows": 64,
+   "ff_dry": 52,
+   "episodes": 1,
+   "reseeds": 0,
+   "reasons": {
+    "exhausted": 2
+   }
+  }
+ },
+ {
+  "seed": 7005,
+  "sha": "8a969eba8ec186848c1fd99ef3470bb77a52967ec5791bb36bc1804010f20d6a",
+  "steps": 333,
+  "wages": 70.010833,
+  "final": "d1,dead0,hp67,xp3622",
+  "stats": {
+   "windows": 2,
+   "dry": 0,
+   "fresh": 2,
+   "ff_windows": 65,
+   "ff_dry": 59,
+   "episodes": 1,
+   "reseeds": 0,
+   "reasons": {
+    "exhausted": 2
+   }
+  }
+ },
+ {
+  "seed": 7006,
+  "sha": "8f80636b0062ea8c0b039ad0477ad31d94228cca19aa87701fd4a3005e6b5f59",
+  "steps": 174,
+  "wages": 55.766056,
+  "final": "d1,dead0,hp67,xp1711",
+  "stats": {
+   "windows": 1,
+   "dry": 0,
+   "fresh": 1,
+   "ff_windows": 103,
+   "ff_dry": 102,
+   "episodes": 1,
+   "reseeds": 0,
+   "reasons": {
+    "exhausted": 1
+   }
+  }
+ },
+ {
+  "seed": 7007,
+  "sha": "fc080931b5e8bb384bcfcda9046577e65ddcc4df7a606c8c3a5bf1d22bf3ce77",
+  "steps": 409,
+  "wages": 95.105889,
+  "final": "d1,dead0,hp74,xp4245",
+  "stats": {
+   "windows": 2,
+   "dry": 0,
+   "fresh": 2,
+   "ff_windows": 66,
+   "ff_dry": 59,
+   "episodes": 1,
+   "reseeds": 0,
+   "reasons": {
+    "exhausted": 2
+   }
+  }
+ },
+ {
+  "seed": 7008,
+  "sha": "b53fc397a8024f9b3e1882fd3c16aa0fed6d1d9b98d0bbd5eccbd1e4c82f45e9",
+  "steps": 450,
+  "wages": 91.697111,
+  "final": "d1,dead0,hp73,xp4233",
+  "stats": {
+   "windows": 3,
+   "dry": 0,
+   "fresh": 3,
+   "ff_windows": 52,
+   "ff_dry": 35,
+   "episodes": 1,
+   "reseeds": 0,
+   "reasons": {
+    "exhausted": 3
+   }
+  }
+ },
+ {
+  "seed": 7009,
+  "sha": "a325eb270473f407dbba701120426c73adca7c28d0fc0f7ab52ecff654211b7c",
+  "steps": 223,
+  "wages": 24.831,
+  "final": "d1,dead0,hp68,xp2948",
+  "stats": {
+   "windows": 2,
+   "dry": 0,
+   "fresh": 2,
+   "ff_windows": 80,
+   "ff_dry": 71,
+   "episodes": 1,
+   "reseeds": 0,
+   "reasons": {
+    "exhausted": 2
+   }
+  }
+ },
+ {
+  "seed": 7010,
+  "sha": "884446bb2e818090895f587af40983d15ef36404337876b6be192c4683758b52",
+  "steps": 334,
+  "wages": 45.667389,
+  "final": "d1,dead0,hp68,xp3042",
+  "stats": {
+   "windows": 3,
+   "dry": 0,
+   "fresh": 3,
+   "ff_windows": 69,
+   "ff_dry": 61,
+   "episodes": 1,
+   "reseeds": 0,
+   "reasons": {
+    "exhausted": 3
+   }
+  }
+ },
+ {
+  "seed": 7011,
+  "sha": "5b4d780cc2dd7fec3e98205ac447cc77cfb3fc9b81fd735790fe239edf358f5f",
+  "steps": 60,
+  "wages": -0.097,
+  "final": "d1,dead0,hp53,xp1727",
+  "stats": {
+   "windows": 1,
+   "dry": 0,
+   "fresh": 1,
+   "ff_windows": 87,
+   "ff_dry": 84,
+   "episodes": 1,
+   "reseeds": 0,
+   "reasons": {
+    "exhausted": 1
+   }
+  }
+ },
+ {
+  "seed": 7012,
+  "sha": "6c5d8048aec52b3387e45b74a26177544e8ce2f3d67c69356c2e7b5b19d83a86",
+  "steps": 459,
+  "wages": 113.055333,
+  "final": "d1,dead0,hp61,xp4330",
+  "stats": {
+   "windows": 3,
+   "dry": 0,
+   "fresh": 3,
+   "ff_windows": 62,
+   "ff_dry": 56,
+   "episodes": 1,
+   "reseeds": 0,
+   "reasons": {
+    "exhausted": 2,
+    "cap": 1
+   }
+  }
+ },
+ {
+  "seed": 7013,
+  "sha": "73484020251526f15127e3ec422c5c4e49a9ad712ba97eb7f7d63860581b0fa6",
+  "steps": 406,
+  "wages": 91.544889,
+  "final": "d1,dead0,hp69,xp4151",
+  "stats": {
+   "windows": 3,
+   "dry": 0,
+   "fresh": 3,
+   "ff_windows": 52,
+   "ff_dry": 45,
+   "episodes": 1,
+   "reseeds": 0,
+   "reasons": {
+    "cap": 1,
+    "exhausted": 2
+   }
+  }
+ },
+ {
+  "seed": 7014,
+  "sha": "62c622fea5bde1abd2df1f549a00453199e344db5812c3c3e7eab8229f9777d3",
+  "steps": 498,
+  "wages": 124.771029,
+  "final": "d2,dead0,hp79,xp6560",
+  "stats": {
+   "windows": 4,
+   "dry": 0,
+   "fresh": 4,
+   "ff_windows": 43,
+   "ff_dry": 27,
+   "episodes": 1,
+   "reseeds": 0,
+   "reasons": {
+    "exhausted": 3,
+    "levelup": 1
+   }
+  }
+ },
+ {
+  "seed": 7015,
+  "sha": "a8b22b4e0c0d0e01c91574ebe06cfd59a149c8c8ad60f99ee0ce8e60bd905efc",
+  "steps": 142,
+  "wages": 21.162,
+  "final": "d1,dead0,hp65,xp744",
+  "stats": {
+   "windows": 1,
+   "dry": 0,
+   "fresh": 1,
+   "ff_windows": 96,
+   "ff_dry": 94,
+   "episodes": 1,
+   "reseeds": 0,
+   "reasons": {
+    "exhausted": 1
+   }
+  }
+ }
+]

@@ -41,6 +41,9 @@ _RUN_ARTIFACTS = (
     "model_final.zip", "policy.npz", "policy_sd.pt", "tb", "ckpt",
 )
 _GEAR_PRESENT_INDEX = 293  # base obs zero-based; 文档中的“第 294 维”
+# E1 连带改(:404 legacy 打印):契约修订号单一真源——值记录与打印同取此常量。
+# E4(契约 4→5,rev5)系内容案另段施工,不在 E1 范围,此处保持 4。
+_CONTRACT_REVISION = 4
 _RUNTIME_VERSIONS = dict(RUNTIME_PACKAGE_VERSIONS)
 _ALGORITHM_RECIPE = {
     "gae_lambda": 0.95,
@@ -367,7 +370,7 @@ def _training_contract(args, model, batch_size: int,
     action_count = getattr(model.action_space, "n", None)
     return {
         "schema_version": 2,
-        "contract_revision": 4,   # v32:+drink_sovereignty(④丙 环境语义入契约)
+        "contract_revision": _CONTRACT_REVISION,   # v32:+drink_sovereignty(④丙 环境语义入契约)
         "implementation_sha256": implementation_sha256,
         "mode": mode,
         "arch": args.arch,
@@ -401,7 +404,8 @@ def _validate_resume_contract(saved: dict | None, current: dict,
         _require(allow_legacy_resume,
                  "resume checkpoint 无 training_contract，无法证明原训练环境/资源；"
                  "如确需一次性迁移，请显式传 --allow-legacy-resume")
-        print("   [legacy migration] 已显式允许无契约 checkpoint；本腿将写入 contract_revision 4 契约")
+        print("   [legacy migration] 已显式允许无契约 checkpoint；"
+              f"本腿将写入 contract_revision {_CONTRACT_REVISION} 契约")
         return
     _require(isinstance(saved, dict), "checkpoint training_contract 不是对象")
     allowed = {"manager_npz_sha256"} if allow_manager_change else set()
@@ -409,6 +413,94 @@ def _validate_resume_contract(saved: dict | None, current: dict,
                    for key in sorted(set(saved) | set(current))
                    if key not in allowed and saved.get(key) != current.get(key)}
     _require(not differences, f"resume 训练/环境契约漂移: {differences}")
+
+
+# ---- E1 ⑤A 干窗课程(PREREG-内容案 E1,rev3 核认勘正) ----
+
+# 腿相对锚定常量:腿起点恒 = 王 zip 终点 3,497,984(P3 复点火恒自王 zip);
+# 全局步锚定禁用——p 表序号 = (num_timesteps − 3,497,984) / 2048。
+_DRY_CURRICULUM_LEG_START = 3_497_984
+# 主表(批文即定,圈 2 附裁):前 147×2048=301,056 步线性 1.0→0.5,
+# 后 97×2048=198,656 步持 0.5;147+97=244 量子恰等腿长 499,712。
+_DRY_CURRICULUM_MAIN_TABLE = "linear:1.0:0.5:147,hold:0.5:97"
+
+
+def _dry_window_mechanism_active(args) -> bool:
+    """E1 波及面谓词(rev3 勘正,四门统一):干窗机制在位 = skip_dry ∨ schedule。"""
+    return bool(args.skip_dry) or bool(args.dry_curriculum_schedule)
+
+
+def _mount_dry_anchor_sentinel(args) -> bool:
+    """E1 四门之 dry_cb 挂载门(原 :2101-2104 谓词):worker ∧ 干窗机制在位。"""
+    return bool(args.worker) and _dry_window_mechanism_active(args)
+
+
+def _precheck_dry_window_demos(args) -> None:
+    """E1 四门之 demos/BC 预检门(原 :499-505):谓词改写为机制在位,断言原封。"""
+    if not _dry_window_mechanism_active(args):
+        return
+    demos = pathlib.Path(__file__).resolve().parent / "runs" / "bc-worker" / "demos.npz"
+    _require(demos.is_file(),
+             f"干窗机制(--skip-dry/--dry-curriculum-schedule)所需示范集不存在: {demos}")
+    policy = demos.with_name("policy_sd.pt")
+    _require(policy.is_file(),
+             f"干窗机制(--skip-dry/--dry-curriculum-schedule)所需 BC 权重不存在: {policy}")
+    report = _validate_bc_report(policy, "data_gate")
+    _load_dry_anchor_demos(demos, report.get("demos_sha256"))
+
+
+def _capture_dry_window_demos_sha256(args) -> str | None:
+    """E1 四门之 demos_sha256 捕获门(原 :1766-1771):谓词改写,路径与断言原封。"""
+    if not _dry_window_mechanism_active(args):
+        return None
+    demos = pathlib.Path(__file__).resolve().parent / "runs" / "bc-worker" / "demos.npz"
+    report = _validate_bc_report(demos.with_name("policy_sd.pt"), "data_gate")
+    _, _, demos_sha256 = _load_dry_anchor_demos(demos, report.get("demos_sha256"))
+    return demos_sha256
+
+
+def _parse_dry_curriculum_schedule(spec: str) -> tuple[float, ...]:
+    """解析 --dry-curriculum-schedule 为逐 rollout"序号→p"全表。
+
+    语法(逗号分隔段,段内冒号分隔):
+      linear:<p0>:<p1>:<n> —— n(≥2)个 rollout 端点含线性 p0→p1,
+                              第 k 项 = p0 + (p1−p0)·k/(n−1),k=0..n−1;
+      hold:<p>:<n>         —— n(≥1)个 rollout 恒 p。
+    全部 p 须为 [0, 1] 内有限数。主表 = linear:1.0:0.5:147,hold:0.5:97。
+    """
+    _require(isinstance(spec, str) and bool(spec.strip()),
+             "--dry-curriculum-schedule 不能为空")
+    table: list[float] = []
+    for raw_segment in spec.split(","):
+        segment = raw_segment.strip()
+        fields = segment.split(":")
+        if fields[0] == "linear":
+            _require(len(fields) == 4,
+                     f"--dry-curriculum-schedule 段格式应为 linear:<p0>:<p1>:<n>: {segment!r}")
+            try:
+                p0, p1, n = float(fields[1]), float(fields[2]), int(fields[3])
+            except ValueError as exc:
+                raise ValueError(
+                    f"--dry-curriculum-schedule 段数值不可解析: {segment!r}") from exc
+            _require(n >= 2, f"linear 段须 n≥2(单点请用 hold): {segment!r}")
+            values = [p0 + (p1 - p0) * k / (n - 1) for k in range(n)]
+        elif fields[0] == "hold":
+            _require(len(fields) == 3,
+                     f"--dry-curriculum-schedule 段格式应为 hold:<p>:<n>: {segment!r}")
+            try:
+                p, n = float(fields[1]), int(fields[2])
+            except ValueError as exc:
+                raise ValueError(
+                    f"--dry-curriculum-schedule 段数值不可解析: {segment!r}") from exc
+            _require(n >= 1, f"hold 段须 n≥1: {segment!r}")
+            values = [p] * n
+        else:
+            raise ValueError(
+                f"--dry-curriculum-schedule 未知段类型(只允许 linear/hold): {segment!r}")
+        _require(all(math.isfinite(v) and 0.0 <= v <= 1.0 for v in values),
+                 f"--dry-curriculum-schedule p 值必须在 [0, 1] 内: {segment!r}")
+        table.extend(values)
+    return tuple(table)
 
 
 def _validate_args(args) -> None:
@@ -442,7 +534,17 @@ def _validate_args(args) -> None:
 
     modes = int(args.worker) + int(args.options) + int(args.flat_clock)
     _require(modes <= 1, "--worker/--options/--flat-clock 互斥")
-    _require(not args.skip_dry or args.worker, "--skip-dry 只能与 --worker 同用")
+    # E1 两旗互斥断言(承工程 B1)+ 四门之互斥/模式门:谓词 = skip_dry ∨ schedule。
+    _require(not (args.skip_dry and args.dry_curriculum_schedule),
+             "--skip-dry 与 --dry-curriculum-schedule 互斥")
+    _require(not _dry_window_mechanism_active(args) or args.worker,
+             "--skip-dry/--dry-curriculum-schedule 只能与 --worker 同用")
+    if args.dry_curriculum_schedule:
+        curriculum_table = _parse_dry_curriculum_schedule(args.dry_curriculum_schedule)
+        _require(len(curriculum_table) * rollout_quantum >= args.total_steps,
+                 f"--dry-curriculum-schedule p 表 {len(curriculum_table)} 项"
+                 f"不足以覆盖本腿 {args.total_steps // rollout_quantum} 个 rollout"
+                 "(腿相对锚定禁越界钳位)")
     _require(not args.worker_npz or args.options, "--worker-npz 只能与 --options 同用")
     _require(not args.teacher_override or (args.resume_from and args.worker),
              "--teacher-override 只能与 worker 侧 --resume-from 同用")
@@ -496,13 +598,8 @@ def _validate_args(args) -> None:
             _require(pathlib.Path(args.teacher_sd).is_file(),
                      f"教师 state_dict 不存在: {args.teacher_sd}")
             _validate_bc_report(pathlib.Path(args.teacher_sd), "data_gate")
-        if args.skip_dry:
-            demos = pathlib.Path(__file__).resolve().parent / "runs" / "bc-worker" / "demos.npz"
-            _require(demos.is_file(), f"--skip-dry 所需示范集不存在: {demos}")
-            policy = demos.with_name("policy_sd.pt")
-            _require(policy.is_file(), f"--skip-dry 所需 BC 权重不存在: {policy}")
-            report = _validate_bc_report(policy, "data_gate")
-            _load_dry_anchor_demos(demos, report.get("demos_sha256"))
+        # E1 四门之 demos/BC 预检门:skip_dry ∨ schedule(谓词在助手内,断言原封)
+        _precheck_dry_window_demos(args)
     if args.options:
         _require(args.algo == "mppo" and args.gamma == 1.0 and args.max_steps == 3000,
                  "PREREG-v25:--options 须配 --algo mppo --gamma 1.0 --max-steps 3000")
@@ -1264,7 +1361,7 @@ def _load_bc_state_dict(path: str, policy, required_gate: str,
 def make_env(max_steps: int = 1500, deep: bool = False, death_ladder: bool = False,
              options: bool = False, flat_clock: bool = False,
              worker: bool = False, manager_npz: str | None = None,
-             worker_npz: str | None = None, skip_dry: bool = False,
+             worker_npz: str | None = None, skip_dry: float | bool = False,
              drink_sovereignty: bool = True,
              manager_npz_sha256: str | None = None,
              worker_npz_sha256: str | None = None,
@@ -1555,6 +1652,70 @@ class DryAnchorSentinel(BaseCallback):
             self._emit(final=True)
 
 
+class DryCurriculumCallback(BaseCallback):
+    """E1 ⑤A 课程回调:_on_rollout_start 于采集开始前推送本 rollout 之 p_skip。
+
+    - p 表锚定腿相对 rollout 序号 (num_timesteps − 3,497,984)/2048,
+      全局步锚定禁用;腿前/失准/越界一律抛(禁钳位——对抗席"越界钳至表尾
+      恒 0.5"构造由此关死);
+    - schedule_table 属性暴露"序号→p"全表(供驱动器落 DRY_CURRICULUM_TABLE);
+    - 逐 rollout 落账实际推送 p(pushed 账 + run_dir/dry_curriculum.jsonl),
+      并回调内断言 env 读回值 ≡ 注册表对应项,失配即抛(rev3 勘正卷 E1② 逐字);
+    - 推送经 VecEnv.env_method("set_skip_dry_p", p) 过 Monitor __getattr__
+      透传至 WorkerWindowEnv;回调序钉死于回调列首(见 _main cbs 组装)。
+    """
+
+    def __init__(self, schedule_table, run_dir: pathlib.Path | None = None,
+                 leg_start: int = _DRY_CURRICULUM_LEG_START):
+        super().__init__()
+        table = tuple(float(p) for p in schedule_table)
+        _require(len(table) > 0, "dry-curriculum p 表不能为空")
+        _require(all(math.isfinite(p) and 0.0 <= p <= 1.0 for p in table),
+                 "dry-curriculum p 表必须全部在 [0, 1] 内")
+        self.schedule_table = table
+        self.leg_start = int(leg_start)
+        self.run_dir = pathlib.Path(run_dir) if run_dir is not None else None
+        self.pushed: list[dict] = []   # 逐 rollout 实际推送账(序号→p)
+        self.quantum = None
+
+    def _on_training_start(self) -> None:
+        self.quantum = int(self.model.n_steps * self.model.get_env().num_envs)
+
+    def _rollout_index(self) -> int:
+        offset = int(self.num_timesteps) - self.leg_start
+        _require(offset >= 0,
+                 f"dry-curriculum 腿相对锚定失义: num_timesteps={self.num_timesteps} "
+                 f"在腿起点 {self.leg_start} 之前(全局步锚定禁用,腿恒自王 zip 复点火)")
+        _require(offset % self.quantum == 0,
+                 f"dry-curriculum rollout 边界失准: 腿内偏移 {offset} "
+                 f"不是量子 {self.quantum} 的整数倍")
+        index = offset // self.quantum
+        _require(index < len(self.schedule_table),
+                 f"dry-curriculum 腿相对 rollout 序号 {index} 越界"
+                 f"(p 表长 {len(self.schedule_table)},禁钳位)")
+        return index
+
+    def _on_rollout_start(self) -> None:
+        index = self._rollout_index()
+        p = self.schedule_table[index]
+        env = self.model.get_env()
+        env.env_method("set_skip_dry_p", p)   # 经 Monitor __getattr__ 透传
+        # rev3 E1② 恒等断言:实际在位 p(逐 env 读回)≡ 注册表对应项,失配即抛。
+        for rank, actual in enumerate(env.get_attr("skip_dry")):
+            _require(float(actual) == p,
+                     f"dry-curriculum 恒等断言失配: env[{rank}] 在位 p={actual} "
+                     f"!= 注册表[{index}]={p}")
+        entry = {"rollout_index": int(index), "p": float(p),
+                 "num_timesteps": int(self.num_timesteps)}
+        self.pushed.append(entry)
+        if self.run_dir is not None:
+            with open(self.run_dir / "dry_curriculum.jsonl", "a") as f:
+                f.write(json.dumps(entry) + "\n")
+
+    def _on_step(self) -> bool:
+        return True
+
+
 class EpisodeJsonlCallback(BaseCallback):
     """逐局把战绩写进 progress.jsonl;周期性刷新 status.json(供 dashboard 轮询)。"""
 
@@ -1673,6 +1834,13 @@ def _main(resources: _TrainingResources):
                     help="v25:经理训练时挂 npz 工人(OptionsEnv workers 组装口)")
     ap.add_argument("--skip-dry", action="store_true",
                     help="v26 绿洲:干层复访窗脚本代跑,工人只在鲜层窗上课")
+    ap.add_argument("--dry-curriculum-schedule", default=None,
+                    help="E1 ⑤A 干窗课程退火表:逗号分隔段,"
+                         "'linear:<p0>:<p1>:<n>'(n≥2,端点含线性)或 'hold:<p>:<n>';"
+                         "p∈[0,1] 为干层复访窗的脚本代跑概率,按腿相对 rollout 序号"
+                         " (num_timesteps−3497984)/2048 取表,逐 rollout 于采集前推送;"
+                         "与 --skip-dry 互斥,仅 --worker。主表 = "
+                         "linear:1.0:0.5:147,hold:0.5:97")
     ap.add_argument("--no-drink-sovereignty", action="store_true",
                     help="v32 对照腿:关闭工人喝药主权(m[12] 恢复恒掩);"
                          "默认开 = ④丙 新协议常态,0.5 反射恒兜底")
@@ -1763,12 +1931,13 @@ def _main(resources: _TrainingResources):
         teacher_override_sha256 = _validate_export_manifest(
             pathlib.Path(args.teacher_override))["artifact_sha256"]
 
-    demos_sha256 = None
-    if args.skip_dry:
-        demos = pathlib.Path(__file__).resolve().parent / "runs" / "bc-worker" / "demos.npz"
-        report = _validate_bc_report(demos.with_name("policy_sd.pt"), "data_gate")
-        _, _, demos_sha256 = _load_dry_anchor_demos(
-            demos, report.get("demos_sha256"))
+    # E1 四门之 demos_sha256 捕获门:skip_dry ∨ schedule(谓词在助手内,断言原封)
+    demos_sha256 = _capture_dry_window_demos_sha256(args)
+
+    # E1 ⑤A:课程表在此解析一次,供 env 初值与课程回调共用(_validate_args 已验)。
+    dry_curriculum_table = (
+        _parse_dry_curriculum_schedule(args.dry_curriculum_schedule)
+        if args.dry_curriculum_schedule else None)
 
     resume_checkpoint_bytes = None
     resume_data = None
@@ -1852,7 +2021,11 @@ def _main(resources: _TrainingResources):
         worker=args.worker,
         manager_npz=args.manager_npz,
         worker_npz=args.worker_npz,
-        skip_dry=args.skip_dry,
+        # E1:课程腿 env p 初值 = 表首项——SB3 _setup_learn 之 env.reset() 先于
+        # 首个 _on_rollout_start 推送发生,初值不对齐将使腿首窗口选择偏离
+        # p≡1.0 端点恒等(G0-1/G0-2a);无课程时保持 CLI 旗原语义(bool→1.0/0.0)。
+        skip_dry=(dry_curriculum_table[0] if dry_curriculum_table
+                  else args.skip_dry),
         drink_sovereignty=not args.no_drink_sovereignty,
         manager_npz_sha256=manager_npz_sha256,
         worker_npz_sha256=worker_npz_sha256,
@@ -2098,15 +2271,22 @@ def _main(resources: _TrainingResources):
         implementation_sha256=implementation_sha256)
     sentinel_cb = (WorkerSentinelCallback(run_dir, every=args.sentinel_every)
                    if args.worker else None)
+    # E1 四门之 dry_cb 挂载门:worker ∧ (skip_dry ∨ schedule)(谓词在助手内)
     dry_cb = (DryAnchorSentinel(run_dir, str(pathlib.Path(__file__).resolve().parent
                                              / "runs" / "bc-worker" / "demos.npz"),
                                   demos_sha256, every=args.dry_anchor_every)
-              if (args.worker and args.skip_dry) else None)
+              if _mount_dry_anchor_sentinel(args) else None)
+    # E1 ⑤A 课程回调(schedule 仅 --worker,_validate_args 已断言)
+    curriculum_cb = (DryCurriculumCallback(dry_curriculum_table, run_dir=run_dir)
+                     if (args.worker and dry_curriculum_table) else None)
     # 让唯一持有文件句柄的 callback 最后构造；其后的 setup 不再有可失败 I/O。
     callback = EpisodeJsonlCallback(run_dir, config)
     learn_completed = False
     try:
-        cbs = ([callback, ckpt] + ([unfreeze_cb] if unfreeze_cb else [])
+        # E1 回调序钉死:课程回调居列首——p 于 _on_rollout_start 采集开始前、
+        # 先于一切其余 rollout-start 副作用推送在位(CallbackList 按列序分发)。
+        cbs = (([curriculum_cb] if curriculum_cb else [])
+               + [callback, ckpt] + ([unfreeze_cb] if unfreeze_cb else [])
                + ([sentinel_cb] if sentinel_cb else [])
                + ([dry_cb] if dry_cb else []))
         # v24:resume 腿 reset_num_timesteps=False(False 语义 = 再训 N 步,全局步连续

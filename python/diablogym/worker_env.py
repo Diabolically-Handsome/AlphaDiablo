@@ -25,6 +25,23 @@ from .options_env import FARM, N_EXTRA_WORKER, OptionsEnv
 _FORBIDDEN = ((7000, 7032), (9000, 9032))
 _MAX_EMPTY_FARM_EPISODES = 8
 
+# E1 ⑤A(PREREG-内容案):p 抽签专用流之固定偏移——承 dry-anchor rng(26) 先例取 26,
+# 加 2**33 移出 [0, 2**32) 训练种子域,杜绝专用流与任何 env 训练 RNG 同种子。
+_P_SKIP_SEED_OFFSET = 2**33 + 26
+
+
+def _coerce_p_skip(value) -> float:
+    """E1 ⑤A:skip_dry 布尔升格为跳过概率 p_skip(True≡1.0,False≡0.0,向后兼容)。"""
+    p = float(value)
+    if not (np.isfinite(p) and 0.0 <= p <= 1.0):
+        raise ValueError(f"skip_dry/p_skip 必须在 [0, 1] 内，收到 {value!r}")
+    return p
+
+
+def _derive_p_skip_rng(seed: int) -> np.random.Generator:
+    """E1③ 逐 env 播种:p 抽签专用流以固定偏移自 episode 种子确定性派生(零染训练 RNG)。"""
+    return np.random.default_rng(int(seed) + _P_SKIP_SEED_OFFSET)
+
 
 class NumpyManager:
     """冻结 v22-H 的 numpy 前向(MlpPolicy(64,64) 策略侧;G0' 与 SB3 逐位对账)。"""
@@ -109,7 +126,7 @@ class WorkerWindowEnv(gym.Env):
 
     def __init__(self, manager_npz: str, max_steps: int = 3000,
                  rng_seed: int | None = None, log_windows: bool = False,
-                 skip_dry: bool = False, manager_sha256: str | None = None,
+                 skip_dry: float | bool = False, manager_sha256: str | None = None,
                  drink_sovereignty: bool = True, **env_kwargs):
         super().__init__()
         self.mgr = NumpyManager(manager_npz, expected_sha256=manager_sha256)
@@ -124,7 +141,11 @@ class WorkerWindowEnv(gym.Env):
         self._alive = False
         self._episode_seed: int | None = None
         self.log_windows = log_windows
-        self.skip_dry = skip_dry   # v26 绿洲:干层复访窗由脚本代跑,不进学习分布
+        # v26 绿洲 → E1 ⑤A:干层复访窗跳过概率 p_skip(bool 升格 float,1.0/0.0
+        # 位级保留原布尔语义);p 抽签走自有专用流 _p_rng,零染训练 RNG(_rng)。
+        self.skip_dry = _coerce_p_skip(skip_dry)
+        self._p_rng = (_derive_p_skip_rng(rng_seed) if rng_seed is not None
+                       else np.random.default_rng())
         self.window_log = []      # log_windows=True 时:全部窗口(含快进窗)按序入册
         self.stats = {"windows": 0, "dry": 0, "fresh": 0, "ff_windows": 0,
                       "ff_dry": 0, "episodes": 0, "reseeds": 0, "reasons": {}}
@@ -147,6 +168,20 @@ class WorkerWindowEnv(gym.Env):
         mobs = self.oe._mgr_obs(self.oe._last_base_obs)
         return self.mgr.choose(mobs, self.oe.action_masks())
 
+    def set_skip_dry_p(self, p: float | bool) -> float:
+        """E1 课程推送口:SubprocVecEnv env_method 经 Monitor __getattr__ 透传至此。"""
+        self.skip_dry = _coerce_p_skip(p)
+        return self.skip_dry
+
+    def _skip_dry_draw(self) -> bool:
+        """p_skip 抽签:端点 1.0/0.0 不耗流(位级复刻原布尔行为);中间值走专用流。"""
+        p = self.skip_dry
+        if p >= 1.0:
+            return True
+        if p <= 0.0:
+            return False
+        return float(self._p_rng.random()) < p
+
     def next_window(self):
         """推进到本局下一个 FARM 窗口的首个无反射观测;局尽返回 None,**绝不滚新局**
         (BC 示范/测试的种子纪律依赖这一点——滚局只许发生在 reset())。"""
@@ -156,9 +191,10 @@ class WorkerWindowEnv(gym.Env):
             opt = self._mgr_choose()
             if opt == FARM:
                 dry = self.oe.exhausted
-                if dry and self.skip_dry:
+                if dry and self._skip_dry_draw():
                     # v26 绿洲:干层复访窗(榨干旗在位)由脚本内环代跑——
                     # 与 DIVE/RESUPPLY 同路,簿记同源,不成为学习 episode
+                    # (E1 ⑤A:以 p_skip 概率代跑;p=1.0 恒代跑 ≡ 原 skip_dry=True)
                     _, _, done, trunc, info = self.oe.step(FARM)
                     self._log(info["option_extra"], fast_forward=True)
                     self.stats["ff_dry"] += 1
@@ -193,6 +229,9 @@ class WorkerWindowEnv(gym.Env):
         super().reset(seed=seed)
         if seed is not None:
             self._rng = np.random.default_rng(int(seed))
+            # E1③ 逐 env 播种钉死:p 抽签专用流以固定偏移自 episode 种子确定性派生
+            # (SB3 以 seed+rank 逐 env 定种,复现主张由此成立;零染训练 RNG)。
+            self._p_rng = _derive_p_skip_rng(seed)
         # Gym 允许调用方在 episode 尚未结束时主动 reset。此时 _win 仍在，
         # 若沿用同一底层局直接 next_window()，会覆盖未结算窗口并把经理状态、
         # 工资账本和新 Gym episode 串在一起。显式放弃旧局，从干净边界重开。
