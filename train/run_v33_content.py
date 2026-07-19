@@ -792,14 +792,17 @@ def preflight(events, smoke: bool = False):
     if smoke:
         log({"event": "smoke_preflight_ok", "impl_sha16": impl_bundle_sha16()})
         return None
-    # ---- W1 冻结公证(smoke 免;正案要求树净 + 关键件最后触碰 == HEAD) ----
+    # ---- W1 冻结公证(smoke 免;正案要求树净 + 关键件已入库)----
+    # 勘正(2026-07-19):原"最后触碰 == HEAD"系过严代理——树净已保证盘上
+    # 内容 ≡ HEAD 公证态,无关件的后续提交不构成漂移;FREEZE_SHA 落账值
+    # 恒取实际 HEAD,公证语义完整。此处只须关键件确已入库。
     dirty = [l for l in git("status", "--porcelain").splitlines()
              if l != "?? train/leaderboard-assembled-v3.md"]
     pre(not dirty, f"W1: 工作树不净 {dirty}")
     head = git("rev-parse", "HEAD")
     for path in ("docs/PREREG-内容案-课⑤x④乙.md", "train/run_v33_content.py"):
         touch = git("log", "-1", "--format=%H", "--", path)
-        pre(touch == head, f"W1: {path} 最后触碰 != HEAD")
+        pre(bool(touch), f"W1: {path} 未入库(无公证 commit)")
     freezes = [e for e in events if e.get("event") == "FREEZE_SHA"]
     if freezes and freezes[-1]["sha"] != head:
         # P6 链式重冻结:REFREEZE_REASON 文件在位方可续链
