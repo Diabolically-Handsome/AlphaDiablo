@@ -14,6 +14,11 @@ masks(env.action_masks() 现场捕获,唯一 on-manifold 真源);v2 回执独立
 文件名 bc_report_v2.json + 独立 schema 标识 + 专用验证器(v1 验证器对
 v2 件天然 fail-loud);n₁₂ 闸与 recall 门读数入回执(fail-closed)。
 `python train/bc_worker.py` = v1(原样);`--v2 [--preventive-threshold 0.7]` = v2。
+
+方案甲(2026-07-19 亲批):① v2 采集局数扩为 v1 × 3(_V2_COLLECTION_EPISODE_FACTOR;
+种子按既有纪律同一规则确定性延拓 100..483,禁随机禁手拼);② v2 主训改类平衡
+加权 CE(w_c = N/(K·n_c) 标准平衡式,类集 = 实际出现类)。两者只作用于 v2;
+v1 采集局数/种子纪律与 v1 训练路径(train_bc 调用不传权)一字不动。
 """
 import json
 import hashlib
@@ -67,10 +72,24 @@ _BC_V2_PASS_KEYS = frozenset({
     "n12", "n12_gate_min", "n12_by_episode",
     "recall_12", "recall_12_denominator", "recall_12_gate_min",
     "class_share_12", "class_share_13", "belt_economy",
+    "collection_episodes", "class_weights",     # 方案甲(2026-07-19 亲批)
     "data_gate", "protocol_version", "implementation_sha256",
     "generator_sha256", "manager_npz_sha256", "policy_sha256",
     "demos_sha256",
 })
+
+# ---- 方案甲常量注册(2026-07-19 方案甲亲批;只作用于 v2,v1 面一字不动)----
+_V2_COLLECTION_EPISODE_FACTOR = 3   # 方案甲 a:v2 采集局数 = v1 × 3
+# v2 示范种子延拓规则 = v1 既有种子纪律同一规则(自首种子起连续升序整数,
+# train_ppo._WORKER_BC_DEMO_SEEDS = range(100, 228))之确定性延拓至 3 倍长
+# (禁随机、禁手拼):前缀恒等 v1 示范种子 100..227,新增局 = 228..483。
+# v1 DEMO_SEEDS/_WORKER_BC_DEMO_SEEDS 原封,v1 采集环不消费本常量。
+if list(DEMO_SEEDS) != list(range(DEMO_SEEDS[0],
+                                  DEMO_SEEDS[0] + len(DEMO_SEEDS))):
+    raise RuntimeError("v1 示范种子非连续升序整数:v2 种子延拓规则前提破坏")
+DEMO_SEEDS_V2 = list(range(
+    DEMO_SEEDS[0],
+    DEMO_SEEDS[0] + _V2_COLLECTION_EPISODE_FACTOR * len(DEMO_SEEDS)))
 
 
 def artifact_provenance():
@@ -333,7 +352,9 @@ def collect_v2(preventive_threshold: float = _PREVENTIVE_THRESHOLD_MAIN):
       - 逐样本 masks 系决策态 env.action_masks() 现场捕获(唯一真源;
         a12 之 belt 位自 obs belt 维反推系第二真源,禁用);
       - overridden 整拍剔除断言原封(保险丝改写拍不入池);
-      - 禁采断言世代条件化:v2 禁 11 允 12。
+      - 禁采断言世代条件化:v2 禁 11 允 12;
+      - 方案甲 a(2026-07-19 亲批):采集环消费 DEMO_SEEDS_V2(v1 × 3,
+        种子确定性延拓 100..483);v1 collect() 仍消费 DEMO_SEEDS 原封。
     返回 (X, labels, groups, masks, belts);belts 系逐样本决策态腰带读数
     (腰带经济回执供源)。
     """
@@ -341,7 +362,7 @@ def collect_v2(preventive_threshold: float = _PREVENTIVE_THRESHOLD_MAIN):
     env = WorkerWindowEnv(str(NPZ), max_steps=3000, rng_seed=0)
     X, Y, M, groups, belts = [], [], [], [], []
     dropped = 0
-    for i, seed in enumerate(DEMO_SEEDS):
+    for i, seed in enumerate(DEMO_SEEDS_V2):
         obs, _ = env.reset(seed=seed)
         teacher.begin_window()            # reset 即首窗,开闩
         while obs is not None:
@@ -366,17 +387,18 @@ def collect_v2(preventive_threshold: float = _PREVENTIVE_THRESHOLD_MAIN):
             else:
                 obs = obs2
         if (i + 1) % 16 == 0:
-            print(f"  v2 采集 {i+1}/{len(DEMO_SEEDS)} 局,{len(Y)} 对"
+            print(f"  v2 采集 {i+1}/{len(DEMO_SEEDS_V2)} 局,{len(Y)} 对"
                   f"(剔除 {dropped})", flush=True)
-    if env.stats["episodes"] != len(DEMO_SEEDS) or env.stats["reseeds"] != 0:
+    if env.stats["episodes"] != len(DEMO_SEEDS_V2) or env.stats["reseeds"] != 0:
         raise RuntimeError(f"示范池种子纪律破坏: {env.stats}")
     print(f"v2 示范:{len(Y)} 决策对,剔除保险丝拍 {dropped},"
           f"类分布 {dict(sorted(Counter(Y).items()))}", flush=True)
     env.close()
     groups_array = np.asarray(groups, dtype=np.int64)
     labels = np.asarray(Y, dtype=np.int64)
-    if not np.array_equal(np.unique(groups_array), np.asarray(DEMO_SEEDS)):
-        raise RuntimeError("示范集没有精确覆盖固定种子 100..227")
+    if not np.array_equal(np.unique(groups_array), np.asarray(DEMO_SEEDS_V2)):
+        raise RuntimeError("v2 示范集没有精确覆盖延拓固定种子 100..483"
+                           "(方案甲 a ×3 延拓纪律)")
     if np.isin(labels, forbidden_actions_for_generation(
             TEACHER_GENERATION_V2)).any():
         raise RuntimeError("v2 示范集含禁采动作 11(11 恒掩归经理;"
@@ -401,6 +423,25 @@ def _save_demos_v2(out_dir: pathlib.Path, X, labels, groups, masks) -> pathlib.P
     np.savez_compressed(tmp, X=X, Y=labels, episode_id=groups, masks=masks)
     tmp.replace(out_dir / "demos.npz")
     return out_dir / "demos.npz"
+
+
+def _balanced_class_weights(labels, n_act: int = 15) -> np.ndarray:
+    """方案甲 b(2026-07-19 亲批):类平衡权重 w_c = N/(K·n_c)(标准平衡式)。
+
+    类集 = 实际出现类(n_c > 0);K = 出现类数;N = 样本总数;未出现类记
+    0.0(CE weight 向量占位,训练面不消费)。纯整数计数算术,确定性。
+    只作用于 v2 主训调用;v1 训练路径零触碰(train_bc 缺省参 None,v1
+    调用不传)。
+    """
+    labels = np.asarray(labels)
+    if labels.size == 0:
+        raise RuntimeError("类平衡权重:空标签集(方案甲 b 前提破坏)")
+    counts = np.bincount(labels, minlength=n_act).astype(np.float64)
+    present = counts > 0
+    k = int(present.sum())
+    weights = np.zeros(n_act, dtype=np.float64)
+    weights[present] = float(labels.size) / (k * counts[present])
+    return weights
 
 
 def _n12_readings(labels, groups, belts) -> dict:
@@ -527,6 +568,25 @@ def _validate_bc_v2_report(p: pathlib.Path,
     _fail(_plain_num(rec["recall_12"])
           and _RECALL12_GATE_MIN <= float(rec["recall_12"]) <= 1.0,
           f"BC-v2 recall 门不满足(≥{_RECALL12_GATE_MIN}): {rec['recall_12']!r}")
+    # 方案甲回执新字段断言(2026-07-19 亲批)
+    _fail(isinstance(rec["held_out_episodes"], list)
+          and _plain_int(rec["collection_episodes"])
+          and rec["collection_episodes"] >= max(1, len(rec["held_out_episodes"])),
+          f"BC-v2 回执 collection_episodes 非法: {rec['collection_episodes']!r}")
+    class_weights = rec["class_weights"]
+    _fail(isinstance(class_weights, dict) and len(class_weights) > 0,
+          f"BC-v2 回执 class_weights 必须是非空对象: {report}")
+    for raw_class, raw_weight in class_weights.items():
+        try:
+            class_id = int(raw_class)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                f"BC-v2 回执 class_weights 键必须是动作编号: {raw_class!r}"
+            ) from exc
+        _fail(str(class_id) == str(raw_class) and 0 <= class_id < 15,
+              f"BC-v2 回执 class_weights 键非法: {raw_class!r}")
+        _fail(_plain_num(raw_weight) and raw_weight > 0,
+              f"BC-v2 回执 class_weights[{raw_class!r}] 非法: {raw_weight!r}")
     _fail(rec["protocol_version"] == PROTOCOL_VERSION,
           f"BC-v2 回执协议过期: {rec['protocol_version']!r}")
     expected_impl = (expected_implementation_sha256
@@ -570,7 +630,12 @@ def main_v2(preventive_threshold: float = _PREVENTIVE_THRESHOLD_MAIN):
     X, labels, groups, masks, belts = collect_v2(preventive_threshold)
     _save_demos_v2(OUT_V2, X, labels, groups, masks)
     tr, ho, holdout_episodes = split_by_episode(groups)
-    model, top1, recalls = train_bc(X, labels, groups)
+    # 方案甲 b(2026-07-19 亲批):v2 主训即类平衡加权 CE——权重自训练切分
+    # 标签计数确定性导出(w_c = N/(K·n_c),类集 = 实际出现类);v1 主训
+    # 调用 train_bc(X, Y, groups) 不传权,零触碰。
+    class_weights_v2 = _balanced_class_weights(labels[tr])
+    model, top1, recalls = train_bc(X, labels, groups,
+                                    class_weights=class_weights_v2)
     retrained = False
     if top1 < 0.95 or any(r < 0.85 for r in recalls.values()):
         # v1 同款唯一重试,触发条件限 v1 面质量闸(top1/≥300 类召回)——
@@ -598,6 +663,11 @@ def main_v2(preventive_threshold: float = _PREVENTIVE_THRESHOLD_MAIN):
         "recall_12_denominator": recall_12_denominator,
         "recall_12_gate_min": _RECALL12_GATE_MIN,
         "n12_gate_min": _N12_GATE_MIN,
+        # 方案甲回执新字段(2026-07-19 亲批):实测采集局数(×3 纪律已由
+        # collect_v2 断言钉死)+ 主训类平衡权重逐类摘要(仅实际出现类)。
+        "collection_episodes": int(np.unique(groups).size),
+        "class_weights": {str(int(c)): round(float(class_weights_v2[c]), 6)
+                          for c in np.flatnonzero(class_weights_v2 > 0)},
         **readings,
         "data_gate": "PASS" if ok else "FAIL", **provenance}
     if not ok:

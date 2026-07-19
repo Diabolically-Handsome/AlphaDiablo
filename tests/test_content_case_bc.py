@@ -14,7 +14,11 @@
   (含 rev4 十二附二④ 补铸之 demos 实测字节断言,镜像 policy 侧形制);
 - main_v2 回执键集合恰等 + FAIL 拒写权重 + 类加权重试限 v1 面质量闸
   (n₁₂/recall_12 永不触发——类加权系 N12 已除名预案);
-- v1 面回归零破坏(canonical 路径 / schema_version=1 / 采集行为原封)。
+- v1 面回归零破坏(canonical 路径 / schema_version=1 / 采集行为原封);
+- 方案甲(2026-07-19 亲批):v2 采集局数 ×3 与种子确定性延拓(100..483,
+  前缀恒等 v1;v1 局数/种子不受影响)+ v2 主训类平衡加权 CE
+  (w_c = N/(K·n_c) 手算恒等;v1 调用路径不加权)+ 回执新字段
+  (collection_episodes / class_weights)与验证器篡改矩阵。
 """
 
 from __future__ import annotations
@@ -278,14 +282,16 @@ class GenerationConditionedForbiddenTests(_PatchMixin, unittest.TestCase):
         self._install_env(
             lambda seed: [[{"raw": _in_band()}, {"raw": _out_band()}]])
         X, labels, groups, masks, belts = bc_worker.collect_v2()
-        n = 2 * len(bc_worker.DEMO_SEEDS)
+        # 方案甲 a:v2 采集环消费 DEMO_SEEDS_V2(×3 延拓)
+        n = 2 * len(bc_worker.DEMO_SEEDS_V2)
         self.assertEqual(X.shape, (n, 298))
         self.assertEqual(labels.shape, (n,))
         # 每局一窗:窗首带内态实标 12,次拍带外 → 10;真实入池非反事实。
         self.assertEqual(list(labels[:2]), [12, 10])
-        self.assertEqual(int((labels == 12).sum()), len(bc_worker.DEMO_SEEDS))
+        self.assertEqual(int((labels == 12).sum()),
+                         len(bc_worker.DEMO_SEEDS_V2))
         self.assertTrue(np.array_equal(np.unique(groups),
-                                       np.asarray(bc_worker.DEMO_SEEDS)))
+                                       np.asarray(bc_worker.DEMO_SEEDS_V2)))
 
     def test_v2_collect_rejects_a11_pool(self):
         # dispatch 农期原生不出 11;以 monkeypatch 注入 11 镜像 v2 禁采面。
@@ -308,7 +314,7 @@ class GenerationConditionedForbiddenTests(_PatchMixin, unittest.TestCase):
         self._install_env(script)
         _, labels, groups, _, _ = bc_worker.collect_v2()
         self.assertEqual(int((labels[groups == 100] == 12).sum()), 0)
-        for seed in (101, 150, 227):
+        for seed in (101, 150, 227, 228, 483):   # 含方案甲延拓新增局
             self.assertEqual(int((labels[groups == seed] == 12).sum()), 1)
 
     def test_v2_latch_resets_per_window(self):
@@ -317,7 +323,7 @@ class GenerationConditionedForbiddenTests(_PatchMixin, unittest.TestCase):
             [{"raw": _in_band()}, {"raw": _in_band()}],
             [{"raw": _in_band()}, {"raw": _in_band()}]])
         _, labels, groups, _, _ = bc_worker.collect_v2()
-        for seed in (100, 227):
+        for seed in (100, 227, 483):   # 含方案甲延拓末种子
             per_episode = labels[groups == seed]
             self.assertEqual(list(per_episode), [12, 9, 12, 9])
 
@@ -333,7 +339,7 @@ class MasksSchemaTests(_PatchMixin, unittest.TestCase):
                                          {"raw": _out_band(), "mask": mask_b}]])
         _, labels, _, masks, _ = bc_worker.collect_v2()
         self.assertEqual(masks.dtype, np.bool_)
-        self.assertEqual(masks.shape, (2 * len(bc_worker.DEMO_SEEDS), 15))
+        self.assertEqual(masks.shape, (2 * len(bc_worker.DEMO_SEEDS_V2), 15))
         self.assertTrue(np.array_equal(masks[0], mask_a))
         self.assertTrue(np.array_equal(masks[1], mask_b))
         self.assertTrue(masks[labels == 12][:, 12].all())   # a12 对 m[12]=True
@@ -474,6 +480,9 @@ def _v2_pass_record(policy_bytes=b"v2-policy", impl_sha="a" * 64, **overrides):
         "class_share_12": 0.02, "class_share_13": 0.03,
         "belt_economy": {"belt_mean_at_a12": 2.5, "belt_mean_overall": 3.0,
                          "a13_pairs": 30},
+        # 方案甲回执新字段(2026-07-19 亲批)
+        "collection_episodes": 384,
+        "class_weights": {"9": 0.520833, "12": 40.0},
         "data_gate": "PASS",
         "protocol_version": PROTOCOL_VERSION,
         "implementation_sha256": impl_sha,
@@ -548,6 +557,16 @@ class ValidatorIsolationTests(unittest.TestCase):
             (dict(protocol_version=PROTOCOL_VERSION + 1), "协议过期"),
             (dict(generator_sha256="e" * 64), "生成器已漂移"),
             (dict(implementation_sha256="f" * 64), "身份与当前运行时不一致"),
+            # 方案甲回执新字段篡改矩阵(2026-07-19 亲批)
+            (dict(collection_episodes=0), "collection_episodes 非法"),
+            (dict(collection_episodes=True), "collection_episodes 非法"),
+            (dict(collection_episodes="384"), "collection_episodes 非法"),
+            (dict(class_weights={}), "class_weights 必须是非空对象"),
+            (dict(class_weights=[0.5]), "class_weights 必须是非空对象"),
+            (dict(class_weights={"16": 1.0}), "class_weights 键非法"),
+            (dict(class_weights={"x": 1.0}), "键必须是动作编号"),
+            (dict(class_weights={"9": 0}), r"class_weights\['9'\] 非法"),
+            (dict(class_weights={"9": True}), r"class_weights\['9'\] 非法"),
         )
         for overrides, message in cases:
             with self.assertRaisesRegex(ValueError, message,
@@ -636,7 +655,8 @@ class MainV2ReceiptTests(_PatchMixin, unittest.TestCase):
 
     def test_pass_receipt_keys_exactly_match_registered_schema(self):
         with tempfile.TemporaryDirectory() as d:
-            self._run(d, self._dataset())
+            dataset = self._dataset()
+            self._run(d, dataset)
             rec = self._report(d)
             self.assertEqual(set(rec), set(_BC_V2_PASS_KEYS))
             self.assertEqual(rec["data_gate"], "PASS")
@@ -645,6 +665,16 @@ class MainV2ReceiptTests(_PatchMixin, unittest.TestCase):
             self.assertEqual(rec["n12"], 140)
             self.assertEqual(rec["n12_gate_min"], 122)
             self.assertEqual(rec["recall_12"], 0.8)
+            # 方案甲回执新字段:实测采集局数 + 主训类平衡权重逐类摘要
+            _, labels, groups, _, _ = dataset
+            self.assertEqual(rec["collection_episodes"],
+                             int(np.unique(groups).size))
+            tr, _, _ = bc_worker.split_by_episode(groups)
+            expected_w = bc_worker._balanced_class_weights(labels[tr])
+            self.assertEqual(
+                rec["class_weights"],
+                {str(int(c)): round(float(expected_w[c]), 6)
+                 for c in np.flatnonzero(expected_w > 0)})
             policy = pathlib.Path(d) / "policy_sd.pt"
             self.assertTrue(policy.is_file())
             self.assertEqual(
@@ -667,7 +697,8 @@ class MainV2ReceiptTests(_PatchMixin, unittest.TestCase):
             self.assertFalse((pathlib.Path(d) / "policy_sd.pt").exists())
 
     def test_recall12_fail_never_triggers_class_weighted_retry(self):
-        # 类加权系 N12 已除名预案(待亲批):recall_12 失守只 FAIL 不重训。
+        # 类加权系 N12 已除名预案(方案甲 2026-07-19 亲批后:主训即类平衡
+        # 加权);recall_12 失守仍只 FAIL 不重训。
         with tempfile.TemporaryDirectory() as d:
             with self.assertRaisesRegex(RuntimeError, "BC-v2 数据闸 FAIL"):
                 self._run(d, self._dataset(), recall=0.4)
@@ -678,11 +709,29 @@ class MainV2ReceiptTests(_PatchMixin, unittest.TestCase):
 
     def test_v1_quality_gate_still_triggers_single_retry(self):
         with tempfile.TemporaryDirectory() as d:
-            calls = self._run(d, self._dataset(), top1_seq=(0.90, 0.99))
+            dataset = self._dataset()
+            calls = self._run(d, dataset, top1_seq=(0.90, 0.99))
             self.assertEqual(len(calls), 2)             # 唯一重试
-            self.assertIsNone(calls[0])
-            self.assertIsNotNone(calls[1])              # 第二发系类加权
+            # 方案甲 b:v2 主训即类平衡加权(非 None),权重恒等标准平衡式
+            _, labels, groups, _, _ = dataset
+            tr, _, _ = bc_worker.split_by_episode(groups)
+            self.assertIsNotNone(calls[0])
+            np.testing.assert_allclose(
+                calls[0], bc_worker._balanced_class_weights(labels[tr]))
+            self.assertIsNotNone(calls[1])              # 第二发系类加权重试
             self.assertIs(self._report(d)["class_weighted_retry"], True)
+
+    def test_v2_primary_train_call_is_class_balanced(self):
+        # 方案甲 b 正例:PASS 路径主训一次即类平衡加权,零重试。
+        with tempfile.TemporaryDirectory() as d:
+            dataset = self._dataset()
+            calls = self._run(d, dataset)
+            self.assertEqual(len(calls), 1)
+            _, labels, groups, _, _ = dataset
+            tr, _, _ = bc_worker.split_by_episode(groups)
+            np.testing.assert_allclose(
+                calls[0], bc_worker._balanced_class_weights(labels[tr]))
+            self.assertIs(self._report(d)["class_weighted_retry"], False)
 
     def test_unregistered_threshold_rejected_before_any_output(self):
         with tempfile.TemporaryDirectory() as d:
@@ -690,6 +739,134 @@ class MainV2ReceiptTests(_PatchMixin, unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "未注册"):
                 bc_worker.main_v2(0.6)
             self.assertEqual(list(pathlib.Path(d).iterdir()), [])
+
+
+class PlanAExpansionTests(_PatchMixin, unittest.TestCase):
+    """方案甲 a(2026-07-19 亲批):v2 采集局数 ×3 + 种子确定性延拓。"""
+
+    def test_factor_constant_and_seed_extension_rule(self):
+        self.assertEqual(bc_worker._V2_COLLECTION_EPISODE_FACTOR, 3)
+        self.assertEqual(len(bc_worker.DEMO_SEEDS_V2),
+                         3 * len(bc_worker.DEMO_SEEDS))
+        # 延拓规则 = 既有纪律同一规则(自 100 起连续升序整数)确定性延拓,
+        # 禁随机禁手拼:全表恒等 range(100, 484),前缀恒等 v1 示范种子。
+        self.assertEqual(bc_worker.DEMO_SEEDS_V2,
+                         list(range(100, 100 + 3 * len(bc_worker.DEMO_SEEDS))))
+        self.assertEqual(
+            bc_worker.DEMO_SEEDS_V2[:len(bc_worker.DEMO_SEEDS)],
+            list(bc_worker.DEMO_SEEDS))
+        self.assertEqual(bc_worker.DEMO_SEEDS_V2[0], 100)
+        self.assertEqual(bc_worker.DEMO_SEEDS_V2[-1], 483)
+        # 新增局 = 228..483(恰系 v1 末种子 +1 起连续延拓)
+        self.assertEqual(bc_worker.DEMO_SEEDS_V2[len(bc_worker.DEMO_SEEDS):],
+                         list(range(228, 484)))
+
+    def test_v1_episode_count_and_seed_discipline_unaffected(self):
+        # v1 局数与种子纪律一字不动(铁律):128 局,种子 100..227。
+        self.assertEqual(list(bc_worker.DEMO_SEEDS), list(range(100, 228)))
+        self.assertEqual(len(bc_worker.DEMO_SEEDS), 128)
+        self.assertEqual(tuple(train_ppo._WORKER_BC_DEMO_SEEDS),
+                         tuple(range(100, 228)))
+        # 源文级镜像:v1 采集环仍消费 DEMO_SEEDS,v2 采集环消费 DEMO_SEEDS_V2
+        src = BC_WORKER.read_text()
+        self.assertIn("for i, seed in enumerate(DEMO_SEEDS):", src)
+        self.assertIn("for i, seed in enumerate(DEMO_SEEDS_V2):", src)
+
+    def test_v2_collect_runs_3x_episodes(self):
+        self._install_env(lambda seed: [[{"raw": _out_band()}]])
+        _, labels, groups, _, _ = bc_worker.collect_v2()
+        self.assertEqual(len(labels), 3 * 128)
+        self.assertTrue(np.array_equal(np.unique(groups),
+                                       np.arange(100, 484)))
+
+    def test_v1_collect_still_128_episodes(self):
+        self._install_env(lambda seed: [[{"raw": _out_band()}]])
+        _, labels, groups = bc_worker.collect()
+        self.assertEqual(len(labels), 128)
+        self.assertTrue(np.array_equal(np.unique(groups),
+                                       np.arange(100, 228)))
+
+
+class PlanAClassWeightTests(unittest.TestCase):
+    """方案甲 b(2026-07-19 亲批):类平衡权重 w_c = N/(K·n_c) 计算件。"""
+
+    def test_balanced_formula_hand_identity(self):
+        # 手算:N=12, K=3;n_9=6, n_10=4, n_12=2
+        # → w_9 = 12/(3·6) = 2/3, w_10 = 12/(3·4) = 1, w_12 = 12/(3·2) = 2
+        labels = np.asarray([9] * 6 + [10] * 4 + [12] * 2, dtype=np.int64)
+        w = bc_worker._balanced_class_weights(labels)
+        self.assertEqual(w.shape, (15,))
+        self.assertAlmostEqual(w[9], 12 / (3 * 6))
+        self.assertAlmostEqual(w[10], 12 / (3 * 4))
+        self.assertAlmostEqual(w[12], 12 / (3 * 2))
+        # 类集 = 实际出现类:未出现类记 0.0(占位,CE 不消费)
+        for absent in (0, 1, 5, 11, 13, 14):
+            self.assertEqual(w[absent], 0.0)
+
+    def test_single_class_weight_is_exactly_one(self):
+        w = bc_worker._balanced_class_weights(np.asarray([9] * 7))
+        self.assertEqual(float(w[9]), 1.0)   # N/(K·n_c) = 7/(1·7)
+
+    def test_deterministic_pure_arithmetic(self):
+        labels = np.asarray([9, 12, 9, 10, 12, 9], dtype=np.int64)
+        w1 = bc_worker._balanced_class_weights(labels)
+        w2 = bc_worker._balanced_class_weights(labels)
+        self.assertTrue(np.array_equal(w1, w2))
+        # 与标签顺序无关(纯计数算术)
+        w3 = bc_worker._balanced_class_weights(np.sort(labels))
+        self.assertTrue(np.array_equal(w1, w3))
+
+    def test_empty_labels_fail_loud(self):
+        with self.assertRaisesRegex(RuntimeError, "空标签集"):
+            bc_worker._balanced_class_weights(
+                np.asarray([], dtype=np.int64))
+
+
+class V1TrainPathUnweightedTests(_PatchMixin, unittest.TestCase):
+    """方案甲 b 铁律面:v1 训练路径零触碰(v1 调用不传权)。"""
+
+    def test_train_bc_shared_function_default_is_none(self):
+        import inspect
+        sig = inspect.signature(bc_worker.train_bc)
+        self.assertIsNone(sig.parameters["class_weights"].default)
+
+    def test_call_sites_verbatim_v1_unweighted_v2_weighted(self):
+        src = BC_WORKER.read_text()
+        # v1 主训调用零加权原封;v2 主训调用系类平衡加权(方案甲 b)
+        self.assertIn("model, top1, recalls = train_bc(X, Y, groups)\n", src)
+        self.assertIn("class_weights=class_weights_v2)", src)
+
+    def test_v1_main_primary_train_call_passes_no_weights(self):
+        with tempfile.TemporaryDirectory() as d:
+            calls = []
+
+            def fake_train_bc(X, Y, groups, class_weights=None):
+                calls.append(class_weights)
+                return object(), 0.99, {9: 0.99}
+
+            episodes = np.arange(100, 108, dtype=np.int64)
+            groups = np.repeat(episodes, 4)
+            n = len(groups)
+            dataset = (np.zeros((n, 298), dtype=np.float32),
+                       np.full(n, 9, dtype=np.int64), groups)
+            self._patch("OUT", pathlib.Path(d))
+            self._patch("collect", lambda: dataset)
+            self._patch("train_bc", fake_train_bc)
+            self._patch("export_sb3_sd", lambda m: {"w": torch.zeros(1)})
+            self._patch("artifact_provenance", lambda: {
+                "schema_version": 1, "protocol_version": PROTOCOL_VERSION,
+                "implementation_sha256": "a" * 64,
+                "generator_sha256": BC_WORKER_SHA,
+                "manager_npz_sha256": "c" * 64})
+            bc_worker.main()
+            self.assertEqual(len(calls), 1)     # 主训一次
+            self.assertIsNone(calls[0])         # v1 调用不传权(方案甲铁律)
+            rec = json.loads(
+                (pathlib.Path(d) / "bc_report.json").read_text())
+            self.assertIs(rec["class_weighted_retry"], False)
+            # v1 回执面原封:方案甲新字段只入 v2 回执,禁漏入 v1
+            self.assertNotIn("collection_episodes", rec)
+            self.assertNotIn("class_weights", rec)
 
 
 class V1SurfaceRegressionTests(_PatchMixin, unittest.TestCase):
