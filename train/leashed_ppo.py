@@ -10,6 +10,11 @@
 
 train() 系 sb3_contrib 2.x ppo_mask.py 的诚实复写(上游无损失 hook),
 插入点仅一处;上游若升版须重新比对(预注册 D4 入册警示)。
+E3(内容案 ④乙,PREREG-内容案-课⑤x④乙):第二插入段——辅助示范 CE
+λ_bc·(−log π_θ(y_demo|s_demo)),正样本注入之字面实现(无教师全分布项,
+不与 KING 锚在其余动作上对拉);锚教师/β=0.015625/锚公式(上段皮筋)零触碰
+(圈 3/圈 5 双引)。λ_bc=0 或示范池未挂载时整段不进图(不加载不采样,
+G0-2a 张量级恒等先决);demo minibatch 用专用 rng 流(播种同 E1③ 形制)。
 标定探针(G-CAL):到达 --calib-probes 指定全局步时,对首个 minibatch 用
 autograd.grad 测 g_ce/g_pg 与 teacher_diverge,写 calib.jsonl;
 diverge>20% 置 _calib_tripped,由哨兵回调终止本腿(驱动裁决重标定)。
@@ -32,12 +37,28 @@ from sb3_contrib import MaskablePPO
 from stable_baselines3.common.utils import explained_variance
 
 HUGE_NEG = -1e8
+# E3③ demo minibatch 专用 rng 流之固定偏移(播种规则同 E1③ 形制:自训练种子
+# 以固定偏移确定性派生,零染训练 RNG;承 worker_env._P_SKIP_SEED_OFFSET=2**33+26
+# 先例)。偏移值系施工裁量注记:取 2**34+26,与 p_skip 流族 (seed+rank)+2**33+26
+# (rank<num_envs,远小于 2**33)及 [0,2**32) 训练种子域构造性不相交。
+_BC_AUX_SEED_OFFSET = 2**34 + 26
 _COPIED_SB3_CONTRIB_VERSION = "2.9.0"
 if version("sb3-contrib") != _COPIED_SB3_CONTRIB_VERSION:
     raise RuntimeError(
         "leashed_ppo.py 只审计过 sb3-contrib "
         f"{_COPIED_SB3_CONTRIB_VERSION}；当前为 {version('sb3-contrib')}，"
         "请锁回该版本或重新完成 G-KL-B 上游等价审计")
+
+
+def derive_bc_aux_rng(seed: int | None) -> np.random.Generator:
+    """E3③:demo minibatch 专用 rng 流(固定偏移确定性派生,复现主张由此成立)。
+
+    seed=None 时取随机源——镜像 worker_env rng_seed=None 分支形制;
+    案腿一律显式 --seed,该分支仅覆盖非案手跑。
+    """
+    if seed is None:
+        return np.random.default_rng()
+    return np.random.default_rng(int(seed) + _BC_AUX_SEED_OFFSET)
 
 
 def build_teacher(sd_path: str | pathlib.Path | bytes) -> th.nn.Module:
@@ -86,10 +107,20 @@ def build_teacher(sd_path: str | pathlib.Path | bytes) -> th.nn.Module:
 class LeashedMaskablePPO(MaskablePPO):
     def __init__(self, *args, distill_beta: float = 0.0, teacher_path: str | None = None,
                  teacher_sha256: str | None = None,
-                 calib_probes: list | None = None, calib_out: str | None = None, **kwargs):
+                 calib_probes: list | None = None, calib_out: str | None = None,
+                 bc_aux_lambda: float = 0.0, **kwargs):
         self.distill_beta = float(distill_beta)
         if not np.isfinite(self.distill_beta) or self.distill_beta < 0:
             raise ValueError(f"distill_beta 必须是有限非负数,实得 {distill_beta!r}")
+        # E3 ④乙:辅助示范 CE 系数(镜像 β 形制;示范池经 mount_bc_aux_demos 挂载)
+        self.bc_aux_lambda = float(bc_aux_lambda)
+        if not np.isfinite(self.bc_aux_lambda) or self.bc_aux_lambda < 0:
+            raise ValueError(f"bc_aux_lambda 必须是有限非负数,实得 {bc_aux_lambda!r}")
+        self._bc_aux_obs = None
+        self._bc_aux_actions = None
+        self._bc_aux_masks = None
+        self._bc_aux_rng = None
+        self._last_bc_aux_ce = None
         self.teacher_path = teacher_path
         self.teacher_sha256 = teacher_sha256
         if teacher_path:
@@ -136,8 +167,13 @@ class LeashedMaskablePPO(MaskablePPO):
                     f"teacher={self.teacher[0].in_features}→{self.teacher[-1].out_features}, "
                     f"env={obs_dim}→{n_actions}")
         # _excluded_save_params 成员在 load 后不存在,兜底重建
+        # (E3:bc_aux_lambda 系持久化标量,旧 zip 无之亦兜底 0.0;示范池/专用流
+        #  不入 zip,resume 由 train_ppo 案内重挂,λ 由 CLI 显式覆盖承 β 先例)
         for attr, dv in (("_calib_done", set()), ("_calib_tripped", False),
-                         ("_last_distill_ce", None), ("_last_diverge", None)):
+                         ("_last_distill_ce", None), ("_last_diverge", None),
+                         ("bc_aux_lambda", 0.0), ("_bc_aux_obs", None),
+                         ("_bc_aux_actions", None), ("_bc_aux_masks", None),
+                         ("_bc_aux_rng", None), ("_last_bc_aux_ce", None)):
             if not hasattr(self, attr):
                 setattr(self, attr, dv)
 
@@ -146,7 +182,9 @@ class LeashedMaskablePPO(MaskablePPO):
         # _calib_tripped=True 若被 load 驮回,会在续训第一步误杀健康腿(审查团确认项)
         return super()._excluded_save_params() + [
             "teacher", "_last_distill_ce", "_last_diverge",
-            "_calib_tripped", "_calib_done", "calib_record_only"]
+            "_calib_tripped", "_calib_done", "calib_record_only",
+            "_bc_aux_obs", "_bc_aux_actions", "_bc_aux_masks",
+            "_bc_aux_rng", "_last_bc_aux_ce"]
 
     def _teacher_probs(self, obs: th.Tensor, action_masks: th.Tensor) -> th.Tensor:
         t_logits = self.teacher(obs)
@@ -155,6 +193,59 @@ class LeashedMaskablePPO(MaskablePPO):
             raise ValueError("动作掩码存在全 False 行,无法定义教师/学生分布")
         t_logits = th.where(mask, t_logits, th.full_like(t_logits, HUGE_NEG))
         return th.softmax(t_logits, dim=-1)
+
+    def mount_bc_aux_demos(self, obs, actions, masks,
+                           rng: np.random.Generator) -> None:
+        """E3 ④乙:挂载辅助示范池(train_ppo 已过 v2 专用验证器与 12 类主案过滤)。
+
+        锚教师(teacher/KING_SD)与 β/锚公式零触碰(圈 3/圈 5 双引);本池仅供
+        辅助示范 CE(正样本注入),不与 KING 锚在其余动作上对拉。rng 须为专用
+        流(derive_bc_aux_rng 派生,零染训练 RNG)。
+        """
+        obs = np.asarray(obs, dtype=np.float32)
+        actions = np.asarray(actions)
+        masks = np.asarray(masks)
+        n_actions = int(getattr(self.action_space, "n"))
+        obs_dim = int(np.prod(self.observation_space.shape))
+        if obs.ndim != 2 or len(obs) == 0 or obs.shape[1] != obs_dim:
+            raise ValueError(
+                f"bc_aux 示范观测形状异常: {obs.shape}(期望 (N,{obs_dim}),N≥1)")
+        if (actions.ndim != 1 or len(actions) != len(obs)
+                or not np.issubdtype(actions.dtype, np.integer)
+                or not bool(((actions >= 0) & (actions < n_actions)).all())):
+            raise ValueError("bc_aux 示范标签形状/类型/取值异常")
+        if masks.shape != (len(obs), n_actions) or masks.dtype != np.bool_:
+            raise ValueError(
+                f"bc_aux 示范掩码形状/dtype 异常: {masks.shape},{masks.dtype}")
+        if not bool(masks[np.arange(len(actions)), actions].all()):
+            raise ValueError(
+                "bc_aux 示范对存在标签被自身掩码禁止"
+                "(掩位 log-prob 为 -1e8,on-manifold 破缺,fail-loud)")
+        if not isinstance(rng, np.random.Generator):
+            raise ValueError("bc_aux 须挂专用 np.random.Generator 流(零染训练 RNG)")
+        self._bc_aux_obs = th.as_tensor(obs, device=self.device)
+        self._bc_aux_actions = th.as_tensor(actions.astype(np.int64),
+                                            device=self.device)
+        self._bc_aux_masks = th.as_tensor(masks, device=self.device)
+        self._bc_aux_rng = rng
+
+    def _bc_aux_ce_loss(self) -> th.Tensor:
+        """④乙 辅助示范 CE(正样本注入之字面实现):−log π_θ(y|s) 之 demo
+        minibatch 均值——无教师全分布项,不与 KING 锚在其余动作上对拉;
+        前向消费逐样本 masks(12 头梯度真实到达由此通路成立,反 P2 指纹)。
+        demo minibatch 尺寸 = min(batch_size, 池量)(施工裁量),于专用流
+        无放回抽取。"""
+        if self._bc_aux_obs is None or self._bc_aux_rng is None:
+            raise RuntimeError(
+                "λ_bc>0 但示范池未挂载(fail-loud 条款,反 P2 构造性零通路)")
+        n = int(self._bc_aux_obs.shape[0])
+        size = min(int(self.batch_size), n)
+        index = th.as_tensor(
+            self._bc_aux_rng.choice(n, size=size, replace=False),
+            dtype=th.long, device=self.device)
+        dist = self.policy.get_distribution(
+            self._bc_aux_obs[index], action_masks=self._bc_aux_masks[index])
+        return -dist.log_prob(self._bc_aux_actions[index]).mean()
 
     def _calib_probe(self, policy_loss, distill_ce, diverge):
         """G-CAL 探针:g_pg/g_ce 范数只记账;diverge>20% 置旗(哨兵回调终止本腿)。"""
@@ -186,6 +277,9 @@ class LeashedMaskablePPO(MaskablePPO):
         # ===== sb3_contrib ppo_mask.py train() 诚实复写;“皮筋”段以 β>0 守卫 =====
         if not np.isfinite(self.distill_beta) or self.distill_beta < 0:
             raise ValueError(f"distill_beta 必须是有限非负数,实得 {self.distill_beta!r}")
+        if not np.isfinite(self.bc_aux_lambda) or self.bc_aux_lambda < 0:
+            raise ValueError(
+                f"bc_aux_lambda 必须是有限非负数,实得 {self.bc_aux_lambda!r}")
         self.policy.set_training_mode(True)
         self._update_learning_rate(self.policy.optimizer)
         clip_range = self.clip_range(self._current_progress_remaining)
@@ -196,6 +290,7 @@ class LeashedMaskablePPO(MaskablePPO):
         pg_losses, value_losses = [], []
         clip_fractions = []
         distill_ces, diverges, t_confs = [], [], []
+        bc_aux_ces = []
         calib_due = (self.distill_beta > 0 and self.calib_out is not None
                      and any(p not in self._calib_done and self.num_timesteps >= p
                              for p in self.calib_probes))
@@ -273,6 +368,14 @@ class LeashedMaskablePPO(MaskablePPO):
                         calib_due = False
                 # ===== 皮筋段结束 =====
 
+                # ===== ④乙 辅助示范 CE(E3 第二插入段;λ_bc=0 之零侵入:整段
+                # 跳过,不采样不进损失图——G0-2a 张量级恒等先决;锚公式零触碰)=====
+                if self.bc_aux_lambda > 0:
+                    bc_aux_ce = self._bc_aux_ce_loss()
+                    loss = loss + self.bc_aux_lambda * bc_aux_ce
+                    bc_aux_ces.append(bc_aux_ce.item())
+                # ===== ④乙段结束 =====
+
                 with th.no_grad():
                     log_ratio = log_prob - rollout_data.old_log_prob
                     approx_kl_div = th.mean((th.exp(log_ratio) - 1) - log_ratio).cpu().numpy()
@@ -324,3 +427,10 @@ class LeashedMaskablePPO(MaskablePPO):
         else:
             self._last_distill_ce = None    # β=0 腿:哨兵行报 null,双簿对账干净
             self._last_diverge = None
+        # E3 ④乙读数(跨 minibatch 均值,承皮筋"不许只记末批"口径)
+        self.logger.record("train/bc_aux_lambda", self.bc_aux_lambda)
+        if bc_aux_ces:
+            self.logger.record("train/bc_aux_ce", float(np.mean(bc_aux_ces)))
+            self._last_bc_aux_ce = float(np.mean(bc_aux_ces))
+        else:
+            self._last_bc_aux_ce = None     # λ_bc=0:报 null,零侵入面干净

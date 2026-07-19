@@ -42,8 +42,11 @@ _RUN_ARTIFACTS = (
 )
 _GEAR_PRESENT_INDEX = 293  # base obs zero-based; 文档中的“第 294 维”
 # E1 连带改(:404 legacy 打印):契约修订号单一真源——值记录与打印同取此常量。
-# E4(契约 4→5,rev5)系内容案另段施工,不在 E1 范围,此处保持 4。
-_CONTRACT_REVISION = 4
+# E4(PREREG-内容案 圈 7,契约 4→5):+dry_curriculum/+bc_aux 两键,三腿统一
+# rev5——L-base 双键均 "disabled"(同案零双版本);skip_dry 键仍 CLI 旗字面值
+# (rev3 勘正,跨案取证锚禁被谓词覆写);旧检查点(rev4)非 legacy 续训将拒
+# 系已知代价照录(R8/残余⑨)。
+_CONTRACT_REVISION = 5
 _RUNTIME_VERSIONS = dict(RUNTIME_PACKAGE_VERSIONS)
 _ALGORITHM_RECIPE = {
     "gae_lambda": 0.95,
@@ -62,6 +65,23 @@ _BC_REPORT_SCHEMA_VERSION = 1
 _EXPORT_MANIFEST_SCHEMA_VERSION = 1
 _WORKER_BC_DEMO_SEEDS = tuple(range(100, 228))
 _WORKER_BC_FORBIDDEN_ACTIONS = (11, 12)
+# E3 ④乙:禁采断言世代条件化(图纸 E2 共同真源)——v1 禁 (11,12) 原封(上行),
+# v2 禁 11 允 12(守卫面不弱化)。
+_WORKER_BC_V2_FORBIDDEN_ACTIONS = (11,)
+# E3 ④乙:λ_bc 主案冻结常量(D7 注册裁量,与蒸馏锚 β=0.015625 同量级);
+# 系 L-full CLI 显传值之文档/测试锚,非 --bc-aux-lambda 默认值(默认 0.0=不在位)。
+_BC_AUX_MAIN_LAMBDA = 0.015625
+# E6 探针集钉死(PREREG-内容案 E6):三腿仪表探针一律钉 BC-v1 demos【字节】——
+# 双参考 0.7515/0.6305 跨腿跨案可比之担保物系 demos 数组同一性,由此字节断言
+# 承载(np.savez_compressed 字节确定,承工程 B2 实测);加载处断言,伪字节必炸。
+# BC-v2 仅经 --bc-aux-demos 进辅助损失,canonical bc-worker 路径不动。
+_BC_V1_DEMOS_SHA256 = (
+    "3bf892d611e41853eca8fce0cb146753af41ad2c3a21b6c581df1041fb1d9363")
+# E5 探针专用 rng 种子(承 DryAnchorSentinel rng(26) 先例,孪生件同形;
+# 只读探针自有流,不碰训练 RNG)。
+_E5_PROBE_RNG_SEED = 26
+# E5 探针示范态每组抽样上限(承 DryAnchorSentinel 固定抽 2000 先例)。
+_E5_PROBE_GROUP_CAP = 2000
 _BC_REPLAY_SEEDS = tuple(range(7000, 7032))
 _BC_REPLAY_CACHE: dict[tuple[str, str, str, str], dict] = {}
 _BC_PASS_KEYS = {
@@ -364,7 +384,8 @@ def _training_contract(args, model, batch_size: int,
                        manager_npz_sha256: str | None = None,
                        worker_npz_sha256: str | None = None,
                        demos_sha256: str | None = None,
-                       implementation_sha256: str | None = None) -> dict:
+                       implementation_sha256: str | None = None,
+                       bc_aux_demos_sha256: str | None = None) -> dict:
     mode = "worker" if args.worker else "options" if args.options else \
         "flat_clock" if args.flat_clock else "flat"
     action_count = getattr(model.action_space, "n", None)
@@ -384,6 +405,10 @@ def _training_contract(args, model, batch_size: int,
         "device": str(model.device),
         "skip_dry": bool(args.skip_dry),
         "drink_sovereignty": not args.no_drink_sovereignty,
+        # E4 rev5 双键(圈 7,三腿统一):disabled 或实况载荷;skip_dry 键
+        # 保持 CLI 旗字面值不受此二键影响(rev3 勘正,契约与回执同构)。
+        "dry_curriculum": _contract_dry_curriculum(args),
+        "bc_aux": _contract_bc_aux(args, bc_aux_demos_sha256),
         "manager_npz_sha256": manager_npz_sha256,
         "worker_npz_sha256": worker_npz_sha256,
         "demos_sha256": demos_sha256,
@@ -442,6 +467,8 @@ def _precheck_dry_window_demos(args) -> None:
     demos = pathlib.Path(__file__).resolve().parent / "runs" / "bc-worker" / "demos.npz"
     _require(demos.is_file(),
              f"干窗机制(--skip-dry/--dry-curriculum-schedule)所需示范集不存在: {demos}")
+    # E6 探针集钉死:canonical BC-v1 demos 字节 ≡ 冻结常量(加载处断言)。
+    _assert_bc_v1_demos_frozen(demos)
     policy = demos.with_name("policy_sd.pt")
     _require(policy.is_file(),
              f"干窗机制(--skip-dry/--dry-curriculum-schedule)所需 BC 权重不存在: {policy}")
@@ -454,6 +481,9 @@ def _capture_dry_window_demos_sha256(args) -> str | None:
     if not _dry_window_mechanism_active(args):
         return None
     demos = pathlib.Path(__file__).resolve().parent / "runs" / "bc-worker" / "demos.npz"
+    # E6 探针集钉死:捕获而得之 sha 必为冻结常量(下游 DryAnchorSentinel 之
+    # expected_sha256 由此值供给,探针集经此传递性钉死)。
+    _assert_bc_v1_demos_frozen(demos)
     report = _validate_bc_report(demos.with_name("policy_sd.pt"), "data_gate")
     _, _, demos_sha256 = _load_dry_anchor_demos(demos, report.get("demos_sha256"))
     return demos_sha256
@@ -503,6 +533,125 @@ def _parse_dry_curriculum_schedule(spec: str) -> tuple[float, ...]:
     return tuple(table)
 
 
+# ---- E3 ④乙 辅助示范通路(PREREG-内容案 E3;两旗互不强制,零侵入条款) ----
+
+
+def _bc_aux_active(args) -> bool:
+    """E3 在位谓词:辅助通路在位 = λ_bc>0 ∧ --bc-aux-demos 给定。
+
+    图纸字面:λ_bc=0 或未给 --bc-aux-demos 时零侵入——不加载、不采样、
+    不进损失图(G0-2a 张量级恒等先决);两旗互不强制,单独给任一旗不报错。
+    """
+    return args.bc_aux_lambda > 0 and bool(args.bc_aux_demos)
+
+
+def _load_bc_aux_demos_v2(path: str | pathlib.Path):
+    """E3 ④乙:bc-worker-v2 示范集专用验证器(镜像断言按世代分别成文)。
+
+    v1 面(_BC_REPORT_SCHEMA_VERSION=1/_validate_bc_report/_load_dry_anchor_demos/
+    canonical bc-worker 路径)原封零触碰;本验证器单列,v2 demos schema 承图纸
+    E2 共同真源 = v1 键(X/Y/episode_id)+ 逐样本 masks 数组(采集时
+    env.action_masks() 现场捕获系唯一 on-manifold 真源,obs 反推口径禁用)。
+    世代条件化禁采镜像:v2 禁 11 允 12。v1 之榨干态断言((x[:,297]==1).any())
+    系 dry-anchor 探针专属,不随镜(施工注记)。返回 (X, Y, masks, sha256)。
+    """
+    import numpy as np
+
+    p = pathlib.Path(path)
+    try:
+        payload = p.read_bytes()
+    except OSError as exc:
+        raise ValueError(f"④乙 v2 示范集不可读: {p}: {exc}") from exc
+    sha256 = hashlib.sha256(payload).hexdigest()
+    try:
+        with np.load(io.BytesIO(payload), allow_pickle=False) as data:
+            _require(all(key in data for key in ("X", "Y", "episode_id", "masks")),
+                     "④乙 v2 demos.npz 缺少 X/Y/episode_id/masks(v2 schema 承 E2)")
+            x, y = data["X"].copy(), data["Y"].copy()
+            episode_id, masks = data["episode_id"].copy(), data["masks"].copy()
+    except (OSError, ValueError) as exc:
+        raise ValueError(f"④乙 v2 示范集不可读: {p}: {exc}") from exc
+    _require(x.ndim == 2 and x.shape[1] == 298
+             and y.ndim == 1 and len(x) == len(y),
+             f"④乙 v2 数组形状异常:X={x.shape},Y={y.shape}")
+    _require(x.dtype == np.float32 and np.issubdtype(y.dtype, np.integer),
+             f"④乙 v2 dtype 异常:X={x.dtype},Y={y.dtype}")
+    _require(episode_id.ndim == 1 and len(episode_id) == len(x)
+             and np.issubdtype(episode_id.dtype, np.integer)
+             and len(np.unique(episode_id)) >= 2,
+             "④乙 v2 episode_id 形状/类型/独立局数异常")
+    _require(masks.ndim == 2 and masks.shape == (len(x), 15)
+             and masks.dtype == np.bool_,
+             f"④乙 v2 masks 形状/dtype 异常:{getattr(masks, 'shape', None)},"
+             f"{getattr(masks, 'dtype', None)}")
+    _require(bool(((y >= 0) & (y < 15)).all()), "④乙 v2 标签越界")
+    _require(not np.isin(y, _WORKER_BC_V2_FORBIDDEN_ACTIONS).any(),
+             "④乙 v2 示范集含世代禁采动作 11(v2 禁 11 允 12,守卫面不弱化)")
+    # 裁量强化注记:逐样本标签须为自身掩码合法位(on-manifold 真实执行拍之必然,
+    # 掩位标签将使辅助 CE 取 -1e8 位);其对 12 类对蕴含图纸 m[12]=True 断言。
+    _require(bool(masks[np.arange(len(y)), y].all()),
+             "④乙 v2 存在标签被自身掩码禁止的示范对(on-manifold 破缺,fail-loud)")
+    return x, y, masks, sha256
+
+
+def _filter_bc_aux_demo_pairs(x, y, masks):
+    """E3 主案:限 12 类示范对(正样本注入之字面实现,不与 KING 锚在其余动作上
+    对拉);全类 OC 系图纸备选未接线(启用须另案批准,非本施工面)。"""
+    import numpy as np
+
+    keep = y == 12
+    _require(bool(keep.any()),
+             "--bc-aux-demos 中没有 12 类示范对(主案限 12 类,fail-loud)")
+    kept_masks = masks[keep]
+    # 图纸数据面断言(E3④/G0-2b/E7 逐字):全部 12 类示范对 m[12]=True。
+    _require(bool(kept_masks[:, 12].all()),
+             "12 类示范对存在 m[12]=False:采集面 on-manifold 破缺")
+    return x[keep], y[keep], kept_masks
+
+
+# ---- E4 契约 rev5 双键 + E6 探针集钉死(PREREG-内容案 E4/E6) ----
+
+
+def _contract_dry_curriculum(args):
+    """E4 rev5 键:课⑤不在位 = "disabled";在位 = {"schedule": CLI 字面表述}。
+
+    载荷取 --dry-curriculum-schedule 之 CLI 字面串(与 D3 逐腿附加项列同源,
+    L-cur/L-full 携主表;L-base 无 schedule → disabled)。schedule 字面即
+    全表语义真源(_parse_dry_curriculum_schedule 确定性展开),resume 对账
+    由字符串相等承载。
+    """
+    return ({"schedule": str(args.dry_curriculum_schedule)}
+            if args.dry_curriculum_schedule else "disabled")
+
+
+def _contract_bc_aux(args, bc_aux_demos_sha256):
+    """E4 rev5 键:④乙不在位 = "disabled";在位 = {"lambda": λ, "demos_sha256"}。
+
+    在位谓词 = _bc_aux_active(λ_bc>0 ∧ demos 给定,E3 单一真源);在位而缺
+    v2 件 sha 系装配错误,fail-loud 拒写契约。
+    """
+    if not _bc_aux_active(args):
+        return "disabled"
+    _require(_is_sha256(bc_aux_demos_sha256),
+             "④乙在位但缺 bc-worker-v2 示范集 sha256,拒绝写入 rev5 契约")
+    return {"lambda": float(args.bc_aux_lambda),
+            "demos_sha256": bc_aux_demos_sha256}
+
+
+def _assert_bc_v1_demos_frozen(path: str | pathlib.Path) -> str:
+    """E6 探针集钉死:BC-v1 demos【字节】≡ 冻结常量,失配即炸(加载处断言)。
+
+    担保物 = dry-anchor 双参考 0.7515/0.6305 跨腿跨案可比之 demos 数组同一性
+    (承工程 B2/minor-5);BC 案内重生成仅刷新回执字段、demos 字节不变
+    (np.savez_compressed 字节确定,实测在案)。返回实测 sha256。
+    """
+    actual = _capture_file_sha256(path, "BC-v1 demos(E6 探针集)")
+    _require(actual == _BC_V1_DEMOS_SHA256,
+             f"E6 探针集钉死失败:BC-v1 demos 字节漂移 {actual} != "
+             f"{_BC_V1_DEMOS_SHA256}(三腿仪表探针一律钉 v1 字节,禁换集)")
+    return actual
+
+
 def _validate_args(args) -> None:
     _require(args.total_steps > 0, "--total-steps 必须 > 0")
     _require(args.num_envs > 0, "--num-envs 必须 > 0")
@@ -523,6 +672,15 @@ def _validate_args(args) -> None:
     _require(args.ckpt_every_steps > 0, "--ckpt-every-steps 必须 > 0")
     _require(args.sentinel_every > 0, "--sentinel-every 必须 > 0")
     _require(args.dry_anchor_every > 0, "--dry-anchor-every 必须 > 0")
+    # E5 仪表旋钮(只记不裁;0 = 不在位 = 零侵入,G0-2a 先决)
+    _require(args.distill_ce_probe_every >= 0, "--distill-ce-probe-every 不能为负")
+    _require(args.drywin_metrics_every >= 0, "--drywin-metrics-every 不能为负")
+    _require(args.distill_ce_probe_every == 0
+             or (args.worker and args.algo == "mppo"),
+             "--distill-ce-probe-every 只适用于 --worker --algo mppo"
+             "(探针需 Leashed 教师)")
+    _require(args.drywin_metrics_every == 0 or args.worker,
+             "--drywin-metrics-every 只适用于 --worker")
     if args.run_name is not None:
         _require(bool(args.run_name) and pathlib.Path(args.run_name).name == args.run_name
                  and args.run_name not in (".", ".."),
@@ -561,6 +719,18 @@ def _validate_args(args) -> None:
     _require(not (args.calib_probes or args.calib_record_only)
              or (args.worker and args.algo == "mppo"),
              "G-CAL 参数只适用于 --worker --algo mppo")
+    # E3 ④乙:两旗互不强制(单独给任一旗不报错);在位 = λ_bc>0 ∧ demos 给定。
+    _require(math.isfinite(args.bc_aux_lambda) and args.bc_aux_lambda >= 0,
+             "--bc-aux-lambda 必须是有限非负数")
+    _require(not _bc_aux_active(args) or (args.worker and args.algo == "mppo"),
+             "④乙辅助通路(--bc-aux-lambda>0 且 --bc-aux-demos)"
+             "只适用于 --worker --algo mppo")   # 承 --distill-beta 同型门(裁量注记)
+    if _bc_aux_active(args):
+        _require(pathlib.Path(args.bc_aux_demos).is_file(),
+                 f"④乙 v2 示范集(bc-worker-v2)不存在: {args.bc_aux_demos}")
+        # v2 专用验证器 + 12 类主案过滤 fail-loud(镜像 _precheck 先例,
+        # 加载即弃;不在位时零侵入——连文件存在性都不查)
+        _filter_bc_aux_demo_pairs(*_load_bc_aux_demos_v2(args.bc_aux_demos)[:3])
     _require(args.arch != "attn" or not (args.worker or args.options or args.flat_clock),
              "EntityAttention 只支持 295 维平面观测")
 
@@ -1716,6 +1886,269 @@ class DryCurriculumCallback(BaseCallback):
         return True
 
 
+# ---- E5 新增仪表(PREREG-内容案 E5;全数只记不裁,默认零侵入,纳入 W-G0
+# 证明范围;探针示范集一律钉 BC-v1 demos 字节,E6) ----
+
+
+def _probe_legacy_masks(obs):
+    """E5 探针共用旧口径掩码(承 DryAnchorSentinel v28-v30 口径逐字:11/12 恒掩,
+    14 依 gear 位)——示范集系 v1 世代无逐样本掩码,完整部署掩码不可自 obs 全量
+    重构(E2 注记,反推口径系第二真源禁用);取跨腿同尺之旧口径并在输出行注记
+    mask_mode,只记不裁(施工裁量,交接单单列)。"""
+    import torch as th
+
+    masks = th.ones((len(obs), 15), dtype=th.bool, device=obs.device)
+    masks[:, 11] = masks[:, 12] = False
+    masks[:, 14] = obs[:, _GEAR_PRESENT_INDEX] > 0.5
+    return masks
+
+
+class DistillCeProbe(BaseCallback):
+    """E5① 干/鲜 distill_ce 分列离线探针(只记不裁;DryAnchorSentinel 之孪生件)。
+
+    固定示范态集(BC-v1 demos,E6 字节钉死)上按 x[:,297] 干旗分干/鲜两组,
+    算教师-学生 distill CE(公式镜像 leashed_ppo train() 皮筋段:
+    ce = −Σ t_probs·logp_all 之均值;教师/学生同喂旧口径掩码);专用 rng
+    (承 dry-anchor rng(26) 先例),零触训练路径(纯读+IO,不碰训练 RNG/梯度/
+    env 流)。训练内 buffer 分列为守 G0-2a 零侵入证明面而废止(工程 M2),
+    本件即其注册替代形制;课②定标数据供给义务(圈 12 改写)同由此满足。
+    输出 run_dir/distill_ce_probe.jsonl。
+    """
+
+    def __init__(self, run_dir: pathlib.Path, demos_npz: str, every: int):
+        super().__init__()
+        import numpy as np
+
+        self.run_dir = run_dir
+        self.every = int(every)
+        _require(self.every > 0, "distill-ce 探针间隔必须 > 0")
+        self.next_at = self.every
+        self._last_emit_step = None
+        # E6:加载处断言 = 冻结常量即 expected_sha256(伪字节必炸)。
+        X, _, self.demos_sha256 = _load_dry_anchor_demos(
+            demos_npz, _BC_V1_DEMOS_SHA256)
+        dry_rows = np.flatnonzero(X[:, 297] == 1.0)
+        fresh_rows = np.flatnonzero(X[:, 297] == 0.0)
+        _require(len(dry_rows) > 0 and len(fresh_rows) > 0,
+                 "distill-ce 探针需干/鲜两组示范态均非空(fail-loud)")
+        rng = np.random.default_rng(_E5_PROBE_RNG_SEED)
+        dry_idx = rng.choice(dry_rows,
+                             size=min(_E5_PROBE_GROUP_CAP, len(dry_rows)),
+                             replace=False)
+        fresh_idx = rng.choice(fresh_rows,
+                               size=min(_E5_PROBE_GROUP_CAP, len(fresh_rows)),
+                               replace=False)
+        self.X_dry, self.X_fresh = X[dry_idx], X[fresh_idx]
+        if not (np.isfinite(self.X_dry).all() and np.isfinite(self.X_fresh).all()):
+            raise ValueError("distill-ce 探针样本含非有限观测")
+
+    def _on_training_start(self) -> None:
+        self.next_at = ((self.num_timesteps // self.every) + 1) * self.every
+
+    def _on_step(self) -> bool:
+        if self.num_timesteps >= self.next_at:
+            while self.num_timesteps >= self.next_at:
+                self.next_at += self.every
+            self._emit(final=False)
+        return True
+
+    def _group_ce(self, x) -> float:
+        import torch as th
+
+        from leashed_ppo import HUGE_NEG
+
+        with th.no_grad():
+            obs = th.as_tensor(x, device=self.model.device)
+            masks = _probe_legacy_masks(obs)
+            t_logits = self.model.teacher(obs)
+            t_logits = th.where(masks, t_logits,
+                                th.full_like(t_logits, HUGE_NEG))
+            t_probs = th.softmax(t_logits, dim=-1)
+            dist = self.model.policy.get_distribution(obs, action_masks=masks)
+            logp_all = dist.distribution.logits   # 归一化 log-probs(掩位≈-1e8)
+            return float(-(t_probs * logp_all).sum(dim=-1).mean())
+
+    def _emit(self, final: bool) -> None:
+        step = int(self.num_timesteps)
+        if self._last_emit_step == step:
+            return
+        _require(getattr(self.model, "teacher", None) is not None,
+                 "distill-ce 探针需教师在位(Leashed teacher;fail-loud)")
+        line = {"probe": "distill-ce", "step": step,
+                "dry_ce": round(self._group_ce(self.X_dry), 6),
+                "dry_n": int(len(self.X_dry)),
+                "fresh_ce": round(self._group_ce(self.X_fresh), 6),
+                "fresh_n": int(len(self.X_fresh)),
+                "beta": getattr(self.model, "distill_beta", None),
+                "mask_mode": "dry-anchor-legacy",
+                "demos_sha16": self.demos_sha256[:16]}
+        if final:
+            line["final"] = True
+        with open(self.run_dir / "distill_ce_probe.jsonl", "a") as f:
+            f.write(json.dumps(line) + "\n")
+        self._last_emit_step = step
+        print(f"   [干/鲜蒸馏探针] {line}")
+
+    def _on_training_end(self) -> None:
+        if self.num_timesteps > 0 and self._last_emit_step != int(self.num_timesteps):
+            self._emit(final=True)
+
+
+class DryWindowMetricsCallback(BaseCallback):
+    """E5② 干窗行为仪表(只记不裁;审计缺口 i 之闭合起点,基线自本案首建)。
+
+    两读数面,均挂现有采样面、零新增训练侧接触:
+    ① 干态动作分布——固定干态示范集(BC-v1 demos 干旗态,E6 字节钉死,
+       dry-anchor 同款采样面)上学生策略之分布熵与 argmax 直方图(旧口径掩码,
+       mask_mode 注记随行);
+    ② 窗口经济——SB3 rollout infos 流之窗末 option_extra(学习窗,快进窗
+       不经此流)按干/鲜分组聚合工资 W 与宽度(τ̄/depth=dlvl_end);逐 emit
+       区间清零(区间局部均值);n=0 组记 n:0、均值 null 不消失(fail-closed)。
+    输出 run_dir/drywin_metrics.jsonl(台账词 DRYWIN_METRICS 之进程侧原料)。
+    """
+
+    _WINDOW_KEYS = ("n", "wage_sum", "tau_sum", "depth_sum")
+
+    def __init__(self, run_dir: pathlib.Path, demos_npz: str, every: int):
+        super().__init__()
+        import numpy as np
+
+        self.run_dir = run_dir
+        self.every = int(every)
+        _require(self.every > 0, "drywin 仪表间隔必须 > 0")
+        self.next_at = self.every
+        self._last_emit_step = None
+        # E6:加载处断言 = 冻结常量即 expected_sha256(伪字节必炸)。
+        X, _, self.demos_sha256 = _load_dry_anchor_demos(
+            demos_npz, _BC_V1_DEMOS_SHA256)
+        dry_rows = np.flatnonzero(X[:, 297] == 1.0)
+        _require(len(dry_rows) > 0, "drywin 仪表需干态示范集非空(fail-loud)")
+        rng = np.random.default_rng(_E5_PROBE_RNG_SEED)
+        idx = rng.choice(dry_rows,
+                         size=min(_E5_PROBE_GROUP_CAP, len(dry_rows)),
+                         replace=False)
+        self.X_dry = X[idx]
+        if not np.isfinite(self.X_dry).all():
+            raise ValueError("drywin 仪表干态样本含非有限观测")
+        self._acc = self._fresh_acc()
+
+    @classmethod
+    def _fresh_acc(cls) -> dict:
+        return {group: dict.fromkeys(cls._WINDOW_KEYS, 0)
+                for group in ("dry", "fresh")}
+
+    def _on_training_start(self) -> None:
+        self.next_at = ((self.num_timesteps // self.every) + 1) * self.every
+
+    def _on_step(self) -> bool:
+        for info in self.locals.get("infos", ()):
+            extra = info.get("option_extra") if isinstance(info, dict) else None
+            if extra is None:
+                continue
+            acc = self._acc["dry" if extra.get("dry") else "fresh"]
+            acc["n"] += 1
+            acc["wage_sum"] += float(extra["W"])
+            acc["tau_sum"] += float(extra["tau"])
+            acc["depth_sum"] += float(extra["dlvl_end"])
+        if self.num_timesteps >= self.next_at:
+            while self.num_timesteps >= self.next_at:
+                self.next_at += self.every
+            self._emit(final=False)
+        return True
+
+    def _dry_state_readout(self) -> tuple[float, list[int]]:
+        import numpy as np
+        import torch as th
+
+        with th.no_grad():
+            obs = th.as_tensor(self.X_dry, device=self.model.device)
+            masks = _probe_legacy_masks(obs)
+            dist = self.model.policy.get_distribution(obs, action_masks=masks)
+            entropy = float(dist.distribution.entropy().mean())
+            pred = dist.distribution.logits.argmax(-1).cpu().numpy()
+        hist = np.bincount(pred, minlength=15)
+        return entropy, [int(count) for count in hist]
+
+    @staticmethod
+    def _window_summary(acc: dict) -> dict:
+        n = acc["n"]
+        mean = (lambda total: round(total / n, 4) if n else None)
+        return {"n": int(n), "wage_mean": mean(acc["wage_sum"]),
+                "tau_mean": mean(acc["tau_sum"]),
+                "depth_mean": mean(acc["depth_sum"])}
+
+    def _emit(self, final: bool) -> None:
+        step = int(self.num_timesteps)
+        if self._last_emit_step == step:
+            return
+        entropy, hist = self._dry_state_readout()
+        line = {"metrics": "drywin", "step": step,
+                "dry_state_entropy": round(entropy, 6),
+                "dry_state_n": int(len(self.X_dry)),
+                "dry_state_argmax_hist": hist,
+                "windows": {group: self._window_summary(self._acc[group])
+                            for group in ("dry", "fresh")},
+                "mask_mode": "dry-anchor-legacy",
+                "demos_sha16": self.demos_sha256[:16]}
+        if final:
+            line["final"] = True
+        with open(self.run_dir / "drywin_metrics.jsonl", "a") as f:
+            f.write(json.dumps(line) + "\n")
+        self._acc = self._fresh_acc()
+        self._last_emit_step = step
+        print(f"   [干窗行为] {line}")
+
+    def _on_training_end(self) -> None:
+        if self.num_timesteps > 0 and self._last_emit_step != int(self.num_timesteps):
+            self._emit(final=True)
+
+
+# E5③ 金丝雀 a12/局 中期仪表(检查点离线序列用;可独立调用的统计函数+记录器,
+# 不挂训练回调——训练路径零接触,RC.11 逐点如实登记,只记不裁)。
+_A12_CANARY_SCHEMA_VERSION = "a12-canary/1"
+_A12_CANARY_STATS_KEYS = frozenset({
+    "episodes", "a12_total", "a12_per_episode", "episodes_with_a12", "a12_max"})
+
+
+def a12_canary_stats(a12_counts) -> dict:
+    """E5③ 统计件:逐局 a12 实饮计数序列 → a12/局 读数(驱动器自检查点评测
+    档案逐局提取后调用)。空序列/负数/非整数 fail-loud(零局之 a12/局 无定义,
+    禁静默记 0 冒充实测)。"""
+    counts = list(a12_counts)
+    _require(len(counts) > 0, "a12 金丝雀统计需 ≥1 局(空序列 fail-loud)")
+    _require(all(_is_plain_int(count) for count in counts),
+             "a12 逐局计数必须全为整数")
+    _require(all(count >= 0 for count in counts), "a12 逐局计数不能为负")
+    total = sum(counts)
+    return {"episodes": len(counts),
+            "a12_total": int(total),
+            "a12_per_episode": round(total / len(counts), 6),
+            "episodes_with_a12": sum(1 for count in counts if count > 0),
+            "a12_max": int(max(counts))}
+
+
+def record_a12_canary(out_path: str | pathlib.Path, *, checkpoint_step: int,
+                      manager: str, stats: dict, tag: str | None = None) -> dict:
+    """E5③ 记录器:a12 金丝雀读数落 jsonl 一行(台账词 A12_CANARY 之进程侧
+    原料;schema 封闭,键集合精确等断言,fail-loud)。返回落笔行。"""
+    _require(_is_plain_int(checkpoint_step) and checkpoint_step >= 0,
+             "a12 金丝雀 checkpoint_step 必须是非负整数")
+    _require(isinstance(manager, str) and bool(manager),
+             "a12 金丝雀 manager 必须是非空字符串")
+    _require(isinstance(stats, dict) and set(stats) == set(_A12_CANARY_STATS_KEYS),
+             f"a12 金丝雀 stats 键集合必须精确等于 {sorted(_A12_CANARY_STATS_KEYS)}")
+    line = {"canary": "a12", "schema_version": _A12_CANARY_SCHEMA_VERSION,
+            "checkpoint_step": int(checkpoint_step), "manager": manager}
+    if tag is not None:
+        _require(isinstance(tag, str) and bool(tag),
+                 "a12 金丝雀 tag 给定时必须是非空字符串")
+        line["tag"] = tag
+    line.update(stats)
+    with open(out_path, "a") as f:
+        f.write(json.dumps(line) + "\n")
+    return line
+
+
 class EpisodeJsonlCallback(BaseCallback):
     """逐局把战绩写进 progress.jsonl;周期性刷新 status.json(供 dashboard 轮询)。"""
 
@@ -1861,6 +2294,15 @@ def _main(resources: _TrainingResources):
                     default=str(pathlib.Path(__file__).resolve().parent
                                 / "runs" / "bc-worker" / "policy_sd.pt"),
                     help="v24 教师 state_dict(SB3 键名)")
+    ap.add_argument("--bc-aux-lambda", type=float, default=0.0,
+                    help="E3 ④乙:辅助示范 CE 系数 λ_bc(正样本注入,主案限 12 类"
+                         "示范对,不与 KING 锚对拉;主案冻结常量 0.015625,D7)。"
+                         "须与 --bc-aux-demos 同在方在位;两旗互不强制,"
+                         "任一不在 → 零侵入(不加载不采样不进损失图)")
+    ap.add_argument("--bc-aux-demos", default=None,
+                    help="E3 ④乙:bc-worker-v2 示范集 demos.npz 路径(v2 schema="
+                         "X/Y/episode_id+逐样本 masks,专用验证器;v1 canonical"
+                         " 路径 runs/bc-worker 分毫不动)")
     ap.add_argument("--resume-from", default=None,
                     help="v24 分腿续训:上一腿 model_final.zip 路径(禁与 --bc-init/--freeze 同用)")
     ap.add_argument("--calib-probes", default="",
@@ -1885,6 +2327,17 @@ def _main(resources: _TrainingResources):
     ap.add_argument("--dry-anchor-every", type=int, default=500_000,
                     help="B1-E0:DryAnchorSentinel 间隔(全局步;自有 rng(26),"
                          "不碰训练 RNG)")
+    # E5 仪表旋钮(PREREG-内容案 E5,封闭枚举两枚;皆纯读+IO,只记不裁,
+    # 默认 0 = 不在位 = 代码路径与 HEAD 等价,G0-2a 先决;探针示范集钉
+    # BC-v1 demos 字节,E6)
+    ap.add_argument("--distill-ce-probe-every", type=int, default=0,
+                    help="E5①:干/鲜 distill_ce 分列离线探针间隔(全局步;"
+                         "0=不在位;固定示范态集按 x[:,297] 干旗分组,专用 "
+                         "rng,零触训练路径;输出 distill_ce_probe.jsonl)")
+    ap.add_argument("--drywin-metrics-every", type=int, default=0,
+                    help="E5②:干窗行为仪表间隔(全局步;0=不在位;干态动作"
+                         "分布熵/a 分布 + 干/鲜窗工资与宽度 τ̄/depth,只记 "
+                         "drywin_metrics.jsonl)")
     args = ap.parse_args()
 
     try:
@@ -1909,6 +2362,8 @@ def _main(resources: _TrainingResources):
             protected_inputs.append(args.teacher_sd)
     if args.options and args.worker_npz:
         protected_inputs.append(args.worker_npz)
+    if _bc_aux_active(args):
+        protected_inputs.append(args.bc_aux_demos)   # E3:v2 示范集同受保护
     _prepare_run_dir(run_dir, args.resume_from, protected_inputs)
 
     # Capture all externally supplied brains before any VecEnv/subprocess can
@@ -1938,6 +2393,20 @@ def _main(resources: _TrainingResources):
     dry_curriculum_table = (
         _parse_dry_curriculum_schedule(args.dry_curriculum_schedule)
         if args.dry_curriculum_schedule else None)
+
+    # E3 ④乙:在位方加载 v2 示范集并过 12 类主案过滤(_validate_args 已 fail-loud
+    # 预验);不在位 → 零侵入,不加载(图纸字面)。
+    bc_aux_bank = None
+    bc_aux_demos_sha256 = None
+    if _bc_aux_active(args):
+        _aux_x, _aux_y, _aux_masks, bc_aux_demos_sha256 = (
+            _load_bc_aux_demos_v2(args.bc_aux_demos))
+        bc_aux_bank = _filter_bc_aux_demo_pairs(_aux_x, _aux_y, _aux_masks)
+    elif args.bc_aux_lambda > 0:
+        # 图纸字面:未给 --bc-aux-demos 即零侵入(两旗互不强制);
+        # 如实打印防误配静默(施工裁量注记)。
+        print("   [④乙] --bc-aux-lambda>0 但未给 --bc-aux-demos:"
+              "辅助通路按 E3 零侵入条款不在位")
 
     resume_checkpoint_bytes = None
     resume_data = None
@@ -1983,6 +2452,10 @@ def _main(resources: _TrainingResources):
         "worker": args.worker,        # v23:True 时 ep 口径=FARM 窗口,reward=工资 w
         "skip_dry": args.skip_dry,
         "drink_sovereignty": not args.no_drink_sovereignty,   # v32 ④丙
+        # E4 rev5 双键(契约与 config 回执同构增键;skip_dry 键仍 CLI 旗
+        # 字面值,机制在位状态由此二键承载,rev3 勘正)
+        "dry_curriculum": _contract_dry_curriculum(args),
+        "bc_aux": _contract_bc_aux(args, bc_aux_demos_sha256),
 
         "bc_init": args.bc_init,
         "init_source": args.init_source,
@@ -2007,6 +2480,9 @@ def _main(resources: _TrainingResources):
         "ckpt_every_steps": args.ckpt_every_steps,
         "sentinel_every": args.sentinel_every,
         "dry_anchor_every": args.dry_anchor_every,
+        # E5 仪表旋钮回执(同上:只读遥测,不入 training_contract)
+        "distill_ce_probe_every": args.distill_ce_probe_every,
+        "drywin_metrics_every": args.drywin_metrics_every,
     }
     print(f"== DiabloGym PPO 训练 == run={run_name}")
     print(f"   {config}")
@@ -2193,6 +2669,21 @@ def _main(resources: _TrainingResources):
                     sde_sample_freq=_ALGORITHM_RECIPE["sde_sample_freq"],
                     **common)
 
+    # E3 ④乙:辅助通路挂载与 λ 显式覆盖(resume/fresh 两路同一插点;承 β 覆盖
+    # 先例:load 直写 __dict__ 无校验,不许 zip 驮值静默续命。bank 不在位 →
+    # λ 显式归零,train() 辅助段整段不进图(零侵入))。
+    if bc_aux_bank is not None:
+        from leashed_ppo import derive_bc_aux_rng
+        _require(hasattr(model, "bc_aux_lambda"),
+                 "④乙辅助通路要求 LeashedMaskablePPO(--worker --algo mppo)")
+        model.mount_bc_aux_demos(*bc_aux_bank, rng=derive_bc_aux_rng(args.seed))
+        model.bc_aux_lambda = args.bc_aux_lambda
+        print(f"   [④乙] 辅助示范通路在位: λ_bc={model.bc_aux_lambda},"
+              f" 12类示范对 n={len(bc_aux_bank[1])},"
+              f" demos_sha16={bc_aux_demos_sha256[:16]}")
+    elif hasattr(model, "bc_aux_lambda"):
+        model.bc_aux_lambda = 0.0
+
     _validate_model_recipe(model)
     current_contract = _training_contract(
         args, model, batch_size,
@@ -2200,6 +2691,7 @@ def _main(resources: _TrainingResources):
         worker_npz_sha256=worker_npz_sha256,
         demos_sha256=demos_sha256,
         implementation_sha256=implementation_sha256,
+        bc_aux_demos_sha256=bc_aux_demos_sha256,   # E4 rev5:④乙在位载荷
     )
     if args.resume_from:
         _validate_resume_contract(
@@ -2279,6 +2771,21 @@ def _main(resources: _TrainingResources):
     # E1 ⑤A 课程回调(schedule 仅 --worker,_validate_args 已断言)
     curriculum_cb = (DryCurriculumCallback(dry_curriculum_table, run_dir=run_dir)
                      if (args.worker and dry_curriculum_table) else None)
+    # E5 仪表挂载(只记不裁;旋钮 0 = 不挂载 = 回调列与 HEAD 等价,G0-2a
+    # 先决;探针示范集一律钉 canonical BC-v1 demos 字节,E6 构造内断言)
+    _probe_demos = str(pathlib.Path(__file__).resolve().parent
+                       / "runs" / "bc-worker" / "demos.npz")
+    distill_ce_cb = (DistillCeProbe(run_dir, _probe_demos,
+                                    every=args.distill_ce_probe_every)
+                     if (args.worker and args.distill_ce_probe_every > 0)
+                     else None)
+    if distill_ce_cb is not None:
+        _require(getattr(model, "teacher", None) is not None,
+                 "--distill-ce-probe-every>0 需 Leashed 教师在位"
+                 "(β>0 或 teacher_path;fail-loud 于点火前)")
+    drywin_cb = (DryWindowMetricsCallback(run_dir, _probe_demos,
+                                          every=args.drywin_metrics_every)
+                 if (args.worker and args.drywin_metrics_every > 0) else None)
     # 让唯一持有文件句柄的 callback 最后构造；其后的 setup 不再有可失败 I/O。
     callback = EpisodeJsonlCallback(run_dir, config)
     learn_completed = False
@@ -2288,7 +2795,10 @@ def _main(resources: _TrainingResources):
         cbs = (([curriculum_cb] if curriculum_cb else [])
                + [callback, ckpt] + ([unfreeze_cb] if unfreeze_cb else [])
                + ([sentinel_cb] if sentinel_cb else [])
-               + ([dry_cb] if dry_cb else []))
+               + ([dry_cb] if dry_cb else [])
+               # E5 仪表居列尾(纯读+IO;不在位时本两项为空,列与 HEAD 等价)
+               + ([distill_ce_cb] if distill_ce_cb else [])
+               + ([drywin_cb] if drywin_cb else []))
         # v24:resume 腿 reset_num_timesteps=False(False 语义 = 再训 N 步,全局步连续
         # → ckpt 文件名全局唯一、β 日程与预算记账不断;审计 BLOCKER 2)
         model.learn(total_timesteps=args.total_steps, callback=cbs,

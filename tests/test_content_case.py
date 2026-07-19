@@ -382,11 +382,14 @@ class ValueRecordLiteralTests(unittest.TestCase):
 
     @staticmethod
     def _contract(skip_dry, schedule):
+        # E4 改写(相应单测改写而非删除):rev5 契约新读 bc_aux 两旗,
+        # 命名空间补默认不在位值(0.0/None);E1 断言面原封。
         args = types.SimpleNamespace(
             worker=True, options=False, flat_clock=False, arch="mlp",
             max_steps=3000, num_envs=4, n_steps=512, gamma=1.0, lr=3e-4,
             ent_coef=0.005, skip_dry=skip_dry,
-            dry_curriculum_schedule=schedule, no_drink_sovereignty=False)
+            dry_curriculum_schedule=schedule, no_drink_sovereignty=False,
+            bc_aux_lambda=0.0, bc_aux_demos=None)
         model = types.SimpleNamespace(
             action_space=types.SimpleNamespace(n=15), device="cpu",
             observation_space=types.SimpleNamespace(shape=(298,)))
@@ -401,12 +404,16 @@ class ValueRecordLiteralTests(unittest.TestCase):
         self.assertIs(self._contract(True, None)["skip_dry"], True)
         self.assertIs(self._contract(False, None)["skip_dry"], False)
 
-    def test_contract_revision_stays_4_in_e1_scope(self):
-        # E4(契约 rev5)不在 E1 施工范围;E1 后契约修订号必须仍为 4。
-        self.assertEqual(_CONTRACT_REVISION, 4)
+    def test_contract_revision_follows_single_source_now_rev5(self):
+        # E4 施工后改写(相应单测改写而非删除,PREREG-内容案 E4/R8):
+        # E1 时代"仍为 4"围栏由 E4 条款接替——修订号单一真源升 5,
+        # rev5 键 dry_curriculum 随 schedule 在位携载荷(形制断言细面在
+        # tests/test_content_case_infra.py)。
+        self.assertEqual(_CONTRACT_REVISION, 5)
         contract = self._contract(False, MAIN_TABLE_LITERAL)
-        self.assertEqual(contract["contract_revision"], 4)
-        self.assertNotIn("dry_curriculum", contract)   # rev5 键不得提前混入
+        self.assertEqual(contract["contract_revision"], 5)
+        self.assertEqual(contract["dry_curriculum"],
+                         {"schedule": MAIN_TABLE_LITERAL})
 
     def test_source_records_cli_literals_and_legacy_print_uses_constant(self):
         src = TRAIN_PPO.read_text()

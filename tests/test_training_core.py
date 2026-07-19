@@ -260,6 +260,8 @@ class TrainingCoreTests(unittest.TestCase):
             worker=False, options=False, flat_clock=False, arch="mlp",
             max_steps=8, num_envs=1, n_steps=8, gamma=0.99, lr=3e-4,
             ent_coef=0.02, skip_dry=False, no_drink_sovereignty=False,
+            # E4 rev5 改写(相应单测改写而非删除):契约新读两旗,补不在位默认
+            dry_curriculum_schedule=None, bc_aux_lambda=0.0, bc_aux_demos=None,
         )
         contract = train_module._training_contract(args, model, batch_size=8)
         json.dumps(contract)

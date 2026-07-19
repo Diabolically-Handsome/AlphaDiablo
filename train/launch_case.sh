@@ -6,6 +6,8 @@
 #   1) 孤儿化:nohup + 后台 + disown,壳退出后驱动进程 PPID 归 1(launchd),
 #      SSH/终端断线不再杀腿;值守核验:ps -o ppid= -p <PID> 应为 1。
 #      (若需系统级看护/开机自启,用同目录 ops/ 下 launchd plist 模板直挂。)
+#      PID 簿记口径(E8 勘正):receipt 之 pid 系【驱动器本体】——macOS
+#      caffeinate 会 exec 驱动器于本进程、fork 子进程持电源断言,详见下方断言注。
 #   2) 防睡眠:caffeinate -is 包裹整个驱动进程(-i 防 idle sleep,-s 防
 #      system sleep;盒盖仍会睡,值守须保持供电+外接或 caffeinate -d 另议)。
 #      点火后本脚本自动断言 caffeinate 在进程树内,断言失败即退出非零。
@@ -47,15 +49,23 @@ nohup caffeinate -is "$PY" "$DRIVER" "$@" >>"$LOG" 2>&1 &
 PID=$!
 disown "$PID"
 
-# caffeinate 断言:点火对象必须是 caffeinate 本体(驱动器是它的子进程)
+# caffeinate 断言(E8 修复,B1 判决 OPS 段 minor"查错进程号"在案):
+#   macOS caffeinate 语义实测——caffeinate 在本进程 exec 所托 utility(驱动器),
+#   把电源断言留在 fork 出的子进程;故 $PID(=$!,经 nohup→caffeinate exec 链)
+#   系驱动器本体,caffeinate 系 $PID 之【子】。原断言"ps -o command= -p $PID
+#   应为 caffeinate"查的是错进程号:点火成功时 $PID 命令行显示为驱动器,
+#   断言反而失败(B1 实弹误报 exit 71,launch_receipt 未落而驱动器安然在跑)。
+#   修复 = 断言 caffeinate 在 $PID 进程树内(本体或其子进程,双形兼容其它
+#   caffeinate 实现);孤儿化/caffeinate -is/日志/receipt/心跳行为面不变。
 sleep 1
 if ! ps -p "$PID" >/dev/null 2>&1; then
   echo "点火即死:见日志 $LOG" >&2
   tail -n 20 "$LOG" >&2 || true
   exit 70
 fi
-if ! ps -o command= -p "$PID" | grep -q "caffeinate"; then
-  echo "caffeinate 断言失败:PID $PID 不是 caffeinate 进程" >&2
+if ! { ps -o command= -p "$PID" | grep -q "caffeinate" \
+       || pgrep -P "$PID" -f caffeinate >/dev/null 2>&1; }; then
+  echo "caffeinate 断言失败:PID $PID 进程树内无 caffeinate" >&2
   exit 71
 fi
 
