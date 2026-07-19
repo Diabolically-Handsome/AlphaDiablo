@@ -423,6 +423,15 @@ def run(cmd, logfile, timeout) -> int:
             return 124
 
 
+def _archive_residue(run_dir: pathlib.Path) -> None:
+    """点火前残留归档(承 B1 _prepare_run_dir 形制):目录在即整体改名
+    <name>-prev<ns>,保证 jsonl 证据面自零起算(2026-07-19 勘正,
+    G0-2a 16:55:51 FAIL 根因 = 烟测残留追加堆积)。"""
+    if run_dir.exists():
+        run_dir.rename(run_dir.with_name(
+            f"{run_dir.name}-prev{time.time_ns()}"))
+
+
 def zip_steps(p: pathlib.Path) -> int:
     try:
         with zipfile.ZipFile(p) as z:
@@ -1292,6 +1301,7 @@ def g0_nullintrusion_stage(events):
     results = {}
     for variant in ("bare", "knobs"):
         run_dir = RUNS / SMOKE_RUNS[variant]
+        _archive_residue(run_dir)   # 勘正:残留归档,防 jsonl 追加堆积(承 B1 _prepare_run_dir;16:55:51 FAIL 在册)
         t0 = time.time()
         rc = run(_smoke_cmd(variant), f"smoke-{variant}.log", SMOKE_TIMEOUT)
         nt = zip_steps(run_dir / "model_final.zip")
@@ -1462,6 +1472,7 @@ def g0_funcsmoke_stage(events):
     results = {}
     for variant in ("func-p", "func-aux"):
         run_dir = RUNS / SMOKE_RUNS[variant]
+        _archive_residue(run_dir)   # 勘正:同 G0-2a,残留归档
         rc = run(_smoke_cmd(variant), f"smoke-{variant}.log", SMOKE_TIMEOUT)
         nt = zip_steps(run_dir / "model_final.zip")
         results[variant] = {"rc": rc, "nt": nt}
