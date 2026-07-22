@@ -38,6 +38,9 @@ _POLICY_HEAD_KEYS = (
 )
 _RUN_ARTIFACTS = (
     "progress.jsonl", "status.json", "status.tmp.json", "sentinel.jsonl", "calib.jsonl",
+    # 发射夜审计 A 修:三件新仪表档系追加写("a" 模式),不入列则同名重跑
+    # 残留堆积,课程腿第二发腿终全表复核必假判 CASE_HALT_G0(G0-2a 16:55:51 同因)。
+    "dry_curriculum.jsonl", "distill_ce_probe.jsonl", "drywin_metrics.jsonl",
     "model_final.zip", "policy.npz", "policy_sd.pt", "tb", "ckpt",
 )
 _GEAR_PRESENT_INDEX = 293  # base obs zero-based; 文档中的“第 294 维”

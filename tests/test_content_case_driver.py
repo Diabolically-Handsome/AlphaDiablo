@@ -21,6 +21,7 @@
 from __future__ import annotations
 
 import copy
+import fcntl
 import hashlib
 import inspect
 import json
@@ -34,7 +35,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "train"))
 
 import run_v33_content as v33  # noqa: E402
-from eval_contract import OperationalFailure  # noqa: E402
+from eval_contract import EvalContractError, OperationalFailure  # noqa: E402
 
 MAIN_TABLE_LITERAL = "linear:1.0:0.5:147,hold:0.5:97"
 CALIB_LITERAL = ("3547136,3596288,3645440,3694592,3743744,"
@@ -779,6 +780,242 @@ class StatsToolTests(unittest.TestCase):
             self.assertIn(key, st)
         self.assertEqual(st["loo_7017"]["dropped_seed"], 7017)
         self.assertEqual(st["deleveraged"]["dropped_seed"], 7017)
+
+
+class LegLockProbeTests(unittest.TestCase):
+    """B 修(发射夜审计 major):点火前 RUNS/<leg>/.run.lock 非阻塞 flock
+    探测——锁被持即孤儿腿停机(OperationalFailure)且不落 leg_start;
+    无锁持有/残留锁文件静默通过(flock 内核崩溃自动释放,探测可靠,
+    承 train_ppo._RunLock 语义)。"""
+
+    def test_held_lock_halts_as_orphan_leg(self):
+        with tempfile.TemporaryDirectory() as d:
+            runs = pathlib.Path(d)
+            leg_dir = runs / "v33-base"
+            leg_dir.mkdir()
+            lock = leg_dir / ".run.lock"
+            lock.write_text('{"pid": 12345}')
+            holder = open(lock, "r+")
+            try:
+                fcntl.flock(holder.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                with mock.patch.object(v33, "RUNS", runs):
+                    with self.assertRaisesRegex(OperationalFailure, "孤儿腿"):
+                        v33.assert_leg_lock_free("v33-base")
+            finally:
+                fcntl.flock(holder.fileno(), fcntl.LOCK_UN)
+                holder.close()
+
+    def test_stale_or_absent_lockfile_passes(self):
+        # 崩溃/SIGKILL 后 flock 已被内核释放:残留锁文件不构成持锁
+        with tempfile.TemporaryDirectory() as d:
+            runs = pathlib.Path(d)
+            (runs / "v33-cur").mkdir()
+            (runs / "v33-cur" / ".run.lock").write_text('{"pid": 1}')
+            with mock.patch.object(v33, "RUNS", runs):
+                v33.assert_leg_lock_free("v33-cur")     # 残留锁文件:静默通过
+                v33.assert_leg_lock_free("v33-full")    # 锁文件不存在:同过
+
+    def test_probe_wired_before_leg_start_in_leg_stage(self):
+        src = inspect.getsource(v33.leg_stage)
+        self.assertIn("assert_leg_lock_free(leg)", src)
+        self.assertLess(src.index("assert_leg_lock_free(leg)"),
+                        src.index('"event": "leg_start"'))   # 先探测后落账
+
+
+class RawMeanAdjudicationTests(unittest.TestCase):
+    """C 修(发射夜审计 major):发射均差肢与 MS 分支触发消费 mean_raw
+    (原始均值裁决,v32 先例);2dp 圆整值仅作落账显示——0.005 窗内圆整
+    可静默翻转判决。"""
+
+    def test_mean_raw_carried_and_display_mean_is_its_rounding(self):
+        leg = {7000 + i: _row(7000 + i, ret=110.0) for i in range(4)}
+        ref = {s: _row(s, ret=100.0) for s in leg}
+        st = v33.paired_diff_stats(leg, ref)
+        self.assertIn("mean_raw", st)
+        self.assertEqual(st["mean_raw"], 10.0)
+        self.assertEqual(st["mean"], round(st["mean_raw"], 2))
+
+    def test_17_315_window_borderline_fails_raw_line_but_ledger_shows_2dp(self):
+        # 审计对应件(17.315 型 0.005 圆整窗贴线):16 种子 +17.32、16 种子
+        # +17.315 → 原始均值 ≈17.3175,恰落 [17.315, 17.32) 静默翻转窗——
+        # 圆整读数 17.32 假过线;raw 语义下 < 17.32 不过线。
+        diffs = [17.32] * 16 + [17.315] * 16
+        leg = {7000 + i: _row(7000 + i, ret=100.0 + diffs[i])
+               for i in range(32)}
+        ref = {s: _row(s, ret=100.0) for s in leg}
+        st = v33.paired_diff_stats(leg, ref)
+        self.assertEqual(st["mean"], 17.32)                # 落账仍显示 2dp
+        self.assertGreater(st["mean_raw"], 17.315)         # 恰在圆整窗内
+        self.assertLess(st["mean_raw"], v33.G1_PAIRED_DIFF)          # raw 拦
+        self.assertGreaterEqual(st["mean"], v33.G1_PAIRED_DIFF)      # 圆整假过
+
+    def test_launch_limb_and_ms_branch_consume_raw_not_rounded(self):
+        src_main = inspect.getsource(v33._main)
+        self.assertIn('st["mean_raw"] >= G1_PAIRED_DIFF', src_main)
+        self.assertNotIn('st["mean"] >= G1_PAIRED_DIFF', src_main)
+        src_card = inspect.getsource(v33.scorecard_stage)
+        self.assertIn('st2["mean_raw"] >= RC9_BRANCH_LINE', src_card)
+        self.assertNotIn('st2["mean"] >= RC9_BRANCH_LINE', src_card)
+
+
+class LegTrainLogNameTests(unittest.TestCase):
+    """D 修(发射夜审计 minor):腿训练日志文件名携发次——run() 系 "w"
+    截断写,固定名第二发必毁第一发崩溃日志取证面。"""
+
+    def test_log_name_carries_attempt_and_attempts_never_collide(self):
+        self.assertEqual(v33.leg_train_log_name("v33-base", 1),
+                         "train-v33-base-a1.log")
+        self.assertEqual(v33.leg_train_log_name("v33-base", 2),
+                         "train-v33-base-a2.log")
+        self.assertNotEqual(v33.leg_train_log_name("v33-base", 1),
+                            v33.leg_train_log_name("v33-base", 2))
+
+    def test_leg_stage_wires_attempt_before_leg_start_fixed_name_retired(self):
+        src = inspect.getsource(v33.leg_stage)
+        self.assertIn("leg_train_log_name(leg, attempt)", src)
+        self.assertIn("attempt = leg_starts(events, leg) + 1", src)
+        # 发次序号于本发 leg_start 落账之前计得(N = 已在册 + 1)
+        self.assertLess(src.index("attempt = leg_starts"),
+                        src.index('"event": "leg_start"'))
+        self.assertNotIn('f"train-{leg}.log"', src)      # 固定名退场
+
+
+class CanaryResidueRecoveryTests(unittest.TestCase):
+    """E 修(发射夜审计 minor):金丝雀残档采信处 validate_adopted 抛
+    EvalContractError 不再直穿 P1——按 P-canary『失败只记不停腿』:
+    残档 .void 封存 + 事件在册 + 继续本函数正常序。"""
+
+    @staticmethod
+    def _bad_adopt(*_a, **_k):
+        raise EvalContractError("合成坏采信件")
+
+    def test_bad_residue_voided_logged_no_raise(self):
+        captured = []
+        with tempfile.TemporaryDirectory() as d:
+            eval_dir = pathlib.Path(d)
+            tag = "v33-base-canary1-h"
+            residue = eval_dir / f"{tag}.json"
+            residue.write_text("{broken")
+            with mock.patch.object(v33, "EVAL", eval_dir), \
+                    mock.patch.object(v33, "log", captured.append), \
+                    mock.patch.object(v33, "validate_adopted",
+                                      self._bad_adopt):
+                doc, fresh = v33.canary_exam([], "/nonexistent/policy.npz",
+                                             tag, None, l1_fired=True)
+            self.assertIsNone(doc)
+            self.assertFalse(fresh)
+            self.assertFalse(residue.exists())            # 残档已离位
+            voids = sorted(eval_dir.glob(f"{tag}.*.void"))
+            self.assertEqual(len(voids), 1)               # .void 封存
+            self.assertEqual(captured[0]["event"], "OPERATIONAL-canary")
+            self.assertIn("只记不停腿", captured[0]["why"])
+            self.assertEqual(captured[0]["void"], voids[0].name)
+
+    def test_flow_continues_to_reexam_within_cutoff(self):
+        # 截止内(该腿 s16 未燃):残档 .void 后继续走重考路径,不停腿
+        synthetic = {"rows": [], "agg": {"_sha": "abcd"}}
+        captured = []
+        with tempfile.TemporaryDirectory() as d:
+            eval_dir = pathlib.Path(d)
+            tag = "v33-base-canary2-h"
+            (eval_dir / f"{tag}.json").write_text("{broken")
+            with mock.patch.object(v33, "EVAL", eval_dir), \
+                    mock.patch.object(v33, "log", captured.append), \
+                    mock.patch.object(v33, "validate_adopted",
+                                      self._bad_adopt), \
+                    mock.patch.object(v33, "exam",
+                                      lambda *_a, **_k: synthetic):
+                doc, fresh = v33.canary_exam([], "/nonexistent/policy.npz",
+                                             tag, None, l1_fired=False)
+            self.assertIs(doc, synthetic)
+            self.assertTrue(fresh)
+
+
+class LaunchCheckIdempotencyTests(unittest.TestCase):
+    """F 修(发射夜审计 minor):无胜者分支 launch_check 落账幂等护栏
+    (与有胜者分支对称)——重入不重复落账。"""
+
+    def test_reentry_does_not_duplicate_ledger_line(self):
+        captured = []
+        events = []
+        limbs = {"verdict": "三腿资格全失(合成)"}
+        with mock.patch.object(v33, "log", captured.append):
+            v33.log_launch_check_no_winner(events, limbs, {"v33-base": {}})
+            v33.log_launch_check_no_winner(events, limbs, {"v33-base": {}})
+        self.assertEqual(len(captured), 1)
+        self.assertEqual(captured[0]["event"], "launch_check")
+        self.assertEqual(sum(1 for e in events
+                             if e.get("event") == "launch_check"), 1)
+
+    def test_prior_ledger_line_suppresses_relog(self):
+        captured = []
+        with mock.patch.object(v33, "log", captured.append):
+            v33.log_launch_check_no_winner(
+                [{"event": "launch_check"}], {"verdict": "x"}, {})
+        self.assertEqual(captured, [])
+
+    def test_no_winner_branch_consumes_guard(self):
+        self.assertIn("log_launch_check_no_winner(events",
+                      inspect.getsource(v33._main))
+
+
+class DeathSeedSetsTests(unittest.TestCase):
+    """G 修(发射夜审计 minor):④乙判词死亡种子集合差之对照 = D4-3 本案
+    语境 ctrl = L-cur×M29(full32-m29)rows;v32-ref-science 对照退场,
+    rescued/new_deaths 语义随之(语境勘正注记随行)。"""
+
+    def test_set_difference_taken_from_cur_m29_ctrl_rows(self):
+        full = [{"seed": 7000, "died": False}, {"seed": 7001, "died": True},
+                {"seed": 7002, "died": False}, {"seed": 7017, "died": True}]
+        ctrl = [{"seed": 7000, "died": True}, {"seed": 7001, "died": False},
+                {"seed": 7002, "died": False}, {"seed": 7017, "died": True}]
+        out = v33.death_seed_sets(full, ctrl)
+        self.assertEqual(out["rescued"], [7000])       # ctrl 死而 full 活
+        self.assertEqual(out["new_deaths"], [7001])    # full 死而 ctrl 活
+        self.assertIn("L-cur×M29", out["ctrl"])        # 语境勘正注记在册
+        # 反例:同 full 换第三方对照死亡面(v32-ref-science 型)集合差随之
+        # 改变——证集合差确实取自传入 ctrl rows,而非任何外部参照
+        science_like = [{"seed": 7000, "died": False},
+                        {"seed": 7001, "died": False},
+                        {"seed": 7002, "died": True},
+                        {"seed": 7017, "died": False}]
+        out2 = v33.death_seed_sets(full, science_like)
+        self.assertEqual(out2["rescued"], [7002])
+        self.assertEqual(out2["new_deaths"], [7001, 7017])
+
+    def test_main_wires_cur_m29_rows_and_science_ref_retired(self):
+        src = inspect.getsource(v33._main)
+        self.assertIn("death_seed_sets(", src)
+        self.assertIn('leg_docs["v33-cur"]["full32-m29"]["rows"]', src)
+        self.assertNotIn('refs["science"]["rows"] if r["died"]', src)
+
+
+class Rc10HalfOpenBandTests(unittest.TestCase):
+    """H 修(发射夜审计 minor):RC.10 损伤分支带 [0.0, 0.5) 系半开——
+    retention 恰 0.5 须落健康分支;band_judge 上界开口径仅此带,
+    全局闭区间语义禁改。"""
+
+    def test_exact_half_falls_healthy_not_damaged(self):
+        damaged = v33.band_judge(0.5, *v33.RC10_BAND["damaged"],
+                                 upper_open=True)
+        self.assertFalse(damaged["in_band"])           # 0.5 不落损伤带
+        self.assertIs(damaged["upper_open"], True)
+        healthy = v33.band_judge(0.5, *v33.RC10_BAND["healthy"])
+        self.assertTrue(healthy["in_band"])            # 恰落健康分支
+
+    def test_just_below_half_stays_damaged(self):
+        self.assertTrue(v33.band_judge(0.4999, *v33.RC10_BAND["damaged"],
+                                       upper_open=True)["in_band"])
+
+    def test_global_closed_semantics_untouched(self):
+        default = v33.band_judge(0.5, 0.0, 0.5)
+        self.assertTrue(default["in_band"])            # 默认闭区间原封
+        self.assertNotIn("upper_open", default)
+
+    def test_scorecard_applies_open_bound_to_damaged_branch_only(self):
+        src = inspect.getsource(v33.scorecard_stage)
+        self.assertIn('upper_open=(branch == "damaged")', src)
+        self.assertEqual(src.count("upper_open="), 1)  # 仅 RC.10 一处,禁全局
 
 
 if __name__ == "__main__":

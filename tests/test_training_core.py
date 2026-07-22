@@ -176,6 +176,26 @@ class TrainingCoreTests(unittest.TestCase):
             self.assertEqual((archives[0] / "model_final.zip").read_bytes(), b"old-model")
             self.assertEqual((archives[0] / "progress.jsonl").read_text(), "old-progress\n")
 
+    def test_run_retry_archives_appendonly_instrument_jsonls(self):
+        # 发射夜审计 A 修回归:三件追加写("a" 模式)仪表档须随第二发点火
+        # 整体离位归档入 _attempts——残留即追加堆积,课程腿第二发腿终
+        # dry_curriculum 全表复核必假判 CASE_HALT_G0(G0-2a 16:55:51 同因)。
+        instruments = ("dry_curriculum.jsonl", "distill_ce_probe.jsonl",
+                       "drywin_metrics.jsonl")
+        with tempfile.TemporaryDirectory() as directory:
+            run_dir = pathlib.Path(directory) / "run"
+            run_dir.mkdir()
+            for name in instruments:
+                (run_dir / name).write_text('{"stale": true}\n')
+            _prepare_run_dir(run_dir, None, ())
+
+            archives = list((run_dir / "_attempts").iterdir())
+            self.assertEqual(len(archives), 1)
+            for name in instruments:
+                self.assertFalse((run_dir / name).exists(), name)  # 三件全离位
+                self.assertEqual((archives[0] / name).read_text(),
+                                 '{"stale": true}\n', name)
+
     def test_run_retry_rejects_input_nested_beside_stale_checkpoints(self):
         with tempfile.TemporaryDirectory() as directory:
             run_dir = pathlib.Path(directory) / "run"

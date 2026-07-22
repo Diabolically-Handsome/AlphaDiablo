@@ -45,6 +45,7 @@ train/runs/v33-content/ 自首事件起以实名建立。
 from __future__ import annotations
 
 import argparse
+import fcntl
 import hashlib
 import io
 import json
@@ -61,7 +62,8 @@ import zipfile
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
-from eval_contract import (PROTOCOL_VERSION, OperationalFailure, OutputReservationError,
+from eval_contract import (PROTOCOL_VERSION, EvalContractError,
+                           OperationalFailure, OutputReservationError,
                            exclusive_lock, expected_eval_identity,
                            freeze_eval_identity, read_eval_archive,
                            strict_json_loads, verify_eval_identity)
@@ -1726,6 +1728,34 @@ def dry_curriculum_table_stage(events):
     events.append(ev)
 
 
+def assert_leg_lock_free(leg: str) -> None:
+    """B 修(发射夜审计 major):点火前对 RUNS/<leg>/.run.lock 非阻塞 flock
+    探测——锁被持即孤儿腿在位(上一发 train_ppo 进程仍活),OperationalFailure
+    停机呈报且不落 leg_start(不烧额度)。探测可靠性承 train_ppo._RunLock
+    语义(flock 系内核锁,进程崩溃/SIGKILL 自动释放,残留锁文件不构成持锁);
+    探测得锁即刻释放,不写不删锁文件。"""
+    lock_path = RUNS / leg / ".run.lock"
+    if not lock_path.exists():
+        return
+    with open(lock_path, "r", encoding="utf-8") as f:
+        try:
+            fcntl.flock(f.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError as exc:
+            owner = f.read().strip() or "unknown"
+            raise OperationalFailure(
+                f"{leg} 点火前锁探测:.run.lock 被持({owner})——上一发 "
+                "train_ppo 进程仍在位(孤儿腿),取证并 kill 腿进程组后重跑;"
+                "本发不落 leg_start(不烧额度)") from exc
+        fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+
+
+def leg_train_log_name(leg: str, attempt: int) -> str:
+    """D 修(发射夜审计 minor):腿训练日志文件名携发次(train-<leg>-a<N>.log,
+    N = 本发 leg_start 序号)——run() 系 "w" 截断写,固定名第二发必毁第一发
+    崩溃日志取证面。"""
+    return f"train-{leg}-a{attempt}.log"
+
+
 def leg_stage(events, leg: str) -> str:
     """单腿点火(P3 台账制额度 2/腿;nt 闸 3,997,696;resume 恒自王 zip;
     重点火禁换种子)+ 腿终 dry_curriculum.jsonl ≡ 注册表全表复核(课程腿)。"""
@@ -1739,6 +1769,10 @@ def leg_stage(events, leg: str) -> str:
         require(leg_starts(events, leg) < 2,
                 f"{leg} 腿点火额度耗尽(台账制 2/腿,三腿共 6)——"
                 "OPERATIONAL_FAILURE 全案停机,禁手改台账续命")
+        # B 修:每次点火前锁探测(孤儿腿在位即停机,先于 leg_start 落账)
+        assert_leg_lock_free(leg)
+        # D 修:发次序号先于 leg_start 落账计得(N = 已在册 leg_starts + 1)
+        attempt = leg_starts(events, leg) + 1
         ev = {"event": "leg_start", "leg": leg, "seed": SEED,
               "extras": list(dict(LEGS)[leg]),
               "recipe": "共用命令形 = v32-sov 逐字 + B1 仪表旋钮 + rev4 勘正"
@@ -1750,7 +1784,8 @@ def leg_stage(events, leg: str) -> str:
         log(ev)
         events.append(ev)
         t0 = time.time()
-        rc = run(leg_cmd(leg), f"train-{leg}.log", timeout=LEG_TIMEOUT)
+        rc = run(leg_cmd(leg), leg_train_log_name(leg, attempt),
+                 timeout=LEG_TIMEOUT)
         nt = zip_steps(model_path)
         log({"event": "leg_done", "leg": leg, "rc": rc, "nt_zip": nt,
              "dt_min": round((time.time() - t0) / 60, 1)})
@@ -1820,8 +1855,19 @@ def canary_exam(events, worker_npz, tag, manager_npz, l1_fired: bool):
                 f"金丝雀 {tag} 档案与台账 sha 失配")
         return d, False
     if out.exists():
-        d = validate_adopted(tag, worker_npz, POOL_PROBE, manager_npz)
-        return d, True
+        # E 修(发射夜审计 minor):残档采信恢复路径——validate_adopted 抛
+        # EvalContractError 时禁直穿 P1;按 P-canary"失败只记不停腿"处置:
+        # 残档 .void 封存 + 事件在册 + 继续走本函数正常序(截止内可重考)。
+        try:
+            d = validate_adopted(tag, worker_npz, POOL_PROBE, manager_npz)
+            return d, True
+        except EvalContractError as exc:
+            sealed = out.with_suffix(f".{time.time_ns()}.void")
+            out.rename(sealed)
+            log({"event": "OPERATIONAL-canary", "tag": tag,
+                 "void": sealed.name,
+                 "why": f"残档采信验证失败({exc}),按 P-canary 只记不停腿:"
+                        "残档已 .void,续走截止内重考/截止外不可判"})
     if l1_fired:
         log({"event": "OPERATIONAL-canary", "tag": tag,
              "why": "补评截止已过(该腿 s16 FIRING_START 之前,承合规 M-4),"
@@ -2054,6 +2100,19 @@ def a12_tier_ruling(a12_full: float, died_full: int, paired_mean: float,
     return out
 
 
+def death_seed_sets(full_m29_rows: list, ctrl_m29_rows: list) -> dict:
+    """G 修(发射夜审计 minor,语境勘正注记):④乙判词"死亡种子集合差"之
+    对照改取 D4-3 本案语境 ctrl = L-cur×M29(full32-m29)rows——替换原用
+    v32-ref-science(跨案参照非本案 ctrl);rescued/new_deaths 语义随之
+    (相对 ctrl 的救活/新死)。"""
+    ctrl_dead = {r["seed"] for r in ctrl_m29_rows if r["died"]}
+    full_dead = {r["seed"] for r in full_m29_rows if r["died"]}
+    return {"ctrl": "L-cur×M29(full32-m29;D4-3 本案语境勘正,"
+                    "替换 v32-ref-science)",
+            "rescued": sorted(ctrl_dead - full_dead),
+            "new_deaths": sorted(full_dead - ctrl_dead)}
+
+
 # ======================================================================
 # 统计纪律工具(B1 承继;R 线用)
 # ======================================================================
@@ -2098,23 +2157,34 @@ def loo_7017(diff_by_seed: dict) -> dict:
             "mean": round(sum(rest) / len(rest), 2) if rest else None}
 
 
-def band_judge(x: float, lo: float, hi: float, integer: bool = False) -> dict:
-    in_band = lo <= x <= hi
+def band_judge(x: float, lo: float, hi: float, integer: bool = False,
+               upper_open: bool = False) -> dict:
+    """H 修(发射夜审计 minor):upper_open=True 时带系 [lo, hi) 半开——
+    仅 RC.10 损伤分支带 [0.0, 0.5) 消费(retention 恰 0.5 须落健康分支);
+    默认闭区间语义全局不动(禁全局改语义)。"""
+    in_band = (lo <= x < hi) if upper_open else (lo <= x <= hi)
     if integer:
         borderline = min(abs(x - lo), abs(x - hi)) <= 1
     else:
         borderline = min(abs(x - lo), abs(x - hi)) <= 0.05 * (hi - lo)
     out = {"x": round(float(x), 4), "band": [lo, hi], "in_band": in_band}
+    if upper_open:
+        out["upper_open"] = True
     if borderline:
         out["borderline_note"] = "临线 + 线未重标(临线条款强制注记)"
     return out
 
 
 def paired_diff_stats(leg_rows: dict, ref_rows: dict) -> dict:
-    """配对均差统计块(D4 统计纪律:均值必并列中位+符号检验+去杠杆+7017 留一)。"""
+    """配对均差统计块(D4 统计纪律:均值必并列中位+符号检验+去杠杆+7017 留一)。
+    C 修(发射夜审计 major):增 mean_raw 全精度均值——发射合取均差肢与
+    RC.9 MS 分支触发一律消费 raw 裁决(v32 先例系 raw 比较;2dp 圆整值仅作
+    落账显示,0.005 窗内圆整可静默翻转判决)。"""
     diffs = {s: leg_rows[s]["ret"] - ref_rows[s]["ret"] for s in sorted(ref_rows)}
     vals = list(diffs.values())
-    return {"mean": round(sum(vals) / len(vals), 2),
+    mean_raw = sum(vals) / len(vals)
+    return {"mean": round(mean_raw, 2),
+            "mean_raw": mean_raw,
             "median": round(median(vals), 2),
             "sign": sign_test(vals),
             "deleveraged": deleveraged_mean(diffs),
@@ -2210,7 +2280,8 @@ def scorecard_stage(events, refs, leg_docs, canary_docs, verdicts,
     rc2.update({"point": RC2_BAND["point"], **{k: st2[k] for k in
                 ("median", "sign", "deleveraged", "loo_7017")}})
     add("RC2_base_paired_mean", rc2)
-    branch = "healthy" if st2["mean"] >= RC9_BRANCH_LINE else "damaged"
+    # C 修:MS 双分支机械触发消费原始均值(圆整读数贴线可静默翻转择带)
+    branch = "healthy" if st2["mean_raw"] >= RC9_BRANCH_LINE else "damaged"
     # RC.3 课⑤效应(L-cur − L-base 同种子配对)
     d3 = {s: rows["v33-cur"]["h"][s]["ret"] - rows["v33-base"]["h"][s]["ret"]
           for s in sorted(ref_launch)}
@@ -2277,7 +2348,9 @@ def scorecard_stage(events, refs, leg_docs, canary_docs, verdicts,
             continue
         c4_rows = by_seed(c4["rows"], 7000, 7031)
         kept = [s for s in d_c if d_windows(c4_rows[s]) >= 1]
-        rc10 = band_judge(len(kept) / n_d, *RC10_BAND[branch])
+        # H 修:损伤带 [0.0, 0.5) 半开(retention 恰 0.5 落健康分支);仅此带
+        rc10 = band_judge(len(kept) / n_d, *RC10_BAND[branch],
+                          upper_open=(branch == "damaged"))
         rc10.update({"kept_seeds": sorted(kept), "n_D": n_d, "branch": branch,
                      "formula": "保持率 := |{s∈D_C: canary4×H 该种子 D 窗数 ≥1}|"
                                 " / n_D(RB.8 公式逐字;一律描述性)"})
@@ -2383,6 +2456,15 @@ def scorecard_stage(events, refs, leg_docs, canary_docs, verdicts,
               f"胜者={verdicts.get('winner')};判决附录由值守记档")
 
 
+def log_launch_check_no_winner(events, limbs: dict, quals: dict) -> None:
+    """F 修(发射夜审计 minor):无胜者分支之 launch_check 落账补 stage_done
+    幂等护栏(与有胜者分支对称)——重入(续跑)不重复落账。"""
+    if stage_done(events, "launch_check"):
+        return
+    log({"event": "launch_check", **limbs, "quals": quals})
+    events.append({"event": "launch_check"})
+
+
 # ======================================================================
 # 主流程
 # ======================================================================
@@ -2417,7 +2499,7 @@ def _main():
 
     # ---- S8 判据(科学主判先行,与发射解耦) ----
     ref_launch = by_seed(refs["launch"]["rows"], 7000, 7031)
-    sci_rows = by_seed(refs["science"]["rows"], 7000, 7031)
+    # sci_rows 死赋值已除(审计呈报①:D4-3 语境勘正后 science 对照退场,G 修落 death_seed_sets)
     R = refs["launch"]["agg"]["ret_mean"]
     abandon = round(R * ABANDON_FRAC[0] / ABANDON_FRAC[1], 1)
     floor_line = round(R * FLOOR_FRAC[0] / FLOOR_FRAC[1], 1)
@@ -2453,12 +2535,10 @@ def _main():
         "a12": a12_per_ep(base_m29_agg),
         "note": "重训连带防线对应件:L-cur 与 L-base 同等存活时『兑换』因果"
                 "限定收紧"}
-    ref_dead = {r["seed"] for r in refs["science"]["rows"] if r["died"]}
-    full_dead = {r["seed"] for r in leg_docs["v33-full"]["full32-m29"]["rows"]
-                 if r["died"]}
-    a12_verdict["death_seed_sets"] = {
-        "rescued": sorted(ref_dead - full_dead),
-        "new_deaths": sorted(full_dead - ref_dead)}
+    # G 修:集合差对照 = L-cur×M29(D4-3 本案语境;勘正注记入 death_seed_sets)
+    a12_verdict["death_seed_sets"] = death_seed_sets(
+        leg_docs["v33-full"]["full32-m29"]["rows"],
+        leg_docs["v33-cur"]["full32-m29"]["rows"])
     a12_verdict["h_side_parallel"] = {
         "a12_full_h": a12_per_ep(leg_docs["v33-full"]["full32"]["agg"]),
         "note": "H 治下读数并列、携『结构性偏紧』限定(ref depth2 7 vs 15),"
@@ -2485,8 +2565,7 @@ def _main():
     if winner is None:
         verdicts["launch_limbs"] = {"verdict": "三腿资格全失——无胜者,发射不可考"
                                                "(科学主判已入册,与发射解耦)"}
-        log({"event": "launch_check", **verdicts["launch_limbs"],
-             "quals": quals})
+        log_launch_check_no_winner(events, verdicts["launch_limbs"], quals)
     else:
         if win.get("substituted") and not stage_done(events, "substitution"):
             log({"event": "substitution", "blocked": win["prelim"],
@@ -2497,7 +2576,9 @@ def _main():
         w_died = died[winner]
         abandon_pass = means[winner] >= abandon
         limbs = {
-            "paired_mean_ge_17.32": st["mean"] >= G1_PAIRED_DIFF,
+            # C 修:发射均差肢消费 mean_raw(raw 语义,v32 先例;17.315 型
+            # 贴线读数圆整后 17.32 假过线);落账 paired_mean 仍显示 2dp。
+            "paired_mean_ge_17.32": st["mean_raw"] >= G1_PAIRED_DIFF,
             "wins_ge_22of32": st["wins"] >= G1_PAIRED_WINS,
             "died_le_8": w_died <= G1_DIED_MAX,
             "floor_85_92": means[winner] >= floor_line,
@@ -2506,10 +2587,11 @@ def _main():
         }
         launch = all(limbs.values()) and abandon_pass
         deleverage_note = None
-        if DELEVERAGE_Q95 < st["mean"] < G1_PAIRED_DIFF:
+        # 注记口径与裁决肢同源(raw;审计呈报② 值守授权同步——判决与注记禁两口径)
+        if DELEVERAGE_Q95 < st["mean_raw"] < G1_PAIRED_DIFF:
             deleverage_note = ("杠杆敏感带:拦截由 7017 单种子噪声贡献决定"
                                "(升格审查限定 3)")
-        elif st["mean"] <= DELEVERAGE_Q95:
+        elif st["mean_raw"] <= DELEVERAGE_Q95:
             deleverage_note = "去杠杆线下同拦,拦截对 7017 杠杆稳健"
         verdicts["launch_limbs"] = {
             "winner": winner, "paired_mean": st["mean"], "wins": st["wins"],
