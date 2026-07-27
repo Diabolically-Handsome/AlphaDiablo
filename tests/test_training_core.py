@@ -286,18 +286,18 @@ class TrainingCoreTests(unittest.TestCase):
         for reserved in (
             2_100_000, 2_101_000,  # burned predecessors
             2_102_000, 2_104_000,  # burned 2026-07-27 (crash / gate-FAIL)
-            2_106_000, 2_103_000,  # current active registries
+            2_108_000, 2_103_000,  # current active registries
         ):
             with self.subTest(scope="train", seed=reserved), \
                     self.assertRaisesRegex(ValueError, "拒绝保留种子"):
                 shell._new_episode(seed=reserved)
 
         shell.seed_scope = "bc-v1"
-        for allowed in (2_106_000, 2_106_127):
+        for allowed in (2_108_000, 2_108_127):
             shell._new_episode(seed=allowed)
             self.assertEqual(shell._episode_seed, allowed)
         for forbidden in (2_100_000, 2_101_000, 2_102_000,
-                          2_104_000, 2_103_000):
+                          2_104_000, 2_106_000, 2_103_000):
             with self.subTest(scope="bc-v1", seed=forbidden), \
                     self.assertRaisesRegex(ValueError, "bc-v1 只允许登记池"):
                 shell._new_episode(seed=forbidden)
@@ -307,7 +307,7 @@ class TrainingCoreTests(unittest.TestCase):
             shell._new_episode(seed=allowed)
             self.assertEqual(shell._episode_seed, allowed)
         for forbidden in (2_100_000, 2_101_000, 2_102_000,
-                          2_104_000, 2_106_000):
+                          2_104_000, 2_106_000, 2_108_000):
             with self.subTest(scope="bc-v2", seed=forbidden), \
                     self.assertRaisesRegex(ValueError, "bc-v2 只允许登记池"):
                 shell._new_episode(seed=forbidden)

@@ -19,7 +19,7 @@
   不改变 retry 决策、类权或所选模型；
 - v1 面回归零破坏(canonical 路径 / schema_version=1 / 采集行为原封);
 - 方案甲(2026-07-19 亲批):v2 采集局数 ×3；当前 v1/v2 active registry 为
-  未查看的 2106000..2106127 / 2103000..2103383 固定池，旧 2100000 /
+  未查看的 2108000..2108127 / 2103000..2103383 固定池，旧 2100000 /
   2101000 池保持 burned + v2 主训类平衡加权 CE
   (w_c = N/(K·n_c) 手算恒等;v1 调用路径不加权)+ 回执新字段
   (collection_episodes / class_weights)与验证器篡改矩阵。
@@ -1836,15 +1836,15 @@ class PlanAExpansionTests(_PatchMixin, unittest.TestCase):
             bc_worker.DEMO_SEEDS))
 
     def test_v1_episode_count_and_seed_discipline_unaffected(self):
-        # v1 局数纪律仍为 128;active registry 换用未查看的 2106000..2106127
+        # v1 局数纪律仍为 128;active registry 换用未查看的 2108000..2108127
         # (2_102 段 2026-07-27 崩溃烧毁,append-only 推进)。
         self.assertEqual(
             list(bc_worker.DEMO_SEEDS),
-            list(range(2_106_000, 2_106_128)),
+            list(range(2_108_000, 2_108_128)),
         )
         self.assertEqual(len(bc_worker.DEMO_SEEDS), 128)
         self.assertEqual(tuple(train_ppo._WORKER_BC_DEMO_SEEDS),
-                         tuple(range(2_106_000, 2_106_128)))
+                         tuple(range(2_108_000, 2_108_128)))
         # 源文级镜像:v1 采集环仍消费 DEMO_SEEDS,v2 采集环消费 DEMO_SEEDS_V2
         src = BC_WORKER.read_text()
         self.assertIn("for i, seed in enumerate(DEMO_SEEDS):", src)
@@ -1862,7 +1862,7 @@ class PlanAExpansionTests(_PatchMixin, unittest.TestCase):
         _, labels, groups = bc_worker.collect()
         self.assertEqual(len(labels), 128)
         self.assertTrue(np.array_equal(np.unique(groups),
-                                       np.arange(2_106_000, 2_106_128)))
+                                       np.arange(2_108_000, 2_108_128)))
 
     def test_active_pool_marker_identity_cannot_alias_burned_predecessors(self):
         active_v1 = train_ppo._bc_final_holdout_marker_identity(
@@ -1875,14 +1875,14 @@ class PlanAExpansionTests(_PatchMixin, unittest.TestCase):
             TEACHER_GENERATION_V2, range(2_101_000, 2_101_384))
         self.assertEqual(
             active_v1[0]["episode_seeds"],
-            list(range(2_106_000, 2_106_128)))
+            list(range(2_108_000, 2_108_128)))
         self.assertEqual(
             active_v2[0]["episode_seeds"],
             list(range(2_103_000, 2_103_384)))
         self.assertEqual(
             active_v1[1],
-            "cf023af0be3787c1510f118efd0600ab6"
-            "d135747e99367dbe1ece2624b2c39a3")
+            "83ed65513942f22a02f06b6c02828f191"
+            "5c10d6761bdfa35bfa2847a22a77b5a")
         self.assertEqual(
             active_v2[1],
             "10e33273f96570d6fbad5587f80bde811"

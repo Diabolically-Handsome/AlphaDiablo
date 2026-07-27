@@ -1003,7 +1003,8 @@ assert BC_RESERVED_SEED_RANGES == (
     (2_100_000, 2_100_128), (2_101_000, 2_101_384),
     (2_102_000, 2_102_128), (2_103_000, 2_103_384),
     # 2026-07-27:2_102/2_104 相继烧毁,活动段推进(A2 修正案)
-    (2_104_000, 2_104_128), (2_106_000, 2_106_128))
+    (2_104_000, 2_104_128), (2_106_000, 2_106_128),
+    (2_108_000, 2_108_128))
 assert HISTORICAL_BURNED_BC_SEED_RANGES == (
     (100, 484), (1000, 1384))
 for reserved in (
@@ -1022,6 +1023,7 @@ for reserved in (
     2_100_000, 2_100_127, 2_101_000, 2_101_383,
     2_102_000, 2_102_127, 2_103_000, 2_103_383,
     2_104_000, 2_104_127, 2_106_000, 2_106_127,
+    2_108_000, 2_108_127,
     2_110_000, 2_129_999,
 ):
     assert is_reserved_train_seed(reserved)
@@ -1085,7 +1087,7 @@ except ValueError as exc:
     assert "bc-v1 只允许登记池" in str(exc)
 else:
     raise AssertionError("BC-v1 scope 接受了 burned v1 seed")
-scope_shell._new_episode(seed=2_106_000)
+scope_shell._new_episode(seed=2_108_000)
 scope_shell.seed_scope = "bc-v2"
 try:
     scope_shell._new_episode(seed=2_101_000)

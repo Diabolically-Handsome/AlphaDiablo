@@ -173,7 +173,7 @@ _EXPORT_MANIFEST_SCHEMA_VERSION = 1
 # were consumed and therefore cannot service a new R7 prepare-bc.  Register
 # fresh, disjoint active pools without deleting any old range from the
 # ordinary-training exclusion table.
-_WORKER_BC_DEMO_SEEDS = tuple(range(2_106_000, 2_106_128))
+_WORKER_BC_DEMO_SEEDS = tuple(range(2_108_000, 2_108_128))
 _BURNED_BC_EPISODES = frozenset(
     (*range(100, 484), *range(1000, 1384),
      *range(2000, 2128), *range(3000, 3384),
@@ -6001,7 +6001,7 @@ def _validate_worker_bc_evidence(rec: dict, demos_payload: bytes,
     expected_demo_seeds = np.asarray(_WORKER_BC_DEMO_SEEDS, dtype=np.int64)
     _require(np.array_equal(episodes, expected_demo_seeds),
              "BC worker demos 必须精确覆盖固定示范种子 "
-             "2106000..2106127 各至少一对")
+             "2108000..2108127 各至少一对")
     action14 = y == 14
     action14_episodes = int(np.unique(episode_id[action14]).size)
     _require(

@@ -23,7 +23,7 @@
   - 训练种子:显式采样器永久拒采历史已烧 BC 池 [100,484)、
     [1000,1384) 及全部现行登记的 BC/评测池。已消费的 protocol-v7 BC 池
     [2100000,2100128)、[2101000,2101384) 永久保留在拒采表；当前 active
-    v1/v2 池分别为 [2106000,2106128)、[2103000,2103384)。统一开发/终考
+    v1/v2 池分别为 [2108000,2108128)、[2103000,2103384)。统一开发/终考
     种子银行为 [2110000,2130000)，与两代 BC 池构造性不交叠。
 """
 from __future__ import annotations
@@ -88,6 +88,7 @@ BC_RESERVED_SEED_RANGES = (
     # 一次性烧毁(A2 修正案缘起);v1 活动段推进至 2_106 段。
     (2_104_000, 2_104_128),
     (2_106_000, 2_106_128),
+    (2_108_000, 2_108_128),
 )
 TRAIN_RESERVED_SEED_RANGES = (
     *HISTORICAL_BURNED_BC_SEED_RANGES,
@@ -100,7 +101,7 @@ _FAST_FORWARD_REWARD_CREDIT_MODES = frozenset({
     "terminal-death-only",
 })
 _SEED_SCOPES = frozenset({"train", "bc-v1", "bc-v2", "replay"})
-_CURRENT_BC_V1_RANGE = (2_106_000, 2_106_128)
+_CURRENT_BC_V1_RANGE = (2_108_000, 2_108_128)
 _CURRENT_BC_V2_RANGE = (2_103_000, 2_103_384)
 _LEGACY_BELT_FEATURE = 286
 _LEGACY_EXHAUSTED_FEATURE = 297
