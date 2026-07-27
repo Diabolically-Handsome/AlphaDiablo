@@ -70,6 +70,8 @@ _WORKER_OBSERVATION_VIEWS = frozenset({
 _DUAL_WORKER_PG_AUDIT_SCHEMA_BY_CONTRACT_REVISION = {
     24: "diablogym-worker-onpolicy-pg/8",
     25: "diablogym-worker-onpolicy-pg/9",
+    # A4(2026-07-27):rev26 = kl_early_stopped 旗,audit schema /10。
+    26: "diablogym-worker-onpolicy-pg/10",
 }
 
 ASSEMBLED_BOARD_SOURCE_FILES = (*PROTOCOL_SOURCE_FILES, "train/evaluate.py")
@@ -416,10 +418,11 @@ def capture_published_worker(
     model_sha256 = hashlib.sha256(checkpoint_payload).hexdigest()
     step = checkpoint_num_timesteps_bytes(
         checkpoint_payload, str(checkpoint))
+    # A4(2026-07-27):契约升 rev26(kl_early_stopped 旗),认证域随升。
     require(_BC_AUX_OBJECTIVE_REVISION == 11
             and _CONTRACT_REVISION in {
-                12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25},
-            "评估器只认证 objective-rev11/contract-rev12-through-25")
+                12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26},
+            "评估器只认证 objective-rev11/contract-rev12-through-26")
     require(isinstance(receipt, dict)
             and set(receipt) == _PUBLISHED_RECEIPT_KEYS,
             "Worker 发布回执字段/schema 不精确")
@@ -526,8 +529,8 @@ def capture_published_worker(
     require(isinstance(contract, dict)
             and _is_plain_int(contract.get("contract_revision"))
             and contract.get("contract_revision")
-            in {12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25},
-            "Worker checkpoint 不是受支持的 rev12-rev25 正式训练契约")
+            in {12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26},
+            "Worker checkpoint 不是受支持的 rev12-rev26 正式训练契约")
     if contract["contract_revision"] >= 24:
         try:
             from train_ppo import _validate_policy_source_roles
@@ -1309,7 +1312,9 @@ def load_worker(
         worker_policy_view = (
             "legacy-v3-a12-overlay"
             if custom_a12_policy else "legacy-v3")
-    elif contract_revision in {17, 18, 19, 20, 21, 22, 23, 24, 25}:
+    # A4(2026-07-27):rev26 = rev25 + kl_early_stopped 旗(audit schema /10),
+    # 装载语义与 rev25 同族。
+    elif contract_revision in {17, 18, 19, 20, 21, 22, 23, 24, 25, 26}:
         legacy_policy_view = contract.get(
             "legacy_policy_observation_view")
         worker_policy_view = contract.get(

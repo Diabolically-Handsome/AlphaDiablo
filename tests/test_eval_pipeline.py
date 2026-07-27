@@ -860,7 +860,7 @@ if '_diablogym' in sys.modules or 'diablogym' in sys.modules:
         self.assertEqual(int(unmasked_action), 12)
 
         with tempfile.TemporaryDirectory() as directory:
-            checkpoint = pathlib.Path(directory) / "current-rev25.zip"
+            checkpoint = pathlib.Path(directory) / "current-rev26.zip"
             model.save(checkpoint)
             with mock.patch.object(
                     eval_assembled,
@@ -871,7 +871,7 @@ if '_diablogym' in sys.modules or 'diablogym' in sys.modules:
                 workers, label, identity = eval_assembled.load_worker(
                     str(checkpoint), "a" * 64)
             runtime_validation.assert_called_once_with(
-                mock.ANY, contract_revision=25)
+                mock.ANY, contract_revision=26)
             callback = workers[eval_assembled.FARM]
             action = callback(observation, raw_mask)
 
@@ -920,7 +920,7 @@ if '_diablogym' in sys.modules or 'diablogym' in sys.modules:
             model.save(forged_rev25_checkpoint)
             with self.assertRaisesRegex(
                     eval_contract.EvalContractError,
-                    "rev25 actor/critic/layout/PG"):
+                    "rev26 actor/critic/layout/PG"):
                 eval_assembled.load_worker(
                     str(forged_rev25_checkpoint), "a" * 64)
 
@@ -961,7 +961,7 @@ if '_diablogym' in sys.modules or 'diablogym' in sys.modules:
                 eval_assembled.load_worker(
                     str(mismatched_checkpoint), "a" * 64)
 
-        self.assertEqual(label, "current-rev25")
+        self.assertEqual(label, "current-rev26")
         self.assertEqual(identity["num_timesteps"], 24)
         self.assertEqual(DUAL_WORKER_LAYOUT.observation_dim, 13_012)
         self.assertEqual(
