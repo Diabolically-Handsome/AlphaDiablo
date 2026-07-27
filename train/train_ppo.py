@@ -173,7 +173,7 @@ _EXPORT_MANIFEST_SCHEMA_VERSION = 1
 # were consumed and therefore cannot service a new R7 prepare-bc.  Register
 # fresh, disjoint active pools without deleting any old range from the
 # ordinary-training exclusion table.
-_WORKER_BC_DEMO_SEEDS = tuple(range(2_108_000, 2_108_128))
+_WORKER_BC_DEMO_SEEDS = tuple(range(2_140_000, 2_140_128))
 _BURNED_BC_EPISODES = frozenset(
     (*range(100, 484), *range(1000, 1384),
      *range(2000, 2128), *range(3000, 3384),
@@ -258,7 +258,7 @@ _BC_V2_PREVENTIVE_THRESHOLDS = (0.65,)
 # immutable one-shot marker before the first reset.  The previous 2101000 pool
 # has already been opened and stays burned; the active v2 registry below is
 # disjoint from every predecessor, active v1, and the R7 eval bank.
-_BC_V2_COLLECTION_EPISODES = tuple(range(2_103_000, 2_103_384))
+_BC_V2_COLLECTION_EPISODES = tuple(range(2_141_000, 2_141_384))
 if (
     set(_WORKER_BC_DEMO_SEEDS) & _BURNED_BC_EPISODES
     or set(_BC_V2_COLLECTION_EPISODES) & _BURNED_BC_EPISODES
@@ -6001,7 +6001,7 @@ def _validate_worker_bc_evidence(rec: dict, demos_payload: bytes,
     expected_demo_seeds = np.asarray(_WORKER_BC_DEMO_SEEDS, dtype=np.int64)
     _require(np.array_equal(episodes, expected_demo_seeds),
              "BC worker demos 必须精确覆盖固定示范种子 "
-             "2108000..2108127 各至少一对")
+             "2140000..2140127 各至少一对")
     action14 = y == 14
     action14_episodes = int(np.unique(episode_id[action14]).size)
     _require(

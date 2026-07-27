@@ -196,8 +196,8 @@ _WORKER_FINAL_SENTINEL_KEYS = frozenset({
     "teacher_diverge", "final",
 })
 
-BC_V1_RANGE = (2_108_000, 2_108_128)
-BC_V2_RANGE = (2_103_000, 2_103_384)
+BC_V1_RANGE = (2_140_000, 2_140_128)
+BC_V2_RANGE = (2_141_000, 2_141_384)
 EVAL_BANK_RANGE = (2_110_000, 2_130_000)
 DEV_POOLS = {
     "dev-a": tuple(range(2_110_000, 2_110_128)),

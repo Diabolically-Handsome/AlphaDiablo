@@ -4649,7 +4649,17 @@ class LeashedMaskablePPO(MaskablePPO):
                     not bool(dones_array[index])
                     or info.get("TimeLimit.truncated", False) is not False
                     or info.get("time_limit_bootstrap_safe") is not False
-                    or info.get("unsettled_budget_terminal") is not False
+                    # A3 修正案(2026-07-27 批):快进链可把「工人窗超时
+                    # 罚款」与「整局预算于未结算态耗尽」桥进同一 transition
+                    # (fast_forward_extras 尾部触底)。此同现合法:放行
+                    # unsettled=True,但要求与 budget_exhausted 一致闭合。
+                    # 其余八肢原封。(第一腿 119,776 步确定性复现在案。)
+                    or info.get("unsettled_budget_terminal")
+                    not in (False, True)
+                    or (
+                        info.get("unsettled_budget_terminal") is True
+                        and info.get("budget_exhausted") is not True
+                    )
                     or timeout_base >= 0.0
                     or timeout_additional > 0.0
                     or timeout_total

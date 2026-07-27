@@ -19,7 +19,7 @@
   不改变 retry 决策、类权或所选模型；
 - v1 面回归零破坏(canonical 路径 / schema_version=1 / 采集行为原封);
 - 方案甲(2026-07-19 亲批):v2 采集局数 ×3；当前 v1/v2 active registry 为
-  未查看的 2108000..2108127 / 2103000..2103383 固定池，旧 2100000 /
+  未查看的 2140000..2140127 / 2141000..2141383 固定池，旧 2100000 /
   2101000 池保持 burned + v2 主训类平衡加权 CE
   (w_c = N/(K·n_c) 手算恒等;v1 调用路径不加权)+ 回执新字段
   (collection_episodes / class_weights)与验证器篡改矩阵。
@@ -1829,9 +1829,9 @@ class PlanAExpansionTests(_PatchMixin, unittest.TestCase):
                          3 * len(bc_worker.DEMO_SEEDS))
         # 当前数据污染隔离：v2 使用与全部已打开 predecessor 完全不相交的新池。
         self.assertEqual(bc_worker.DEMO_SEEDS_V2,
-                         list(range(2_103_000, 2_103_384)))
-        self.assertEqual(bc_worker.DEMO_SEEDS_V2[0], 2_103_000)
-        self.assertEqual(bc_worker.DEMO_SEEDS_V2[-1], 2_103_383)
+                         list(range(2_141_000, 2_141_384)))
+        self.assertEqual(bc_worker.DEMO_SEEDS_V2[0], 2_141_000)
+        self.assertEqual(bc_worker.DEMO_SEEDS_V2[-1], 2_141_383)
         self.assertFalse(set(bc_worker.DEMO_SEEDS_V2).intersection(
             bc_worker.DEMO_SEEDS))
 
@@ -1840,11 +1840,11 @@ class PlanAExpansionTests(_PatchMixin, unittest.TestCase):
         # (2_102 段 2026-07-27 崩溃烧毁,append-only 推进)。
         self.assertEqual(
             list(bc_worker.DEMO_SEEDS),
-            list(range(2_108_000, 2_108_128)),
+            list(range(2_140_000, 2_140_128)),
         )
         self.assertEqual(len(bc_worker.DEMO_SEEDS), 128)
         self.assertEqual(tuple(train_ppo._WORKER_BC_DEMO_SEEDS),
-                         tuple(range(2_108_000, 2_108_128)))
+                         tuple(range(2_140_000, 2_140_128)))
         # 源文级镜像:v1 采集环仍消费 DEMO_SEEDS,v2 采集环消费 DEMO_SEEDS_V2
         src = BC_WORKER.read_text()
         self.assertIn("for i, seed in enumerate(DEMO_SEEDS):", src)
@@ -1855,14 +1855,14 @@ class PlanAExpansionTests(_PatchMixin, unittest.TestCase):
         _, labels, groups, _, _ = bc_worker.collect_v2()
         self.assertEqual(len(labels), 3 * 128)
         self.assertTrue(np.array_equal(np.unique(groups),
-                                       np.arange(2_103_000, 2_103_384)))
+                                       np.arange(2_141_000, 2_141_384)))
 
     def test_v1_collect_still_128_episodes(self):
         self._install_env(lambda seed: [[{"raw": _out_band()}]])
         _, labels, groups = bc_worker.collect()
         self.assertEqual(len(labels), 128)
         self.assertTrue(np.array_equal(np.unique(groups),
-                                       np.arange(2_108_000, 2_108_128)))
+                                       np.arange(2_140_000, 2_140_128)))
 
     def test_active_pool_marker_identity_cannot_alias_burned_predecessors(self):
         active_v1 = train_ppo._bc_final_holdout_marker_identity(
@@ -1875,18 +1875,18 @@ class PlanAExpansionTests(_PatchMixin, unittest.TestCase):
             TEACHER_GENERATION_V2, range(2_101_000, 2_101_384))
         self.assertEqual(
             active_v1[0]["episode_seeds"],
-            list(range(2_108_000, 2_108_128)))
+            list(range(2_140_000, 2_140_128)))
         self.assertEqual(
             active_v2[0]["episode_seeds"],
-            list(range(2_103_000, 2_103_384)))
+            list(range(2_141_000, 2_141_384)))
         self.assertEqual(
             active_v1[1],
-            "83ed65513942f22a02f06b6c02828f191"
-            "5c10d6761bdfa35bfa2847a22a77b5a")
+            "1e50974c083375345a3d2116e79e8bf43"
+            "3db3eb7ff9fa82decbbbd1a7096a00a")
         self.assertEqual(
             active_v2[1],
-            "10e33273f96570d6fbad5587f80bde811"
-            "02c46803d49db4cd02dae11b9a2dfac")
+            "b1a404e3c2d32f54f1090eb06b2eeeadb"
+            "57ee4d378d5f3ea26c410f7000c47be")
         self.assertNotEqual(active_v1[1], burned_v1[1])
         self.assertNotEqual(active_v2[1], burned_v2[1])
 

@@ -2695,6 +2695,8 @@ class BcAuxRngTests(unittest.TestCase):
                 (2_104_000, 2_104_128),
                 (2_106_000, 2_106_128),
                 (2_108_000, 2_108_128),
+                (2_140_000, 2_140_128),
+                (2_141_000, 2_141_384),
             ),
         )
         for seed, expected in (
@@ -2718,7 +2720,12 @@ class BcAuxRngTests(unittest.TestCase):
                 (2_106_000, True), (2_106_127, True),
                 (2_106_128, False),
                 (2_108_000, True), (2_108_127, True),
-                (2_108_128, False)):
+                (2_108_128, False),
+                (2_139_999, False),
+                (2_140_000, True), (2_140_127, True),
+                (2_140_128, False),
+                (2_141_000, True), (2_141_383, True),
+                (2_141_384, False)):
             self.assertIs(is_reserved_train_seed(seed), expected, seed)
 
         class ScriptedRng:
@@ -2733,6 +2740,8 @@ class BcAuxRngTests(unittest.TestCase):
                     2_104_000, 2_104_127,
                     2_106_000, 2_106_127,
                     2_108_000, 2_108_127,
+                    2_140_000, 2_140_127,
+                    2_141_000, 2_141_383,
                     42))
                 self.calls = 0
 
@@ -2743,7 +2752,7 @@ class BcAuxRngTests(unittest.TestCase):
 
         rng = ScriptedRng()
         self.assertEqual(sample_train_seed(rng), 42)
-        self.assertEqual(rng.calls, 23)
+        self.assertEqual(rng.calls, 27)
         self.assertEqual(rng.assert_bounds, (0, 2**31))
 
 
