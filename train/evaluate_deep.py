@@ -1,4 +1,4 @@
-"""深水区章 32 种子金标准(protocol v3 深水变体,2026-07-08 起)。
+"""深水区章 32 种子金标准（当前协议的深水变体）。
 
 与主榜(train/evaluate.py)的差异,也是不可比的原因:
   - max_steps 3000(主榜 1500)——护甲/药水经济需要更长的会计周期;
@@ -6,7 +6,7 @@
   - 检查点为 MaskablePPO(v16 起的掩码栈),predict 必须带 action_masks
     (掩码是策略分布的一部分,不带 = 换了一个策略)。
 其余协议不动:种子 9000-9031 只用于终评、argmax、空载机器、引擎钉死
-ENGINE_REF。protocol-v3 结果写入 train/leaderboard-deep-v3.md；旧榜只读。
+ENGINE_REF。结果写入带当前协议版本的 leaderboard；旧榜只读。
 
 用法(仓库根目录):
   .venv/bin/python train/evaluate_deep.py train/runs/<run>/model_final

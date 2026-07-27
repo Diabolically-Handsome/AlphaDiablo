@@ -6,7 +6,7 @@
 闸门(预注册):
   G1b wrapper-rush(恒 DIVE)对神谕 rush 臂逐种子 |Δ| ≤ max(5%, 1.0)
   G2  教师(榨干旗或 clvl≥dlvl+2 → DIVE)均值 ≥36 且 配对胜 wrapper-retire ≥24/32
-  G3  三参考臂 9000-9031 成绩写入 leaderboard-hierarchy-v3.md
+  G3  三参考臂 9000-9031 成绩写入当前协议版本的 hierarchy leaderboard
   G4  τ̄ 与吞吐实测 → 双币种停车规则定数
 """
 import argparse
@@ -17,6 +17,8 @@ import pathlib
 import statistics
 import sys
 import time
+
+import numpy as np
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "python"))
@@ -42,6 +44,25 @@ FARM, DIVE = 0, 1
 OptionsEnv = None
 
 
+def _masked_option_or_first_legal(requested, mask) -> int:
+    """Keep a legal proposal or deterministically choose the first legal option."""
+    valid = np.asarray(mask, dtype=bool)
+    if valid.shape != (3,):
+        raise ValueError(
+            f"probe option 动作掩码形状异常:{valid.shape} != (3,)")
+    legal = np.flatnonzero(valid)
+    if len(legal) == 0:
+        raise ValueError("probe option 动作掩码全假")
+    if (
+        isinstance(requested, (int, np.integer))
+        and not isinstance(requested, (bool, np.bool_))
+    ):
+        candidate = int(requested)
+        if 0 <= candidate < 3 and bool(valid[candidate]):
+            return candidate
+    return int(legal[0])
+
+
 def _options_env_class():
     if OptionsEnv is not None:  # 单元测试显式注入；生产默认为 None。
         return OptionsEnv
@@ -61,9 +82,7 @@ def run_policy(env, choose, seed):
     R, taus, info = 0.0, [], {}
     while not (done or trunc):
         m = env.action_masks()
-        opt = choose(env, m)
-        if not m[opt]:
-            opt = FARM
+        opt = _masked_option_or_first_legal(choose(env, m), m)
         obs, r, done, trunc, info = env.step(opt)
         R += r
         taus.append(info["option_extra"]["tau"])
@@ -138,7 +157,7 @@ def main():
     if output_path == args.oracle.resolve():
         ap.error("--output 不能覆盖 --oracle")
     if output_path in {LB.resolve(), LB_LOCK.resolve()}:
-        ap.error("--output 不能覆盖 protocol-v3 排行榜或其锁文件")
+        ap.error("--output 不能覆盖当前协议排行榜或其锁文件")
     try:
         oracle_payload = args.oracle.read_bytes()
         oracle = strict_json_loads(oracle_payload)

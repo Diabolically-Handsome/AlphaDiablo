@@ -50,6 +50,7 @@ def main():
 
     # A/D. 主权开:活体走一窗
     env = WorkerWindowEnv(H_NPZ, max_steps=3000, rng_seed=0,
+                          seed_scope="replay",
                           drink_sovereignty=True)
     obs, _ = env.reset(seed=424242)
     check(obs is not None, "主权开:reset 得到首窗观测")

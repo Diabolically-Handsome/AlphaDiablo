@@ -112,7 +112,8 @@ def replay_archive(worker_npz: str | pathlib.Path,
 
     mgr = NumpyManager(str(manager_npz))
     net = NumpyManager(str(worker_npz))
-    workers = {FARM: lambda obs, mask, _n=net: int(_n.choose(obs, mask))}
+    net.require_worker_contract()
+    workers = {FARM: net.worker_callback()}
     env = OptionsEnv(max_steps=3000, workers=workers)
     fidelity: dict[str, object] = {}
     per_seed: dict[str, dict] = {}

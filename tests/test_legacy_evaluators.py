@@ -116,6 +116,19 @@ def _loader(model, seen: list[bytes]):
 class LegacyEvaluatorTests(unittest.TestCase):
     def setUp(self):
         _FakeEnv.instances.clear()
+        # These unit tests replace the native environment with controlled
+        # modules and exercise snapshot/order/cleanup/publication semantics.
+        # A full-suite process may already have imported the real bridge in an
+        # earlier module, so isolate that unrelated process-global fact here.
+        # The dedicated guard test below deliberately keeps the real guard.
+        if self._testMethodName != (
+                "test_standalone_evaluators_reject_preloaded_or_wrong_bridge"):
+            for module in (standard, deep, options, probe):
+                patcher = mock.patch.object(
+                    module, "require_fresh_native_runtime",
+                    return_value=None)
+                patcher.start()
+                self.addCleanup(patcher.stop)
 
     def test_default_contract_freezes_before_runtime_dependency_imports(self):
         class StopModule(types.ModuleType):
@@ -156,7 +169,7 @@ class LegacyEvaluatorTests(unittest.TestCase):
 
     def test_standalone_contract_binds_protocol_runtime_content_and_sources(self):
         contract = standard.main_contract()
-        self.assertEqual(contract["protocol_version"], 3)
+        self.assertEqual(contract["protocol_version"], 4)
         self.assertTrue(contract["protocol"]["disable_level_backtracking"])
         self.assertEqual(set(contract["runtime"]),
                          {"bridge", "engine", "content", "versions",
@@ -306,8 +319,8 @@ class LegacyEvaluatorTests(unittest.TestCase):
         runtime_verify.assert_called_once_with(hierarchy_contract)
         model_verify.assert_called_once_with(frozen[0], frozen[2])
 
-    def test_v3_board_rejects_legacy_or_drift_and_upserts_atomically(self):
-        header = "# board v3\n\n| run | score |\n|---|---|\n"
+    def test_current_board_rejects_legacy_or_drift_and_upserts_atomically(self):
+        header = "# board v4\n\n| run | score |\n|---|---|\n"
         contract = _contract("board")
         with tempfile.TemporaryDirectory() as directory:
             board = pathlib.Path(directory) / "board.md"
@@ -454,14 +467,14 @@ class LegacyEvaluatorTests(unittest.TestCase):
                     standard.main()
             evaluate_model.assert_not_called()
 
-    def test_v3_boards_are_separate_and_hierarchy_writers_share_contract(self):
+    def test_v4_boards_are_separate_and_hierarchy_writers_share_contract(self):
         expected = ROOT / "train" / "runs" / "eval-locks" / "leaderboard-hierarchy.lock"
         self.assertEqual(options.LB_LOCK, expected)
         self.assertEqual(probe.LB_LOCK, expected)
         self.assertEqual(options.LB, probe.LB)
-        self.assertEqual(standard.LEADERBOARD.name, "leaderboard-v3.md")
-        self.assertEqual(deep.LEADERBOARD.name, "leaderboard-deep-v3.md")
-        self.assertEqual(options.LB.name, "leaderboard-hierarchy-v3.md")
+        self.assertEqual(standard.LEADERBOARD.name, "leaderboard-v4.md")
+        self.assertEqual(deep.LEADERBOARD.name, "leaderboard-deep-v4.md")
+        self.assertEqual(options.LB.name, "leaderboard-hierarchy-v4.md")
         self.assertEqual(options.hierarchy_contract(), probe.hierarchy_contract())
 
         contract = _contract("hierarchy")
@@ -487,6 +500,44 @@ class LegacyEvaluatorTests(unittest.TestCase):
         row = next(iter(upsert.call_args.args[1].values()))
         provenance = standard._validate_row_marker(row, contract)
         self.assertEqual(provenance["model_sha256"], "d" * 64)
+
+    def test_probe_policy_falls_back_to_first_legal_option(self):
+        class HandoffEnv:
+            def __init__(self, mask):
+                self.mask = mask
+                self.seen = []
+
+            def reset(self, *, seed):
+                self.seed = seed
+                return [0.0], {}
+
+            def action_masks(self):
+                return self.mask
+
+            def step(self, action):
+                self.seen.append(int(action))
+                return [0.0], 1.0, True, False, {
+                    "episode_seed": self.seed,
+                    "episode_extra": {
+                        "kills": 0, "depth": 1, "died": False,
+                    },
+                    "option_extra": {
+                        "reason": "end", "mode_seq": "D", "tau": 1,
+                    },
+                }
+
+        env = HandoffEnv([False, True, False])
+        row = probe.run_policy(
+            env, lambda _env, _mask: probe.FARM, seed=7)
+        self.assertEqual(env.seen, [probe.DIVE])
+        self.assertEqual(row["ret"], 1.0)
+
+        with self.assertRaisesRegex(ValueError, "动作掩码全假"):
+            probe.run_policy(
+                HandoffEnv([False, False, False]),
+                lambda _env, _mask: probe.FARM,
+                seed=8,
+            )
 
     def test_probe_close_failure_prevents_any_publication(self):
         class CloseFailure:
@@ -526,7 +577,7 @@ class LegacyEvaluatorTests(unittest.TestCase):
             existing.write_text("historical result")
             for output, message in (
                     (existing, "拒绝覆写"),
-                    (root / "board.md", "不能覆盖 protocol-v3")):
+                    (root / "board.md", "不能覆盖当前协议排行榜")):
                 stderr = io.StringIO()
                 with self.subTest(output=output), \
                         mock.patch.object(probe, "LB", root / "board.md"), \
@@ -597,7 +648,7 @@ class LegacyEvaluatorTests(unittest.TestCase):
         self.assertEqual(events, [
             "freeze", "native-import", "close", "verify", "publish"])
 
-    def test_probe_output_and_script_rows_bind_v3_contract(self):
+    def test_probe_output_and_script_rows_bind_v4_contract(self):
         contract = _contract("hierarchy")
         episode_rows = [
             {"seed": seed, "ret": 1.0, "died": False, "depth": 1}

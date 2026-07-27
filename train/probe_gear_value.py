@@ -28,19 +28,27 @@ _orig_dispatch = oe_mod.dispatch
 _counter = {"a14": 0, "opps": 0}
 
 
-def _spy_dispatch(mode, raw, gear_available):
+def _spy_dispatch(
+        mode, raw, gear_available, action_mask=None,
+        nearest_engageable_distance=oe_mod._DISTANCE_UNSET):
     if gear_available:
         _counter["opps"] += 1
-    a = _orig_dispatch(mode, raw, gear_available)
+    a = _orig_dispatch(
+        mode, raw, gear_available, action_mask=action_mask,
+        nearest_engageable_distance=nearest_engageable_distance)
     if a == 14:
         _counter["a14"] += 1
     return a
 
 
-def _deprived_dispatch(mode, raw, gear_available):
+def _deprived_dispatch(
+        mode, raw, gear_available, action_mask=None,
+        nearest_engageable_distance=oe_mod._DISTANCE_UNSET):
     if gear_available:
         _counter["opps"] += 1
-    return _orig_dispatch(mode, raw, False)
+    return _orig_dispatch(
+        mode, raw, False, action_mask=action_mask,
+        nearest_engageable_distance=nearest_engageable_distance)
 
 
 def run_variant(name, dispatch_fn):

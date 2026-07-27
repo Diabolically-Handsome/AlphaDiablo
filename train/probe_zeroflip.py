@@ -28,6 +28,7 @@ WORKERS = {
 }
 DEMOS = ROOT / "train" / "runs" / "bc-worker" / "demos.npz"
 OUT = ROOT / "train" / "runs" / "probe-zeroflip" / "report.json"
+DEMOS_OBSERVATION_VIEW = "legacy-v3"
 OUT.parent.mkdir(parents=True, exist_ok=True)
 
 
@@ -37,6 +38,7 @@ def main():
     report = {
         "obs_count": int(len(X)),
         "demos_sha256": hashlib.sha256(DEMOS.read_bytes()).hexdigest(),
+        "demos_observation_view": DEMOS_OBSERVATION_VIEW,
         "obs_distribution_note": "BC demos(脚本工人示范窗分布);非部署轨迹、非金池",
         "runtime_five": {
             "bridge": rt["bridge"]["sha256"], "engine": rt["engine"]["sha256"],
@@ -47,7 +49,14 @@ def main():
     }
     for name, path in WORKERS.items():
         net = NumpyManager(str(path))
-        logits = np.stack([net.logits(x) for x in X])
+        net.require_worker_contract()
+        logits = np.stack([
+            net.worker_logits(
+                x,
+                observation_view=DEMOS_OBSERVATION_VIEW,
+            )
+            for x in X
+        ])
         cur = logits.copy(); cur[:, [11, 12]] = -1e9
         new = logits.copy(); new[:, 11] = -1e9
         flips = int((cur.argmax(1) != new.argmax(1)).sum())

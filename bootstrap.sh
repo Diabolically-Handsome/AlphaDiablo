@@ -11,10 +11,15 @@
 #   - Homebrew;游戏数据 MPQ 已在 ~/Library/Application Support/diasurgical/devilution/
 set -euo pipefail
 
-export PATH="/opt/homebrew/bin:$PATH"
+if [ "$(uname -s)" = "Darwin" ]; then
+  export PATH="/opt/homebrew/bin:$PATH"
+  DATA_DIR="$HOME/Library/Application Support/diasurgical/devilution"
+  JOBS="$(sysctl -n hw.physicalcpu)"
+else
+  DATA_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/diasurgical/devilution"
+  JOBS="$(nproc)"
+fi
 DEV_DIR="${TMPDIR:-/tmp}/alphadiablo-dev/devilutionX"
-DATA_DIR="$HOME/Library/Application Support/diasurgical/devilution"
-JOBS="$(sysctl -n hw.physicalcpu)"
 # 钉死的上游引擎版本 —— 排行榜与全部测试基线所用的构建源。
 # 升级引擎是有意识的决定:改这个 SHA,然后重跑金标准评估、重建排行榜。
 ENGINE_REF="${DEVILUTIONX_REF:-34c4cfc2e733240ac717f23bba2def887c793008}"
@@ -45,8 +50,16 @@ elif [ "$(git -C "$DEV_DIR" rev-parse HEAD 2>/dev/null || true)" != "$ENGINE_REF
   git -C "$DEV_DIR" reset --hard -q "$ENGINE_REF"
 fi
 
-echo "==> [3/5] Homebrew 依赖(官方 Brewfile,幂等)"
-brew bundle install --file="$DEV_DIR/Brewfile" || echo "(个别包锁冲突可忽略,下一步编译会兜底验证)"
+echo "==> [3/5] 系统依赖"
+if [ "$(uname -s)" = "Darwin" ]; then
+  brew bundle install --file="$DEV_DIR/Brewfile" || echo "(个别包锁冲突可忽略,下一步编译会兜底验证)"
+else
+  # Linux(WSL2/Ubuntu):依赖经 apt 预装(cmake g++ ninja libsdl2-dev libsodium-dev
+  # libpng-dev libbz2-dev libfmt-dev gettext);缺失时下一步编译会兜底报错
+  for tool in cmake g++ msgfmt; do
+    command -v "$tool" >/dev/null || { echo "缺少 $tool,先 apt 安装构建依赖"; exit 1; }
+  done
+fi
 
 # CI 模式:只负责 clone + 依赖,引擎编译统一交给 build.sh(免得同一引擎编两遍)
 if [ "${BOOTSTRAP_CLONE_ONLY:-0}" = "1" ]; then

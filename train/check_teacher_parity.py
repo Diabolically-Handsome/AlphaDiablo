@@ -15,12 +15,20 @@ sys.path.insert(0, str(ROOT / "python"))
 sys.path.insert(0, str(ROOT / "train"))
 
 
-def parity_metrics(teacher, net, obs: np.ndarray) -> dict:
+def parity_metrics(
+        teacher,
+        net,
+        obs: np.ndarray,
+        *,
+        observation_view: str = "legacy-v3") -> dict:
     import torch as th
 
     with th.no_grad():
         teacher_logits = teacher(th.as_tensor(obs)).cpu().numpy()
-    numpy_logits = np.stack([net.logits(row) for row in obs])
+    numpy_logits = np.stack([
+        net.worker_logits(row, observation_view=observation_view)
+        for row in obs
+    ])
     raw_abs = np.abs(teacher_logits - numpy_logits)
 
     masks = np.ones_like(teacher_logits, dtype=bool)
@@ -58,7 +66,11 @@ def main():
     import torch as th
 
     from leashed_ppo import build_teacher
-    from diablogym.worker_env import NumpyManager
+    from diablogym.worker_env import (
+        NumpyManager,
+        WORKER_ACTION12_PERMANENTLY_MASKED,
+        WORKER_OBSERVATION_VIEW_LEGACY_V3,
+    )
 
     ap = argparse.ArgumentParser(description="校验教师 state_dict 与工人 NPZ 的 argmax 一致性")
     ap.add_argument("teacher_sd", type=pathlib.Path)
@@ -71,8 +83,20 @@ def main():
     sd_path, npz_path = str(args.teacher_sd), str(args.worker_npz)
     teacher = build_teacher(sd_path)
     net = NumpyManager(npz_path)
+    contract = net.require_worker_contract()
+    if contract["observation_view"] != WORKER_OBSERVATION_VIEW_LEGACY_V3:
+        ap.error(
+            "KING teacher parity 只定义于完整 legacy-v3 policy observation")
+    if contract["action12_mode"] != WORKER_ACTION12_PERMANENTLY_MASKED:
+        ap.error(
+            "KING teacher parity 要求 permanently-masked action12 contract")
     obs = np.random.default_rng(0).standard_normal((1000, 298)).astype(np.float32)
-    metrics = parity_metrics(teacher, net, obs)
+    metrics = parity_metrics(
+        teacher,
+        net,
+        obs,
+        observation_view=net.worker_observation_view,
+    )
     ok = parity_passes(metrics)
     print(f"G-KL-W parity: {metrics}")
     sys.exit(0 if ok else 1)

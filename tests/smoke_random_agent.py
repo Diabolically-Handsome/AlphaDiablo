@@ -98,8 +98,19 @@ def main():
         assert "交错" in str(exc)
     else:
         raise AssertionError("同进程全局引擎被多环境静默交错使用")
-    _, _, _, truncated, _ = short.step(10)  # 最长 12 拍的宏也只能用剩余 1 拍
-    assert truncated and short._steps == short.max_steps == 1
+    _, _, terminated, truncated, cap_info = short.step(10)
+    # 最长 12 拍的宏也只能用剩余 1 拍。若这一拍停在 295 维未编码的
+    # walk/future/mode 中间态，必须 fail-closed terminal，不能让 SB3
+    # 把别名 terminal_observation 当成安全 TimeLimit 状态 bootstrap。
+    assert (terminated or truncated) and not (terminated and truncated)
+    assert short._steps == short.max_steps == 1
+    if cap_info["decision_idle"]:
+        assert truncated and cap_info["time_limit_bootstrap_safe"]
+        assert not cap_info["unsettled_budget_terminal"]
+    else:
+        assert terminated and not truncated
+        assert cap_info["unsettled_budget_terminal"]
+        assert not cap_info["time_limit_bootstrap_safe"]
     try:
         short.step(0)
     except Exception as exc:

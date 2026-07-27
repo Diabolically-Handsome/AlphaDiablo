@@ -19,8 +19,6 @@ import json
 import pathlib
 import sys
 
-import numpy as np
-
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "train"))
 
@@ -35,7 +33,9 @@ OUT.parent.mkdir(parents=True, exist_ok=True)
 
 def episode_digest(seed: int, npz=None) -> dict:
     net = NumpyManager(str(npz or KING_NPZ))
+    net.require_worker_contract()
     env = WorkerWindowEnv(str(H_NPZ), max_steps=3000, rng_seed=0,
+                          seed_scope="replay",
                           log_windows=True, skip_dry=True)   # ← 与原脚本唯一差异
     h = hashlib.sha256()
     wages = 0.0
@@ -43,8 +43,13 @@ def episode_digest(seed: int, npz=None) -> dict:
     obs, _ = env.reset(seed=seed)
     while obs is not None:
         masks = env.oe._worker_masks()
-        logits = np.where(masks, net.logits(np.asarray(obs, np.float32)), -1e9)
-        a = int(np.argmax(logits))
+        policy_obs = env.oe._worker_policy_observation(
+            net.worker_observation_view)
+        a = net.choose_worker(
+            policy_obs,
+            masks,
+            observation_view=net.worker_observation_view,
+        )
         obs2, w, term, trunc, info = env.step(a)
         h.update(f"{a},{f2hex(w)},{int(term)},{int(trunc)};".encode())
         wages += float(w)

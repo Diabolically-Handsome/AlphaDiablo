@@ -25,6 +25,7 @@ import sys
 import tempfile
 import types
 import unittest
+from unittest import mock
 
 import gymnasium as gym
 import numpy as np
@@ -47,6 +48,11 @@ from train_ppo import (  # noqa: E402
     _assert_bc_v1_demos_frozen,
     _contract_bc_aux,
     _contract_dry_curriculum,
+    _dry_anchor_partition,
+    _load_dry_anchor_demos,
+    _is_exact_training_completion,
+    _require_exact_training_completion,
+    _reset_policy_optimizer,
     _training_contract,
     _validate_resume_contract,
     a12_canary_stats,
@@ -71,15 +77,49 @@ def _leg_args(**kw):
                 max_steps=3000, num_envs=4, n_steps=512, gamma=1.0, lr=3e-4,
                 ent_coef=0.005, skip_dry=False, dry_curriculum_schedule=None,
                 no_drink_sovereignty=False, bc_aux_lambda=0.0,
-                bc_aux_demos=None)
+                bc_aux_demos=None, bc_aux_graft=False,
+                bc_aux_liveness_preflight=False,
+                distill_beta=0.0, calib_record_only=False,
+                reset_optimizer=False, target_kl=None,
+                legacy_worker_policy_observation_view=True)
     base.update(kw)
     return types.SimpleNamespace(**base)
+
+
+class ExactTrainingCompletionTests(unittest.TestCase):
+    def test_full_rollout_before_or_after_frozen_target_is_not_publishable(self):
+        model = types.SimpleNamespace(
+            rollout_buffer=types.SimpleNamespace(full=True),
+            _calib_tripped=False,
+            num_timesteps=3_500_032,
+        )
+        self.assertFalse(
+            _is_exact_training_completion(model, 3_997_696))
+        model.num_timesteps = 3_997_696
+        self.assertTrue(
+            _is_exact_training_completion(model, 3_997_696))
+        model.num_timesteps += 2_048
+        self.assertFalse(
+            _is_exact_training_completion(model, 3_997_696))
+        model.num_timesteps = 3_997_696
+        model._calib_tripped = True
+        self.assertFalse(
+            _is_exact_training_completion(model, 3_997_696))
+        with self.assertRaisesRegex(
+                RuntimeError, "未精确停在已完成更新的冻结目标"):
+            _require_exact_training_completion(model, 3_997_696)
+        model._calib_tripped = False
+        _require_exact_training_completion(model, 3_997_696)
 
 
 def _contract_for(args, bc_aux_demos_sha256=None):
     model = types.SimpleNamespace(
         action_space=types.SimpleNamespace(n=15), device="cpu",
-        observation_space=types.SimpleNamespace(shape=(298,)))
+        observation_space=types.SimpleNamespace(shape=(298,)),
+        max_grad_norm=0.5,
+        teacher_sha256=(
+            "f" * 64 if float(args.distill_beta) > 0.0 else None
+        ))
     return _training_contract(args, model, batch_size=256,
                               bc_aux_demos_sha256=bc_aux_demos_sha256)
 
@@ -141,19 +181,24 @@ def _fake_demos(directory, n=8):
     return path
 
 
-class ContractRev5Tests(unittest.TestCase):
-    """E4:契约 4→5,三腿统一;dry_curriculum/bc_aux 双键;skip_dry 字面值。"""
+class CurrentContractTests(unittest.TestCase):
+    """当前合同仍完整携带 contextual graft、奖励信用、scope 与观测视图。"""
 
-    def test_revision_constant_is_5(self):
-        self.assertEqual(_CONTRACT_REVISION, 5)
+    def test_revision_constant_is_25(self):
+        self.assertEqual(_CONTRACT_REVISION, 25)
 
     def test_l_base_carries_disabled_keys(self):
         # L-base(--skip-dry):双键均 disabled——同案零双版本(圈 7)。
         contract = _contract_for(_leg_args(skip_dry=True))
-        self.assertEqual(contract["contract_revision"], 5)
+        self.assertEqual(contract["contract_revision"], 25)
+        self.assertIs(contract["legacy_policy_observation_view"], True)
         self.assertIs(contract["skip_dry"], True)          # CLI 旗字面值
         self.assertEqual(contract["dry_curriculum"], "disabled")
         self.assertEqual(contract["bc_aux"], "disabled")
+        self.assertEqual(contract["actor_migration"], "disabled")
+        self.assertEqual(contract["distill_beta"], 0.0)
+        self.assertIsNone(contract["teacher_sha256"])
+        self.assertFalse(contract["calib_record_only"])
 
     def test_l_cur_carries_schedule_payload(self):
         contract = _contract_for(
@@ -166,21 +211,44 @@ class ContractRev5Tests(unittest.TestCase):
     def test_l_full_carries_both_payloads(self):
         contract = _contract_for(
             _leg_args(dry_curriculum_schedule=MAIN_TABLE_LITERAL,
-                      bc_aux_lambda=_BC_AUX_MAIN_LAMBDA,
-                      bc_aux_demos="runs/bc-worker-v2/demos.npz"),
+                      bc_aux_graft=True,
+                      bc_aux_lambda=0.0,
+                      bc_aux_demos="runs/bc-worker-v2/demos.npz",
+                      bc_aux_liveness_preflight=True,
+                      distill_beta=0.015625,
+                      legacy_worker_policy_observation_view=False),
             bc_aux_demos_sha256="a" * 64)
         self.assertEqual(contract["dry_curriculum"],
                          {"schedule": MAIN_TABLE_LITERAL})
+        self.assertEqual(
+            contract["distillation"]["excluded_actions"], [12, 14])
         self.assertEqual(contract["bc_aux"],
-                         {"lambda": _BC_AUX_MAIN_LAMBDA,
-                          "demos_sha256": "a" * 64})
+                         {"mode":
+                              "expanded-trainable-a12-contextual-mixture",
+                          "lambda": 0.0,
+                          "demos_sha256": "a" * 64,
+                          "objective_revision": 11,
+                          "circuit": train_ppo._bc_aux_circuit_spec(),
+                          "king_support":
+                          "legal-non12-non14-renormalized",
+                          "aux_optimizer_calls_per_rollout": 0,
+                          "initial_calibration":
+                              "exact-five-percent-contextual-legal-support-mixture",
+                          "trainable_adapter_parameters": 5,
+                          "post_step_projection": {
+                              "gate_parameter_abs_max": 8.0,
+                              "probability_min": 0.001,
+                              "probability_max": 0.95,
+                          },
+                          "liveness_preflight": True})
+        self.assertIs(contract["legacy_policy_observation_view"], False)
         json.dumps(contract)   # stdlib JSON 可序列化(status.json/zip 内嵌)
 
     def test_main_table_literal_matches_frozen_constant(self):
         self.assertEqual(MAIN_TABLE_LITERAL, _DRY_CURRICULUM_MAIN_TABLE)
 
     def test_bc_aux_payload_requires_sha_when_active(self):
-        args = _leg_args(bc_aux_lambda=_BC_AUX_MAIN_LAMBDA,
+        args = _leg_args(bc_aux_graft=True, bc_aux_lambda=0.0,
                          bc_aux_demos="x.npz")
         with self.assertRaisesRegex(ValueError, "缺 bc-worker-v2 示范集 sha256"):
             _contract_bc_aux(args, None)
@@ -198,6 +266,15 @@ class ContractRev5Tests(unittest.TestCase):
             _leg_args(bc_aux_lambda=_BC_AUX_MAIN_LAMBDA), None), "disabled")
         self.assertEqual(_contract_bc_aux(
             _leg_args(bc_aux_demos="x.npz"), None), "disabled")
+        self.assertEqual(_contract_bc_aux(
+            _leg_args(bc_aux_graft=True), None), "disabled")
+        with self.assertRaisesRegex(
+                ValueError, "只接受 structural graft"):
+            _contract_bc_aux(
+                _leg_args(
+                    bc_aux_lambda=_BC_AUX_MAIN_LAMBDA,
+                    bc_aux_demos="legacy-gradient.npz"),
+                "a" * 64)
 
     def test_config_receipt_mirrors_contract_keys_in_source(self):
         # 契约与 config 回执同构增键:两助手各被两处消费(契约 + 回执);
@@ -251,45 +328,148 @@ class Rev4CheckpointRejectionTests(unittest.TestCase):
         _validate_resume_contract(_contract_for(args), _contract_for(args))
 
 
-class E6FrozenDemosTests(unittest.TestCase):
-    """E6:三腿仪表探针一律钉 BC-v1 demos 字节(冻结常量,加载处断言)。"""
+class ContinuationOptimizerContractTests(unittest.TestCase):
+    """reset 是本腿事件；lr/target_kl 才是持久配方。"""
 
-    def test_frozen_constant_matches_canonical_bytes(self):
+    def test_reset_clears_all_adam_state_and_preserves_policy_weights(self):
+        model = _real_policy(seed=31)
+        self.addCleanup(model.env.close)
+        loss = sum(parameter.square().mean()
+                   for parameter in model.policy.parameters())
+        model.policy.optimizer.zero_grad()
+        loss.backward()
+        model.policy.optimizer.step()
+        self.assertTrue(model.policy.optimizer.state)
+        before = {key: value.detach().clone()
+                  for key, value in model.policy.state_dict().items()}
+        _reset_policy_optimizer(model, 1e-4)
+        self.assertFalse(model.policy.optimizer.state)
+        self.assertEqual(model.learning_rate, 1e-4)
+        for key, value in model.policy.state_dict().items():
+            self.assertTrue(th.equal(before[key], value), key)
+
+    def test_reset_checkpoint_can_resume_normally_next_leg(self):
+        # reset_optimizer 不入 contract，因此 reset 腿产物不会永久要求下一腿
+        # 继续携旗；其已落定的 lr/target_kl 则照常持久相等。
+        reset_leg = _contract_for(
+            _leg_args(lr=1e-4, reset_optimizer=True, target_kl=0.02))
+        normal_next = _contract_for(
+            _leg_args(lr=1e-4, reset_optimizer=False, target_kl=0.02))
+        self.assertNotIn("optimizer_reset", reset_leg)
+        _validate_resume_contract(reset_leg, normal_next)
+
+    def test_lr_change_requires_explicit_reset_and_target_kl_change_is_explicit(self):
+        saved = _contract_for(_leg_args(lr=3e-4, target_kl=None))
+        lower = _contract_for(_leg_args(lr=1e-4, target_kl=0.02,
+                                        reset_optimizer=True))
+        with self.assertRaisesRegex(ValueError, "learning_rate"):
+            _validate_resume_contract(saved, lower)
+        _validate_resume_contract(
+            saved, lower, allow_optimizer_reset=True,
+            allow_target_kl_change=True)
+
+
+class E6FrozenDemosTests(unittest.TestCase):
+    """v4:当前严格 PASS 回执绑定；v3 历史常量不再获训练信任。"""
+
+    def test_v3_constant_is_compat_only_and_stale_report_rejected(self):
         self.assertEqual(
             _BC_V1_DEMOS_SHA256,
             "3bf892d611e41853eca8fce0cb146753af41ad2c3a21b6c581df1041fb1d9363")
-        actual = hashlib.sha256(CANONICAL_DEMOS.read_bytes()).hexdigest()
-        self.assertEqual(actual, _BC_V1_DEMOS_SHA256)
-        self.assertEqual(_assert_bc_v1_demos_frozen(CANONICAL_DEMOS),
-                         _BC_V1_DEMOS_SHA256)
-
-    def test_fake_bytes_explode(self):
         with tempfile.TemporaryDirectory() as d:
             fake = _fake_demos(d)
-            with self.assertRaisesRegex(ValueError, "BC-v1 demos 字节漂移"):
-                _assert_bc_v1_demos_frozen(fake)
+            fake.with_name("policy_sd.pt").write_bytes(b"policy")
+            with mock.patch.object(
+                    train_ppo, "_validate_bc_report",
+                    side_effect=ValueError("BC 回执协议过期")):
+                with self.assertRaisesRegex(ValueError, "协议过期"):
+                    _assert_bc_v1_demos_frozen(fake)
+
+    def test_current_pass_report_binds_live_bytes_and_rejects_drift(self):
+        with tempfile.TemporaryDirectory() as d:
+            fake = _fake_demos(d)
+            fake.with_name("policy_sd.pt").write_bytes(b"policy")
+            actual = hashlib.sha256(fake.read_bytes()).hexdigest()
+            with mock.patch.object(
+                    train_ppo, "_validate_bc_report",
+                    return_value={"demos_sha256": actual}):
+                self.assertEqual(_assert_bc_v1_demos_frozen(fake), actual)
+            with mock.patch.object(
+                    train_ppo, "_validate_bc_report",
+                    return_value={"demos_sha256": "d" * 64}):
+                with self.assertRaisesRegex(ValueError, "当前 PASS 回执字节漂移"):
+                    _assert_bc_v1_demos_frozen(fake)
             with self.assertRaisesRegex(ValueError, "不可读"):
                 _assert_bc_v1_demos_frozen(pathlib.Path(d) / "absent.npz")
 
-    def test_probe_constructors_pin_frozen_bytes(self):
-        # 伪字节必炸:探针加载即断言(expected = 冻结常量本体)。
+    def test_probe_constructors_require_current_pass_binding(self):
         with tempfile.TemporaryDirectory() as d:
             fake = _fake_demos(d)
-            with self.assertRaisesRegex(ValueError, "demos SHA 不匹配"):
+            with self.assertRaisesRegex(ValueError, "当前权重缺失"):
                 DistillCeProbe(pathlib.Path(d), str(fake), every=49_152)
-            with self.assertRaisesRegex(ValueError, "demos SHA 不匹配"):
+            with self.assertRaisesRegex(ValueError, "当前权重缺失"):
                 DryWindowMetricsCallback(pathlib.Path(d), str(fake),
                                          every=49_152)
 
-    def test_dry_window_gates_wired_to_frozen_assert(self):
-        # 两处 E1 门(demos/BC 预检、demos_sha256 捕获)接线冻结断言;
-        # DryAnchorSentinel 之 expected_sha256 由捕获门供值,传递性钉死。
+    def test_dry_window_gates_wired_to_current_receipt_binding(self):
         src = TRAIN_PPO.read_text()
         self.assertEqual(src.count("_assert_bc_v1_demos_frozen(demos)"), 2)
-        self.assertIn("_load_dry_anchor_demos(\n            demos_npz,"
-                      " _BC_V1_DEMOS_SHA256)", src.replace("    ", "    "))
+        self.assertEqual(
+            src.count("expected_sha = _assert_bc_v1_demos_frozen(demos_npz)"),
+            2)
+        self.assertNotIn("demos_npz, _BC_V1_DEMOS_SHA256", src)
         # v2 面不受钉:BC-v2 仅经 --bc-aux-demos 进辅助损失(canonical 不动)
         self.assertNotIn("_assert_bc_v1_demos_frozen(args.bc_aux_demos)", src)
+
+
+class DryAnchorPartitionTests(unittest.TestCase):
+    """worker v4 pre-dry = col296/解码后 col297 到 cap-1 前沿。"""
+
+    def test_dual_channel_cap_minus_one_latch_decode_and_complement(self):
+        from diablogym.options_env import FARM_SCENE_CAP, KILL_PATIENCE
+
+        x = np.zeros((7, 298), dtype=np.float32)
+        x[0, 296] = 1.0
+        x[1, 296] = np.float32((KILL_PATIENCE - 1) / KILL_PATIENCE)
+        x[2, 296] = np.float32((KILL_PATIENCE - 2) / KILL_PATIENCE)
+        x[3, 297] = np.float32(
+            (FARM_SCENE_CAP - 1) / FARM_SCENE_CAP)
+        x[4, 297] = np.float32(
+            (FARM_SCENE_CAP - 2) / FARM_SCENE_CAP)
+        # 负域公开“本窗已饮”，但 abs(value)-1 仍须恢复同一 scene clock。
+        x[5, 297] = np.float32(
+            -(1.0 + (FARM_SCENE_CAP - 1) / FARM_SCENE_CAP))
+        x[6, 297] = -1.5
+        dry, fresh = _dry_anchor_partition(x)
+        np.testing.assert_array_equal(
+            dry, np.asarray([True, True, False, True, False, True, False]))
+        np.testing.assert_array_equal(fresh, ~dry)
+        self.assertFalse(bool((dry & fresh).any()))
+        self.assertTrue(bool((dry | fresh).all()))
+
+    def test_loader_accepts_col296_cap_minus_one_state(self):
+        from diablogym.options_env import KILL_PATIENCE
+
+        with tempfile.TemporaryDirectory() as d:
+            p = pathlib.Path(d) / "demos.npz"
+            x = np.zeros((4, 298), dtype=np.float32)
+            x[0, 296] = np.float32(
+                (KILL_PATIENCE - 1) / KILL_PATIENCE)
+            y = np.full(4, 9, dtype=np.int64)
+            groups = np.asarray([0, 0, 1, 1], dtype=np.int64)
+            np.savez_compressed(
+                p, X=x, Y=y, episode_id=groups)
+            sha = hashlib.sha256(p.read_bytes()).hexdigest()
+            loaded, _, actual = _load_dry_anchor_demos(p, sha)
+            self.assertEqual(actual, sha)
+            self.assertEqual(loaded.shape, (4, 298))
+
+    def test_all_four_consumers_use_single_partition_helper(self):
+        src = TRAIN_PPO.read_text()
+        # helper 定义 1 次 + loader/sentinel/distill/drywin 四个消费点。
+        self.assertEqual(src.count("_dry_anchor_partition("), 5)
+        self.assertNotIn("X[:, 297] == 1.0", src)
+        self.assertNotIn("X[:, 297] == 0.0", src)
 
 
 class DistillCeProbeTests(unittest.TestCase):
@@ -301,10 +481,29 @@ class DistillCeProbeTests(unittest.TestCase):
         cls.teacher = _teacher_298()
 
     def _probe(self, run_dir, every=49_152):
-        cb = DistillCeProbe(run_dir, str(CANONICAL_DEMOS), every=every)
-        cb.model = types.SimpleNamespace(
+        actual = hashlib.sha256(CANONICAL_DEMOS.read_bytes()).hexdigest()
+        with mock.patch.object(
+                train_ppo, "_assert_bc_v1_demos_frozen",
+                return_value=actual):
+            cb = DistillCeProbe(
+                run_dir, str(CANONICAL_DEMOS), every=every)
+        probe_model = types.SimpleNamespace(
             policy=self.model.policy, teacher=self.teacher, device="cpu",
-            distill_beta=0.015625)
+            distill_beta=0.015625,
+            _last_effective_distill_beta=0.015625,
+            _distill_actor_rollouts_completed=0,
+            _bc_aux_circuit_spec=None)
+        for name in (
+                "_teacher_probs",
+                "_student_raw_action_logits",
+                "_student_distillation_logits"):
+            setattr(
+                probe_model,
+                name,
+                types.MethodType(
+                    getattr(leashed_ppo.LeashedMaskablePPO, name),
+                    probe_model))
+        cb.model = probe_model
         return cb
 
     def test_emit_schema_and_group_split(self):
@@ -318,19 +517,34 @@ class DistillCeProbeTests(unittest.TestCase):
                      .strip().splitlines()]
             self.assertEqual(len(lines), 1)
             line = lines[0]
-            self.assertEqual(
-                set(line), {"probe", "step", "dry_ce", "dry_n", "fresh_ce",
-                            "fresh_n", "beta", "mask_mode", "demos_sha16"})
+            self.assertEqual(set(line), {
+                "probe", "step",
+                "dry_ce", "dry_teacher_entropy", "dry_kl", "dry_tv", "dry_n",
+                "fresh_ce", "fresh_teacher_entropy", "fresh_kl", "fresh_tv",
+                "fresh_n", "beta_initial", "beta",
+                "distill_actor_rollouts_completed",
+                "mask_mode", "demos_sha16",
+            })
             self.assertEqual(line["probe"], "distill-ce")
             self.assertEqual(line["step"], 3_547_136)
-            self.assertEqual(line["mask_mode"], "dry-anchor-legacy")
-            self.assertEqual(line["demos_sha16"], _BC_V1_DEMOS_SHA256[:16])
+            self.assertEqual(
+                line["mask_mode"], "legacy-root-exclude-a12-a14")
+            self.assertEqual(
+                line["demos_sha16"],
+                hashlib.sha256(CANONICAL_DEMOS.read_bytes()).hexdigest()[:16])
             self.assertEqual(line["beta"], 0.015625)
+            self.assertEqual(line["beta_initial"], 0.015625)
+            self.assertEqual(line["distill_actor_rollouts_completed"], 0)
             self.assertGreater(line["dry_n"], 0)
             self.assertGreater(line["fresh_n"], 0)
-            for key in ("dry_ce", "fresh_ce"):
+            for key in (
+                    "dry_ce", "dry_teacher_entropy", "dry_kl", "dry_tv",
+                    "fresh_ce", "fresh_teacher_entropy", "fresh_kl",
+                    "fresh_tv"):
                 self.assertTrue(np.isfinite(line[key]))
-                self.assertGreater(line[key], 0.0)   # 随机学生对尖教师 CE>0
+                self.assertGreaterEqual(line[key], 0.0)
+            self.assertGreater(line["dry_ce"], 0.0)
+            self.assertGreater(line["fresh_ce"], 0.0)
 
     def test_zero_touch_of_params_and_global_rng(self):
         # 零触训练路径:探针构造+发射不改策略参数、不耗全局 RNG(专用 rng)。
@@ -353,8 +567,12 @@ class DistillCeProbeTests(unittest.TestCase):
 
     def test_missing_teacher_fails_loud(self):
         with tempfile.TemporaryDirectory() as d:
-            cb = DistillCeProbe(pathlib.Path(d), str(CANONICAL_DEMOS),
-                                every=49_152)
+            actual = hashlib.sha256(CANONICAL_DEMOS.read_bytes()).hexdigest()
+            with mock.patch.object(
+                    train_ppo, "_assert_bc_v1_demos_frozen",
+                    return_value=actual):
+                cb = DistillCeProbe(
+                    pathlib.Path(d), str(CANONICAL_DEMOS), every=49_152)
             cb.model = types.SimpleNamespace(
                 policy=self.model.policy, teacher=None, device="cpu")
             cb.num_timesteps = 100
@@ -386,8 +604,12 @@ class DryWindowMetricsTests(unittest.TestCase):
         cls.model = _real_policy(seed=11)
 
     def _cb(self, run_dir, every=49_152):
-        cb = DryWindowMetricsCallback(run_dir, str(CANONICAL_DEMOS),
-                                      every=every)
+        actual = hashlib.sha256(CANONICAL_DEMOS.read_bytes()).hexdigest()
+        with mock.patch.object(
+                train_ppo, "_assert_bc_v1_demos_frozen",
+                return_value=actual):
+            cb = DryWindowMetricsCallback(
+                run_dir, str(CANONICAL_DEMOS), every=every)
         cb.model = types.SimpleNamespace(policy=self.model.policy,
                                          device="cpu")
         return cb
@@ -419,7 +641,9 @@ class DryWindowMetricsTests(unittest.TestCase):
             self.assertEqual(line["metrics"], "drywin")
             self.assertEqual(line["step"], 49_152)
             self.assertEqual(line["mask_mode"], "dry-anchor-legacy")
-            self.assertEqual(line["demos_sha16"], _BC_V1_DEMOS_SHA256[:16])
+            self.assertEqual(
+                line["demos_sha16"],
+                hashlib.sha256(CANONICAL_DEMOS.read_bytes()).hexdigest()[:16])
             self.assertEqual(line["windows"]["dry"],
                              {"n": 2, "wage_mean": -0.3, "tau_mean": 25.0,
                               "depth_mean": 3.0})

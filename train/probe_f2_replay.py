@@ -76,7 +76,8 @@ def main():
         ref_rows = {r["seed"]: r for r in
                     json.load(open(ARCHIVE[wname]))["rows"]}
         net = NumpyManager(str(wpath))
-        workers = {FARM: lambda obs, mask, _n=net: int(_n.choose(obs, mask))}
+        net.require_worker_contract()
+        workers = {FARM: net.worker_callback()}
         env = OptionsEnv(max_steps=3000, workers=workers)
         try:
             for seed in seeds:

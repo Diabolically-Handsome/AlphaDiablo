@@ -20,7 +20,11 @@ sys.path.insert(0, str(ROOT / "python"))
 from diablogym import OptionsEnv
 from diablogym.options_env import DIVE, FARM
 from eval_contract import PROTOCOL_VERSION, exclusive_lock
-from train_ppo import _BC_REPORT_SCHEMA_VERSION, _implementation_bundle_sha256
+from train_ppo import (
+    _BC_REPORT_SCHEMA_VERSION,
+    _implementation_bundle_sha256,
+    _masked_action_or_first_legal,
+)
 
 OUT = ROOT / "train" / "runs" / "bc-manager"
 OUT.mkdir(parents=True, exist_ok=True)
@@ -66,9 +70,12 @@ def rollout(env, policy, seed):
     R, pairs = 0.0, []
     while not (done or trunc):
         m = env.action_masks()
-        opt = policy(env, obs, m)
-        if not m[opt]:
-            opt = FARM
+        opt = _masked_action_or_first_legal(
+            policy(env, obs, m),
+            m,
+            n_actions=3,
+            label="BC manager rollout",
+        )
         pairs.append((np.asarray(obs, dtype=np.float32), opt))
         obs, r, done, trunc, _ = env.step(opt)
         R += r

@@ -1,4 +1,4 @@
-"""评测档案 schema v2 / protocol v3、身份绑定与并发写入契约。
+"""评测档案 schema v5 / protocol v4、身份绑定与并发写入契约。
 
 新档案必须能回答三件事：谁被评、使用了哪些二进制/游戏内容、逐种子明细
 是否真的推出所声明的汇总。旧档案没有这些证据，默认拒绝；法证代码只有
@@ -28,10 +28,16 @@ import zipfile
 from typing import Any, Iterable, Mapping
 
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 5
 PROTOCOL_NAME = "diablogym.eval_assembled"
-PROTOCOL_VERSION = 3
+# Protocol v4 is the first environment contract with explicit command
+# cancellation, validity masks for combat/support actions, conservative damage
+# credit, and non-terminal worker-window continuation.  Those changes alter the
+# MDP itself, so v3 archives and calibrated thresholds must fail closed instead
+# of being appended to the same leaderboards.
+PROTOCOL_VERSION = 4
 PROTOCOL_MAX_STEPS = 3000
+PUBLISHED_WORKER_RECEIPT_NAME = "bc_aux_behavior_receipt.json"
 UINT32_MAX = 2**32 - 1
 DEFAULT_MANAGER_RELATIVE = "train/models/v22-h-manager/policy.npz"
 DEFAULT_MANAGER_SHA256 = "0f2264860b0960e7951efd424836b90c09c002cebca7bf8109fd669b13be63d7"
@@ -48,7 +54,9 @@ RUNTIME_PACKAGE_VERSIONS = {
 PROTOCOL_SOURCE_FILES = (
     "train/eval_assembled.py",
     "train/eval_contract.py",
+    "train/leashed_ppo.py",
     "python/diablogym/__init__.py",
+    "python/diablogym/controller_wire.py",
     "python/diablogym/env.py",
     "python/diablogym/nav.py",
     "python/diablogym/options_env.py",
@@ -60,16 +68,45 @@ _TAG_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
 _BASE_AGG_KEYS = {
     "n", "ret_mean", "ret_median", "died", "depth_median", "l3",
     "kills_mean", "farm_tau_mean", "farm_descend_rate", "override_rate",
-    "cap_rate",
+    "cap_rate", "micro_steps_mean",
+    "farm_r_mean", "farm_w_mean", "farm_bonus_mean",
+    "farm_worker_wage_mean", "farm_kills_mean",
+    "farm_worker_kills_mean", "nonfarm_r_mean", "nonfarm_kills_mean",
+    "farm_dry_n_mean", "farm_fresh_n_mean",
+    "farm_dry_worker_wage_mean", "farm_fresh_worker_wage_mean",
+    "farm_dry_worker_kills_mean", "farm_fresh_worker_kills_mean",
+    "farm_voluntary_drinks_mean", "farm_reflex_drain_attempts_mean",
+    "farm_reflex_drains_mean",
+    "farm_multi_drink_window_rate", "ending_belt_heals_mean",
+    "victories", "game_over", "time_limit_idle", "time_limit_unsettled",
 }
 _ENGAGEMENT_KEYS = {
     "worker_calls", "worker_action_hist", "worker_divergences",
     "script_divergence_rate",
 }
+_GEAR_ENGAGEMENT_KEYS = {
+    "worker_action14_mask_opportunities",
+    "worker_action14_requests",
+    "worker_action14_native_successes",
+    "worker_action14_gear_utility_delta",
+}
 _ROW_KEYS = {
     "seed", "ret", "depth", "died", "kills", "farm_n", "farm_tau_mean",
     "farm_tau_sum", "farm_descend", "windows", "beats", "overrides", "cap",
-    "mode_seq",
+    "mode_seq", "micro_steps", "terminal_kind",
+    "farm_r", "farm_w", "farm_bonus", "farm_worker_wage",
+    "farm_kills", "farm_worker_kills", "nonfarm_r", "nonfarm_kills",
+    "farm_dry_n", "farm_fresh_n",
+    "farm_dry_worker_wage", "farm_fresh_worker_wage",
+    "farm_dry_worker_kills", "farm_fresh_worker_kills",
+    "farm_voluntary_drinks", "farm_reflex_drain_attempts",
+    "farm_reflex_drains",
+    "farm_multi_drink_windows", "farm_max_voluntary_drinks_per_window",
+    "ending_belt_heals",
+}
+_TERMINAL_KINDS = {
+    "death", "victory", "game_over",
+    "time_limit_idle", "time_limit_unsettled",
 }
 
 
@@ -141,10 +178,15 @@ def runtime_versions_identity() -> dict[str, Any]:
         }
     except importlib.metadata.PackageNotFoundError as exc:
         raise EvalContractError(f"评测运行时依赖缺失: {exc.name}") from exc
+    # 跨平台注记(2026-07-27 WSL2 移植):同一上游发行版在 Linux 轮子上带本地
+    # 版本段(如 2.12.1+cpu)。门槛按公开版本段比对;archives 里 packages 仍
+    # 记录完整本地版本,身份不失真。CUDA 轮子(+cu130)在 WSL 下 import 不稳,
+    # 本机钉 +cpu(见 OPS-windows-feasibility.md)。
     mismatches = {
         name: (packages[name], expected)
         for name, expected in RUNTIME_PACKAGE_VERSIONS.items()
         if packages[name] != expected
+        and packages[name].split("+", 1)[0] != expected
     }
     _require(not mismatches,
              f"评测运行时版本漂移（升级须重做数值回归）: {mismatches}")
@@ -505,7 +547,12 @@ def freeze_eval_identity(root: pathlib.Path, worker_spec: str | pathlib.Path,
             "sha256": hashlib.sha256(checkpoint_payload).hexdigest(),
             "num_timesteps": checkpoint_num_timesteps_bytes(
                 checkpoint_payload, str(checkpoint)),
-            "gate_report_sha256": None,
+            "gate_report_sha256": (
+                sha256_file(checkpoint.with_name(
+                    PUBLISHED_WORKER_RECEIPT_NAME))
+                if checkpoint.with_name(
+                    PUBLISHED_WORKER_RECEIPT_NAME).is_file()
+                else None),
         }
     manager_file = (pathlib.Path(manager_path) if manager_path is not None else
                     root / DEFAULT_MANAGER_RELATIVE)
@@ -572,11 +619,16 @@ def verify_file_identity(identity: Mapping[str, Any]) -> None:
              f"评测期间策略文件发生变化: {actual} != {identity.get('sha256')!r}")
     expected_report = identity.get("gate_report_sha256")
     if expected_report is not None:
-        report_path = pathlib.Path(path).with_name("bc_report.json")
-        _require(report_path.is_file(), f"评测期间 BC gate report 消失: {report_path}")
+        report_name = (
+            PUBLISHED_WORKER_RECEIPT_NAME
+            if identity.get("kind") == "sb3_checkpoint"
+            else "bc_report.json")
+        report_path = pathlib.Path(path).with_name(report_name)
+        _require(report_path.is_file(),
+                 f"评测期间策略发布/gate report 消失: {report_path}")
         actual_report = sha256_file(report_path)
         _require(actual_report == expected_report,
-                 "评测期间 BC gate report 发生变化: "
+                 "评测期间策略发布/gate report 发生变化: "
                  f"{actual_report} != {expected_report!r}")
 
 
@@ -613,20 +665,60 @@ def recompute_agg(rows: list[Mapping[str, Any]]) -> dict[str, Any]:
     farm_n = sum(row["farm_n"] for row in rows)
     return {
         "n": n,
-        "ret_mean": round(sum(rets) / n, 1),
-        "ret_median": round(statistics.median(rets), 2),
+        # schema-v5 在档案中保留完整 float，CLI/排行榜才负责格式化展示。
+        # 这消除了逐局先 round(2) 与聚合再 round 所造成的贴线翻闸。
+        "ret_mean": sum(rets) / n,
+        "ret_median": statistics.median(rets),
         "died": sum(row["died"] for row in rows),
         "depth_median": statistics.median(row["depth"] for row in rows),
         "l3": sum(row["depth"] >= 3 for row in rows),
-        "kills_mean": round(sum(row["kills"] for row in rows) / n, 1),
-        "farm_tau_mean": round(sum(row["farm_tau_sum"] for row in rows)
-                               / max(1, farm_n), 1),
-        "farm_descend_rate": round(sum(row["farm_descend"] for row in rows)
-                                    / max(1, farm_n), 4),
-        "override_rate": round(sum(row["overrides"] for row in rows)
-                               / max(1, sum(row["beats"] for row in rows)), 4),
-        "cap_rate": round(sum(row["cap"] for row in rows)
-                          / max(1, sum(row["windows"] for row in rows)), 4),
+        "kills_mean": sum(row["kills"] for row in rows) / n,
+        "farm_tau_mean": (sum(row["farm_tau_sum"] for row in rows)
+                          / max(1, farm_n)),
+        "farm_descend_rate": (sum(row["farm_descend"] for row in rows)
+                              / max(1, farm_n)),
+        "override_rate": (sum(row["overrides"] for row in rows)
+                          / max(1, sum(row["beats"] for row in rows))),
+        "cap_rate": (sum(row["cap"] for row in rows)
+                     / max(1, sum(row["windows"] for row in rows))),
+        "micro_steps_mean": sum(row["micro_steps"] for row in rows) / n,
+        "farm_r_mean": sum(row["farm_r"] for row in rows) / n,
+        "farm_w_mean": sum(row["farm_w"] for row in rows) / n,
+        "farm_bonus_mean": sum(row["farm_bonus"] for row in rows) / n,
+        "farm_worker_wage_mean": (
+            sum(row["farm_worker_wage"] for row in rows) / n),
+        "farm_kills_mean": sum(row["farm_kills"] for row in rows) / n,
+        "farm_worker_kills_mean": (
+            sum(row["farm_worker_kills"] for row in rows) / n),
+        "nonfarm_r_mean": sum(row["nonfarm_r"] for row in rows) / n,
+        "nonfarm_kills_mean": sum(row["nonfarm_kills"] for row in rows) / n,
+        "farm_dry_n_mean": sum(row["farm_dry_n"] for row in rows) / n,
+        "farm_fresh_n_mean": sum(row["farm_fresh_n"] for row in rows) / n,
+        "farm_dry_worker_wage_mean": (
+            sum(row["farm_dry_worker_wage"] for row in rows) / n),
+        "farm_fresh_worker_wage_mean": (
+            sum(row["farm_fresh_worker_wage"] for row in rows) / n),
+        "farm_dry_worker_kills_mean": (
+            sum(row["farm_dry_worker_kills"] for row in rows) / n),
+        "farm_fresh_worker_kills_mean": (
+            sum(row["farm_fresh_worker_kills"] for row in rows) / n),
+        "farm_voluntary_drinks_mean": (
+            sum(row["farm_voluntary_drinks"] for row in rows) / n),
+        "farm_reflex_drain_attempts_mean": (
+            sum(row["farm_reflex_drain_attempts"] for row in rows) / n),
+        "farm_reflex_drains_mean": (
+            sum(row["farm_reflex_drains"] for row in rows) / n),
+        "farm_multi_drink_window_rate": (
+            sum(row["farm_multi_drink_windows"] for row in rows)
+            / max(1, farm_n)),
+        "ending_belt_heals_mean": (
+            sum(row["ending_belt_heals"] for row in rows) / n),
+        "victories": sum(row["terminal_kind"] == "victory" for row in rows),
+        "game_over": sum(row["terminal_kind"] == "game_over" for row in rows),
+        "time_limit_idle": sum(
+            row["terminal_kind"] == "time_limit_idle" for row in rows),
+        "time_limit_unsettled": sum(
+            row["terminal_kind"] == "time_limit_unsettled" for row in rows),
     }
 
 
@@ -661,6 +753,10 @@ def _validate_identity(identity: Any, label: str,
         report_sha = identity["gate_report_sha256"]
         if kind == "bc_state_dict":
             _validate_sha256(report_sha, "meta.worker.gate_report_sha256")
+        elif kind == "sb3_checkpoint":
+            if report_sha is not None:
+                _validate_sha256(
+                    report_sha, "meta.worker.gate_report_sha256")
         else:
             _require(report_sha is None,
                      f"{kind} 不应声明 gate_report_sha256")
@@ -674,35 +770,182 @@ def _validate_rows(rows: Any, seeds: list[int]) -> list[Mapping[str, Any]]:
         label = f"rows[{index}]"
         _require(isinstance(row, dict), f"{label} 必须是对象")
         _require(set(row) == _ROW_KEYS, f"{label} 字段异常")
-        for key in ("seed", "depth", "kills", "farm_n", "farm_tau_sum",
-                    "farm_descend",
-                    "windows", "beats", "overrides", "cap"):
+        for key in (
+                "seed", "depth", "kills", "micro_steps",
+                "farm_kills", "farm_worker_kills", "nonfarm_kills",
+                "farm_dry_n", "farm_fresh_n",
+                "farm_dry_worker_kills", "farm_fresh_worker_kills",
+                "farm_voluntary_drinks", "farm_reflex_drain_attempts",
+                "farm_reflex_drains",
+                "farm_multi_drink_windows",
+                "farm_max_voluntary_drinks_per_window",
+                "ending_belt_heals",
+                "farm_n", "farm_tau_sum", "farm_descend",
+                "windows", "beats", "overrides", "cap"):
             _require(_is_int(row[key]), f"{label}.{key} 必须是整数")
         _require(0 <= row["seed"] <= UINT32_MAX,
                  f"{label}.seed 必须在 uint32 范围")
         _require(1 <= row["depth"] <= 16 and row["kills"] >= 0,
                  f"{label} 深度必须在 [1,16]，击杀不能为负")
+        _require(0 < row["micro_steps"] <= PROTOCOL_MAX_STEPS,
+                 f"{label}.micro_steps 越界")
+        # beats 是已执行的基础 action/macro 调用数；一个调用至少消耗一个
+        # micro-step。fuse 拒绝既不增加 beats 也不消耗 micro-step。
         _require(row["farm_n"] >= 0 and 0 < row["windows"] <= row["beats"]
-                 <= PROTOCOL_MAX_STEPS,
-                 f"{label} 窗口/微步计数越界")
+                 <= row["micro_steps"],
+                 f"{label} 窗口/action-beat/micro-step 计数越界")
         _require(row["kills"] <= PROTOCOL_MAX_STEPS,
                  f"{label}.kills 超出单局微步预算")
+        _require(
+            0 <= row["farm_worker_kills"] <= row["farm_kills"]
+            and row["nonfarm_kills"] >= 0
+            and row["kills"] == row["farm_kills"] + row["nonfarm_kills"],
+            f"{label} FARM/non-FARM/worker 击杀分账不守恒",
+        )
         _require(0 <= row["farm_descend"] <= row["farm_n"] <= row["windows"],
                  f"{label} FARM 计数关系异常")
+        _require(
+            row["farm_dry_n"] >= 0
+            and row["farm_fresh_n"] >= 0
+            and row["farm_dry_n"] + row["farm_fresh_n"] == row["farm_n"],
+            f"{label} FARM dry/fresh 窗口分账不守恒",
+        )
+        _require(
+            row["farm_dry_worker_kills"] >= 0
+            and row["farm_fresh_worker_kills"] >= 0
+            and (
+                row["farm_dry_worker_kills"]
+                + row["farm_fresh_worker_kills"]
+                == row["farm_worker_kills"]
+            ),
+            f"{label} FARM dry/fresh worker 击杀分账不守恒",
+        )
         _require(0 <= row["overrides"] <= row["beats"],
                  f"{label}.overrides 超出 beats")
         _require(0 <= row["cap"] <= row["windows"],
                  f"{label}.cap 超出 windows")
+        _require(
+            row["farm_voluntary_drinks"] >= 0
+            and row["farm_reflex_drain_attempts"]
+            >= row["farm_reflex_drains"] >= 0
+            and row["farm_voluntary_drinks"] + row["farm_reflex_drains"]
+            <= row["beats"],
+            f"{label} 主动饮/反射尝试/成功排水计数越界")
+        _require(
+            0 <= row["farm_multi_drink_windows"] <= row["farm_n"]
+            and 0 <= row["farm_max_voluntary_drinks_per_window"]
+            <= row["farm_voluntary_drinks"]
+            and 2 * row["farm_multi_drink_windows"]
+            <= row["farm_voluntary_drinks"],
+            f"{label} 多饮窗口/单窗最大主动饮计数越界")
+        _require(
+            (row["farm_multi_drink_windows"] == 0
+             and row["farm_max_voluntary_drinks_per_window"] <= 1)
+            or (row["farm_multi_drink_windows"] > 0
+                and row["farm_max_voluntary_drinks_per_window"] >= 2),
+            f"{label} 多饮窗口与单窗最大主动饮不一致")
+        farm_windows = row["farm_n"]
+        voluntary_drinks = row["farm_voluntary_drinks"]
+        multi_drink_windows = row["farm_multi_drink_windows"]
+        max_voluntary_drinks = row[
+            "farm_max_voluntary_drinks_per_window"
+        ]
+        if voluntary_drinks == 0:
+            drink_distribution_feasible = (
+                multi_drink_windows == 0 and max_voluntary_drinks == 0
+            )
+        elif multi_drink_windows == 0:
+            # 没有多饮窗时，每个 FARM 窗至多一瓶；只要发生过主动饮，
+            # 单窗最大值就必须恰为 1。
+            drink_distribution_feasible = (
+                max_voluntary_drinks == 1
+                and voluntary_drinks <= farm_windows
+            )
+        else:
+            # M 个多饮窗中至少一个达到 max，其余 M-1 个至少各喝两瓶；
+            # 非多饮窗至多各喝一瓶。T 必须落在这两个可实现边界之间。
+            minimum_total = (
+                max_voluntary_drinks + 2 * (multi_drink_windows - 1)
+            )
+            maximum_total = (
+                multi_drink_windows * max_voluntary_drinks
+                + (farm_windows - multi_drink_windows)
+            )
+            drink_distribution_feasible = (
+                minimum_total <= voluntary_drinks <= maximum_total
+            )
+        _require(
+            drink_distribution_feasible,
+            f"{label} FARM 主动饮 N/T/M/max 联立不可实现")
+        _require(0 <= row["ending_belt_heals"] <= 8,
+                 f"{label}.ending_belt_heals 越界")
         _require(isinstance(row["died"], bool), f"{label}.died 必须是 bool")
-        _finite_number(row["ret"], f"{label}.ret")
+        ret = _finite_number(row["ret"], f"{label}.ret")
+        farm_r = _finite_number(row["farm_r"], f"{label}.farm_r")
+        farm_w = _finite_number(row["farm_w"], f"{label}.farm_w")
+        farm_bonus = _finite_number(
+            row["farm_bonus"], f"{label}.farm_bonus")
+        farm_worker_wage = _finite_number(
+            row["farm_worker_wage"], f"{label}.farm_worker_wage")
+        farm_dry_worker_wage = _finite_number(
+            row["farm_dry_worker_wage"],
+            f"{label}.farm_dry_worker_wage")
+        farm_fresh_worker_wage = _finite_number(
+            row["farm_fresh_worker_wage"],
+            f"{label}.farm_fresh_worker_wage")
+        nonfarm_r = _finite_number(row["nonfarm_r"], f"{label}.nonfarm_r")
+        _require(farm_bonus >= 0, f"{label}.farm_bonus 不能为负")
+        _require(math.isclose(
+            ret, farm_r + nonfarm_r, rel_tol=1e-12, abs_tol=1e-12),
+            f"{label} 总回报与 FARM/non-FARM 分账不守恒")
+        _require(math.isclose(
+            farm_r, farm_w + farm_bonus,
+            rel_tol=1e-12, abs_tol=1e-12),
+            f"{label} FARM R/W/bonus 分账不守恒")
+        _require(
+            farm_worker_wage
+            == farm_dry_worker_wage + farm_fresh_worker_wage,
+            f"{label} FARM dry/fresh worker 工资分账不守恒",
+        )
+        for stratum, windows, wage, kills in (
+                ("dry", row["farm_dry_n"], farm_dry_worker_wage,
+                 row["farm_dry_worker_kills"]),
+                ("fresh", row["farm_fresh_n"], farm_fresh_worker_wage,
+                 row["farm_fresh_worker_kills"])):
+            _require(
+                windows > 0 or (wage == 0.0 and kills == 0),
+                f"{label} FARM {stratum} 无窗口却含 worker 账",
+            )
         tau_mean = _finite_number(row["farm_tau_mean"], f"{label}.farm_tau_mean")
         tau_sum = _finite_number(row["farm_tau_sum"], f"{label}.farm_tau_sum")
         _require(tau_mean >= 0 and tau_sum >= 0, f"{label} FARM tau 不能为负")
-        _require(tau_sum <= PROTOCOL_MAX_STEPS,
-                 f"{label}.farm_tau_sum 超出单局微步预算")
-        expected_tau = round(tau_sum / max(1, row["farm_n"]), 1)
-        _require(row["farm_tau_mean"] == expected_tau,
+        _require(tau_sum <= row["micro_steps"],
+                 f"{label}.farm_tau_sum 超出本局 micro_steps")
+        expected_tau = tau_sum / max(1, row["farm_n"])
+        _require(math.isclose(
+            tau_mean, expected_tau, rel_tol=1e-12, abs_tol=1e-12),
                  f"{label}.farm_tau_mean 与 farm_tau_sum 不一致")
+        if row["farm_n"] == 0:
+            _require(
+                farm_r == farm_w == farm_bonus == 0.0
+                and row["farm_worker_wage"] == 0.0
+                and row["farm_kills"] == row["farm_worker_kills"] == 0
+                and row["farm_voluntary_drinks"]
+                == row["farm_reflex_drain_attempts"]
+                == row["farm_reflex_drains"]
+                == row["farm_multi_drink_windows"]
+                == row["farm_max_voluntary_drinks_per_window"]
+                == 0,
+                f"{label} 无 FARM 窗却含 FARM 账",
+            )
+        terminal = row["terminal_kind"]
+        _require(isinstance(terminal, str) and terminal in _TERMINAL_KINDS,
+                 f"{label}.terminal_kind 非法: {terminal!r}")
+        _require(row["died"] == (terminal == "death"),
+                 f"{label}.died 与 terminal_kind 不一致")
+        if terminal in {"time_limit_idle", "time_limit_unsettled"}:
+            _require(row["micro_steps"] == PROTOCOL_MAX_STEPS,
+                     f"{label} 时限终局未恰好耗尽预算")
         sequence = row["mode_seq"]
         _require(isinstance(sequence, str), f"{label}.mode_seq 必须是字符串")
         death_marker = sequence.endswith("†")
@@ -723,26 +966,66 @@ def _validate_rows(rows: Any, seeds: list[int]) -> list[Mapping[str, Any]]:
 
 def _validate_agg(agg: Any, rows: list[Mapping[str, Any]], worker_kind: str) -> None:
     _require(isinstance(agg, dict), "agg 必须是对象")
-    expected_keys = _BASE_AGG_KEYS | (_ENGAGEMENT_KEYS if worker_kind != "script" else set())
-    _require(set(agg) == expected_keys, "agg 字段与 worker 类型/schema 不一致")
-    for key in ("n", "died", "l3"):
+    if worker_kind == "script":
+        expected_key_sets = {frozenset(_BASE_AGG_KEYS)}
+    else:
+        # Preserve validation of immutable pre-gear-ledger schema-v5 archives.
+        # Current evaluators always emit the complete second set, and R7
+        # separately requires it before scientific analysis.  Making the
+        # four-field group all-or-none prevents a partially forged ledger.
+        expected_key_sets = {
+            frozenset(_BASE_AGG_KEYS | _ENGAGEMENT_KEYS),
+            frozenset(
+                _BASE_AGG_KEYS | _ENGAGEMENT_KEYS
+                | _GEAR_ENGAGEMENT_KEYS),
+        }
+    _require(
+        frozenset(agg) in expected_key_sets,
+        "agg 字段与 worker 类型/schema 不一致",
+    )
+    integer_keys = {
+        "n", "died", "l3", "victories", "game_over",
+        "time_limit_idle", "time_limit_unsettled",
+    }
+    for key in integer_keys:
         _require(_is_int(agg[key]), f"agg.{key} 必须是整数")
-    for key in _BASE_AGG_KEYS - {"n", "died", "l3"}:
+    for key in _BASE_AGG_KEYS - integer_keys:
         _finite_number(agg[key], f"agg.{key}")
     n = len(rows)
     _require(0 <= agg["died"] <= n and 0 <= agg["l3"] <= n,
              "agg 死亡/L3 计数超界")
+    _require(
+        agg["died"] + agg["victories"] + agg["game_over"]
+        + agg["time_limit_idle"] + agg["time_limit_unsettled"] == n,
+        "agg 终局类别未精确覆盖全部 episode",
+    )
     for key in ("farm_descend_rate", "override_rate", "cap_rate"):
         _require(0 <= float(agg[key]) <= 1, f"agg.{key} 必须在 [0,1]")
     recomputed = recompute_agg(rows)
     for key, expected in recomputed.items():
         _require(agg[key] == expected,
                  f"agg.{key} 与 rows 重算不一致: {agg[key]!r} != {expected!r}")
+    if worker_kind == "script":
+        _require(
+            all(row["farm_worker_wage"] == 0.0
+                and row["farm_worker_kills"] == 0
+                and row["farm_dry_worker_wage"] == 0.0
+                and row["farm_fresh_worker_wage"] == 0.0
+                and row["farm_dry_worker_kills"] == 0
+                and row["farm_fresh_worker_kills"] == 0
+                for row in rows),
+            "script worker 档案不应声明学习工人工资/击杀",
+        )
     if worker_kind != "script":
         calls = agg["worker_calls"]
         _require(_is_int(calls) and calls >= 0, "agg.worker_calls 必须是非负整数")
-        _require(calls <= sum(row["beats"] for row in rows),
-                 "agg.worker_calls 超出全部底层拍数")
+        # worker callback 在每个提案前计数；fuse 拒绝的提案会增加
+        # overrides，但按协议既不执行基础动作也不增加 beats。因此合法上界
+        # 是已执行拍 + 明确拒绝拍，不能用 beats 单独封顶而误杀真实 fuse 局。
+        _require(
+            calls <= sum(row["beats"] + row["overrides"] for row in rows),
+            "agg.worker_calls 超出全部已执行/明确拒绝提案数",
+        )
         histogram = agg["worker_action_hist"]
         _require(isinstance(histogram, dict), "agg.worker_action_hist 必须是对象")
         normalized: dict[int, int] = {}
@@ -768,8 +1051,41 @@ def _validate_agg(agg: Any, rows: list[Mapping[str, Any]], worker_kind: str) -> 
         _require(0 <= divergence <= 1,
                  "agg.script_divergence_rate 必须在 [0,1]")
         _require(agg["script_divergence_rate"]
-                 == round(divergences / max(1, calls), 4),
+                 == divergences / max(1, calls),
                  "script_divergence_rate 与原始分歧计数不一致")
+        if _GEAR_ENGAGEMENT_KEYS <= set(agg):
+            opportunities = agg[
+                "worker_action14_mask_opportunities"]
+            requests = agg["worker_action14_requests"]
+            successes = agg["worker_action14_native_successes"]
+            utility_delta = agg[
+                "worker_action14_gear_utility_delta"]
+            for key, value in (
+                ("worker_action14_mask_opportunities", opportunities),
+                ("worker_action14_requests", requests),
+                ("worker_action14_native_successes", successes),
+                ("worker_action14_gear_utility_delta", utility_delta),
+            ):
+                _require(
+                    _is_int(value) and value >= 0,
+                    f"agg.{key} 必须是非负整数",
+                )
+            _require(
+                opportunities <= calls,
+                "action14 mask 机会数超出 worker_calls",
+            )
+            _require(
+                requests == normalized.get(14, 0),
+                "action14 请求数与 worker_action_hist[14] 不一致",
+            )
+            _require(
+                successes <= requests <= opportunities,
+                "action14 机会/请求/原生成功计数次序异常",
+            )
+            _require(
+                (successes == 0) == (utility_delta == 0),
+                "action14 原生成功数与 gear utility 增量零性不一致",
+            )
 
 
 def validate_eval_archive(document: Any, *, expected_tag: str | None = None,
@@ -790,7 +1106,7 @@ def validate_eval_archive(document: Any, *, expected_tag: str | None = None,
                           expected_runtime_versions: Mapping[str, Any] | None = None,
                           expected_protocol_bundle_sha256: str | None = None
                           ) -> dict[str, Any]:
-    """严格校验一个 schema v2 档案；legacy 永远不会从这里静默放行。"""
+    """严格校验一个 schema v5 档案；legacy 永远不会从这里静默放行。"""
     _require(isinstance(document, dict), "评测档案必须是 JSON 对象")
     _require(set(document) == {"schema_version", "meta", "agg", "rows"},
              "评测档案顶层字段异常或属于未授权 legacy schema")
@@ -890,8 +1206,14 @@ def validate_eval_archive(document: Any, *, expected_tag: str | None = None,
                      for value in python_runtime.values()),
              "meta.runtime.versions.python 字段异常")
     packages = versions["packages"]
+    # 与采集门(runtime_versions_identity)同一跨平台修订:按公开版本段比对,
+    # 档案里仍存完整本地版本(2026-07-27 WSL2 移植)。
     _require(isinstance(packages, dict)
-             and packages == RUNTIME_PACKAGE_VERSIONS,
+             and set(packages) == set(RUNTIME_PACKAGE_VERSIONS)
+             and all(isinstance(v, str)
+                     and (v == RUNTIME_PACKAGE_VERSIONS[k]
+                          or v.split("+", 1)[0] == RUNTIME_PACKAGE_VERSIONS[k])
+                     for k, v in packages.items()),
              "meta.runtime.versions.packages 与冻结数值栈不一致")
     py_protocol = runtime["python_protocol"]
     _require(isinstance(py_protocol, dict)

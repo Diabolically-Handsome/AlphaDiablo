@@ -6,9 +6,14 @@ G-CAL 即时停止和零 beta 回归都在 test_training_core.py 中由 CI 独�
 import pathlib
 import sys
 import tempfile
+import unittest
 
 import numpy as np
 import torch as th
+
+if __name__ != "__main__":
+    raise unittest.SkipTest(
+        "test_leash.py 是需显式执行的长程人工闸门，不在 unittest discovery 中运行")
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "python"))
@@ -55,7 +60,7 @@ mism, maxd = 0, 0.0
 for _ in range(1000):
     o = rng.standard_normal(298).astype(np.float32)
     lt = teacher(th.from_numpy(o)).detach().numpy()
-    ln = np_net.logits(o)
+    ln = np_net.forensic_worker_logits(o)
     maxd = max(maxd, float(np.abs(lt - ln).max()))
     mism += int(lt.argmax() != ln.argmax())
 assert maxd < 1e-4 and mism == 0, (maxd, mism)
@@ -83,7 +88,8 @@ from stable_baselines3.common.vec_env import DummyVecEnv
 from diablogym import WorkerWindowEnv
 
 def mk():
-    return Monitor(WorkerWindowEnv(str(NPZ), max_steps=3000, rng_seed=42))
+    return Monitor(WorkerWindowEnv(
+        str(NPZ), max_steps=3000, rng_seed=42, seed_scope="replay"))
 
 venv = DummyVecEnv([mk])
 
@@ -165,7 +171,8 @@ mA = LeashedMaskablePPO("MlpPolicy", venv, distill_beta=100.0, teacher_path=str(
 mA.learn(total_timesteps=30_000, progress_bar=False)
 assert mA._last_distill_ce < 0.05, f"CE 未焊死: {mA._last_distill_ce}"
 # 2000 个真实 rollout 态上 argmax 一致率
-env1 = WorkerWindowEnv(str(NPZ), max_steps=3000, rng_seed=77)
+env1 = WorkerWindowEnv(
+    str(NPZ), max_steps=3000, rng_seed=77, seed_scope="replay")
 obs, _ = env1.reset()
 agree = tot = 0
 while tot < 2000:

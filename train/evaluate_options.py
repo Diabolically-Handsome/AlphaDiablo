@@ -1,4 +1,4 @@
-"""分层/平面双路径 protocol-v3 评测(写 leaderboard-hierarchy-v3.md)。
+"""分层/平面双路径版本化评测（榜单版本取自 PROTOCOL_VERSION）。
 
 用法:
   分层臂:.venv/bin/python train/evaluate_options.py train/runs/<run>/model_final --options

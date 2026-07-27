@@ -171,7 +171,8 @@ def run_job(worker, seed, scheme, h_mgr):
     script = ScriptedManager(h_mgr, arch, scheme,
                              planned if scheme == "B" else None)
     net = NumpyManager(str(WORKERS[worker]))
-    workers = {FARM: lambda obs, mask, _n=net: int(_n.choose(obs, mask))}
+    net.require_worker_contract()
+    workers = {FARM: net.worker_callback()}
     env = OptionsEnv(max_steps=3000, workers=workers)
     obs_log, mask_log, logit_log, chosen, windows = [], [], [], [], []
     status = "completed"

@@ -107,9 +107,10 @@ class LegsTableTests(unittest.TestCase):
                                    ("--drywin-metrics-every", "49152"),
                                    ("--run-name", leg)):
                 self.assertEqual(self._val(cmd, flag), expected, (leg, flag))
-            for flag in ("--worker", "--allow-legacy-resume",
-                         "--calib-record-only"):
+            for flag in ("--worker", "--allow-legacy-resume"):
                 self.assertIn(flag, cmd, (leg, flag))
+            self.assertNotIn("--calib-record-only", cmd,
+                             "生产腿 G-CAL 必须可裁，不得 record-only")
             # 主权开系默认;一切发无 --board
             self.assertNotIn("--no-drink-sovereignty", cmd)
             self.assertNotIn("--board", cmd)
@@ -142,6 +143,7 @@ class LegsTableTests(unittest.TestCase):
         self.assertEqual(self._val(cmd, "--bc-aux-lambda"), "0.015625")
         self.assertTrue(self._val(cmd, "--bc-aux-demos").endswith(
             "runs/bc-worker-v2/demos.npz"))         # D3 字面路径
+        self.assertIn("--bc-aux-liveness-preflight", cmd)
 
     def test_leg_accounting_constants(self):
         self.assertEqual(v33.NT_TARGET, 3_997_696)
@@ -400,6 +402,7 @@ class SmokeCmdTests(unittest.TestCase):
         self.assertNotIn("--distill-ce-probe-every", cmd)
         self.assertNotIn("--drywin-metrics-every", cmd)
         self.assertNotIn("--no-drink-sovereignty", cmd)
+        self.assertIn("--calib-record-only", cmd)   # 旧 v32 裸对照逐字
 
     def test_knobs_arm_pins_p1_and_inactive_bc_aux(self):
         cmd = v33._smoke_cmd("knobs")
@@ -424,6 +427,7 @@ class SmokeCmdTests(unittest.TestCase):
         self.assertTrue(self._val(funcaux, "--bc-aux-demos").endswith(
             "runs/bc-worker-v2/demos.npz"))
         for cmd in (funcp, funcaux):
+            self.assertNotIn("--calib-record-only", cmd)
             self.assertEqual(self._val(cmd, "--seed"), "308000")
             # E5①② 旋钮随共用形在位(rev4;各恰一现,无重复旗)
             for flag in ("--distill-ce-probe-every", "--drywin-metrics-every"):
@@ -611,6 +615,8 @@ class N12DemosChainTests(unittest.TestCase):
         src_bc2 = inspect.getsource(v33.bc2_stage)
         self.assertIn("n12_gate_demos_sha(passed[-1])", src_bc2)
         self.assertNotIn('.get("demos_sha256",', src_bc2)
+        self.assertIn('"--manager-npz", str(M29_NPZ)', src_bc2)
+        self.assertIn("expected_manager_sha256=sha256(M29_NPZ)", src_bc2)
 
 
 class SentinelEvidenceTests(unittest.TestCase):

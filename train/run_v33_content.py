@@ -242,7 +242,8 @@ LEGS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("v33-cur", ("--dry-curriculum-schedule", MAIN_TABLE)),
     ("v33-full", ("--dry-curriculum-schedule", MAIN_TABLE,
                   "--bc-aux-lambda", "0.015625",
-                  "--bc-aux-demos", str(BC_V2_DEMOS))),
+                  "--bc-aux-demos", str(BC_V2_DEMOS),
+                  "--bc-aux-liveness-preflight")),
 )
 LEG_NAMES = tuple(name for name, _ in LEGS)
 LEG_SHORT = {"v33-base": "base", "v33-cur": "cur", "v33-full": "full"}
@@ -1037,7 +1038,8 @@ def bc2_stage(events):
               if e.get("event") == "N12_GATE" and e.get("gate") == "PASS"]
     if passed:
         import bc_worker
-        rec = bc_worker._validate_bc_v2_report(BC_V2_SD)
+        rec = bc_worker._validate_bc_v2_report(
+            BC_V2_SD, expected_manager_sha256=sha256(M29_NPZ))
         gate_sha = n12_gate_demos_sha(passed[-1])
         require(rec["demos_sha256"] == gate_sha,
                 "BC-v2 demos 跨发车身份链断裂(!= N12_GATE 落定值)")
@@ -1066,14 +1068,16 @@ def bc2_stage(events):
                           "已冻结案自动转 P6 重冻结待裁——先行消耗不构成既成事实"}
             log(ev)
             events.append(ev)
-        cmd = [PY, "train/bc_worker.py", "--v2"]
+        cmd = [PY, "train/bc_worker.py", "--v2",
+               "--manager-npz", str(M29_NPZ)]
         if is_oc:
             cmd += ["--preventive-threshold", str(PREVENTIVE_OC)]
         rc = run(cmd, f"bc-v2-{threshold}.{time.time_ns()}.log", 7_200)
         report = _read_v2_report_if_any()
         if rc == 0:
             import bc_worker
-            rec = bc_worker._validate_bc_v2_report(BC_V2_SD)
+            rec = bc_worker._validate_bc_v2_report(
+                BC_V2_SD, expected_manager_sha256=sha256(M29_NPZ))
             _n12_event(events, "PASS", threshold, is_oc, rec)
             return
         require(report is not None and report.get("data_gate") == "FAIL",
@@ -1125,7 +1129,8 @@ def g0_endpoint_stage(events):
 
 def _leg_shared_cmd(run_name: str, seed: int, total_steps: int,
                     calib_probes: tuple[int, ...],
-                    with_b1_knobs: bool = True) -> list[str]:
+                    with_b1_knobs: bool = True,
+                    calib_record_only: bool = False) -> list[str]:
     """共用命令形(D3 逐字:v32-sov 逐字 + B1 仪表旋钮 + rev4 勘正增列之
     E5①② record-only 旋钮末两枚(十二附二①);主权开系默认,
     无 --no-drink-sovereignty;共用形自身不含 --skip-dry;
@@ -1138,8 +1143,9 @@ def _leg_shared_cmd(run_name: str, seed: int, total_steps: int,
            "--teacher-sd", str(BC_SD), "--teacher-override", str(KING_SD),
            "--manager-npz", str(M29_NPZ),
            "--resume-from", str(KING_ZIP), "--allow-legacy-resume",
-           "--calib-probes", ",".join(str(x) for x in calib_probes),
-           "--calib-record-only"]
+           "--calib-probes", ",".join(str(x) for x in calib_probes)]
+    if calib_record_only:
+        cmd.append("--calib-record-only")
     if with_b1_knobs:
         cmd += ["--ckpt-every-steps", str(CKPT_EVERY),
                 "--sentinel-every", str(SENTINEL_EVERY),
@@ -1166,11 +1172,12 @@ def _smoke_cmd(variant: str) -> list[str]:
     func-p / func-aux = G0-2b 功能短跑(主表整表,腿相对前 50 rollout 前缀)。"""
     if variant == "bare":
         return (_leg_shared_cmd(SMOKE_RUNS["bare"], SMOKE_SEED, SMOKE_STEPS,
-                                V32_SOV_CALIB, with_b1_knobs=False)
+                                V32_SOV_CALIB, with_b1_knobs=False,
+                                calib_record_only=True)
                 + ["--skip-dry"])
     if variant == "knobs":
         return (_leg_shared_cmd(SMOKE_RUNS["knobs"], SMOKE_SEED, SMOKE_STEPS,
-                                SMOKE_CALIB)
+                                SMOKE_CALIB, calib_record_only=True)
                 + ["--dry-curriculum-schedule", SMOKE_HOLD_TABLE,
                    "--bc-aux-lambda", "0.0",
                    "--bc-aux-demos", str(BC_V2_DEMOS)])
@@ -1423,36 +1430,98 @@ def verify_curriculum_prefix(run_dir: pathlib.Path, table, n_rollouts: int
 
 
 def _bc_aux_grad12_report(zip_path: pathlib.Path, demos_npz: pathlib.Path) -> dict:
-    """G0-2b:辅助 CE 通路 12 头梯度非零断言(沿 calib 探针 autograd.grad 先例;
-    反 P2 构造性零通路指纹)。离线自终局 zip 重建策略前向(MLP 64-64 tanh +
-    action_net,掩位 −1e8 同 leashed_ppo 口径),对 v2 demos 12 类示范对
-    (m[12]=True 全量断言,承工程 M1)算 CE 并取 action_net 行 12 梯度。"""
+    """G0-2b：按 rev3 training-only 正/负校准目标复算 a12 头梯度。
+
+    旧烟测只证明正例 CE 能给第 12 行梯度，恰好会把 90% 坍缩判 PASS。本件
+    必须同时消费 hard negatives 与 KING 起点锚，且两组梯度均在同一目标中。
+    """
     import numpy as np
     import torch as th
+    import train_ppo
+
     with zipfile.ZipFile(zip_path) as z:
         sd = th.load(io.BytesIO(z.read("policy.pth")),
                      map_location="cpu", weights_only=True)
-    d = np.load(demos_npz)
-    x, y, m = d["X"], d["Y"], d["masks"]
-    sel = y == 12
-    require(bool(sel.any()), "G0-2b:v2 demos 无 12 类示范对")
-    require(bool(m[sel][:, 12].all()),
-            "G0-2b:存在 12 类示范对 m[12]=False(承工程 M1 断言失败)")
-    obs = th.tensor(x[sel][:2000], dtype=th.float32)
-    masks = th.tensor(m[sel][:2000])
+    anchor_sd, _ = _load_zip_states(KING_ZIP)
+    x, y, episode_id, masks, _ = train_ppo._load_bc_aux_demos_v2(
+        demos_npz, expected_manager_sha256=sha256(M29_NPZ))
+    bx, by, bm = train_ppo._build_bc_aux_training_bank(
+        x, y, episode_id, masks)
+    positive = np.flatnonzero(by == 12)
+    negative = np.flatnonzero(by != 12)
+    require(len(positive) > 0 and len(negative) > 0,
+            "G0-2b:rev3 training-only bank 须同时含正例/hard negatives")
+    size = min(256, len(by))
+    pos_n = min(len(positive), max(1, int(round(
+        size * train_ppo._BC_AUX_POSITIVE_FRACTION))))
+    neg_n = min(len(negative), max(1, size - pos_n))
+    index = np.concatenate([positive[:pos_n], negative[:neg_n]])
+    obs = th.tensor(bx[index], dtype=th.float32)
+    mask_t = th.tensor(bm[index])
     h = th.tanh(obs @ sd["mlp_extractor.policy_net.0.weight"].T
                 + sd["mlp_extractor.policy_net.0.bias"])
     h = th.tanh(h @ sd["mlp_extractor.policy_net.2.weight"].T
                 + sd["mlp_extractor.policy_net.2.bias"])
     wa = sd["action_net.weight"].clone().requires_grad_(True)
     logits = h @ wa.T + sd["action_net.bias"]
-    logits = th.where(masks, logits, th.full_like(logits, -1e8))
-    ce = -th.log_softmax(logits, dim=-1)[:, 12].mean()
-    (g,) = th.autograd.grad(ce, [wa])
+    logp = th.log_softmax(
+        th.where(mask_t, logits, th.full_like(logits, -1e8)), dim=-1)
+    p12 = logp[:, 12].exp().clamp(1e-7, 1.0 - 1e-7)
+    pos_loss = th.nn.functional.binary_cross_entropy(
+        p12[:pos_n], th.full_like(
+            p12[:pos_n], train_ppo._BC_AUX_POSITIVE_TARGET))
+    neg_loss = th.nn.functional.binary_cross_entropy(
+        p12[pos_n:], th.full_like(
+            p12[pos_n:], train_ppo._BC_AUX_NEGATIVE_TARGET))
+    anchor_logits = train_ppo._policy_logits_from_sb3_state_dict(
+        anchor_sd, bx[index])
+    anchor_logp = th.log_softmax(
+        th.where(mask_t, anchor_logits,
+                 th.full_like(anchor_logits, -1e8)), dim=-1)
+    anchor_probs = anchor_logp.exp()[pos_n:]
+    anchor_kl = (anchor_probs * (
+        anchor_logp[pos_n:] - logp[pos_n:]
+    )).sum(dim=-1).mean()
+    objective = (
+        train_ppo._BC_AUX_POSITIVE_FRACTION * pos_loss
+        + (1.0 - train_ppo._BC_AUX_POSITIVE_FRACTION) * neg_loss
+        + train_ppo._BC_AUX_ANCHOR_KL_COEF * anchor_kl)
+    (g,) = th.autograd.grad(objective, [wa])
+    gtotal = float(th.linalg.vector_norm(g))
     g12 = float(g[12].abs().sum())
-    require(g12 > 0.0, "G0-2b:④乙 12 头梯度为零(构造性零通路指纹,反 P2)")
-    return {"n_pairs_12": int(sel.sum()), "grad12_abs_sum": g12,
-            "all_m12_true": True}
+    require(gtotal > 0.0 and g12 > 0.0,
+            "G0-2b:rev2 total/a12 头梯度为零")
+    return {
+        "objective_revision": train_ppo._BC_AUX_OBJECTIVE_REVISION,
+        "n_pairs_12": int(len(positive)),
+        "n_hard_negatives": int(len(negative)),
+        "batch_positive": int(pos_n),
+        "batch_negative": int(neg_n),
+        "objective": float(objective.detach()),
+        "positive_bce": float(pos_loss.detach()),
+        "negative_bce": float(neg_loss.detach()),
+        "anchor_kl": float(anchor_kl.detach()),
+        "grad_total_l2": gtotal,
+        "grad12_abs_sum": g12,
+        "all_m12_true": bool(bm[:, 12].all()),
+    }
+
+
+def _bc_aux_behavior_report(zip_path: pathlib.Path,
+                            demos_npz: pathlib.Path) -> dict:
+    """现有/新 smoke 通用的 E5 held-out 行为硬门（纯离线、真实 masks）。"""
+    import train_ppo
+
+    sd, _ = _load_zip_states(zip_path)
+    anchor_sd, _ = _load_zip_states(KING_ZIP)
+    x, y, episode_id, masks, _ = train_ppo._load_bc_aux_demos_v2(
+        demos_npz, expected_manager_sha256=sha256(M29_NPZ))
+    metrics = train_ppo.bc_aux_behavior_metrics(
+        sd, x, y, episode_id, masks, anchor_sd=anchor_sd,
+        heldout_only=True)
+    return {"metrics": metrics,
+            "gate": train_ppo.bc_aux_behavior_gate(
+                metrics, require_root_anchor=True)}
 
 
 def g0_funcsmoke_stage(events):
@@ -1514,11 +1583,15 @@ def g0_funcsmoke_stage(events):
                                        "bc_aux_lambda")
     grad_report = _bc_aux_grad12_report(funcaux_dir / "model_final.zip",
                                         BC_V2_DEMOS)
+    behavior_report = _bc_aux_behavior_report(
+        funcaux_dir / "model_final.zip", BC_V2_DEMOS)
     verdict = ("PASS" if not prefix_diffs["func-p"]
                and not prefix_diffs["func-aux"] and p_stream_equal
                and seed_seq_ok
                and dry_seen and fresh_seen and mounted
-               and aux_lambda_in_zip == BC_AUX_LAMBDA else "FAIL")
+               and aux_lambda_in_zip == BC_AUX_LAMBDA
+               and behavior_report["gate"]["verdict"] == "PASS"
+               else "FAIL")
     ev = {"event": "G0_SMOKE", "verdict": verdict, "impl_sha16": impl16,
           "seed": SMOKE_SEED, "steps": SMOKE_STEPS, "runs": results,
           "p_prefix_identity": {v: (d or "≡ 注册表前缀(恒等)")
@@ -1532,6 +1605,7 @@ def g0_funcsmoke_stage(events):
           "bc_aux_mount_marker": mounted,
           "bc_aux_lambda_in_zip": aux_lambda_in_zip,
           "grad12": grad_report,
+          "a12_behavior": behavior_report,
           "limitations": "episode 种子序列恒等肢已做(rev4 十二附二③),但系"
                          "可见面最强等价物口径:progress.jsonl 无 episode 种子"
                          "字段(worker 行仅 ep/t/reward/len),以两跑 (ep, "
@@ -1578,7 +1652,8 @@ def g0_demo_ledger_stage(events):
             "世代禁采断言破缺:v2 须禁 11 允 12")
     require(sha256(BC_V1_DEMOS) == BC_V1_DEMOS_SHA,
             "DEMO_LEDGER:BC-v1 demos 字节 != 冻结常量")
-    v2_rec = bc_worker._validate_bc_v2_report(BC_V2_SD)
+    v2_rec = bc_worker._validate_bc_v2_report(
+        BC_V2_SD, expected_manager_sha256=sha256(M29_NPZ))
     require(v2_rec["teacher_generation"] == 2, "v2 回执世代账异常")
     # v1 验证器对 v2 件 fail-loud(schema 隔离互斥,E2)
     import train_ppo

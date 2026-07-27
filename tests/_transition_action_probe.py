@@ -84,10 +84,21 @@ try:
     _, transition_call_again = descend_without_pending_frame(81234)
     pending = queue_probe_warp_to_l2()
     belt_before = pending["belt_heals"]
+    if bridge.act_wait() != 0:
+        raise AssertionError("换层期 act_wait 未被拒绝")
     bridge.act_walk(*target)
+    if bridge.act_explore_walk(
+            *target, [], pending["player_x"], pending["player_y"], 12) != 0:
+        raise AssertionError("换层期 act_explore_walk 未被拒绝")
     bridge.act_attack_monster(0)
+    if bridge.act_controller_attack_monster(
+            0, pending["player_x"], pending["player_y"], 12) != 0:
+        raise AssertionError("换层期 act_controller_attack_monster 未被拒绝")
     bridge.act_attack_tile(*target)
     bridge.act_operate(*target)
+    if bridge.act_controller_operate(
+            *target, pending["player_x"], pending["player_y"], 12) != 0:
+        raise AssertionError("换层期 act_controller_operate 未被拒绝")
     if bridge.act_drink() != 0:
         raise AssertionError("换层期 act_drink 未被拒绝")
     if bridge.act_pickup() != 0:
@@ -96,8 +107,6 @@ try:
         raise AssertionError("换层期 act_pickup_gear 未被拒绝")
     if bridge.act_pickup_progression(*target) != 0:
         raise AssertionError("换层期 act_pickup_progression 未被拒绝")
-    if bridge.sweep_backpack_gear() != 0:
-        raise AssertionError("换层期 sweep_backpack_gear 未被拒绝")
     if bridge.observe()["belt_heals"] != belt_before:
         raise AssertionError("换层期动作改写了旧场景药水状态")
 

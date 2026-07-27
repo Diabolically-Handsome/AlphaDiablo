@@ -66,7 +66,10 @@ def teacher_action(env_flat):
     if env_flat._clock >= KILL_PATIENCE:
         return 11
     mode = "dive" if clvl >= dlvl + 2 else "farm"
-    return dispatch(mode, raw, bool(env_flat.env.action_masks()[14]))
+    masks, nearest = env_flat.env.controller_action_context()
+    return dispatch(
+        mode, raw, bool(masks[14]), action_mask=masks,
+        nearest_engageable_distance=nearest)
 
 
 def collect():
@@ -103,6 +106,27 @@ class PiHead(nn.Module):
         return self.head(self.net(x))
 
 
+def _masked_replay_action(model, observation, action_mask) -> int:
+    """Apply the same complete 15-action mask used by deployed MaskablePPO."""
+    valid = np.asarray(action_mask, dtype=bool)
+    if valid.shape != (15,):
+        raise RuntimeError(
+            f"BC flat 重放动作掩码形状异常:{valid.shape} != (15,)")
+    if not bool(valid.any()):
+        raise RuntimeError("BC flat 重放动作掩码全假")
+    logits = model(
+        torch.from_numpy(
+            np.asarray(observation, dtype=np.float32)).unsqueeze(0))[0]
+    if tuple(logits.shape) != (15,):
+        raise RuntimeError(
+            f"BC flat 重放策略输出形状异常:{tuple(logits.shape)} != (15,)")
+    masked_logits = logits.masked_fill(
+        ~torch.as_tensor(valid, dtype=torch.bool, device=logits.device),
+        -torch.inf,
+    )
+    return int(masked_logits.argmax().item())
+
+
 def train_bc(X, Y):
     torch.manual_seed(22)
     model = PiHead(X.shape[1])
@@ -135,11 +159,8 @@ def replay(model):
             done = trunc = False
             R = 0.0
             while not (done or trunc):
-                logits = model(torch.from_numpy(np.asarray(obs, dtype=np.float32)).unsqueeze(0))[0]
-                # 装备键掩码(与训练环境同规则:14 号仅在有可穿装备时合法)
-                if not env.env.action_masks()[14]:
-                    logits[14] = -1e9
-                a = int(logits.argmax())
+                a = _masked_replay_action(
+                    model, obs, env.env.action_masks())
                 obs, r, done, trunc, _ = env.step(a)
                 R += r
             rets.append(R)

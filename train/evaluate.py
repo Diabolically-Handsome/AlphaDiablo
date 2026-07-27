@@ -1,4 +1,4 @@
-"""32 种子标准评估(protocol v3,2026-07-05 起为唯一金标准)。
+"""32 种子标准评估（协议版本取自 eval_contract.PROTOCOL_VERSION）。
 
 协议(全部条件都是结果的一部分,缺一不可比):
   - 种子集固定 9000-9031,只用于最终评估,永不参与训练/调参;
@@ -12,8 +12,8 @@
 
 用法(仓库根目录):
   .venv/bin/python train/evaluate.py train/runs/<run>/model_final
-  自动识别 RecurrentPPO/MaskablePPO 与自定义特征提取器；protocol-v3
-  结果写入 leaderboard-v3.md，旧 leaderboard.md 保留为只读历史。
+  自动识别 RecurrentPPO/MaskablePPO 与自定义特征提取器；结果写入当前
+  版本 leaderboard-v<PROTOCOL_VERSION>.md，旧榜保留为只读历史。
 """
 
 from __future__ import annotations
@@ -254,7 +254,8 @@ def _contract_marker(contract: Mapping) -> str:
 def _validate_row_marker(line: str, contract: Mapping) -> dict:
     match = _ROW_MARKER_RE.search(line.rstrip("\r\n"))
     if match is None:
-        raise ValueError("protocol-v3 排行榜数据行缺少 provenance marker")
+        raise ValueError(
+            f"protocol-v{PROTOCOL_VERSION} 排行榜数据行缺少 provenance marker")
     visible = line[:match.start()].rstrip()
     provenance = _decode_marker(match.group(1))
     if not isinstance(provenance, dict):
@@ -315,12 +316,15 @@ def _is_data_row(line: str) -> bool:
 def _validate_board_text(text: str, contract: Mapping,
                          initial_text: str) -> None:
     if not text.endswith("\n"):
-        raise ValueError("protocol-v3 排行榜必须以完整换行结尾")
+        raise ValueError(
+            f"protocol-v{PROTOCOL_VERSION} 排行榜必须以完整换行结尾")
     lines = text.splitlines()
     nonempty = [line for line in lines if line.strip()]
     if not nonempty or nonempty[0] != _contract_marker(contract):
         raise ValueError(
-            "排行榜缺少匹配的 protocol-v3 全局合同；旧榜只读，必须另建/rebuild v3 榜")
+            "排行榜缺少匹配的 "
+            f"protocol-v{PROTOCOL_VERSION} 全局合同；旧榜只读，必须另建/"
+            f"rebuild v{PROTOCOL_VERSION} 榜")
     if sum(line.startswith(f"<!-- {_CONTRACT_MARKER}") for line in lines) != 1:
         raise ValueError("排行榜全局合同 marker 数量异常")
     seen_keys = set()
@@ -348,7 +352,9 @@ def _validate_board_text(text: str, contract: Mapping,
         if not _is_data_row(line))
     expected = _contract_marker(contract) + "\n\n" + initial_text
     if skeleton != expected:
-        raise ValueError("protocol-v3 排行榜表头/列协议发生变化，必须另建/rebuild")
+        raise ValueError(
+            f"protocol-v{PROTOCOL_VERSION} 排行榜表头/列协议发生变化，"
+            "必须另建/rebuild")
 
 
 def ensure_leaderboard_compatible(path: str | pathlib.Path,

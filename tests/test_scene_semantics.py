@@ -11,7 +11,11 @@ sys.path.insert(0, str(ROOT / "python"))
 
 from diablogym.env import DiabloGymEnv, _scene_identity
 from diablogym.options_env import DIVE, OptionsEnv, dispatch
-from diablogym.worker_env import WorkerWindowEnv, _MAX_EMPTY_FARM_EPISODES
+from diablogym.worker_env import (
+    _AdvanceOutcome,
+    _MAX_EMPTY_FARM_EPISODES,
+    WorkerWindowEnv,
+)
 
 
 def raw(*, depth=3, is_set=False, set_id=0, monsters=()):
@@ -21,6 +25,7 @@ def raw(*, depth=3, is_set=False, set_id=0, monsters=()):
         "set_level_id": set_id,
         "xp": 0,
         "armor_class": 0,
+        "gear_combat_utility": 0,
         "monsters": list(monsters),
         "player_x": 10,
         "player_y": 10,
@@ -67,8 +72,9 @@ class SetLevelSemanticsTests(unittest.TestCase):
         worker.oe = types.SimpleNamespace(_win=None)
         worker._alive = True
         worker._rng = None
-        worker.stats = {"reseeds": 0}
-        worker.next_window = lambda: None
+        worker.stats = {"reseeds": 0, "reset_ff_reward": 0.0}
+        worker._advance_to_learning_window = lambda: _AdvanceOutcome(
+            None, 0.0, True, False, ())
         worker._new_episode = lambda *args, **kwargs: None
         with self.assertRaisesRegex(RuntimeError, "未产生 FARM"):
             worker.reset()
@@ -107,7 +113,7 @@ class SetLevelSemanticsTests(unittest.TestCase):
             }],
         })
         # 远处/门后的怪仍在全图列表时，FARM 必须先给机关宏一次机会。
-        self.assertEqual(dispatch("farm", state, False), 10)
+        self.assertEqual(dispatch("farm", state, False), 11)
         self.assertEqual(dispatch("dive", state, False), 11)
 
         options = OptionsEnv.__new__(OptionsEnv)

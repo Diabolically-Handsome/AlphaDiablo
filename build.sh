@@ -2,7 +2,7 @@
 # DiabloGym 一键构建:引擎(共享库+资产)+ pybind11 桥
 set -euo pipefail
 cd "$(dirname "$0")"
-export PATH="/opt/homebrew/bin:$PATH"
+[ "$(uname -s)" = "Darwin" ] && export PATH="/opt/homebrew/bin:$PATH" || true
 
 # Python 解释器解析顺序:$PYTHON 环境变量 > ./.venv > ../.venv
 VENV_PY="${PYTHON:-}"
@@ -21,7 +21,7 @@ PYTHON_INCLUDE_DIR="$("$VENV_PY" -c \
 [ -d "$PYTHON_INCLUDE_DIR" ] || { echo "当前 Python headers 不存在:$PYTHON_INCLUDE_DIR"; exit 1; }
 DEVX="${DEVILUTIONX_SRC:-${TMPDIR:-/tmp}/alphadiablo-dev/devilutionX}"
 [ -d "$DEVX/Source" ] || { echo "引擎源码缺失($DEVX),先运行 ./bootstrap.sh"; exit 1; }
-JOBS="$(sysctl -n hw.physicalcpu)"
+if [ "$(uname -s)" = "Darwin" ]; then JOBS="$(sysctl -n hw.physicalcpu)"; else JOBS="$(nproc)"; fi
 ENGINE_REF="${DEVILUTIONX_REF:-34c4cfc2e733240ac717f23bba2def887c793008}"
 
 ACTUAL_REF="$(git -C "$DEVX" rev-parse HEAD)"
@@ -150,6 +150,16 @@ if [ "$(uname -s)" = "Darwin" ]; then
     --deployment-target "$OSX_DEPLOYMENT_TARGET" \
     --search-root build \
     "$BRIDGE" "$ENGINE_DYLIB" "$GAME_BINARY"
+else
+  ENGINE_SO="build/engine/liblibdevilutionx_so.so"
+  [ -f "$ENGINE_SO" ] || { echo "找不到嵌入引擎 so:$ENGINE_SO"; exit 1; }
+  # 评测协议(eval_contract/env.py)钉死资产路径为 devilutionx.app/Contents/Resources;
+  # Linux 上引擎资产落在 build/engine/assets,这里以真实拷贝(禁符号链接)摆出同一布局
+  RES="build/engine/devilutionx.app/Contents/Resources"
+  [ -d "build/engine/assets" ] || { echo "找不到引擎资产目录 build/engine/assets"; exit 1; }
+  rm -rf "$RES" && mkdir -p "$RES"
+  cp -a build/engine/assets/. "$RES/"
+  echo "资产已布局: $RES ($(find "$RES" -type f | wc -l) files)"
 fi
 
 echo ""
