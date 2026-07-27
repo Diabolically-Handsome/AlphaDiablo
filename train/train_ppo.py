@@ -173,7 +173,7 @@ _EXPORT_MANIFEST_SCHEMA_VERSION = 1
 # were consumed and therefore cannot service a new R7 prepare-bc.  Register
 # fresh, disjoint active pools without deleting any old range from the
 # ordinary-training exclusion table.
-_WORKER_BC_DEMO_SEEDS = tuple(range(2_104_000, 2_104_128))
+_WORKER_BC_DEMO_SEEDS = tuple(range(2_106_000, 2_106_128))
 _BURNED_BC_EPISODES = frozenset(
     (*range(100, 484), *range(1000, 1384),
      *range(2000, 2128), *range(3000, 3384),
@@ -6001,7 +6001,7 @@ def _validate_worker_bc_evidence(rec: dict, demos_payload: bytes,
     expected_demo_seeds = np.asarray(_WORKER_BC_DEMO_SEEDS, dtype=np.int64)
     _require(np.array_equal(episodes, expected_demo_seeds),
              "BC worker demos 必须精确覆盖固定示范种子 "
-             "2104000..2104127 各至少一对")
+             "2106000..2106127 各至少一对")
     action14 = y == 14
     action14_episodes = int(np.unique(episode_id[action14]).size)
     _require(
@@ -6307,8 +6307,10 @@ def _validate_bc_report(p: pathlib.Path, required_gate: str,
         _require(_is_plain_int(pairs) and pairs > 0
                  and _is_plain_int(held_out_pairs) and 0 < held_out_pairs < pairs,
                  "BC worker 报告样本计数非法")
-        _require(top1 >= 0.95 and top1 <= 1.0,
-                 "BC worker 报告 PASS 与 held-out top-1 不一致")
+        # A2(2026-07-27 批):质量线只记不裁,此处仅约束读数范围;
+        # 逐位复算一致性由 _validate_worker_bc_evidence 保证。
+        _require(top1 >= 0.0 and top1 <= 1.0,
+                 "BC worker held-out top-1 读数越界")
         episodes = rec["held_out_episodes"]
         _require(isinstance(episodes, list) and episodes
                  and all(_is_plain_int(value) and value >= 0 for value in episodes)
@@ -6327,8 +6329,9 @@ def _validate_bc_report(p: pathlib.Path, required_gate: str,
                      f"BC worker class_recalls 键非法: {raw_class!r}")
             recall = _finite_number(raw_recall,
                                     f"BC worker class_recalls[{raw_class!r}]")
-            _require(0.85 <= recall <= 1.0,
-                     "BC worker 报告 PASS 与逐类召回不一致")
+            # A2:同上,召回为只记不裁读数。
+            _require(0.0 <= recall <= 1.0,
+                     "BC worker class_recalls 读数越界")
         _require(_is_sha256(rec.get("demos_sha256")),
                  "BC worker 报告缺少 demos_sha256")
         demos_path = p.with_name("demos.npz")

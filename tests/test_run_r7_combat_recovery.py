@@ -276,7 +276,7 @@ class R7FrozenProtocolTests(unittest.TestCase):
 
     def test_seed_pools_are_fresh_registered_and_disjoint(self):
         r7._require_seed_discipline()
-        self.assertEqual(r7.BC_V1_RANGE, (2_104_000, 2_104_128))
+        self.assertEqual(r7.BC_V1_RANGE, (2_106_000, 2_106_128))
         self.assertEqual(r7.BC_V2_RANGE, (2_103_000, 2_103_384))
         self.assertIn((2_100_000, 2_100_128),
                       r7.BC_RESERVED_SEED_RANGES)

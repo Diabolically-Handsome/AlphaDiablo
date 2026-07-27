@@ -19,7 +19,7 @@
   不改变 retry 决策、类权或所选模型；
 - v1 面回归零破坏(canonical 路径 / schema_version=1 / 采集行为原封);
 - 方案甲(2026-07-19 亲批):v2 采集局数 ×3；当前 v1/v2 active registry 为
-  未查看的 2104000..2104127 / 2103000..2103383 固定池，旧 2100000 /
+  未查看的 2106000..2106127 / 2103000..2103383 固定池，旧 2100000 /
   2101000 池保持 burned + v2 主训类平衡加权 CE
   (w_c = N/(K·n_c) 手算恒等;v1 调用路径不加权)+ 回执新字段
   (collection_episodes / class_weights)与验证器篡改矩阵。
@@ -1836,15 +1836,15 @@ class PlanAExpansionTests(_PatchMixin, unittest.TestCase):
             bc_worker.DEMO_SEEDS))
 
     def test_v1_episode_count_and_seed_discipline_unaffected(self):
-        # v1 局数纪律仍为 128;active registry 换用未查看的 2104000..2104127
+        # v1 局数纪律仍为 128;active registry 换用未查看的 2106000..2106127
         # (2_102 段 2026-07-27 崩溃烧毁,append-only 推进)。
         self.assertEqual(
             list(bc_worker.DEMO_SEEDS),
-            list(range(2_104_000, 2_104_128)),
+            list(range(2_106_000, 2_106_128)),
         )
         self.assertEqual(len(bc_worker.DEMO_SEEDS), 128)
         self.assertEqual(tuple(train_ppo._WORKER_BC_DEMO_SEEDS),
-                         tuple(range(2_104_000, 2_104_128)))
+                         tuple(range(2_106_000, 2_106_128)))
         # 源文级镜像:v1 采集环仍消费 DEMO_SEEDS,v2 采集环消费 DEMO_SEEDS_V2
         src = BC_WORKER.read_text()
         self.assertIn("for i, seed in enumerate(DEMO_SEEDS):", src)
@@ -1862,7 +1862,7 @@ class PlanAExpansionTests(_PatchMixin, unittest.TestCase):
         _, labels, groups = bc_worker.collect()
         self.assertEqual(len(labels), 128)
         self.assertTrue(np.array_equal(np.unique(groups),
-                                       np.arange(2_104_000, 2_104_128)))
+                                       np.arange(2_106_000, 2_106_128)))
 
     def test_active_pool_marker_identity_cannot_alias_burned_predecessors(self):
         active_v1 = train_ppo._bc_final_holdout_marker_identity(
@@ -1875,14 +1875,14 @@ class PlanAExpansionTests(_PatchMixin, unittest.TestCase):
             TEACHER_GENERATION_V2, range(2_101_000, 2_101_384))
         self.assertEqual(
             active_v1[0]["episode_seeds"],
-            list(range(2_104_000, 2_104_128)))
+            list(range(2_106_000, 2_106_128)))
         self.assertEqual(
             active_v2[0]["episode_seeds"],
             list(range(2_103_000, 2_103_384)))
         self.assertEqual(
             active_v1[1],
-            "62161b134128b7d421462184ae3f4c99d"
-            "4e21b374edc2cb2ae2751f7e8590943")
+            "cf023af0be3787c1510f118efd0600ab6"
+            "d135747e99367dbe1ece2624b2c39a3")
         self.assertEqual(
             active_v2[1],
             "10e33273f96570d6fbad5587f80bde811"
@@ -1968,7 +1968,9 @@ class V1TrainPathUnweightedTests(_PatchMixin, unittest.TestCase):
             n = len(groups)
             labels = np.full(n, 9, dtype=np.int64)
             labels.reshape(len(episodes), 8)[:, :4] = 14
-            dataset = (np.zeros((n, 298), dtype=np.float32), labels, groups)
+            X_rows = np.zeros((n, 298), dtype=np.float32)
+            X_rows[:, 0] = np.arange(n, dtype=np.float32) / n  # A2:行唯一化
+            dataset = (X_rows, labels, groups)
 
             def fake_collect():
                 nonlocal collect_saw_marker
@@ -2007,7 +2009,10 @@ class V1TrainPathUnweightedTests(_PatchMixin, unittest.TestCase):
             self.assertNotIn("collection_episodes", rec)
             self.assertNotIn("class_weights", rec)
 
-    def test_v1_failed_retry_skips_final_scoring_after_pool_is_burned(self):
+    def test_v1_below_line_quality_records_and_publishes_a2(self):
+        # A2 修正案(2026-07-27 批):候选质量线只记不裁——线下质量仍触发
+        # 唯一一次类权重试,之后照常进入 final 评分并发布;报告 data_gate
+        # 由 demos-validity 决定,质量读数原字段落档。
         with tempfile.TemporaryDirectory() as d:
             epochs_seen = []
             final_calls = 0
@@ -2023,18 +2028,20 @@ class V1TrainPathUnweightedTests(_PatchMixin, unittest.TestCase):
                 epochs_seen.append(epochs)
                 return object(), 0.90, {9: 0.90, 14: 0.90}
 
-            def forbidden_final(*args, **kwargs):
+            def fake_final(*args, **kwargs):
                 del args, kwargs
                 nonlocal final_calls
                 final_calls += 1
-                raise AssertionError("selection FAIL 后不得读取 final")
+                return 0.88, {9: 0.90, 14: 0.46}
 
             episodes = np.arange(100, 116, dtype=np.int64)
             groups = np.repeat(episodes, 8)
             n = len(groups)
             labels = np.full(n, 9, dtype=np.int64)
             labels.reshape(len(episodes), 8)[:, :4] = 14
-            dataset = (np.zeros((n, 298), dtype=np.float32), labels, groups)
+            X_rows = np.zeros((n, 298), dtype=np.float32)
+            X_rows[:, 0] = np.arange(n, dtype=np.float32) / n
+            dataset = (X_rows, labels, groups)
 
             def fake_collect():
                 marker, _, _ = bc_worker._final_holdout_marker_path(
@@ -2045,23 +2052,25 @@ class V1TrainPathUnweightedTests(_PatchMixin, unittest.TestCase):
             self._patch("OUT", out)
             self._patch("collect", fake_collect)
             self._patch("train_bc", fake_train_bc)
-            self._patch("_score_bc_model", forbidden_final)
+            self._patch("_score_bc_model", fake_final)
+            self._patch("export_sb3_sd", lambda m: {"w": torch.zeros(1)})
             self._patch("artifact_provenance", lambda: {
                 "schema_version": 1, "protocol_version": PROTOCOL_VERSION,
                 "implementation_sha256": "a" * 64,
                 "generator_sha256": BC_WORKER_SHA,
                 "manager_npz_sha256": "c" * 64})
-            with self.assertRaisesRegex(
-                    RuntimeError, "candidate validation FAIL"):
-                bc_worker.main()
+            bc_worker.main()
             self.assertEqual(
                 epochs_seen,
                 [bc_worker._BC_PRIMARY_EPOCHS,
                  bc_worker._BC_WEIGHTED_RETRY_EPOCHS])
-            self.assertEqual(final_calls, 0)
+            self.assertEqual(final_calls, 1)
             rec = json.loads(
                 (out / "bc_report.json").read_text())
-            self.assertEqual(rec["failure_stage"], "candidate_selection")
+            self.assertEqual(rec["data_gate"], "PASS")
+            self.assertEqual(rec["held_out_top1"], 0.88)
+            self.assertEqual(rec["class_recalls"], {"9": 0.9, "14": 0.46})
+            self.assertIs(rec["class_weighted_retry"], True)
 
 
 class V1SurfaceRegressionTests(_PatchMixin, unittest.TestCase):

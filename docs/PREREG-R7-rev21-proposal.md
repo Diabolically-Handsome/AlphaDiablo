@@ -56,3 +56,23 @@ campaign_revision 20→21,依 rev20 之 CAMPAIGN_REVISION 常量与状态 schema
 
 本件不改变 R7 发车前置(引擎可用 + 总设计师亲批)。发车环境选项与约束见
 docs/OPS-windows-feasibility.md。
+
+
+## 修正案二:BC-v1 demos-only 门(A2,总设计师 2026-07-27 批)
+
+批文原文:「可以 就听您的 A2方案为主 不行就只能给模型升级了」(回退路线=模型升级)。
+
+- **缘起**:R7 prepare-bc 两次失守——2_102 池被 a14 保险丝回执缺失崩溃烧毁
+  (已修);2_104 池被候选质量门 FAIL 烧毁(top1 0.833 vs 门 0.95,稀有键
+  recall 0.34/0.46 vs 0.85,类权重试无效)。零池成本天花板测量(burned-2_104
+  demos,200ep+类权):top1≈0.88-0.90、稀有键≤0.43——门在 07-25 未过滤 v3
+  视图下结构性不可达(Mac 时代 1.0 系过滤视图产物)。且 R7 训练命令不消费
+  BC 策略(teacher=KING_SD,无 --teacher-sd/--bc-aux-demos),0.95 门保护的是
+  R5/R6 时代遗物;R7 实际消费物 = demos(dry-anchor 锚 + 身份链)。
+- **改动**:①bc_worker v1 候选/终评质量线降为只记不裁(字段原样落档);
+  发布门 = demos-validity(池覆盖精确/局纪律/a14 覆盖/零标签冲突硬断言,
+  新增 _require_zero_exact_label_conflicts);②train_ppo._validate_bc_report
+  data_gate 分支的 0.95/0.85 两行降为 [0,1] 范围检查(身份链/marker/逐位
+  复算一致性原封);③v1 登记段推进 2_106_000..127(2_104 已烧,append-only)。
+- **池经济警示**:v1 偶数段仅剩 2_106/2_108 两发即撞 2_110_000 评测银行;
+  本次失败则按批文转模型升级路线(方案C),不再烧池试错。

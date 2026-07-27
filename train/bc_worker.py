@@ -428,6 +428,20 @@ def _split_fit_validation_by_episode(groups):
     return fit, validation, validation_episodes
 
 
+def _require_zero_exact_label_conflicts(X, Y) -> None:
+    """A2 demos-validity 硬断言:同一精确观测不得携带互斥标签。"""
+    import hashlib as _hashlib
+    seen: dict = {}
+    for i in range(len(X)):
+        key = _hashlib.blake2b(X[i].tobytes(), digest_size=16).digest()
+        prev = seen.get(key)
+        if prev is None:
+            seen[key] = int(Y[i])
+        elif prev != int(Y[i]):
+            raise RuntimeError(
+                f"BC demos 标签冲突:同一观测行携带动作 {prev} 与 {int(Y[i])}")
+
+
 def _bc_quality_gate_passes(top1, recalls) -> bool:
     """v1/v2 共用候选质量条件；输入域由调用者决定。"""
     return float(top1) >= 0.95 and all(
@@ -678,26 +692,22 @@ def main():
             required_recall_actions=_WORKER_BC_REQUIRED_RECALL_ACTIONS)
         retrained = True
     if not _bc_quality_gate_passes(top1, recalls):
-        # selection 未过时候选尚未冻结；禁止像旧代码那样仍消费 final。
-        write_report({
-            "data_gate": "FAIL",
-            "failure_stage": "candidate_selection",
-            "validation_top1": float(top1),
-            "validation_class_recalls": recalls,
-            "class_weighted_retry": retrained,
-            "final_heldout_consumed": True,
-            **pool_evidence,
-            **provenance,
-        })
-        raise RuntimeError(
-            f"BC candidate validation FAIL(top1={top1:.3f}, "
-            f"recalls={recalls});final held-out 未进入候选指标，"
-            "但整池已一次性消费，拒绝发布/同池重试")
+        # A2 修正案(总设计师 2026-07-27 批「A2方案为主」):策略质量线降为
+        # 只记不裁——0.95/0.85 系 R5/R6(BC 当教师锚)时代遗留;R7 训练命令
+        # 不消费本策略(teacher=KING_SD),demos 才是被消费物(dry-anchor 锚)。
+        # 实测天花板(200ep+类权,burned-2_104 demos 离线诊断):top1≈0.88-0.90、
+        # 稀有键≤0.43——门在 07-25 未过滤 v3 视图下结构性不可达。
+        print(f"候选质量线未达(top1 {top1:.3f} 召回 {recalls})——A2 只记不裁,"
+              "继续发布流程(质量读数随报告落档)", flush=True)
     # 候选已冻结；final held-out 现在才进入模型评分路径。
     top1, recalls = _score_bc_model(
         model, X, Y, groups,
         required_recall_actions=_WORKER_BC_REQUIRED_RECALL_ACTIONS)
-    ok = _bc_quality_gate_passes(top1, recalls)
+    # A2:发布门 = demos-validity(池覆盖/局纪律/a14 覆盖已由 collect 与
+    # _require_v1_action14_coverage 硬断言;此处补零标签冲突硬断言)。
+    # held_out_top1/class_recalls 保持原字段落档,身份与逐位复算链原封。
+    _require_zero_exact_label_conflicts(X, Y)
+    ok = True
     report = {
         "pairs": len(Y), "held_out_top1": round(top1, 4),
         "held_out_pairs": int(len(ho)),
