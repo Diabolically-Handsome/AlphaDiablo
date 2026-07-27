@@ -986,6 +986,10 @@ class OptionsEnv(gym.Env):
                 requested_action=audit.requested_action,
                 executed_action=None,
                 fuse_tripped=True,
+                # 2026-07-27 修复第二洞:窗口级 fuse 包装器必须传播内层
+                # a14 拒绝回执(_beat 保险丝路径已合成),否则 a14 请求在
+                # 此路径回执为 None,消费端 fail-closed(2_106 池阵亡原因)。
+                action14_audit=audit.action14_audit,
                 action_effect_audit=audit.action_effect_audit,
             )
         w["beats"] += 1
