@@ -108,10 +108,12 @@ _GEAR_PRESENT_INDEX = 293  # base obs zero-based; 文档中的“第 294 维”
 # realised actor/root/context movement.  Rev24 remains an immutable historical
 # evaluation contract bound to its original /8 audit; it is not silently
 # reinterpreted as /9 and is not accepted for current-training continuation.
-_CONTRACT_REVISION = 25
+_CONTRACT_REVISION = 26
 _REGISTERED_DUAL_WORKER_PG_AUDIT_SCHEMAS = types.MappingProxyType({
     24: "diablogym-worker-onpolicy-pg/8",
     25: "diablogym-worker-onpolicy-pg/9",
+    # A4(2026-07-27):KL 早停豁免旗入回执,audit schema /10,契约升 rev26。
+    26: "diablogym-worker-onpolicy-pg/10",
 })
 _POLICY_SOURCE_ROLES_SCHEMA = "diablogym-policy-source-roles/1"
 _WORKER_EPISODE_BOUNDARY_V24 = (
@@ -173,7 +175,7 @@ _EXPORT_MANIFEST_SCHEMA_VERSION = 1
 # were consumed and therefore cannot service a new R7 prepare-bc.  Register
 # fresh, disjoint active pools without deleting any old range from the
 # ordinary-training exclusion table.
-_WORKER_BC_DEMO_SEEDS = tuple(range(2_140_000, 2_140_128))
+_WORKER_BC_DEMO_SEEDS = tuple(range(2_142_000, 2_142_128))
 _BURNED_BC_EPISODES = frozenset(
     (*range(100, 484), *range(1000, 1384),
      *range(2000, 2128), *range(3000, 3384),
@@ -258,7 +260,7 @@ _BC_V2_PREVENTIVE_THRESHOLDS = (0.65,)
 # immutable one-shot marker before the first reset.  The previous 2101000 pool
 # has already been opened and stays burned; the active v2 registry below is
 # disjoint from every predecessor, active v1, and the R7 eval bank.
-_BC_V2_COLLECTION_EPISODES = tuple(range(2_141_000, 2_141_384))
+_BC_V2_COLLECTION_EPISODES = tuple(range(2_143_000, 2_143_384))
 if (
     set(_WORKER_BC_DEMO_SEEDS) & _BURNED_BC_EPISODES
     or set(_BC_V2_COLLECTION_EPISODES) & _BURNED_BC_EPISODES
@@ -6001,7 +6003,7 @@ def _validate_worker_bc_evidence(rec: dict, demos_payload: bytes,
     expected_demo_seeds = np.asarray(_WORKER_BC_DEMO_SEEDS, dtype=np.int64)
     _require(np.array_equal(episodes, expected_demo_seeds),
              "BC worker demos 必须精确覆盖固定示范种子 "
-             "2140000..2140127 各至少一对")
+             "2142000..2142127 各至少一对")
     action14 = y == 14
     action14_episodes = int(np.unique(episode_id[action14]).size)
     _require(

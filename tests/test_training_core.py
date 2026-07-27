@@ -287,30 +287,33 @@ class TrainingCoreTests(unittest.TestCase):
             2_100_000, 2_101_000,  # burned predecessors
             2_102_000, 2_104_000,  # burned 2026-07-27 (crash / gate-FAIL)
             2_108_000, 2_103_000,  # burned by A3 bundle change
-            2_140_000, 2_141_000,  # current active registries (2_140 block)
+            2_140_000, 2_141_000,  # burned by A4 bundle change
+            2_142_000, 2_143_000,  # current active registries (2_140 block)
         ):
             with self.subTest(scope="train", seed=reserved), \
                     self.assertRaisesRegex(ValueError, "拒绝保留种子"):
                 shell._new_episode(seed=reserved)
 
         shell.seed_scope = "bc-v1"
-        for allowed in (2_140_000, 2_140_127):
+        for allowed in (2_142_000, 2_142_127):
             shell._new_episode(seed=allowed)
             self.assertEqual(shell._episode_seed, allowed)
         for forbidden in (2_100_000, 2_101_000, 2_102_000,
                           2_104_000, 2_106_000, 2_108_000,
-                          2_103_000, 2_141_000):
+                          2_103_000, 2_140_000, 2_141_000,
+                          2_143_000):
             with self.subTest(scope="bc-v1", seed=forbidden), \
                     self.assertRaisesRegex(ValueError, "bc-v1 只允许登记池"):
                 shell._new_episode(seed=forbidden)
 
         shell.seed_scope = "bc-v2"
-        for allowed in (2_141_000, 2_141_383):
+        for allowed in (2_143_000, 2_143_383):
             shell._new_episode(seed=allowed)
             self.assertEqual(shell._episode_seed, allowed)
         for forbidden in (2_100_000, 2_101_000, 2_102_000,
                           2_104_000, 2_106_000, 2_108_000,
-                          2_103_000, 2_140_000):
+                          2_103_000, 2_140_000, 2_141_000,
+                          2_142_000):
             with self.subTest(scope="bc-v2", seed=forbidden), \
                     self.assertRaisesRegex(ValueError, "bc-v2 只允许登记池"):
                 shell._new_episode(seed=forbidden)

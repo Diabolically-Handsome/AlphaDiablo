@@ -71,7 +71,7 @@ GRADIENT_CLIP_SEPARATE_ACTOR_CRITIC_V1 = "separate-actor-critic-v1"
 GRADIENT_CLIP_ROOT_CONTEXT_CRITIC_V2 = (
     "separate-root-context-critic-v2"
 )
-WORKER_ONPOLICY_PG_AUDIT_SCHEMA = "diablogym-worker-onpolicy-pg/9"
+WORKER_ONPOLICY_PG_AUDIT_SCHEMA = "diablogym-worker-onpolicy-pg/10"
 ASYMMETRIC_WORKER_RUNTIME_EVIDENCE_SCHEMA = (
     "diablogym-asymmetric-worker-runtime-evidence/1"
 )
@@ -556,6 +556,7 @@ _WORKER_ONPOLICY_PG_RECEIPT_KEYS = frozenset({
     "optimizer_delta_context_on_combat_reward_descent_cosine",
     "optimizer_steps",
     "qualifies",
+    "kl_early_stopped",
 })
 
 
@@ -1160,8 +1161,13 @@ def validate_worker_onpolicy_pg_receipt(
         and encoder_measurements == optimizer_steps
         and interaction_measurements == optimizer_steps
         and distill_measurements == optimizer_steps
-        and optimizer_steps
-        >= WORKER_ONPOLICY_PG_MIN_OPTIMIZER_STEPS_PER_JOINT_ROLLOUT
+        # A4 修正案(2026-07-27 批系):target_kl 早停的 rollout 以记录旗
+        # 豁免至 ≥1(活性);未早停仍要求满一 epoch(≥8)。
+        and receipt.get("kl_early_stopped") in (True, False)
+        and optimizer_steps >= (
+            1 if receipt["kl_early_stopped"] is True
+            else WORKER_ONPOLICY_PG_MIN_OPTIMIZER_STEPS_PER_JOINT_ROLLOUT
+        )
         and receipt["pure_ppo_actor_grad_norm_max"] >= 0.0
         and receipt["pure_ppo_actor_grad_norm_mean"] >= 0.0
         and receipt["pure_ppo_root_grad_norm_max"] >= 0.0
@@ -4051,6 +4057,7 @@ class LeashedMaskablePPO(MaskablePPO):
             "optimizer_delta_context_on_combat_reward_descent_cosine": 0.0,
             "optimizer_steps": 0,
             "qualifies": False,
+            "kl_early_stopped": False,
         }
         return {
             "receipt": receipt,
@@ -4061,6 +4068,7 @@ class LeashedMaskablePPO(MaskablePPO):
 
     def _complete_worker_onpolicy_pg_rollout(
             self, receipt: dict | None, *,
+            kl_early_stopped: bool = False,
             pure_ppo_actor_grad_norms: list[float],
             pure_ppo_root_grad_norms: list[float],
             pure_ppo_context_grad_norms: list[float],
@@ -4112,15 +4120,21 @@ class LeashedMaskablePPO(MaskablePPO):
                 raise RuntimeError(
                     "formal PG receipt 缺失却产生 gradient measurements")
             return
+        # A4 修正案(2026-07-27):冻结配方自带 target_kl 早停,与满 epoch
+        # 地板冲突系配方内部矛盾(腿3 182,248 步实证:KL 尖峰 rollout 于第
+        # 7 步早停被误杀)。早停 rollout 豁免至 ≥1(活性仍保证),如实落旗。
+        _floor = (
+            1 if kl_early_stopped
+            else WORKER_ONPOLICY_PG_MIN_OPTIMIZER_STEPS_PER_JOINT_ROLLOUT)
         if (
             type(optimizer_steps) is not int
-            or optimizer_steps
-            < WORKER_ONPOLICY_PG_MIN_OPTIMIZER_STEPS_PER_JOINT_ROLLOUT
+            or optimizer_steps < _floor
         ):
             raise RuntimeError(
                 "formal PG 每个 joint rollout 至少要求 "
-                f"{WORKER_ONPOLICY_PG_MIN_OPTIMIZER_STEPS_PER_JOINT_ROLLOUT}"
-                f" 个 actor optimizer steps，实得 {optimizer_steps!r}")
+                f"{_floor}"
+                f" 个 actor optimizer steps(kl_early_stopped="
+                f"{kl_early_stopped!r})，实得 {optimizer_steps!r}")
         if (
             len(pure_ppo_actor_grad_norms) != optimizer_steps
             or len(pure_ppo_root_grad_norms) != optimizer_steps
@@ -4384,6 +4398,7 @@ class LeashedMaskablePPO(MaskablePPO):
             receipt["combat_reward_centered_context_grad_norm"],
         )
         receipt["optimizer_steps"] = optimizer_steps
+        receipt["kl_early_stopped"] = bool(kl_early_stopped)
         receipt["qualifies"] = _worker_onpolicy_pg_receipt_qualifies(
             receipt)
         if not validate_worker_onpolicy_pg_receipt(
@@ -6509,6 +6524,7 @@ class LeashedMaskablePPO(MaskablePPO):
         )
         self._complete_worker_onpolicy_pg_rollout(
             worker_pg_receipt,
+            kl_early_stopped=not continue_training,
             pure_ppo_actor_grad_norms=pure_ppo_actor_grad_norms,
             pure_ppo_root_grad_norms=pure_ppo_root_grad_norms,
             pure_ppo_context_grad_norms=

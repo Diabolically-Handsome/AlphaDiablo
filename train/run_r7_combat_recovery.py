@@ -196,8 +196,8 @@ _WORKER_FINAL_SENTINEL_KEYS = frozenset({
     "teacher_diverge", "final",
 })
 
-BC_V1_RANGE = (2_140_000, 2_140_128)
-BC_V2_RANGE = (2_141_000, 2_141_384)
+BC_V1_RANGE = (2_142_000, 2_142_128)
+BC_V2_RANGE = (2_143_000, 2_143_384)
 EVAL_BANK_RANGE = (2_110_000, 2_130_000)
 DEV_POOLS = {
     "dev-a": tuple(range(2_110_000, 2_110_128)),
@@ -2254,11 +2254,13 @@ def _worker_onpolicy_pg_evidence(
         )
         and sum(receipt["optimizer_steps"] for receipt in receipts)
         == checkpoint.get("_actor_optimizer_steps_completed")
+        # A4:聚合地板按早停旗折算(早停 rollout 计 1,其余计满 epoch)。
         and sum(
             receipt["optimizer_steps"] for receipt in receipts
-        ) >= (
-            WORKER_ONPOLICY_PG_MIN_OPTIMIZER_STEPS_PER_JOINT_ROLLOUT
-            * ACTOR_TRAIN_CALLS
+        ) >= sum(
+            1 if receipt.get("kl_early_stopped") is True
+            else WORKER_ONPOLICY_PG_MIN_OPTIMIZER_STEPS_PER_JOINT_ROLLOUT
+            for receipt in receipts
         ),
         f"{label} formal Worker on-policy PG evidence 未闭合",
     )
