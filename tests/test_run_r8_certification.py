@@ -56,7 +56,8 @@ class R8FrozenProtocolTests(unittest.TestCase):
 
     def test_no_r7_amendment_residue(self):
         source = pathlib.Path(r8.__file__).read_text()
-        for token in ("AMENDMENT", "_amendment", "adopt-", "r7_statistics"):
+        for token in ("AMENDMENT", "_amendment", "adopt-", "r7_statistics",
+                      "official-r7-final"):
             self.assertNotIn(token, source)
 
     def test_registry_shared_ledger_accepts_both_campaign_names(self):

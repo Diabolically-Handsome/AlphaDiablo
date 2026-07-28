@@ -3848,7 +3848,7 @@ def _find_final_eval_residue(allowed: Iterable[pathlib.Path] = ()) -> list[str]:
                 ".leaderboard.lock"}:
             continue
         suspicious_name = (
-            "official-r7-final" in lower_name
+            "official-r8-final" in lower_name
             or str(FINAL_POOL[0]) in lower_name
         )
         try:
