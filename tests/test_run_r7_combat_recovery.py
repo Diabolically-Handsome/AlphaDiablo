@@ -2327,8 +2327,8 @@ class Amendment5MachineryTest(unittest.TestCase):
 
     _PATCHED = (
         "CONTROL_DIR", "STATE_PATH", "DEVELOPMENT_DECISION_PATH",
-        "AMENDMENT5_PATH", "TRAINING_FIRED_DIR", "EVAL_DIR",
-        "EVAL_ATTESTATION_DIR",
+        "AMENDMENT5_PATH", "AMENDMENT6_PATH", "TRAINING_FIRED_DIR",
+        "EVAL_DIR", "EVAL_ATTESTATION_DIR",
     )
 
     def setUp(self):
@@ -2342,6 +2342,7 @@ class Amendment5MachineryTest(unittest.TestCase):
         r7.STATE_PATH = control / "status.json"
         r7.DEVELOPMENT_DECISION_PATH = control / "development-decision.json"
         r7.AMENDMENT5_PATH = control / "amendment5-adoption.json"
+        r7.AMENDMENT6_PATH = control / "amendment6-absent.json"
         r7.TRAINING_FIRED_DIR = control / "training-fired"
         r7.EVAL_DIR = root / "eval-assembled"
         r7.EVAL_ATTESTATION_DIR = control / "eval-attestations"
