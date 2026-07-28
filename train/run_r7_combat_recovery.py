@@ -80,7 +80,7 @@ EVAL_FIRED_SCHEMA = "diablogym-r7-eval-fired/1"
 EVAL_ATTESTATION_SCHEMA = "diablogym-r7-eval-attestation/1"
 FINAL_REGISTRY_SCHEMA = "diablogym-r7-final-pool-registry/1"
 PUBLICATION_RECEIPT_SCHEMA = "diablogym-r7-publication/1"
-CAMPAIGN_REVISION = 22
+CAMPAIGN_REVISION = 23
 
 CONTROL_DIR = TRAIN / "runs" / "r7-combat-recovery-control"
 STATE_PATH = CONTROL_DIR / "status.json"
@@ -101,6 +101,21 @@ AMENDMENT5_PRE_RECIPE_SHA256 = (
 AMENDMENT5_DROPPED_CHECK = "deaths.noninferiority_upper_bound"
 AMENDMENT5_DEVELOPMENT_GATE = (
     "prereg-checks-minus-deaths.noninferiority_upper_bound")
+AMENDMENT6_SCHEMA = "diablogym-r7-amendment6-final-incident/1"
+AMENDMENT6_PATH = CONTROL_DIR / "amendment6-final-incident.json"
+AMENDMENT6_INCIDENT_DIRNAME = "final-incident-20260728-reboot"
+AMENDMENT6_PRE_CAMPAIGN_REVISION = 22
+AMENDMENT6_PRE_LAUNCHER_SHA256 = (
+    "01a3e212b384ece2215c00643a298cbb3436979cab09b7a17215cf49c2bdd877")
+AMENDMENT6_PRE_RECIPE_SHA256 = (
+    "9f842ca525b29f6cfc8cd88d9c74f4f0479b717f324c99236033ec04a90a7fde")
+AMENDMENT6_BURNED_BASELINE_TAG = "official-r7-final-baseline-2120000"
+AMENDMENT6_BURNED_FIRED_SHA256 = (
+    "34f93496ec83280c86ff47c6819505a878930db36fcd74ce9d60d3bcc7ec9b59")
+AMENDMENT6_INCIDENT_LOG_SHA256 = (
+    "05edbb26372cc8aad159a1508a973373d862df8df6ffaa15275472bbcf9594f4")
+AMENDMENT6_BURNED_POOL = (2_120_000, 2_120_256)
+AMENDMENT6_PARTIAL_LOG_LAST_SEED = 2_120_213
 AMENDMENT5_PREREG_CHECK_KEYS = frozenset({
     "deaths.noninferiority_upper_bound",
     "deaths.observed_not_higher",
@@ -231,7 +246,11 @@ DEV_POOLS = {
     "dev-a": tuple(range(2_110_000, 2_110_128)),
     "dev-b": tuple(range(2_111_000, 2_111_128)),
 }
-FINAL_POOL = tuple(range(2_120_000, 2_120_256))
+# 修正案六(2026-07-28,批文「启用备用池(推荐)」):2_120 池的基线评测
+# 在 214/256 处被机器重启打断(点火标记在、档案未提交,协议拒绝重试),
+# 弃用该池启用下一预留段。候选从未接触 2_120;候选/边距/判据均在事故前
+# 冻结入库,无事故后选择存在。事故全案见 amendment6-final-incident.json。
+FINAL_POOL = tuple(range(2_121_000, 2_121_256))
 DEVELOPMENT_TRAIN_SEEDS = (2_130_000, 2_130_100, 2_130_200)
 PRODUCTION_TRAIN_SEED = 2_130_900
 
@@ -2981,7 +3000,7 @@ def command_train_development() -> None:
 def _eval_tag(pool: str, arm: str, recipe: str | None = None,
               seed: int | None = None) -> str:
     if pool == "final":
-        return f"official-r7-final-{arm}-2120000"
+        return f"official-r7-final-{arm}-{FINAL_POOL[0]}"
     if arm == "baseline":
         return f"r7-{pool}-baseline-v28"
     _require(recipe is not None and seed is not None, "开发 candidate tag 缺身份")
@@ -4047,8 +4066,21 @@ def _amendment5_repair_crash_window() -> None:
     _amendment5_migrate_state(state, pre, selection)
 
 
-def _validate_amendment5_adoption(state: dict) -> dict:
+def _amendment5_chain_expected(
+        chain: tuple | None = None) -> tuple:
+    if chain is not None:
+        return chain
+    if AMENDMENT6_PATH.exists():
+        return (AMENDMENT6_PRE_CAMPAIGN_REVISION,
+                AMENDMENT6_PRE_LAUNCHER_SHA256,
+                AMENDMENT6_PRE_RECIPE_SHA256)
+    return (CAMPAIGN_REVISION, _launcher_sha256(), CAMPAIGN_RECIPE_SHA256)
+
+
+def _validate_amendment5_adoption(
+        state: dict, chain: tuple | None = None) -> dict:
     _require(AMENDMENT5_PATH.exists(), "amendment5 adoption 文件缺失")
+    _a5_chain = _amendment5_chain_expected(chain)
     document = _stable_json(AMENDMENT5_PATH)
     phase = state["phases"].get("eval_development", {})
     _require(
@@ -4069,9 +4101,9 @@ def _validate_amendment5_adoption(state: dict) -> dict:
         and document.get("amendment") == 5
         and document.get("plan") == "B"
         and document.get("post_hoc") is True
-        and post.get("campaign_revision") == CAMPAIGN_REVISION
-        and post.get("launcher_sha256") == _launcher_sha256()
-        and post.get("recipe_sha256") == CAMPAIGN_RECIPE_SHA256
+        and post.get("campaign_revision") == _a5_chain[0]
+        and post.get("launcher_sha256") == _a5_chain[1]
+        and post.get("recipe_sha256") == _a5_chain[2]
         and post.get("final_death_margin") == FINAL_DEATH_MARGIN
         and post.get("development_gate") == AMENDMENT5_DEVELOPMENT_GATE
         and pre.get("campaign_revision")
@@ -4167,6 +4199,10 @@ def command_train_production() -> None:
     _require_seed_discipline()
     state = _load_state()
     _require_not_terminal(state)
+    _require(
+        not AMENDMENT6_PATH.exists(),
+        "修正案六收养已生效;生产腿已按 sha 冻结,禁止重训",
+    )
     recipe = _selected_recipe(state)
     phase = state["phases"].get("train_production", {})
     _require(phase.get("status") != "locked-failed", "production 已 locked-failed")
@@ -4216,7 +4252,7 @@ def _find_final_eval_residue(allowed: Iterable[pathlib.Path] = ()) -> list[str]:
             continue
         suspicious_name = (
             "official-r7-final" in lower_name
-            or "2120000" in lower_name
+            or str(FINAL_POOL[0]) in lower_name
         )
         try:
             payload = _stable_read(path)
@@ -4434,9 +4470,348 @@ def _validate_final_opened_registry(bind_core: dict) -> tuple[dict, dict]:
     return opened, evidence
 
 
-def _final_bind(state: dict, recipe: str, candidate: pathlib.Path) -> dict:
-    receipt = _validate_training_artifact(
+def _amendment6_incident_dir() -> pathlib.Path:
+    return CONTROL_DIR / AMENDMENT6_INCIDENT_DIRNAME
+
+
+def _amendment6_validate_production(recipe: str) -> dict:
+    document = _stable_json(AMENDMENT6_PATH)
+    production = document.get("production")
+    _require(
+        isinstance(production, dict)
+        and production.get("recipe") == recipe
+        and production.get("seed") == PRODUCTION_TRAIN_SEED,
+        "amendment6 production 身份不闭合",
+    )
+    receipt_path = _training_receipt_path(
         recipe, PRODUCTION_TRAIN_SEED, "candidate")
+    _require(
+        _sha256(receipt_path) == production.get("receipt_sha256"),
+        "amendment6 冻结生产回执漂移",
+    )
+    _require(
+        _sha256(_training_fired_path(
+            recipe, PRODUCTION_TRAIN_SEED, "candidate"))
+        == production.get("training_fired_sha256"),
+        "amendment6 冻结生产点火标记漂移",
+    )
+    model = _training_model_path(recipe, PRODUCTION_TRAIN_SEED, "candidate")
+    _require(
+        _sha256(model) == production.get("model_sha256"),
+        "amendment6 冻结生产模型漂移",
+    )
+    receipt = _stable_json(receipt_path)
+    receipt["receipt_sha256"] = production["receipt_sha256"]
+    return receipt
+
+
+def _production_receipt(recipe: str) -> dict:
+    # 修正案六:生产腿在 rev22 身份下训练并冻结;逐份重算路径在 rev23 下
+    # 必然失配,改走 amendment6 文档的 sha 冻结复验。未收养战役走原路径。
+    if AMENDMENT6_PATH.exists():
+        return _amendment6_validate_production(recipe)
+    return _validate_training_artifact(
+        recipe, PRODUCTION_TRAIN_SEED, "candidate")
+
+
+def _amendment6_require_pre_state(state: dict) -> None:
+    expected_pre_implementation = {
+        **_implementation_identity(),
+        "launcher_sha256": AMENDMENT6_PRE_LAUNCHER_SHA256,
+        "recipe_sha256": AMENDMENT6_PRE_RECIPE_SHA256,
+    }
+    _require(
+        state.get("schema_version") == STATE_SCHEMA
+        and state.get("campaign_revision")
+        == AMENDMENT6_PRE_CAMPAIGN_REVISION
+        and state.get("launcher_sha256") == AMENDMENT6_PRE_LAUNCHER_SHA256
+        and state.get("recipe_sha256") == AMENDMENT6_PRE_RECIPE_SHA256
+        and state.get("implementation") == expected_pre_implementation
+        and state.get("terminal_status") is None,
+        "amendment6 只能收养 rev22 终考事故态",
+    )
+    _require(
+        state.get("phases", {}).get("train_production", {}).get("status")
+        == "complete",
+        "amendment6 要求生产腿已冻结",
+    )
+    eval_final = state.get("phases", {}).get("eval_final")
+    _require(
+        isinstance(eval_final, dict)
+        and eval_final.get("status") == "opened",
+        "amendment6 要求事故停在 eval_final opened",
+    )
+
+
+def _amendment6_require_incident_evidence() -> dict:
+    burned_marker = (
+        CONTROL_DIR / "eval-fired"
+        / f"{AMENDMENT6_BURNED_BASELINE_TAG}.json")
+    incident_dir = _amendment6_incident_dir()
+    archived_marker = incident_dir / burned_marker.name
+    marker_live = burned_marker.exists()
+    marker_path = burned_marker if marker_live else archived_marker
+    _require(
+        marker_path.exists()
+        and _sha256(marker_path) == AMENDMENT6_BURNED_FIRED_SHA256,
+        "烧毁基线点火标记缺失或漂移",
+    )
+    _require(
+        not (EVAL_DIR
+             / f"{AMENDMENT6_BURNED_BASELINE_TAG}.json").exists()
+        and not (EVAL_ATTESTATION_DIR
+                 / f"{AMENDMENT6_BURNED_BASELINE_TAG}.json").exists(),
+        "烧毁基线不应存在完整档案/attestation",
+    )
+    old_candidate_tag = AMENDMENT6_BURNED_BASELINE_TAG.replace(
+        "baseline", "candidate")
+    _require(
+        not (CONTROL_DIR / "eval-fired"
+             / f"{old_candidate_tag}.json").exists()
+        and not (incident_dir / f"{old_candidate_tag}.json").exists()
+        and not FINAL_FIRED_PATH.exists()
+        and not FINAL_ANALYSIS_PATH.exists()
+        and not PUBLISHED_DIR.exists(),
+        "候选必须从未在被烧池上点火",
+    )
+    log_copy = incident_dir / "eval-final.partial.log"
+    _require(
+        log_copy.exists()
+        and _sha256(log_copy) == AMENDMENT6_INCIDENT_LOG_SHA256,
+        "事故日志副本缺失或漂移",
+    )
+    return {"marker_live": marker_live}
+
+
+def _amendment6_complete_adoption(document: dict, state: dict) -> None:
+    # 文档已持久化后的收尾:归档移动(逐件幂等)+ state 迁移。崩溃后重跑
+    # 从任意中间点续走同一序列。
+    incident_dir = _amendment6_incident_dir()
+    burned_marker = (
+        CONTROL_DIR / "eval-fired"
+        / f"{AMENDMENT6_BURNED_BASELINE_TAG}.json")
+    if burned_marker.exists():
+        burned_marker.rename(incident_dir / burned_marker.name)
+    if FINAL_OPENED_PATH.exists():
+        _require(
+            _sha256(FINAL_OPENED_PATH)
+            == document["incident"]["final_opened_sha256"],
+            "被烧池 opened 文档漂移",
+        )
+        FINAL_OPENED_PATH.rename(incident_dir / FINAL_OPENED_PATH.name)
+    old_lock = EVAL_DIR / f".{AMENDMENT6_BURNED_BASELINE_TAG}.json.lock"
+    if old_lock.exists():
+        old_lock.rename(incident_dir / old_lock.name)
+    state["campaign_revision"] = CAMPAIGN_REVISION
+    state["launcher_sha256"] = _launcher_sha256()
+    state["recipe_sha256"] = CAMPAIGN_RECIPE_SHA256
+    state["implementation"] = _implementation_identity()
+    state["phases"].pop("eval_final", None)
+    state["phases"]["final_incident"] = {
+        "status": "adopted-amendment6",
+        "amendment6_sha256": _sha256(AMENDMENT6_PATH),
+    }
+    _write_json_atomic(STATE_PATH, state)
+
+
+def _validate_amendment6_adoption(state: dict) -> dict:
+    _require(AMENDMENT6_PATH.exists(), "amendment6 adoption 文件缺失")
+    document = _stable_json(AMENDMENT6_PATH)
+    phase = state["phases"].get("final_incident", {})
+    _require(
+        set(phase) == {"status", "amendment6_sha256"}
+        and phase["status"] == "adopted-amendment6"
+        and phase["amendment6_sha256"] == _sha256(AMENDMENT6_PATH),
+        "amendment6 state phase 未闭合",
+    )
+    pre = document.get("pre")
+    post = document.get("post")
+    incident = document.get("incident")
+    _require(
+        isinstance(pre, dict) and isinstance(post, dict)
+        and isinstance(incident, dict)
+        and document.get("schema_version") == AMENDMENT6_SCHEMA
+        and document.get("amendment") == 6
+        and document.get("post_hoc") is True
+        and pre.get("campaign_revision")
+        == AMENDMENT6_PRE_CAMPAIGN_REVISION
+        and pre.get("launcher_sha256") == AMENDMENT6_PRE_LAUNCHER_SHA256
+        and pre.get("recipe_sha256") == AMENDMENT6_PRE_RECIPE_SHA256
+        and post.get("campaign_revision") == CAMPAIGN_REVISION
+        and post.get("launcher_sha256") == _launcher_sha256()
+        and post.get("recipe_sha256") == CAMPAIGN_RECIPE_SHA256
+        and post.get("final_pool") == list(FINAL_POOL)
+        and incident.get("burned_baseline_fired_sha256")
+        == AMENDMENT6_BURNED_FIRED_SHA256
+        and incident.get("partial_log_sha256")
+        == AMENDMENT6_INCIDENT_LOG_SHA256
+        and incident.get("candidate_never_fired") is True,
+        "amendment6 文档身份不闭合",
+    )
+    evidence = _amendment6_require_incident_evidence()
+    _require(evidence["marker_live"] is False,
+             "烧毁标记仍在活动点火目录,归档未完成")
+    incident_dir = _amendment6_incident_dir()
+    _require(
+        (incident_dir / FINAL_OPENED_PATH.name).exists()
+        and _sha256(incident_dir / FINAL_OPENED_PATH.name)
+        == incident.get("final_opened_sha256")
+        and not FINAL_OPENED_PATH.exists(),
+        "被烧池 opened 文档归档不闭合",
+    )
+    recipe = state["phases"].get(
+        "eval_development", {}).get("selected_recipe")
+    _require(
+        document.get("production", {}).get("recipe") == recipe,
+        "amendment6 production recipe 与选拔不一致",
+    )
+    _amendment6_validate_production(recipe)
+    _validate_amendment5_adoption(state)
+    return {"selected_recipe": recipe}
+
+
+def command_adopt_final_incident() -> None:
+    _require_seed_discipline()
+    if AMENDMENT6_PATH.exists():
+        raw_state = _stable_json(STATE_PATH) if STATE_PATH.exists() else {}
+        if (raw_state.get("campaign_revision")
+                == AMENDMENT6_PRE_CAMPAIGN_REVISION):
+            # 崩溃窗:文档已落、归档/迁移未完 —— 对 rev22 事故态复验后续走
+            document = _stable_json(AMENDMENT6_PATH)
+            _amendment6_require_pre_state(raw_state)
+            _require(
+                document.get("pre", {}).get("state_sha256")
+                == _sha256(STATE_PATH),
+                "崩溃窗收养:state 与 amendment6 文档 pre 快照不符",
+            )
+            _amendment6_complete_adoption(document, raw_state)
+        state = _load_state()
+        _require_not_terminal(state)
+        verdict = _validate_amendment6_adoption(state)
+        print("amendment6 adoption 已在案并复验通过;selected_recipe="
+              + verdict["selected_recipe"])
+        return
+    _require(STATE_PATH.exists(), "无 state;amendment6 只能收养事故态")
+    state = _stable_json(STATE_PATH)
+    state_sha = _sha256(STATE_PATH)
+    _amendment6_require_pre_state(state)
+    _validate_amendment5_adoption(
+        state,
+        chain=(AMENDMENT6_PRE_CAMPAIGN_REVISION,
+               AMENDMENT6_PRE_LAUNCHER_SHA256,
+               AMENDMENT6_PRE_RECIPE_SHA256),
+    )
+    _amendment6_require_incident_evidence()
+    _require(FINAL_OPENED_PATH.exists(), "事故态缺被烧池 opened 文档")
+    opened = _stable_json(FINAL_OPENED_PATH)
+    _require(
+        opened.get("seeds") == list(range(*AMENDMENT6_BURNED_POOL)),
+        "opened 文档不是被烧的 2_120 池",
+    )
+    # 密码学锚定:opened 文档 ↔ rev22 state 的 bind ↔ 烧毁点火标记内嵌
+    # bind ↔ 全局 registry 记录,四方互证,伪造任一方即失锚。
+    live_bind_sha = state["phases"]["eval_final"].get("bind_sha256")
+    _require(
+        _is_sha256(live_bind_sha)
+        and _sha256(FINAL_OPENED_PATH) == live_bind_sha,
+        "被烧池 opened 文档与 state.eval_final.bind_sha256 失锚",
+    )
+    burned_marker_path = (
+        CONTROL_DIR / "eval-fired"
+        / f"{AMENDMENT6_BURNED_BASELINE_TAG}.json")
+    _require(
+        _stable_json(burned_marker_path).get("final_bind_sha256")
+        == live_bind_sha,
+        "烧毁基线点火标记未内嵌被烧池 bind",
+    )
+    registry_records = sorted(FINAL_REGISTRY_DIR.glob("*.json"))
+    _require(len(registry_records) == 1,
+             "final registry 记录数异常(应恰为被烧池一条)")
+    burned_registry = _validate_final_registry_record(registry_records[0])
+    _require(
+        burned_registry["seeds"] == list(range(*AMENDMENT6_BURNED_POOL))
+        and burned_registry["control_path"]
+        == str(CONTROL_DIR.resolve()),
+        "registry 记录与被烧池不一致",
+    )
+    recipe = state["phases"].get(
+        "eval_development", {}).get("selected_recipe")
+    _require(recipe in RECIPES, "事故态缺已选拔配方")
+    model = _training_model_path(recipe, PRODUCTION_TRAIN_SEED, "candidate")
+    production = {
+        "recipe": recipe,
+        "seed": PRODUCTION_TRAIN_SEED,
+        "model_path": str(model),
+        "model_sha256": _sha256(model),
+        "receipt_sha256": _sha256(_training_receipt_path(
+            recipe, PRODUCTION_TRAIN_SEED, "candidate")),
+        "training_fired_sha256": _sha256(_training_fired_path(
+            recipe, PRODUCTION_TRAIN_SEED, "candidate")),
+    }
+    _require(
+        state["phases"]["train_production"].get("artifact", {}).get(
+            "receipt_sha256") == production["receipt_sha256"],
+        "生产回执与 state 记录不闭合",
+    )
+    document = {
+        "schema_version": AMENDMENT6_SCHEMA,
+        "amendment": 6,
+        "post_hoc": True,
+        "approval": {
+            "designer": "Lawrence",
+            "wording": "启用备用池(推荐)",
+            "date": "2026-07-28",
+        },
+        "justification": (
+            "终考基线评测在 214/256 处被机器重启打断(操作事故,非窥视重试):"
+            "点火标记已落、档案未提交,协议对该发拒绝重试。候选从未接触被烧"
+            "池;候选模型、边距 0.10、全部判据均于事故前冻结入库,不存在任何"
+            "事故后选择。弃用 2_120 启用全新未读段 2_121;被烧池永久登记于 "
+            "final registry。"
+        ),
+        "adopted_at_ns": time.time_ns(),
+        "incident": {
+            "kind": "operational-reboot-during-final-baseline-eval",
+            "burned_pool": list(AMENDMENT6_BURNED_POOL),
+            "burned_baseline_tag": AMENDMENT6_BURNED_BASELINE_TAG,
+            "burned_baseline_fired_sha256": AMENDMENT6_BURNED_FIRED_SHA256,
+            "partial_log_sha256": AMENDMENT6_INCIDENT_LOG_SHA256,
+            "partial_log_last_seed": AMENDMENT6_PARTIAL_LOG_LAST_SEED,
+            "candidate_never_fired": True,
+            "final_opened_sha256": _sha256(FINAL_OPENED_PATH),
+            "eval_final_phase": state["phases"]["eval_final"],
+            "final_registry_record": {
+                "name": registry_records[0].name,
+                "sha256": _sha256(registry_records[0]),
+            },
+        },
+        "pre": {
+            "campaign_revision": AMENDMENT6_PRE_CAMPAIGN_REVISION,
+            "launcher_sha256": AMENDMENT6_PRE_LAUNCHER_SHA256,
+            "recipe_sha256": AMENDMENT6_PRE_RECIPE_SHA256,
+            "state_sha256": state_sha,
+        },
+        "production": production,
+        "post": {
+            "campaign_revision": CAMPAIGN_REVISION,
+            "launcher_sha256": _launcher_sha256(),
+            "recipe_sha256": CAMPAIGN_RECIPE_SHA256,
+            "final_pool": list(FINAL_POOL),
+        },
+    }
+    _write_json_exclusive(AMENDMENT6_PATH, document)
+    _amendment6_complete_adoption(document, state)
+    adopted = _load_state()
+    _require_not_terminal(adopted)
+    verdict = _validate_amendment6_adoption(adopted)
+    print("amendment6 adoption 完成;备用终考池启用 "
+          + f"{FINAL_POOL[0]}-{FINAL_POOL[-1]};"
+          + "生产件已按 sha 冻结收养;selected_recipe="
+          + verdict["selected_recipe"])
+
+
+def _final_bind(state: dict, recipe: str, candidate: pathlib.Path) -> dict:
+    receipt = _production_receipt(recipe)
     phase = state["phases"].get("train_production", {})
     _require(
         set(phase) == {"status", "recipe", "seed", "attempts", "artifact"}
@@ -4507,8 +4882,7 @@ def _capture_final_evidence(
     _require(opened == bind, "final evidence 使用的 bind 不是冻结 final-opened")
     bind_sha256 = _sha256(FINAL_OPENED_PATH)
 
-    receipt = _validate_training_artifact(
-        bind["recipe"], PRODUCTION_TRAIN_SEED, "candidate")
+    receipt = _production_receipt(bind["recipe"])
     candidate_payload = _stable_read(candidate)
     candidate_model_sha256 = hashlib.sha256(candidate_payload).hexdigest()
     _require(
@@ -4877,8 +5251,7 @@ def command_eval_final() -> None:
         )
     candidate = _training_model_path(
         recipe, PRODUCTION_TRAIN_SEED, "candidate")
-    candidate_receipt = _validate_training_artifact(
-        recipe, PRODUCTION_TRAIN_SEED, "candidate")
+    candidate_receipt = _production_receipt(recipe)
     bind_core = _final_bind(state, recipe, candidate)
     baseline_path = _eval_path(bind_core["baseline_tag"])
     candidate_path = _eval_path(bind_core["candidate_tag"])
@@ -5115,6 +5488,7 @@ def main() -> None:
             "train-development",
             "eval-development",
             "adopt-development",
+            "adopt-final-incident",
             "train-production",
             "eval-final",
             "status",
@@ -5130,6 +5504,7 @@ def main() -> None:
             "train-development": command_train_development,
             "eval-development": command_eval_development,
             "adopt-development": command_adopt_development,
+            "adopt-final-incident": command_adopt_final_incident,
             "train-production": command_train_production,
             "eval-final": command_eval_final,
         }[args.command]()

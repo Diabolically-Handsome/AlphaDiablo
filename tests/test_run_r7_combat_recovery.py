@@ -320,7 +320,7 @@ class R7FrozenProtocolTests(unittest.TestCase):
         )
 
     def test_recipe_binds_full_game_archive_requirement(self):
-        self.assertEqual(r7.CAMPAIGN_REVISION, 22)
+        self.assertEqual(r7.CAMPAIGN_REVISION, 23)
         self.assertEqual(
             r7.TRAINING_RECEIPT_SCHEMA,
             "diablogym-r7-training-artifact/9",
@@ -1349,8 +1349,11 @@ class R7SelectionTests(unittest.TestCase):
                     },
                 },
             }
+            absent = pathlib.Path(directory) / "no-adoption.json"
             with (
                 mock.patch.object(r7, "DEVELOPMENT_DECISION_PATH", path),
+                mock.patch.object(r7, "AMENDMENT5_PATH", absent),
+                mock.patch.object(r7, "AMENDMENT6_PATH", absent),
                 mock.patch.object(
                     r7, "_recompute_development_analyses",
                     return_value=analyses),
@@ -2551,6 +2554,231 @@ class Amendment5MachineryTest(unittest.TestCase):
         with self.assertRaisesRegex(r7.CampaignError, "失锚"):
             r7.command_adopt_development()
         self.assertFalse(r7.AMENDMENT5_PATH.exists())
+
+
+class Amendment6MachineryTest(unittest.TestCase):
+    """夹具:伪造 rev22 修五收养态 + 终考事故现场,演练修六机器。"""
+
+    _A6_PATCHED = (
+        "AMENDMENT6_PATH", "FINAL_OPENED_PATH", "FINAL_FIRED_PATH",
+        "FINAL_ANALYSIS_PATH", "PUBLISHED_DIR", "FINAL_REGISTRY_DIR",
+        "AMENDMENT6_BURNED_FIRED_SHA256", "AMENDMENT6_INCIDENT_LOG_SHA256",
+    )
+
+    def setUp(self):
+        self._a5 = Amendment5MachineryTest("setUp")
+        self._a5.setUp()
+        self._a6_saved = {
+            name: getattr(r7, name) for name in self._A6_PATCHED}
+        self._saved_model_path = r7._training_model_path
+        root = pathlib.Path(self._a5._tmp.name)
+        control = r7.CONTROL_DIR
+        r7.AMENDMENT6_PATH = control / "amendment6-final-incident.json"
+        r7.FINAL_OPENED_PATH = control / "final-pool-opened.json"
+        r7.FINAL_FIRED_PATH = control / "final-candidate-fired.json"
+        r7.FINAL_ANALYSIS_PATH = control / "analysis-final.json"
+        r7.PUBLISHED_DIR = root / "published"
+        r7.FINAL_REGISTRY_DIR = root / "final-registry"
+        r7._training_model_path = (
+            lambda recipe, seed, scope:
+            root / "receipts" / f"{recipe}-{seed}-{scope}-model.zip")
+        self._promote_to_rev22_incident(root, control)
+
+    def tearDown(self):
+        r7._training_model_path = self._saved_model_path
+        for name, value in self._a6_saved.items():
+            setattr(r7, name, value)
+        self._a5.tearDown()
+
+    def _promote_to_rev22_incident(self, root, control):
+        wj = self._a5._write_json
+        # 伪造修五收养文档(post 钉 rev22 = A6_PRE 三元组)
+        state_sha = r7._sha256(r7.STATE_PATH)
+        analyses = r7._amendment5_read_frozen_analyses()
+        self._selection = r7._amendment5_selection(analyses)
+        pre5 = r7._amendment5_pre_inventory(state_sha)
+        wj(r7.AMENDMENT5_PATH, {
+            "schema_version": r7.AMENDMENT5_SCHEMA,
+            "amendment": 5, "plan": "B", "post_hoc": True,
+            "adopted_at_ns": 1,
+            "pre": pre5,
+            "post": {
+                "campaign_revision": r7.AMENDMENT6_PRE_CAMPAIGN_REVISION,
+                "launcher_sha256": r7.AMENDMENT6_PRE_LAUNCHER_SHA256,
+                "recipe_sha256": r7.AMENDMENT6_PRE_RECIPE_SHA256,
+                "final_death_margin": r7.FINAL_DEATH_MARGIN,
+                "development_gate": r7.AMENDMENT5_DEVELOPMENT_GATE,
+                "selection": self._selection,
+            },
+        })
+        recipe = self._selection["selected_recipe"]
+        self._recipe = recipe
+        # 生产件三件套
+        receipt_path = r7._training_receipt_path(
+            recipe, r7.PRODUCTION_TRAIN_SEED, "candidate")
+        model_path = r7._training_model_path(
+            recipe, r7.PRODUCTION_TRAIN_SEED, "candidate")
+        wj(receipt_path, {
+            "model_path": str(model_path), "kind": "production-receipt"})
+        wj(r7._training_fired_path(
+            recipe, r7.PRODUCTION_TRAIN_SEED, "candidate"),
+            {"kind": "production-fired"})
+        model_path.write_bytes(b"fixture-production-model")
+        artifact = r7._stable_json(receipt_path)
+        artifact["receipt_sha256"] = r7._sha256(receipt_path)
+        self._artifact = artifact
+        # 事故现场:被烧池 opened + 基线点火标记 + registry 一条 + 日志副本
+        wj(r7.FINAL_OPENED_PATH, {
+            "seeds": list(range(*r7.AMENDMENT6_BURNED_POOL)),
+            "kind": "burned-opened"})
+        bind_sha = r7._sha256(r7.FINAL_OPENED_PATH)
+        self._bind_sha = bind_sha
+        burned = (control / "eval-fired"
+                  / f"{r7.AMENDMENT6_BURNED_BASELINE_TAG}.json")
+        wj(burned, {"kind": "burned-baseline-fired",
+                    "final_bind_sha256": bind_sha})
+        r7.AMENDMENT6_BURNED_FIRED_SHA256 = r7._sha256(burned)
+        r7.FINAL_REGISTRY_DIR.mkdir(parents=True, exist_ok=True)
+        burned_seeds = list(range(*r7.AMENDMENT6_BURNED_POOL))
+        pool_sha = r7._canonical_sha256(
+            {"pool_name": "r7-official-final", "seeds": burned_seeds})
+        wj(r7.FINAL_REGISTRY_DIR / f"{pool_sha}.json", {
+            "schema_version": r7.FINAL_REGISTRY_SCHEMA,
+            "pool_name": "r7-official-final",
+            "seeds": burned_seeds,
+            "pool_sha256": pool_sha,
+            "campaign_recipe_sha256": r7.AMENDMENT6_PRE_RECIPE_SHA256,
+            "bind_sha256": bind_sha,
+            "control_path": str(r7.CONTROL_DIR.resolve()),
+            "opened_at_ns": 1,
+            "consumption_stage": "before_baseline_evaluation",
+        })
+        incident_dir = r7._amendment6_incident_dir()
+        incident_dir.mkdir(parents=True, exist_ok=True)
+        log_copy = incident_dir / "eval-final.partial.log"
+        log_copy.write_text("seed 2120213: fixture tail\n")
+        r7.AMENDMENT6_INCIDENT_LOG_SHA256 = r7._sha256(log_copy)
+        # state 提升到 rev22 修五收养态 + 事故停点
+        state = r7._stable_json(r7.STATE_PATH)
+        state["campaign_revision"] = r7.AMENDMENT6_PRE_CAMPAIGN_REVISION
+        state["launcher_sha256"] = r7.AMENDMENT6_PRE_LAUNCHER_SHA256
+        state["recipe_sha256"] = r7.AMENDMENT6_PRE_RECIPE_SHA256
+        state["implementation"] = {
+            **r7._implementation_identity(),
+            "launcher_sha256": r7.AMENDMENT6_PRE_LAUNCHER_SHA256,
+            "recipe_sha256": r7.AMENDMENT6_PRE_RECIPE_SHA256,
+        }
+        state["terminal_status"] = None
+        state["phases"]["eval_development"] = {
+            "status": "complete-amendment5-posthoc",
+            "completed": sorted(r7._development_analysis_keys()),
+            "decision_sha256": pre5["decision_sha256"],
+            "selected_recipe": recipe,
+            "amendment5_sha256": r7._sha256(r7.AMENDMENT5_PATH),
+            "post_hoc": True,
+        }
+        state["phases"]["train_production"] = {
+            "status": "complete", "recipe": recipe,
+            "seed": r7.PRODUCTION_TRAIN_SEED, "attempts": 1,
+            "artifact": artifact,
+        }
+        state["phases"]["eval_final"] = {
+            "status": "opened", "bind_sha256": bind_sha,
+        }
+        self._a5._write_json(r7.STATE_PATH, state)
+
+    def test_adopt_incident_migrates_and_is_idempotent(self):
+        r7.command_adopt_final_incident()
+        self.assertTrue(r7.AMENDMENT6_PATH.exists())
+        state = r7._stable_json(r7.STATE_PATH)
+        self.assertEqual(state["campaign_revision"], r7.CAMPAIGN_REVISION)
+        self.assertNotIn("eval_final", state["phases"])
+        self.assertEqual(
+            state["phases"]["final_incident"]["status"],
+            "adopted-amendment6")
+        incident_dir = r7._amendment6_incident_dir()
+        self.assertTrue(
+            (incident_dir
+             / f"{r7.AMENDMENT6_BURNED_BASELINE_TAG}.json").exists())
+        self.assertFalse(r7.FINAL_OPENED_PATH.exists())
+        self.assertTrue(
+            (incident_dir / r7.FINAL_OPENED_PATH.name).exists())
+        # 幂等重跑 + 生产件改道复验
+        r7.command_adopt_final_incident()
+        receipt = r7._production_receipt(self._recipe)
+        self.assertEqual(receipt, self._artifact)
+        # a5 链在 a6 生效后仍闭合
+        verdict = r7._validate_development_decision(r7._load_state())
+        self.assertEqual(verdict["selected_recipe"], self._recipe)
+
+
+    def test_all_production_receipt_sites_rerouted(self):
+        # 复核 blocker 回归网:三处生产回执消费点必须全部走 _production_receipt
+        for func in (r7._capture_final_evidence, r7._final_bind,
+                     r7.command_eval_final):
+            source = inspect.getsource(func)
+            self.assertNotIn("_validate_training_artifact", source,
+                             func.__name__)
+        self.assertIn(
+            "_production_receipt(", inspect.getsource(
+                r7._capture_final_evidence))
+
+    def test_adopt_refuses_forged_opened_document(self):
+        # 锚定回归:伪造 opened(seeds 正确但字节不同)必失锚
+        self._a5._write_json(r7.FINAL_OPENED_PATH, {
+            "seeds": list(range(*r7.AMENDMENT6_BURNED_POOL)),
+            "kind": "forged-opened"})
+        with self.assertRaisesRegex(r7.CampaignError, "失锚"):
+            r7.command_adopt_final_incident()
+        self.assertFalse(r7.AMENDMENT6_PATH.exists())
+
+    def test_adopt_incident_crash_window_repair(self):
+        original = r7._amendment6_complete_adoption
+
+        def _boom(document, state):
+            raise RuntimeError("simulated crash after doc write")
+
+        r7._amendment6_complete_adoption = _boom
+        try:
+            with self.assertRaises(RuntimeError):
+                r7.command_adopt_final_incident()
+        finally:
+            r7._amendment6_complete_adoption = original
+        self.assertTrue(r7.AMENDMENT6_PATH.exists())
+        self.assertEqual(
+            r7._stable_json(r7.STATE_PATH)["campaign_revision"],
+            r7.AMENDMENT6_PRE_CAMPAIGN_REVISION)
+        r7.command_adopt_final_incident()
+        state = r7._stable_json(r7.STATE_PATH)
+        self.assertEqual(state["campaign_revision"], r7.CAMPAIGN_REVISION)
+        self.assertEqual(
+            state["phases"]["final_incident"]["status"],
+            "adopted-amendment6")
+
+    def test_adopt_refuses_if_candidate_ever_fired(self):
+        tag = r7.AMENDMENT6_BURNED_BASELINE_TAG.replace(
+            "baseline", "candidate")
+        self._a5._write_json(
+            r7.CONTROL_DIR / "eval-fired" / f"{tag}.json",
+            {"kind": "candidate-fired"})
+        with self.assertRaisesRegex(r7.CampaignError, "候选必须从未"):
+            r7.command_adopt_final_incident()
+        self.assertFalse(r7.AMENDMENT6_PATH.exists())
+
+    def test_validation_catches_production_receipt_tamper(self):
+        r7.command_adopt_final_incident()
+        receipt_path = r7._training_receipt_path(
+            self._recipe, r7.PRODUCTION_TRAIN_SEED, "candidate")
+        self._a5._write_json(receipt_path, {"kind": "tampered"})
+        with self.assertRaisesRegex(r7.CampaignError, "生产回执漂移"):
+            r7.command_adopt_final_incident()
+
+    def test_train_production_sealed_after_adoption(self):
+        r7.command_adopt_final_incident()
+        state_before = r7.STATE_PATH.read_bytes()
+        with self.assertRaisesRegex(r7.CampaignError, "禁止重训"):
+            r7.command_train_production()
+        self.assertEqual(r7.STATE_PATH.read_bytes(), state_before)
 
 
 if __name__ == "__main__":
