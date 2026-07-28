@@ -184,13 +184,13 @@ def _fake_demos(directory, n=8):
 class CurrentContractTests(unittest.TestCase):
     """当前合同仍完整携带 contextual graft、奖励信用、scope 与观测视图。"""
 
-    def test_revision_constant_is_25(self):
-        self.assertEqual(_CONTRACT_REVISION, 25)
+    def test_revision_constant_is_26(self):
+        self.assertEqual(_CONTRACT_REVISION, 26)
 
     def test_l_base_carries_disabled_keys(self):
         # L-base(--skip-dry):双键均 disabled——同案零双版本(圈 7)。
         contract = _contract_for(_leg_args(skip_dry=True))
-        self.assertEqual(contract["contract_revision"], 25)
+        self.assertEqual(contract["contract_revision"], 26)
         self.assertIs(contract["legacy_policy_observation_view"], True)
         self.assertIs(contract["skip_dry"], True)          # CLI 旗字面值
         self.assertEqual(contract["dry_curriculum"], "disabled")

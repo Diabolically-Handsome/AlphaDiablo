@@ -672,7 +672,7 @@ class BcAuxActivationPredicateTests(unittest.TestCase):
         # 历史常量仍可读以便旧合同给出精确迁移错误；结构路径必须 λ=0。
         self.assertEqual(_BC_AUX_MAIN_LAMBDA, 0.015625)
         self.assertEqual(_BC_AUX_OBJECTIVE_REVISION, 11)
-        self.assertEqual(train_ppo._CONTRACT_REVISION, 25)
+        self.assertEqual(train_ppo._CONTRACT_REVISION, 26)
         self.assertEqual(
             train_ppo._BC_AUX_BEHAVIOR_RECEIPT_SCHEMA_VERSION,
             "bc-aux-behavior/8")

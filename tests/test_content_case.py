@@ -892,18 +892,19 @@ class ValueRecordLiteralTests(unittest.TestCase):
         self.assertIs(self._contract(True, None)["skip_dry"], True)
         self.assertIs(self._contract(False, None)["skip_dry"], False)
 
-    def test_contract_revision_follows_single_source_now_rev25(self):
-        # rev25 binds the strengthened formal on-policy PG /9 audit.
-        self.assertEqual(_CONTRACT_REVISION, 25)
+    def test_contract_revision_follows_single_source_now_rev26(self):
+        # rev26 binds the /10 audit (kl_early_stopped 旗;修正案四 A4)。
+        self.assertEqual(_CONTRACT_REVISION, 26)
         self.assertEqual(
             dict(train_ppo._REGISTERED_DUAL_WORKER_PG_AUDIT_SCHEMAS),
             {
                 24: "diablogym-worker-onpolicy-pg/8",
                 25: "diablogym-worker-onpolicy-pg/9",
+                26: "diablogym-worker-onpolicy-pg/10",
             },
         )
         contract = self._contract(False, MAIN_TABLE_LITERAL)
-        self.assertEqual(contract["contract_revision"], 25)
+        self.assertEqual(contract["contract_revision"], 26)
         self.assertEqual(contract["dry_curriculum"],
                          {"schedule": MAIN_TABLE_LITERAL})
         self.assertIs(contract["legacy_policy_observation_view"], True)

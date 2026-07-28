@@ -320,7 +320,7 @@ class R7FrozenProtocolTests(unittest.TestCase):
         )
 
     def test_recipe_binds_full_game_archive_requirement(self):
-        self.assertEqual(r7.CAMPAIGN_REVISION, 21)
+        self.assertEqual(r7.CAMPAIGN_REVISION, 22)
         self.assertEqual(
             r7.TRAINING_RECEIPT_SCHEMA,
             "diablogym-r7-training-artifact/9",
@@ -2183,6 +2183,374 @@ class Rev21DiagnosticsTests(unittest.TestCase):
             r7._rev21_diagnostics(
                 self._archive([good]),
                 self._archive([dict(good, micro_steps=0)]))
+
+
+def _a5_analysis(failed_checks, all_checks=None):
+    checks = {
+        name: True for name in (
+            all_checks or r7.AMENDMENT5_PREREG_CHECK_KEYS)
+    }
+    for name in failed_checks:
+        checks[name] = False
+    return {
+        "verdict": {
+            "status": "PASS" if not failed_checks else "FAIL",
+            "checks": checks,
+            "failed_checks": sorted(failed_checks),
+        },
+    }
+
+
+class Amendment5GateTest(unittest.TestCase):
+    def test_constants_frozen(self):
+        self.assertEqual(r7.FINAL_DEATH_MARGIN, 0.10)
+        self.assertEqual(r7.DEVELOPMENT_DEATH_MARGIN, 0.05)
+        self.assertEqual(
+            r7.AMENDMENT5_DROPPED_CHECK,
+            "deaths.noninferiority_upper_bound",
+        )
+        self.assertEqual(r7.AMENDMENT5_PRE_CAMPAIGN_REVISION, 21)
+        self.assertEqual(len(r7.AMENDMENT5_PRE_LAUNCHER_SHA256), 64)
+        self.assertEqual(len(r7.AMENDMENT5_PRE_RECIPE_SHA256), 64)
+        # 修正案五后的当前身份必须已离开 rev21 快照
+        self.assertNotEqual(
+            r7.CAMPAIGN_RECIPE_SHA256, r7.AMENDMENT5_PRE_RECIPE_SHA256)
+        self.assertEqual(
+            r7.CAMPAIGN_RECIPE["statistics"]["final_death_margin"], 0.10)
+
+    def test_leg_passes_drops_only_noninferiority(self):
+        only_ni = r7._amendment5_leg_passes(
+            _a5_analysis(["deaths.noninferiority_upper_bound"]))
+        self.assertTrue(only_ni["passed"])
+        self.assertEqual(only_ni["amendment5_failed_checks"], [])
+
+        with_sign = r7._amendment5_leg_passes(_a5_analysis(
+            ["deaths.noninferiority_upper_bound", "ret.exact_sign"]))
+        self.assertFalse(with_sign["passed"])
+        self.assertEqual(
+            with_sign["amendment5_failed_checks"], ["ret.exact_sign"])
+
+        observed_higher = r7._amendment5_leg_passes(_a5_analysis(
+            ["deaths.noninferiority_upper_bound",
+             "deaths.observed_not_higher"]))
+        self.assertFalse(observed_higher["passed"])
+
+        clean = r7._amendment5_leg_passes(_a5_analysis([]))
+        self.assertTrue(clean["passed"])
+
+    def test_leg_passes_rejects_inconsistent_verdict(self):
+        broken = _a5_analysis(["deaths.noninferiority_upper_bound"])
+        broken["verdict"]["status"] = "PASS"
+        with self.assertRaises(r7.CampaignError):
+            r7._amendment5_leg_passes(broken)
+        missing = _a5_analysis([], all_checks=("ret.exact_sign",))
+        with self.assertRaises(r7.CampaignError):
+            r7._amendment5_leg_passes(missing)
+
+    def _selection_fixture(self, fail_map):
+        analyses = {}
+        for pool in r7.DEV_POOLS:
+            for recipe in r7.RECIPE_PREFERENCE:
+                for seed in r7.DEVELOPMENT_TRAIN_SEEDS:
+                    key = f"{pool}:{recipe}:{seed}"
+                    analyses[key] = _a5_analysis(fail_map.get(key, []))
+        return analyses
+
+    def test_selection_matches_frozen_development_readings(self):
+        ni = "deaths.noninferiority_upper_bound"
+        seeds = r7.DEVELOPMENT_TRAIN_SEEDS
+        fail_map = {
+            # risk32:s2130200 双池带侧翼失败;s2130100 B 池死亡观测上升
+            f"dev-a:risk32:{seeds[0]}": [ni],
+            f"dev-a:risk32:{seeds[1]}": [ni],
+            f"dev-a:risk32:{seeds[2]}": [
+                ni, "deaths.observed_not_higher", "kills.exact_sign",
+                "ret.exact_sign"],
+            f"dev-b:risk32:{seeds[0]}": [ni],
+            f"dev-b:risk32:{seeds[1]}": [ni, "deaths.observed_not_higher"],
+            f"dev-b:risk32:{seeds[2]}": [
+                ni, "deaths.observed_not_higher", "ret.exact_sign"],
+            # risk64:仅 dev-a 第三种子带 kills/ret 符号失败
+            f"dev-a:risk64:{seeds[0]}": [ni],
+            f"dev-a:risk64:{seeds[1]}": [ni],
+            f"dev-a:risk64:{seeds[2]}": [
+                ni, "kills.exact_sign", "ret.exact_sign"],
+            f"dev-b:risk64:{seeds[0]}": [ni],
+            f"dev-b:risk64:{seeds[1]}": [ni],
+            f"dev-b:risk64:{seeds[2]}": [ni],
+        }
+        selection = r7._amendment5_selection(self._selection_fixture(fail_map))
+        self.assertEqual(selection["selected_recipe"], "risk64")
+        self.assertEqual(
+            selection["per_recipe"]["risk32"]["count"], 1)
+        self.assertEqual(
+            selection["per_recipe"]["risk32"]["seeds_passing_both_pools"],
+            [seeds[0]])
+        self.assertEqual(
+            selection["per_recipe"]["risk64"]["count"], 2)
+        self.assertEqual(
+            selection["per_recipe"]["risk64"]["seeds_passing_both_pools"],
+            [seeds[0], seeds[1]])
+
+    def test_selection_prefers_risk32_when_both_qualify(self):
+        selection = r7._amendment5_selection(self._selection_fixture({}))
+        self.assertEqual(selection["selected_recipe"], "risk32")
+
+    def test_selection_returns_none_when_no_recipe_qualifies(self):
+        ni = "deaths.noninferiority_upper_bound"
+        fail_map = {
+            f"{pool}:{recipe}:{seed}": [ni, "farm_worker_wage.mean_lcb"]
+            for pool in r7.DEV_POOLS
+            for recipe in r7.RECIPE_PREFERENCE
+            for seed in r7.DEVELOPMENT_TRAIN_SEEDS
+        }
+        selection = r7._amendment5_selection(self._selection_fixture(fail_map))
+        self.assertIsNone(selection["selected_recipe"])
+
+    def test_eval_tags_cover_frozen_development_plan(self):
+        tags = r7._amendment5_eval_tags()
+        self.assertEqual(len(tags), 14)
+        self.assertEqual(len(set(tags)), 14)
+        self.assertIn("r7-dev-a-baseline-v28", tags)
+        self.assertIn("r7-dev-b-risk64-s2130200", tags)
+
+    def test_adopt_command_registered(self):
+        self.assertTrue(callable(r7.command_adopt_development))
+        self.assertTrue(callable(r7._validate_amendment5_adoption))
+
+
+class Amendment5MachineryTest(unittest.TestCase):
+    """夹具战役:伪造 rev21 scientific-fail 终态,全链演练收养机器。"""
+
+    _PATCHED = (
+        "CONTROL_DIR", "STATE_PATH", "DEVELOPMENT_DECISION_PATH",
+        "AMENDMENT5_PATH", "TRAINING_FIRED_DIR", "EVAL_DIR",
+        "EVAL_ATTESTATION_DIR",
+    )
+
+    def setUp(self):
+        import tempfile
+        self._tmp = tempfile.TemporaryDirectory()
+        root = pathlib.Path(self._tmp.name)
+        self._saved = {name: getattr(r7, name) for name in self._PATCHED}
+        self._saved_receipt = r7._training_receipt_path
+        control = root / "control"
+        r7.CONTROL_DIR = control
+        r7.STATE_PATH = control / "status.json"
+        r7.DEVELOPMENT_DECISION_PATH = control / "development-decision.json"
+        r7.AMENDMENT5_PATH = control / "amendment5-adoption.json"
+        r7.TRAINING_FIRED_DIR = control / "training-fired"
+        r7.EVAL_DIR = root / "eval-assembled"
+        r7.EVAL_ATTESTATION_DIR = control / "eval-attestations"
+        receipts = root / "receipts"
+        r7._training_receipt_path = (
+            lambda recipe, seed, scope:
+            receipts / f"{recipe}-{seed}-{scope}.json")
+        for path in (control, r7.TRAINING_FIRED_DIR, r7.EVAL_DIR,
+                     r7.EVAL_ATTESTATION_DIR, receipts):
+            path.mkdir(parents=True, exist_ok=True)
+        self._build_rev21_terminal()
+
+    def tearDown(self):
+        for name, value in self._saved.items():
+            setattr(r7, name, value)
+        r7._training_receipt_path = self._saved_receipt
+        self._tmp.cleanup()
+
+    # ---- 夹具构造 ----
+
+    def _write_json(self, path, value):
+        path.write_text(
+            json.dumps(value, ensure_ascii=False, sort_keys=True,
+                       indent=1) + "\n")
+
+    def _analysis(self, failed):
+        checks = {name: True for name in r7.AMENDMENT5_PREREG_CHECK_KEYS}
+        for name in failed:
+            checks[name] = False
+        return {
+            "verdict": {
+                "status": "PASS" if not failed else "FAIL",
+                "checks": checks,
+                "failed_checks": sorted(failed),
+            },
+        }
+
+    def _frozen_fail_map(self):
+        ni = "deaths.noninferiority_upper_bound"
+        seeds = r7.DEVELOPMENT_TRAIN_SEEDS
+        return {
+            f"dev-a:risk32:{seeds[0]}": [ni],
+            f"dev-a:risk32:{seeds[1]}": [ni],
+            f"dev-a:risk32:{seeds[2]}": [
+                ni, "deaths.observed_not_higher", "kills.exact_sign",
+                "ret.exact_sign"],
+            f"dev-b:risk32:{seeds[0]}": [ni],
+            f"dev-b:risk32:{seeds[1]}": [ni, "deaths.observed_not_higher"],
+            f"dev-b:risk32:{seeds[2]}": [
+                ni, "deaths.observed_not_higher", "ret.exact_sign"],
+            f"dev-a:risk64:{seeds[0]}": [ni],
+            f"dev-a:risk64:{seeds[1]}": [ni],
+            f"dev-a:risk64:{seeds[2]}": [
+                ni, "kills.exact_sign", "ret.exact_sign"],
+            f"dev-b:risk64:{seeds[0]}": [ni],
+            f"dev-b:risk64:{seeds[1]}": [ni],
+            f"dev-b:risk64:{seeds[2]}": [ni],
+        }
+
+    def _build_rev21_terminal(self, fail_map=None):
+        fail_map = fail_map or self._frozen_fail_map()
+        analysis_sha = {}
+        for pool in r7.DEV_POOLS:
+            for recipe in r7.RECIPE_PREFERENCE:
+                for seed in r7.DEVELOPMENT_TRAIN_SEEDS:
+                    key = f"{pool}:{recipe}:{seed}"
+                    path = r7._analysis_path(pool, recipe, seed)
+                    self._write_json(path, self._analysis(fail_map[key]))
+                    analysis_sha[key] = r7._sha256(path)
+        self._write_json(
+            r7.DEVELOPMENT_DECISION_PATH,
+            {"selected_recipe": None, "analysis_sha256s": analysis_sha},
+        )
+        for tag in r7._amendment5_eval_tags():
+            fired = r7._eval_fired_path(tag)
+            fired.parent.mkdir(parents=True, exist_ok=True)
+            self._write_json(fired, {"tag": tag, "kind": "fired"})
+            archive = r7._eval_path(tag)
+            self._write_json(archive, {"tag": tag, "kind": "archive"})
+            self._write_json(
+                r7._eval_attestation_path(tag),
+                {
+                    "tag": tag,
+                    "archive_sha256": r7._sha256(archive),
+                    "fired_sha256": r7._sha256(fired),
+                },
+            )
+        for recipe in r7.RECIPE_PREFERENCE:
+            for seed in r7.DEVELOPMENT_TRAIN_SEEDS:
+                self._write_json(
+                    r7._training_receipt_path(recipe, seed, "development"),
+                    {"leg": f"{recipe}:{seed}", "kind": "receipt"})
+                self._write_json(
+                    r7._training_fired_path(recipe, seed, "development"),
+                    {"leg": f"{recipe}:{seed}", "kind": "fired"})
+        state = {
+            "schema_version": r7.STATE_SCHEMA,
+            "campaign_revision": r7.AMENDMENT5_PRE_CAMPAIGN_REVISION,
+            "recipe_sha256": r7.AMENDMENT5_PRE_RECIPE_SHA256,
+            "launcher_sha256": r7.AMENDMENT5_PRE_LAUNCHER_SHA256,
+            "implementation": {
+                **r7._implementation_identity(),
+                "launcher_sha256": r7.AMENDMENT5_PRE_LAUNCHER_SHA256,
+                "recipe_sha256": r7.AMENDMENT5_PRE_RECIPE_SHA256,
+            },
+            "phases": {
+                "prepare_bc": {"status": "complete"},
+                "train_development": {"status": "complete"},
+                "eval_development": {
+                    "status": "scientific-fail",
+                    "completed": sorted(r7._development_analysis_keys()),
+                    "decision_sha256": r7._sha256(
+                        r7.DEVELOPMENT_DECISION_PATH),
+                    "selected_recipe": None,
+                },
+            },
+            "terminal_status": "DEVELOPMENT_SCIENTIFIC_FAIL",
+        }
+        self._write_json(r7.STATE_PATH, state)
+
+    # ---- 测试 ----
+
+    def test_adopt_migrates_selects_risk64_and_is_idempotent(self):
+        r7.command_adopt_development()
+        self.assertTrue(r7.AMENDMENT5_PATH.exists())
+        state = r7._stable_json(r7.STATE_PATH)
+        self.assertEqual(state["campaign_revision"], r7.CAMPAIGN_REVISION)
+        self.assertIsNone(state["terminal_status"])
+        phase = state["phases"]["eval_development"]
+        self.assertEqual(phase["status"], "complete-amendment5-posthoc")
+        self.assertEqual(phase["selected_recipe"], "risk64")
+        self.assertIs(phase["post_hoc"], True)
+        document = r7._stable_json(r7.AMENDMENT5_PATH)
+        self.assertIs(document["post_hoc"], True)
+        self.assertEqual(
+            document["post"]["selection"]["per_recipe"]["risk64"]["count"],
+            2)
+        self.assertEqual(
+            document["post"]["selection"]["per_recipe"]["risk32"]["count"],
+            1)
+        # 幂等重跑 + 改道复验
+        r7.command_adopt_development()
+        verdict = r7._validate_development_decision(
+            r7._load_state())
+        self.assertEqual(verdict["selected_recipe"], "risk64")
+
+    def test_adopt_refuses_judgment_anchor_tamper(self):
+        # 对抗复核实证的伪造路径:改单文件使 risk32 达 2/3 —— 锚定必须拦截
+        seeds = r7.DEVELOPMENT_TRAIN_SEEDS
+        path = r7._analysis_path("dev-b", "risk32", seeds[1])
+        self._write_json(
+            path,
+            self._analysis(["deaths.noninferiority_upper_bound"]))
+        with self.assertRaisesRegex(r7.CampaignError, "失锚"):
+            r7.command_adopt_development()
+        self.assertFalse(r7.AMENDMENT5_PATH.exists())
+        self.assertEqual(
+            r7._stable_json(r7.STATE_PATH)["terminal_status"],
+            "DEVELOPMENT_SCIENTIFIC_FAIL")
+
+    def test_adopt_crash_window_repair(self):
+        pre_state_bytes = r7.STATE_PATH.read_bytes()
+        r7.command_adopt_development()
+        # 模拟 doc 已落、state 未迁的崩溃窗
+        r7.STATE_PATH.write_bytes(pre_state_bytes)
+        r7.command_adopt_development()
+        state = r7._stable_json(r7.STATE_PATH)
+        self.assertEqual(state["campaign_revision"], r7.CAMPAIGN_REVISION)
+        self.assertEqual(
+            state["phases"]["eval_development"]["selected_recipe"],
+            "risk64")
+
+    def test_post_adoption_development_commands_sealed(self):
+        r7.command_adopt_development()
+        state_before = r7.STATE_PATH.read_bytes()
+        with self.assertRaisesRegex(r7.CampaignError, "封存"):
+            r7.command_eval_development()
+        with self.assertRaisesRegex(r7.CampaignError, "封存"):
+            r7.command_train_development()
+        # phase 记录必须原封不动(不得被 locked-failed 覆写)
+        self.assertEqual(r7.STATE_PATH.read_bytes(), state_before)
+
+    def test_validate_rejects_wiped_phase(self):
+        r7.command_adopt_development()
+        state = r7._stable_json(r7.STATE_PATH)
+        state["phases"]["eval_development"] = {
+            "status": "locked-failed", "completed": [],
+            "retry_forbidden": True, "error": "simulated",
+        }
+        self._write_json(r7.STATE_PATH, state)
+        with self.assertRaisesRegex(
+                r7.CampaignError, "amendment5 state phase 未闭合"):
+            r7._validate_amendment5_adoption(state)
+
+    def test_adopt_refuses_when_no_recipe_qualifies(self):
+        fail_map = {
+            key: ["deaths.noninferiority_upper_bound",
+                  "farm_worker_wage.mean_lcb"]
+            for key in self._frozen_fail_map()
+        }
+        self._build_rev21_terminal(fail_map)
+        with self.assertRaisesRegex(r7.CampaignError, "拒绝收养"):
+            r7.command_adopt_development()
+        self.assertFalse(r7.AMENDMENT5_PATH.exists())
+
+    def test_adopt_refuses_tampered_eval_artifact_chain(self):
+        tag = "r7-dev-a-baseline-v28"
+        archive = r7._eval_path(tag)
+        self._write_json(archive, {"tag": tag, "kind": "archive", "x": 1})
+        with self.assertRaisesRegex(r7.CampaignError, "失锚"):
+            r7.command_adopt_development()
+        self.assertFalse(r7.AMENDMENT5_PATH.exists())
 
 
 if __name__ == "__main__":

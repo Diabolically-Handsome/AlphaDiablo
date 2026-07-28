@@ -80,12 +80,40 @@ EVAL_FIRED_SCHEMA = "diablogym-r7-eval-fired/1"
 EVAL_ATTESTATION_SCHEMA = "diablogym-r7-eval-attestation/1"
 FINAL_REGISTRY_SCHEMA = "diablogym-r7-final-pool-registry/1"
 PUBLICATION_RECEIPT_SCHEMA = "diablogym-r7-publication/1"
-CAMPAIGN_REVISION = 21
+CAMPAIGN_REVISION = 22
 
 CONTROL_DIR = TRAIN / "runs" / "r7-combat-recovery-control"
 STATE_PATH = CONTROL_DIR / "status.json"
 LOCK_PATH = CONTROL_DIR / ".campaign.lock"
 DEVELOPMENT_DECISION_PATH = CONTROL_DIR / "development-decision.json"
+# 修正案五(2026-07-28,总设计师批文「那咱们现在先执行方案B吧 256局」):
+# 开发死亡非劣性上界在 n=128、族错 α=0.005 下 CI 半宽≈0.110,预注册边距
+# 0.05 先于任何候选数据即数学不可达(第 9 项设计缺陷,纯 α/n/边距代数)。
+# B 案:开发判据 = 预注册检查集减去该单项(observed_not_higher 保留),
+# 非劣推断移交终考;冻结 rev21 开发工件按 sha 逐字节收养,post-hoc 标注。
+AMENDMENT5_SCHEMA = "diablogym-r7-amendment5-adoption/1"
+AMENDMENT5_PATH = CONTROL_DIR / "amendment5-adoption.json"
+AMENDMENT5_PRE_CAMPAIGN_REVISION = 21
+AMENDMENT5_PRE_LAUNCHER_SHA256 = (
+    "c28623a0cb6433534d3b043a6f7ac352394012a90a5becb47d03d720776bc577")
+AMENDMENT5_PRE_RECIPE_SHA256 = (
+    "af939783c298feaf0eac2414a462311b11d3b651bfc2acca3a17948f681b5e1a")
+AMENDMENT5_DROPPED_CHECK = "deaths.noninferiority_upper_bound"
+AMENDMENT5_DEVELOPMENT_GATE = (
+    "prereg-checks-minus-deaths.noninferiority_upper_bound")
+AMENDMENT5_PREREG_CHECK_KEYS = frozenset({
+    "deaths.noninferiority_upper_bound",
+    "deaths.observed_not_higher",
+    "farm_worker_kills.exact_sign",
+    "farm_worker_kills.mean_lcb",
+    "farm_worker_wage.exact_sign",
+    "farm_worker_wage.mean_lcb",
+    "gear.action14_progression",
+    "kills.exact_sign",
+    "kills.mean_lcb",
+    "ret.exact_sign",
+    "ret.mean_lcb",
+})
 FINAL_OPENED_PATH = CONTROL_DIR / "final-pool-opened.json"
 FINAL_FIRED_PATH = CONTROL_DIR / "final-candidate-fired.json"
 FINAL_ANALYSIS_PATH = CONTROL_DIR / "analysis-final.json"
@@ -219,7 +247,13 @@ RECIPES = {
 RECIPE_PREFERENCE = ("risk32", "risk64")
 MIN_REPLICATIONS_PASSING_BOTH_POOLS = 2
 DEVELOPMENT_DEATH_MARGIN = 0.05
-FINAL_DEATH_MARGIN = 0.025
+# 修正案五 B 案(2026-07-28 批;边距经对抗复核功效修正后总设计师复批 0.10):
+# 实现的统计量是 bonferroni-one-sided-clopper-pearson 风险差
+# (r7_statistics),远比 McNemar 型保守:n=256、不一致对 ~60 时,
+# 0.025/0.05 边距的通过率仅 ~3%/~16%(真效应取 risk64 开发汇池观测
+# −3.1pp)——先于数据即近不可达,复现第 9 项缺陷。0.10 下通过率 ~77%,
+# 认证语义「增死 ≤10pp」;观测死亡率与 NI 上界照常全文公开。
+FINAL_DEATH_MARGIN = 0.10
 FAMILYWISE_ALPHA = 0.05
 GEAR_PROGRESSION_GATE_SCHEMA = (
     "diablogym-r7-action14-gear-progression-gate/2"
@@ -2902,6 +2936,12 @@ def command_train_development() -> None:
     _require_seed_discipline()
     state = _load_state()
     _require_not_terminal(state)
+    _require(
+        "amendment5_sha256"
+        not in state["phases"].get("eval_development", {})
+        and not AMENDMENT5_PATH.exists(),
+        "修正案五收养已生效;开发训练阶段已封存,禁止重跑",
+    )
     bc = _bc_identity()
     _require(
         state["phases"].get("prepare_bc", {}).get("status") == "complete",
@@ -3683,6 +3723,12 @@ def _recompute_development_analyses() -> dict[str, dict]:
 
 
 def _validate_development_decision(state: dict) -> dict:
+    # 修正案五:收养态下 dev 工件绑定 rev21 旧 launcher/recipe 身份,
+    # 逐份重算路径(_read_eval_once)必然失配;改走逐字节冻结复验 +
+    # B 门重推导等值检查。未收养的战役走原路径,原判据原封。
+    if ("amendment5_sha256" in state["phases"].get("eval_development", {})
+            or AMENDMENT5_PATH.exists()):
+        return _validate_amendment5_adoption(state)
     analyses = _recompute_development_analyses()
     expected = _development_decision_document(
         analyses, _analysis_file_sha256s(analyses))
@@ -3711,6 +3757,12 @@ def command_eval_development() -> None:
     _require_seed_discipline()
     state = _load_state()
     _require_not_terminal(state)
+    _require(
+        "amendment5_sha256"
+        not in state["phases"].get("eval_development", {})
+        and not AMENDMENT5_PATH.exists(),
+        "修正案五收养已生效;开发评测阶段已封存,禁止重跑",
+    )
     _require(
         state["phases"].get("train_development", {}).get("status")
         == "complete",
@@ -3780,6 +3832,335 @@ def command_eval_development() -> None:
 def _selected_recipe(state: dict) -> str:
     decision = _validate_development_decision(state)
     return decision["selected_recipe"]
+
+
+def _amendment5_eval_tags() -> tuple[str, ...]:
+    tags = []
+    for pool in DEV_POOLS:
+        tags.append(_eval_tag(pool, "baseline"))
+        for recipe in RECIPE_PREFERENCE:
+            for seed in DEVELOPMENT_TRAIN_SEEDS:
+                tags.append(
+                    _eval_tag(pool, "candidate", recipe=recipe, seed=seed))
+    return tuple(tags)
+
+
+def _amendment5_read_frozen_analyses() -> dict[str, dict]:
+    return {
+        f"{pool}:{recipe}:{seed}":
+            _stable_json(_analysis_path(pool, recipe, seed))
+        for pool in DEV_POOLS
+        for recipe in RECIPE_PREFERENCE
+        for seed in DEVELOPMENT_TRAIN_SEEDS
+    }
+
+
+def _amendment5_leg_passes(analysis: dict) -> dict:
+    verdict = analysis["verdict"]
+    checks = verdict["checks"]
+    failed = list(verdict["failed_checks"])
+    _require(
+        sorted(failed) == sorted(
+            name for name, passed in checks.items() if not passed)
+        and verdict["status"] == ("PASS" if not failed else "FAIL"),
+        "冻结 analysis verdict 内部不一致",
+    )
+    _require(set(checks) == AMENDMENT5_PREREG_CHECK_KEYS,
+             "冻结 analysis 检查键集不等于预注册集合")
+    remaining = sorted(
+        name for name in failed if name != AMENDMENT5_DROPPED_CHECK)
+    return {
+        "frozen_failed_checks": sorted(failed),
+        "amendment5_failed_checks": remaining,
+        "passed": not remaining,
+    }
+
+
+def _amendment5_selection(analyses: dict[str, dict]) -> dict:
+    _require(set(analyses) == set(_development_analysis_keys()),
+             "amendment5 analyses 键集合不等于冻结的 12 份计划")
+    derivation = {
+        key: _amendment5_leg_passes(analyses[key])
+        for key in sorted(analyses)
+    }
+    per_recipe = {}
+    for recipe in RECIPE_PREFERENCE:
+        passing = [
+            seed for seed in DEVELOPMENT_TRAIN_SEEDS
+            if all(
+                derivation[f"{pool}:{recipe}:{seed}"]["passed"]
+                for pool in DEV_POOLS)
+        ]
+        per_recipe[recipe] = {
+            "seeds_passing_both_pools": passing,
+            "count": len(passing),
+        }
+    selected = None
+    for recipe in RECIPE_PREFERENCE:
+        if (per_recipe[recipe]["count"]
+                >= MIN_REPLICATIONS_PASSING_BOTH_POOLS):
+            selected = recipe
+            break
+    return {
+        "dropped_check": AMENDMENT5_DROPPED_CHECK,
+        "derivation": derivation,
+        "per_recipe": per_recipe,
+        "selected_recipe": selected,
+    }
+
+
+def _amendment5_pre_inventory(state_sha256: str) -> dict:
+    eval_artifacts = {}
+    for tag in _amendment5_eval_tags():
+        eval_artifacts[tag] = {
+            "fired_sha256": _sha256(_eval_fired_path(tag)),
+            "archive_sha256": _sha256(_eval_path(tag)),
+            "attestation_sha256": _sha256(_eval_attestation_path(tag)),
+        }
+    training = {}
+    for recipe in RECIPE_PREFERENCE:
+        for seed in DEVELOPMENT_TRAIN_SEEDS:
+            training[f"{recipe}:{seed}"] = {
+                "receipt_sha256": _sha256(
+                    _training_receipt_path(recipe, seed, "development")),
+                "training_fired_sha256": _sha256(
+                    _training_fired_path(recipe, seed, "development")),
+            }
+    return {
+        "campaign_revision": AMENDMENT5_PRE_CAMPAIGN_REVISION,
+        "launcher_sha256": AMENDMENT5_PRE_LAUNCHER_SHA256,
+        "recipe_sha256": AMENDMENT5_PRE_RECIPE_SHA256,
+        "state_sha256": state_sha256,
+        "decision_sha256": _sha256(DEVELOPMENT_DECISION_PATH),
+        "analysis_sha256s": {
+            f"{pool}:{recipe}:{seed}":
+                _sha256(_analysis_path(pool, recipe, seed))
+            for pool in DEV_POOLS
+            for recipe in RECIPE_PREFERENCE
+            for seed in DEVELOPMENT_TRAIN_SEEDS
+        },
+        "eval_artifacts": eval_artifacts,
+        "development_training_artifacts": training,
+    }
+
+
+def _amendment5_require_judgment_anchor(pre: dict) -> None:
+    """把收养清单锚回 scientific-fail 判决时刻:decision 内冻结的
+    analysis_sha256s 是判决时刻唯一的密码学见证;attestation 内记录的
+    archive/fired sha 把 eval 三件链回评测提交时刻。"""
+    frozen_decision = _stable_json(DEVELOPMENT_DECISION_PATH)
+    _require(frozen_decision.get("selected_recipe") is None,
+             "冻结 decision 不是 scientific-fail 原判")
+    _require(
+        pre.get("analysis_sha256s")
+        == frozen_decision.get("analysis_sha256s"),
+        "12 份 analysis 与判决时刻 decision.analysis_sha256s 失锚",
+    )
+    for tag in _amendment5_eval_tags():
+        entry = pre.get("eval_artifacts", {}).get(tag)
+        attestation = _stable_json(_eval_attestation_path(tag))
+        _require(
+            isinstance(entry, dict)
+            and attestation.get("archive_sha256")
+            == entry.get("archive_sha256")
+            and attestation.get("fired_sha256")
+            == entry.get("fired_sha256"),
+            f"attestation 链与收养清单失锚:{tag}",
+        )
+
+
+def _amendment5_require_rev21_terminal(state: dict) -> None:
+    expected_pre_implementation = {
+        **_implementation_identity(),
+        "launcher_sha256": AMENDMENT5_PRE_LAUNCHER_SHA256,
+        "recipe_sha256": AMENDMENT5_PRE_RECIPE_SHA256,
+    }
+    phase = state.get("phases", {}).get("eval_development", {})
+    _require(
+        state.get("schema_version") == STATE_SCHEMA
+        and state.get("campaign_revision")
+        == AMENDMENT5_PRE_CAMPAIGN_REVISION
+        and state.get("launcher_sha256") == AMENDMENT5_PRE_LAUNCHER_SHA256
+        and state.get("recipe_sha256") == AMENDMENT5_PRE_RECIPE_SHA256
+        and state.get("implementation") == expected_pre_implementation
+        and state.get("terminal_status") == "DEVELOPMENT_SCIENTIFIC_FAIL",
+        "amendment5 只能收养 rev21 DEVELOPMENT_SCIENTIFIC_FAIL 终态",
+    )
+    _require(
+        phase.get("status") == "scientific-fail"
+        and phase.get("selected_recipe") is None
+        and phase.get("completed") == sorted(_development_analysis_keys())
+        and phase.get("decision_sha256")
+        == _sha256(DEVELOPMENT_DECISION_PATH),
+        "rev21 scientific-fail phase 记录不闭合",
+    )
+    _require(
+        state.get("phases", {}).get("train_development", {}).get("status")
+        == "complete",
+        "开发 cohort 未完整冻结,不可收养",
+    )
+
+
+def _amendment5_migrate_state(
+        state: dict, pre: dict, selection: dict) -> None:
+    state["campaign_revision"] = CAMPAIGN_REVISION
+    state["launcher_sha256"] = _launcher_sha256()
+    state["recipe_sha256"] = CAMPAIGN_RECIPE_SHA256
+    state["implementation"] = _implementation_identity()
+    state["terminal_status"] = None
+    state["phases"]["eval_development"] = {
+        "status": "complete-amendment5-posthoc",
+        "completed": sorted(_development_analysis_keys()),
+        "decision_sha256": pre["decision_sha256"],
+        "selected_recipe": selection["selected_recipe"],
+        "amendment5_sha256": _sha256(AMENDMENT5_PATH),
+        "post_hoc": True,
+    }
+    _write_json_atomic(STATE_PATH, state)
+
+
+def _amendment5_repair_crash_window() -> None:
+    # 与 fired-无-receipt / archive-无-attestation 同范式的崩溃窗收养:
+    # 收养文档已持久化而 state 尚未迁移。仅当既存文档能对着完好的 rev21
+    # 终态逐字复验(含判决时刻锚)时,幂等补完迁移;任何失配即拒绝。
+    document = _stable_json(AMENDMENT5_PATH)
+    state = _stable_json(STATE_PATH)
+    _amendment5_require_rev21_terminal(state)
+    pre = _amendment5_pre_inventory(_sha256(STATE_PATH))
+    _amendment5_require_judgment_anchor(pre)
+    selection = _amendment5_selection(_amendment5_read_frozen_analyses())
+    post = document.get("post")
+    _require(
+        document.get("schema_version") == AMENDMENT5_SCHEMA
+        and document.get("amendment") == 5
+        and document.get("post_hoc") is True
+        and document.get("pre") == pre
+        and isinstance(post, dict)
+        and post.get("campaign_revision") == CAMPAIGN_REVISION
+        and post.get("launcher_sha256") == _launcher_sha256()
+        and post.get("recipe_sha256") == CAMPAIGN_RECIPE_SHA256
+        and post.get("final_death_margin") == FINAL_DEATH_MARGIN
+        and post.get("development_gate") == AMENDMENT5_DEVELOPMENT_GATE
+        and post.get("selection") == selection,
+        "崩溃窗收养:既存 amendment5 文档无法对 rev21 终态复验",
+    )
+    _amendment5_migrate_state(state, pre, selection)
+
+
+def _validate_amendment5_adoption(state: dict) -> dict:
+    _require(AMENDMENT5_PATH.exists(), "amendment5 adoption 文件缺失")
+    document = _stable_json(AMENDMENT5_PATH)
+    phase = state["phases"].get("eval_development", {})
+    _require(
+        set(phase) == {
+            "status", "completed", "decision_sha256",
+            "selected_recipe", "amendment5_sha256", "post_hoc"}
+        and phase["status"] == "complete-amendment5-posthoc"
+        and phase["post_hoc"] is True
+        and phase["completed"] == sorted(_development_analysis_keys())
+        and phase["amendment5_sha256"] == _sha256(AMENDMENT5_PATH),
+        "amendment5 state phase 未闭合",
+    )
+    pre = document.get("pre")
+    post = document.get("post")
+    _require(
+        isinstance(pre, dict) and isinstance(post, dict)
+        and document.get("schema_version") == AMENDMENT5_SCHEMA
+        and document.get("amendment") == 5
+        and document.get("plan") == "B"
+        and document.get("post_hoc") is True
+        and post.get("campaign_revision") == CAMPAIGN_REVISION
+        and post.get("launcher_sha256") == _launcher_sha256()
+        and post.get("recipe_sha256") == CAMPAIGN_RECIPE_SHA256
+        and post.get("final_death_margin") == FINAL_DEATH_MARGIN
+        and post.get("development_gate") == AMENDMENT5_DEVELOPMENT_GATE
+        and pre.get("campaign_revision")
+        == AMENDMENT5_PRE_CAMPAIGN_REVISION
+        and pre.get("launcher_sha256") == AMENDMENT5_PRE_LAUNCHER_SHA256
+        and pre.get("recipe_sha256") == AMENDMENT5_PRE_RECIPE_SHA256,
+        "amendment5 文档身份不闭合",
+    )
+    _require(
+        pre.get("decision_sha256") == _sha256(DEVELOPMENT_DECISION_PATH)
+        and phase["decision_sha256"] == pre["decision_sha256"],
+        "冻结 development decision 漂移",
+    )
+    current = _amendment5_pre_inventory(pre.get("state_sha256"))
+    _require(current == pre, "amendment5 冻结工件清单漂移")
+    _amendment5_require_judgment_anchor(pre)
+    selection = _amendment5_selection(_amendment5_read_frozen_analyses())
+    _require(post.get("selection") == selection,
+             "amendment5 selection 不能由冻结 analyses 重算")
+    _require(
+        selection["selected_recipe"] in RECIPES
+        and phase["selected_recipe"] == selection["selected_recipe"],
+        "amendment5 selected_recipe 不闭合",
+    )
+    return {"selected_recipe": selection["selected_recipe"]}
+
+
+def command_adopt_development() -> None:
+    _require_seed_discipline()
+    if AMENDMENT5_PATH.exists():
+        raw_state = _stable_json(STATE_PATH) if STATE_PATH.exists() else {}
+        if (raw_state.get("campaign_revision")
+                == AMENDMENT5_PRE_CAMPAIGN_REVISION):
+            _amendment5_repair_crash_window()
+        state = _load_state()
+        _require_not_terminal(state)
+        verdict = _validate_amendment5_adoption(state)
+        print("amendment5 adoption 已在案并复验通过;selected_recipe="
+              + verdict["selected_recipe"])
+        return
+    _require(STATE_PATH.exists(),
+             "无 state;amendment5 只能收养 rev21 终态")
+    state = _stable_json(STATE_PATH)
+    state_sha = _sha256(STATE_PATH)
+    _amendment5_require_rev21_terminal(state)
+    pre = _amendment5_pre_inventory(state_sha)
+    _amendment5_require_judgment_anchor(pre)
+    selection = _amendment5_selection(_amendment5_read_frozen_analyses())
+    _require(
+        selection["selected_recipe"] in RECIPES,
+        "amendment5 B 门下仍无配方达到 2/3 双池复现;拒绝收养",
+    )
+    document = {
+        "schema_version": AMENDMENT5_SCHEMA,
+        "amendment": 5,
+        "plan": "B",
+        "post_hoc": True,
+        "approval": {
+            "designer": "Lawrence",
+            "wording": "那咱们现在先执行方案B吧 256局",
+            "date": "2026-07-28",
+        },
+        "justification": (
+            "开发死亡非劣性上界在 n=128、族错 α=0.005 下 CI 半宽≈0.110,"
+            "预注册边距 0.05 先于任何候选数据即不可达(第 9 项设计缺陷,"
+            "纯 α/n/边距代数,docs/PREREG-R7-rev21-proposal.md 修正案五)。"
+            "开发判据改为预注册检查集减去该单项;非劣推断移交终考"
+            "(边距 0.025→0.10;0.10 系对抗复核按实现统计量 CP-Bonferroni"
+            "重标定功效后由总设计师复批)。终考池从未消费,裁决力不受污染。"
+        ),
+        "adopted_at_ns": time.time_ns(),
+        "pre": pre,
+        "post": {
+            "campaign_revision": CAMPAIGN_REVISION,
+            "launcher_sha256": _launcher_sha256(),
+            "recipe_sha256": CAMPAIGN_RECIPE_SHA256,
+            "final_death_margin": FINAL_DEATH_MARGIN,
+            "development_gate": AMENDMENT5_DEVELOPMENT_GATE,
+            "selection": selection,
+        },
+    }
+    _write_json_exclusive(AMENDMENT5_PATH, document)
+    _amendment5_migrate_state(state, pre, selection)
+    adopted = _load_state()
+    _require_not_terminal(adopted)
+    verdict = _validate_amendment5_adoption(adopted)
+    print("amendment5 adoption 完成(post-hoc 标注);selected_recipe="
+          + verdict["selected_recipe"]
+          + ";per_recipe=" + repr(selection["per_recipe"]))
 
 
 def command_train_production() -> None:
@@ -4733,6 +5114,7 @@ def main() -> None:
             "prepare-bc",
             "train-development",
             "eval-development",
+            "adopt-development",
             "train-production",
             "eval-final",
             "status",
@@ -4747,6 +5129,7 @@ def main() -> None:
             "prepare-bc": command_prepare_bc,
             "train-development": command_train_development,
             "eval-development": command_eval_development,
+            "adopt-development": command_adopt_development,
             "train-production": command_train_production,
             "eval-final": command_eval_final,
         }[args.command]()
