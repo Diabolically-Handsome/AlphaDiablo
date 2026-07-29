@@ -65,7 +65,7 @@ EVAL_FIRED_SCHEMA = "diablogym-r8-eval-fired/1"
 EVAL_ATTESTATION_SCHEMA = "diablogym-r8-eval-attestation/1"
 FINAL_REGISTRY_SCHEMA = "diablogym-r7-final-pool-registry/1"
 PUBLICATION_RECEIPT_SCHEMA = "diablogym-r8-publication/1"
-CAMPAIGN_REVISION = 1
+CAMPAIGN_REVISION = 2
 
 CONTROL_DIR = TRAIN / "runs" / "r8-certification-control"
 STATE_PATH = CONTROL_DIR / "status.json"
@@ -78,6 +78,41 @@ DEVELOPMENT_DECISION_PATH = CONTROL_DIR / "development-decision.json"
 R8_DEVELOPMENT_GATE = (
     "prereg-checks-minus-deaths.noninferiority_upper_bound")
 R8_DEVELOPMENT_DROPPED_CHECK = "deaths.noninferiority_upper_bound"
+# 修正案 R8-一(2026-07-29,批文「立案续跑(推荐)」):复现门原
+# observed_not_higher 肢为逐池死亡数点估计,持平真值下单池通过率 ~53%
+# (掷硬币),双池 ~28%,三腿 2/3 总功效 ~19%——先于任何候选数据即
+# 近不可达,系死亡肢功效第四次同型缺陷。改为双池合并灾难档:逐腿
+# (2 池 256 对)超额死亡 ≤ +5pp。持平真值下逐腿功效 91-95%
+# (sd=√D_pooled/256≈3.0-3.5pp,冻结 D_pooled=73/60/79;+5pp≈1.4-1.7σ),
+# 门级(≥2/3 腿)~98.6%;仍拦截 ≥+8pp 的真实退化。终考判据
+# (McNemar NI + observed_not_higher)原封不动。
+R8A1_SCHEMA = "diablogym-r8-amendment1-replication-gate/1"
+R8A1_PATH = CONTROL_DIR / "amendment1-replication-gate.json"
+R8A1_PRE_CAMPAIGN_REVISION = 1
+R8A1_PRE_LAUNCHER_SHA256 = (
+    "c41f39ebcb904a9416068d2e4b6563f589f2bda991dd943158c7dbec90a988c0")
+R8A1_PRE_RECIPE_SHA256 = (
+    "8547734303ee366e1029bcbfa9d1a2a4e690ca4cdee69689aa6482beb99975f2")
+R8A1_DROPPED_CHECKS = frozenset({
+    "deaths.noninferiority_upper_bound",
+    "deaths.observed_not_higher",
+})
+R8A1_POOLED_DEATH_EXCESS_MARGIN = 0.05
+R8A1_DEVELOPMENT_GATE = (
+    "prereg-checks-minus-death-limbs-plus-pooled-excess-le-5pp")
+R8A1_PREREG_CHECK_KEYS = frozenset({
+    "deaths.noninferiority_upper_bound",
+    "deaths.observed_not_higher",
+    "farm_worker_kills.exact_sign",
+    "farm_worker_kills.mean_lcb",
+    "farm_worker_wage.exact_sign",
+    "farm_worker_wage.mean_lcb",
+    "gear.action14_progression",
+    "kills.exact_sign",
+    "kills.mean_lcb",
+    "ret.exact_sign",
+    "ret.mean_lcb",
+})
 FINAL_OPENED_PATH = CONTROL_DIR / "final-pool-opened.json"
 FINAL_FIRED_PATH = CONTROL_DIR / "final-candidate-fired.json"
 FINAL_ANALYSIS_PATH = CONTROL_DIR / "analysis-final.json"
@@ -2901,6 +2936,12 @@ def command_train_development() -> None:
     _require_seed_discipline()
     state = _load_state()
     _require_not_terminal(state)
+    _require(
+        "amendment1_sha256"
+        not in state["phases"].get("eval_development", {})
+        and not R8A1_PATH.exists(),
+        "修正案 R8-一收养已生效;复现训练阶段已封存,禁止重跑",
+    )
     bc = _bc_identity()
     _require(
         state["phases"].get("prepare_bc", {}).get("status") == "complete",
@@ -3697,6 +3738,11 @@ def _recompute_development_analyses() -> dict[str, dict]:
 
 
 def _validate_development_decision(state: dict) -> dict:
+    # 修正案 R8-一:收养态下复现工件绑定 rev1 身份,逐份重算必失配,
+    # 改走冻结复验 + 新门重推导等值检查。未收养战役走原路径。
+    if ("amendment1_sha256" in state["phases"].get("eval_development", {})
+            or R8A1_PATH.exists()):
+        return _validate_r8a1_adoption(state)
     analyses = _recompute_development_analyses()
     expected = _development_decision_document(
         analyses, _analysis_file_sha256s(analyses))
@@ -3725,6 +3771,12 @@ def command_eval_development() -> None:
     _require_seed_discipline()
     state = _load_state()
     _require_not_terminal(state)
+    _require(
+        "amendment1_sha256"
+        not in state["phases"].get("eval_development", {})
+        and not R8A1_PATH.exists(),
+        "修正案 R8-一收养已生效;复现评测阶段已封存,禁止重跑",
+    )
     _require(
         state["phases"].get("train_development", {}).get("status")
         == "complete",
@@ -3794,6 +3846,357 @@ def command_eval_development() -> None:
 def _selected_recipe(state: dict) -> str:
     decision = _validate_development_decision(state)
     return decision["selected_recipe"]
+
+
+def _r8a1_eval_tags() -> tuple[str, ...]:
+    tags = []
+    for pool in DEV_POOLS:
+        tags.append(_eval_tag(pool, "baseline"))
+        for recipe in RECIPE_PREFERENCE:
+            for seed in DEVELOPMENT_TRAIN_SEEDS:
+                tags.append(
+                    _eval_tag(pool, "candidate", recipe=recipe, seed=seed))
+    return tuple(tags)
+
+
+def _r8a1_read_frozen_analyses() -> dict[str, dict]:
+    return {
+        f"{pool}:{recipe}:{seed}":
+            _stable_json(_analysis_path(pool, recipe, seed))
+        for pool in DEV_POOLS
+        for recipe in RECIPE_PREFERENCE
+        for seed in DEVELOPMENT_TRAIN_SEEDS
+    }
+
+
+def _r8a1_leg_nondeath_passes(analysis: dict) -> dict:
+    verdict = analysis["verdict"]
+    checks = verdict["checks"]
+    failed = list(verdict["failed_checks"])
+    _require(
+        set(checks) == R8A1_PREREG_CHECK_KEYS
+        and sorted(failed) == sorted(
+            name for name, passed in checks.items() if not passed)
+        and verdict["status"] == ("PASS" if not failed else "FAIL"),
+        "冻结 analysis verdict 内部不一致",
+    )
+    remaining = sorted(
+        name for name in failed if name not in R8A1_DROPPED_CHECKS)
+    return {
+        "frozen_failed_checks": sorted(failed),
+        "nondeath_failed_checks": remaining,
+        "passed": not remaining,
+    }
+
+
+def _r8a1_pooled_death_excess(
+        analyses: dict[str, dict], recipe: str, seed: int) -> dict:
+    candidate = 0
+    baseline = 0
+    pairs = 0
+    for pool in DEV_POOLS:
+        death = analyses[f"{pool}:{recipe}:{seed}"]["death_noninferiority"]
+        _require(
+            _is_plain_int(death.get("candidate_deaths"))
+            and _is_plain_int(death.get("baseline_deaths")),
+            "冻结 analysis 死亡账字段非法",
+        )
+        candidate += death["candidate_deaths"]
+        baseline += death["baseline_deaths"]
+        pairs += len(DEV_POOLS[pool])
+    excess = (candidate - baseline) / pairs
+    return {
+        "candidate_deaths": candidate,
+        "baseline_deaths": baseline,
+        "pairs": pairs,
+        "excess": excess,
+        "passed": excess <= R8A1_POOLED_DEATH_EXCESS_MARGIN,
+    }
+
+
+def _r8a1_selection(analyses: dict[str, dict]) -> dict:
+    _require(set(analyses) == set(_development_analysis_keys()),
+             "r8a1 analyses 键集合不等于冻结的 6 份计划")
+    derivation = {}
+    per_recipe = {}
+    for recipe in RECIPE_PREFERENCE:
+        passing = []
+        for seed in DEVELOPMENT_TRAIN_SEEDS:
+            legs = {
+                pool: _r8a1_leg_nondeath_passes(
+                    analyses[f"{pool}:{recipe}:{seed}"])
+                for pool in DEV_POOLS
+            }
+            pooled = _r8a1_pooled_death_excess(analyses, recipe, seed)
+            qualifies = (
+                all(leg["passed"] for leg in legs.values())
+                and pooled["passed"]
+            )
+            derivation[f"{recipe}:{seed}"] = {
+                "nondeath": legs,
+                "pooled_death": pooled,
+                "qualifies": qualifies,
+            }
+            if qualifies:
+                passing.append(seed)
+        per_recipe[recipe] = {
+            "seeds_qualifying": passing,
+            "count": len(passing),
+        }
+    selected = None
+    for recipe in RECIPE_PREFERENCE:
+        if (per_recipe[recipe]["count"]
+                >= MIN_REPLICATIONS_PASSING_BOTH_POOLS):
+            selected = recipe
+            break
+    return {
+        "dropped_checks": sorted(R8A1_DROPPED_CHECKS),
+        "pooled_death_excess_margin": R8A1_POOLED_DEATH_EXCESS_MARGIN,
+        "derivation": derivation,
+        "per_recipe": per_recipe,
+        "selected_recipe": selected,
+    }
+
+
+def _r8a1_pre_inventory(state_sha256: str) -> dict:
+    eval_artifacts = {}
+    for tag in _r8a1_eval_tags():
+        eval_artifacts[tag] = {
+            "fired_sha256": _sha256(_eval_fired_path(tag)),
+            "archive_sha256": _sha256(_eval_path(tag)),
+            "attestation_sha256": _sha256(_eval_attestation_path(tag)),
+        }
+    training = {}
+    for recipe in RECIPE_PREFERENCE:
+        for seed in DEVELOPMENT_TRAIN_SEEDS:
+            training[f"{recipe}:{seed}"] = {
+                "receipt_sha256": _sha256(
+                    _training_receipt_path(recipe, seed, "development")),
+                "training_fired_sha256": _sha256(
+                    _training_fired_path(recipe, seed, "development")),
+            }
+    return {
+        "campaign_revision": R8A1_PRE_CAMPAIGN_REVISION,
+        "launcher_sha256": R8A1_PRE_LAUNCHER_SHA256,
+        "recipe_sha256": R8A1_PRE_RECIPE_SHA256,
+        "state_sha256": state_sha256,
+        "decision_sha256": _sha256(DEVELOPMENT_DECISION_PATH),
+        "analysis_sha256s": {
+            f"{pool}:{recipe}:{seed}":
+                _sha256(_analysis_path(pool, recipe, seed))
+            for pool in DEV_POOLS
+            for recipe in RECIPE_PREFERENCE
+            for seed in DEVELOPMENT_TRAIN_SEEDS
+        },
+        "eval_artifacts": eval_artifacts,
+        "development_training_artifacts": training,
+    }
+
+
+def _r8a1_require_judgment_anchor(pre: dict) -> None:
+    frozen_decision = _stable_json(DEVELOPMENT_DECISION_PATH)
+    _require(frozen_decision.get("selected_recipe") is None,
+             "冻结 decision 不是 scientific-fail 原判")
+    _require(
+        pre.get("analysis_sha256s")
+        == frozen_decision.get("analysis_sha256s"),
+        "6 份 analysis 与判决时刻 decision.analysis_sha256s 失锚",
+    )
+    for tag in _r8a1_eval_tags():
+        entry = pre.get("eval_artifacts", {}).get(tag)
+        attestation = _stable_json(_eval_attestation_path(tag))
+        _require(
+            isinstance(entry, dict)
+            and attestation.get("archive_sha256")
+            == entry.get("archive_sha256")
+            and attestation.get("fired_sha256")
+            == entry.get("fired_sha256"),
+            f"attestation 链与收养清单失锚:{tag}",
+        )
+
+
+def _r8a1_require_rev1_terminal(state: dict) -> None:
+    expected_pre_implementation = {
+        **_implementation_identity(),
+        "launcher_sha256": R8A1_PRE_LAUNCHER_SHA256,
+        "recipe_sha256": R8A1_PRE_RECIPE_SHA256,
+    }
+    phase = state.get("phases", {}).get("eval_development", {})
+    _require(
+        state.get("schema_version") == STATE_SCHEMA
+        and state.get("campaign_revision") == R8A1_PRE_CAMPAIGN_REVISION
+        and state.get("launcher_sha256") == R8A1_PRE_LAUNCHER_SHA256
+        and state.get("recipe_sha256") == R8A1_PRE_RECIPE_SHA256
+        and state.get("implementation") == expected_pre_implementation
+        and state.get("terminal_status") == "DEVELOPMENT_SCIENTIFIC_FAIL",
+        "r8a1 只能收养 rev1 DEVELOPMENT_SCIENTIFIC_FAIL 终态",
+    )
+    _require(
+        phase.get("status") == "scientific-fail"
+        and phase.get("selected_recipe") is None
+        and phase.get("completed") == sorted(_development_analysis_keys())
+        and phase.get("decision_sha256")
+        == _sha256(DEVELOPMENT_DECISION_PATH),
+        "rev1 scientific-fail phase 记录不闭合",
+    )
+    _require(
+        state.get("phases", {}).get("train_development", {}).get("status")
+        == "complete",
+        "复现 cohort 未完整冻结,不可收养",
+    )
+
+
+def _r8a1_migrate_state(state: dict, pre: dict, selection: dict) -> None:
+    state["campaign_revision"] = CAMPAIGN_REVISION
+    state["launcher_sha256"] = _launcher_sha256()
+    state["recipe_sha256"] = CAMPAIGN_RECIPE_SHA256
+    state["implementation"] = _implementation_identity()
+    state["terminal_status"] = None
+    state["phases"]["eval_development"] = {
+        "status": "complete-amendment1-posthoc",
+        "completed": sorted(_development_analysis_keys()),
+        "decision_sha256": pre["decision_sha256"],
+        "selected_recipe": selection["selected_recipe"],
+        "amendment1_sha256": _sha256(R8A1_PATH),
+        "post_hoc": True,
+    }
+    _write_json_atomic(STATE_PATH, state)
+
+
+def _r8a1_repair_crash_window() -> None:
+    document = _stable_json(R8A1_PATH)
+    state = _stable_json(STATE_PATH)
+    _r8a1_require_rev1_terminal(state)
+    pre = _r8a1_pre_inventory(_sha256(STATE_PATH))
+    _r8a1_require_judgment_anchor(pre)
+    selection = _r8a1_selection(_r8a1_read_frozen_analyses())
+    post = document.get("post")
+    _require(
+        document.get("schema_version") == R8A1_SCHEMA
+        and document.get("post_hoc") is True
+        and document.get("pre") == pre
+        and isinstance(post, dict)
+        and post.get("campaign_revision") == CAMPAIGN_REVISION
+        and post.get("launcher_sha256") == _launcher_sha256()
+        and post.get("recipe_sha256") == CAMPAIGN_RECIPE_SHA256
+        and post.get("development_gate") == R8A1_DEVELOPMENT_GATE
+        and post.get("selection") == selection,
+        "崩溃窗收养:既存 r8a1 文档无法对 rev1 终态复验",
+    )
+    _r8a1_migrate_state(state, pre, selection)
+
+
+def _validate_r8a1_adoption(state: dict) -> dict:
+    _require(R8A1_PATH.exists(), "r8a1 adoption 文件缺失")
+    document = _stable_json(R8A1_PATH)
+    phase = state["phases"].get("eval_development", {})
+    _require(
+        set(phase) == {
+            "status", "completed", "decision_sha256",
+            "selected_recipe", "amendment1_sha256", "post_hoc"}
+        and phase["status"] == "complete-amendment1-posthoc"
+        and phase["post_hoc"] is True
+        and phase["completed"] == sorted(_development_analysis_keys())
+        and phase["amendment1_sha256"] == _sha256(R8A1_PATH),
+        "r8a1 state phase 未闭合",
+    )
+    pre = document.get("pre")
+    post = document.get("post")
+    _require(
+        isinstance(pre, dict) and isinstance(post, dict)
+        and document.get("schema_version") == R8A1_SCHEMA
+        and document.get("post_hoc") is True
+        and post.get("campaign_revision") == CAMPAIGN_REVISION
+        and post.get("launcher_sha256") == _launcher_sha256()
+        and post.get("recipe_sha256") == CAMPAIGN_RECIPE_SHA256
+        and post.get("development_gate") == R8A1_DEVELOPMENT_GATE
+        and post.get("pooled_death_excess_margin")
+        == R8A1_POOLED_DEATH_EXCESS_MARGIN
+        and pre.get("campaign_revision") == R8A1_PRE_CAMPAIGN_REVISION
+        and pre.get("launcher_sha256") == R8A1_PRE_LAUNCHER_SHA256
+        and pre.get("recipe_sha256") == R8A1_PRE_RECIPE_SHA256,
+        "r8a1 文档身份不闭合",
+    )
+    _require(
+        pre.get("decision_sha256") == _sha256(DEVELOPMENT_DECISION_PATH)
+        and phase["decision_sha256"] == pre["decision_sha256"],
+        "冻结 development decision 漂移",
+    )
+    current = _r8a1_pre_inventory(pre.get("state_sha256"))
+    _require(current == pre, "r8a1 冻结工件清单漂移")
+    _r8a1_require_judgment_anchor(pre)
+    selection = _r8a1_selection(_r8a1_read_frozen_analyses())
+    _require(post.get("selection") == selection,
+             "r8a1 selection 不能由冻结 analyses 重算")
+    _require(
+        selection["selected_recipe"] in RECIPES
+        and phase["selected_recipe"] == selection["selected_recipe"],
+        "r8a1 selected_recipe 不闭合",
+    )
+    return {"selected_recipe": selection["selected_recipe"]}
+
+
+def command_adopt_replication() -> None:
+    _require_seed_discipline()
+    if R8A1_PATH.exists():
+        raw_state = _stable_json(STATE_PATH) if STATE_PATH.exists() else {}
+        if (raw_state.get("campaign_revision")
+                == R8A1_PRE_CAMPAIGN_REVISION):
+            _r8a1_repair_crash_window()
+        state = _load_state()
+        _require_not_terminal(state)
+        verdict = _validate_r8a1_adoption(state)
+        print("r8a1 adoption 已在案并复验通过;selected_recipe="
+              + verdict["selected_recipe"])
+        return
+    _require(STATE_PATH.exists(), "无 state;r8a1 只能收养 rev1 终态")
+    state = _stable_json(STATE_PATH)
+    state_sha = _sha256(STATE_PATH)
+    _r8a1_require_rev1_terminal(state)
+    pre = _r8a1_pre_inventory(state_sha)
+    _r8a1_require_judgment_anchor(pre)
+    selection = _r8a1_selection(_r8a1_read_frozen_analyses())
+    _require(
+        selection["selected_recipe"] in RECIPES,
+        "r8a1 门下仍无配方达到 2/3 复现;拒绝收养",
+    )
+    document = {
+        "schema_version": R8A1_SCHEMA,
+        "amendment": "R8-1",
+        "post_hoc": True,
+        "approval": {
+            "designer": "Lawrence",
+            "wording": "立案续跑(推荐)",
+            "date": "2026-07-29",
+        },
+        "justification": (
+            "复现门 observed_not_higher 肢为逐池死亡点估计,持平真值下"
+            "单池通过率 ~50-58%(掷硬币),三腿 2/3 总功效 ~19%——先于"
+            "候选数据即近不可达(死亡肢功效第四次同型缺陷,纯代数可离线"
+            "复核,docs/PREREG-R8-certification.md 修正案 R8-一节)。改为"
+            "双池合并灾难档(超额死亡 ≤ +5pp;持平真值逐腿功效 91-95%,"
+            "门级 ~98.6%);终考判据原封。终考池 2_122 未消费未读,"
+            "认证裁决力不受污染。"
+        ),
+        "adopted_at_ns": time.time_ns(),
+        "pre": pre,
+        "post": {
+            "campaign_revision": CAMPAIGN_REVISION,
+            "launcher_sha256": _launcher_sha256(),
+            "recipe_sha256": CAMPAIGN_RECIPE_SHA256,
+            "development_gate": R8A1_DEVELOPMENT_GATE,
+            "pooled_death_excess_margin": R8A1_POOLED_DEATH_EXCESS_MARGIN,
+            "selection": selection,
+        },
+    }
+    _write_json_exclusive(R8A1_PATH, document)
+    _r8a1_migrate_state(state, pre, selection)
+    adopted = _load_state()
+    _require_not_terminal(adopted)
+    verdict = _validate_r8a1_adoption(adopted)
+    print("r8a1 adoption 完成(post-hoc 标注);selected_recipe="
+          + verdict["selected_recipe"]
+          + ";per_recipe=" + repr(selection["per_recipe"]))
 
 
 def command_train_production() -> None:
@@ -4749,6 +5152,7 @@ def main() -> None:
             "prepare-bc",
             "train-development",
             "eval-development",
+            "adopt-replication",
             "train-production",
             "eval-final",
             "status",
@@ -4763,6 +5167,7 @@ def main() -> None:
             "prepare-bc": command_prepare_bc,
             "train-development": command_train_development,
             "eval-development": command_eval_development,
+            "adopt-replication": command_adopt_replication,
             "train-production": command_train_production,
             "eval-final": command_eval_final,
         }[args.command]()

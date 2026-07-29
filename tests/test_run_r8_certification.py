@@ -14,7 +14,7 @@ import run_r8_certification as r8  # noqa: E402
 
 class R8FrozenProtocolTests(unittest.TestCase):
     def test_campaign_identity_frozen(self):
-        self.assertEqual(r8.CAMPAIGN_REVISION, 1)
+        self.assertEqual(r8.CAMPAIGN_REVISION, 2)
         self.assertEqual(r8.NUM_ENVS, 4)  # A 案:与 R7 配方逐字节同款
         self.assertEqual(r8.N_STEPS, 512)
         self.assertEqual(r8.LEG_STEPS, 266_240)
@@ -56,8 +56,9 @@ class R8FrozenProtocolTests(unittest.TestCase):
 
     def test_no_r7_amendment_residue(self):
         source = pathlib.Path(r8.__file__).read_text()
-        for token in ("AMENDMENT", "_amendment", "adopt-", "r7_statistics",
-                      "official-r7-final"):
+        for token in ("AMENDMENT", "_amendment5", "_amendment6",
+                      "adopt-development", "adopt-final-incident",
+                      "r7_statistics", "official-r7-final"):
             self.assertNotIn(token, source)
 
     def test_registry_shared_ledger_accepts_both_campaign_names(self):
@@ -138,6 +139,98 @@ class R8ReplicationGateTests(unittest.TestCase):
         broken["verdict"]["status"] = "PASS"
         with self.assertRaises(r8.CampaignError):
             r8._replication_leg_passes(broken)
+
+
+class R8Amendment1GateTests(unittest.TestCase):
+    def test_constants_frozen(self):
+        self.assertEqual(r8.CAMPAIGN_REVISION, 2)
+        self.assertEqual(r8.R8A1_POOLED_DEATH_EXCESS_MARGIN, 0.05)
+        self.assertEqual(
+            r8.R8A1_DROPPED_CHECKS,
+            frozenset({"deaths.noninferiority_upper_bound",
+                       "deaths.observed_not_higher"}))
+        self.assertEqual(len(r8.R8A1_PRE_LAUNCHER_SHA256), 64)
+        self.assertEqual(len(r8.R8A1_PRE_RECIPE_SHA256), 64)
+        self.assertNotEqual(
+            r8.CAMPAIGN_RECIPE_SHA256, r8.R8A1_PRE_RECIPE_SHA256)
+
+    def _analysis(self, failed, cand=98, base=98):
+        checks = {name: True for name in r8.R8A1_PREREG_CHECK_KEYS}
+        for name in failed:
+            checks[name] = False
+        return {
+            "verdict": {
+                "status": "PASS" if not failed else "FAIL",
+                "checks": checks,
+                "failed_checks": sorted(failed),
+            },
+            "death_noninferiority": {
+                "candidate_deaths": cand, "baseline_deaths": base,
+            },
+        }
+
+    def test_nondeath_gate(self):
+        ni = "deaths.noninferiority_upper_bound"
+        onh = "deaths.observed_not_higher"
+        self.assertTrue(
+            r8._r8a1_leg_nondeath_passes(self._analysis([ni]))["passed"])
+        self.assertTrue(
+            r8._r8a1_leg_nondeath_passes(
+                self._analysis([ni, onh]))["passed"])
+        self.assertFalse(
+            r8._r8a1_leg_nondeath_passes(
+                self._analysis([ni, "ret.exact_sign"]))["passed"])
+        broken = self._analysis([ni])
+        del broken["verdict"]["checks"]["kills.mean_lcb"]
+        with self.assertRaises(r8.CampaignError):
+            r8._r8a1_leg_nondeath_passes(broken)
+
+    def test_selection_mirrors_frozen_scene(self):
+        ni = "deaths.noninferiority_upper_bound"
+        onh = "deaths.observed_not_higher"
+        seeds = r8.DEVELOPMENT_TRAIN_SEEDS
+        fixture = {
+            f"dev-a:risk64:{seeds[0]}": self._analysis([ni, onh], 101, 98),
+            f"dev-b:risk64:{seeds[0]}": self._analysis([ni], 88, 96),
+            f"dev-a:risk64:{seeds[1]}": self._analysis(
+                [ni, onh, "farm_worker_wage.mean_lcb"], 102, 98),
+            f"dev-b:risk64:{seeds[1]}": self._analysis(
+                [ni, onh, "ret.exact_sign"], 104, 96),
+            f"dev-a:risk64:{seeds[2]}": self._analysis([ni], 95, 98),
+            f"dev-b:risk64:{seeds[2]}": self._analysis([ni], 94, 96),
+        }
+        sel = r8._r8a1_selection(fixture)
+        self.assertEqual(sel["selected_recipe"], "risk64")
+        self.assertEqual(
+            sel["per_recipe"]["risk64"]["seeds_qualifying"],
+            [seeds[0], seeds[2]])
+        d0 = sel["derivation"][f"risk64:{seeds[0]}"]
+        self.assertAlmostEqual(
+            d0["pooled_death"]["excess"], -5/256, places=6)
+
+    def test_pooled_disaster_threshold_blocks(self):
+        ni = "deaths.noninferiority_upper_bound"
+        seeds = r8.DEVELOPMENT_TRAIN_SEEDS
+        fixture = {}
+        for i, seed in enumerate(seeds):
+            # 全部腿 nondeath 干净,但第一腿双池合计超额 +14/256 > 5pp
+            cand = 105 if (i == 0) else 98
+            fixture[f"dev-a:risk64:{seed}"] = self._analysis([ni], cand, 98)
+            fixture[f"dev-b:risk64:{seed}"] = self._analysis([ni], cand, 98)
+        sel = r8._r8a1_selection(fixture)
+        self.assertEqual(
+            sel["per_recipe"]["risk64"]["seeds_qualifying"],
+            [seeds[1], seeds[2]])
+        self.assertFalse(
+            sel["derivation"][f"risk64:{seeds[0]}"]["pooled_death"]["passed"])
+
+    def test_machinery_registered(self):
+        source = pathlib.Path(r8.__file__).read_text()
+        self.assertIn("adopt-replication", source)
+        self.assertIn("复现评测阶段已封存", source)
+        self.assertIn("复现训练阶段已封存", source)
+        self.assertTrue(callable(r8.command_adopt_replication))
+        self.assertTrue(callable(r8._validate_r8a1_adoption))
 
 
 if __name__ == "__main__":
