@@ -1221,4 +1221,11 @@ def _main():
 
 
 if __name__ == "__main__":
+    # 发车护栏(2026-07-31 运维事故:--help 被无视直接开跑,及时掐停,
+    # 池零消耗):本驱动无 CLI 参数,任何 argv 一律拒绝退出——发车必须
+    # 是裸调用的明确意图,不给口误留门。
+    if len(sys.argv) > 1:
+        print("run_r9_reeducation 不接受任何参数;裸调用即发车(发车在主席)。",
+              file=sys.stderr)
+        raise SystemExit(2)
     main()
