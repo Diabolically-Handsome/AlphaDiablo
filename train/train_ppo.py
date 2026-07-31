@@ -466,10 +466,62 @@ def _effective_drink_sovereignty(args) -> bool:
     return True if requested is None else requested
 
 
+def _read_worker_zip_contract(
+        path: str | pathlib.Path, *, expected_sha256: str | None = None) -> dict:
+    """R9:读取 SB3 zip 内嵌 diablogym_contract(不 import torch,不建策略)。
+
+    认证发布件的部署契约是 action12/观测视图的单一真源;主进程在任何
+    VecEnv 子进程载入之前先从同一字节串解析并锁定它。
+    """
+    try:
+        payload = pathlib.Path(path).read_bytes()
+    except OSError as exc:
+        raise ValueError(f"worker zip 不可读: {path}: {exc}") from exc
+    if expected_sha256 is not None:
+        actual = hashlib.sha256(payload).hexdigest()
+        _require(actual == expected_sha256,
+                 f"worker zip SHA256 漂移: {actual} != {expected_sha256}")
+    try:
+        with zipfile.ZipFile(io.BytesIO(payload)) as archive:
+            data = json.loads(archive.read("data"))
+    except (KeyError, TypeError, ValueError, zipfile.BadZipFile, OSError) as exc:
+        raise ValueError(f"worker zip 不是可解析 SB3 checkpoint: {path}: {exc}") from exc
+    contract = data.get("diablogym_contract")
+    _require(isinstance(contract, dict),
+             "--worker-zip 必须携 diablogym_contract(认证发布件训练契约)")
+    _require(contract.get("contract_revision") == 26,
+             "--worker-zip 训练契约 contract_revision 必须为 26,"
+             f"收到 {contract.get('contract_revision')!r}")
+    view = contract.get("worker_policy_observation_view")
+    _require(isinstance(view, str) and bool(view),
+             "--worker-zip 契约缺 worker_policy_observation_view")
+    _require(isinstance(contract.get("drink_sovereignty"), bool),
+             "--worker-zip 契约缺 bool drink_sovereignty")
+    return contract
+
+
 def _resolve_training_drink_sovereignty(
-        args, *, worker_npz_sha256: str | None) -> bool:
+        args, *, worker_npz_sha256: str | None,
+        worker_zip_sha256: str | None = None) -> bool:
     """Resolve a tri-state CLI request against immutable Worker metadata."""
     requested = _requested_drink_sovereignty(args)
+    worker_zip = getattr(args, "worker_zip", None)
+    if getattr(args, "options", False) and worker_zip:
+        # R9:zip 工人分支——rev26 认证契约是 action12 单一真源
+        # (认证发布件 drink_sovereignty=False → 恒掩)。
+        _require(
+            _is_sha256(worker_zip_sha256),
+            "Options Worker(zip) action12 解析必须绑定已捕获 zip SHA256",
+        )
+        contract = _read_worker_zip_contract(
+            worker_zip, expected_sha256=worker_zip_sha256)
+        derived = bool(contract["drink_sovereignty"])
+        _require(
+            requested is None or requested == derived,
+            "命令行 drink_sovereignty 与 --worker-zip 契约冲突:"
+            f"requested={requested},contract={derived}",
+        )
+        return derived
     worker_npz = getattr(args, "worker_npz", None)
     if getattr(args, "options", False) and worker_npz:
         from diablogym import NumpyManager
@@ -2273,6 +2325,7 @@ def _validate_policy_source_roles(contract: dict) -> dict:
 def _training_contract(args, model, batch_size: int,
                        manager_npz_sha256: str | None = None,
                        worker_npz_sha256: str | None = None,
+                       worker_zip_sha256: str | None = None,
                        demos_sha256: str | None = None,
                        implementation_sha256: str | None = None,
                        bc_aux_demos_sha256: str | None = None) -> dict:
@@ -2555,6 +2608,9 @@ def _training_contract(args, model, batch_size: int,
         "bc_aux": _contract_bc_aux(args, bc_aux_demos_sha256),
         "manager_npz_sha256": manager_npz_sha256,
         "worker_npz_sha256": worker_npz_sha256,
+        # R9:zip 工人组装口(认证发布件)身份;未挂 zip 工人时恒 None,
+        # 旧 checkpoint 契约 .get 同为 None → resume 等式兼容,revision 不动。
+        "worker_zip_sha256": worker_zip_sha256,
         "demos_sha256": demos_sha256,
         "policy_source_roles":
             _policy_source_roles(args, demos_sha256),
@@ -2703,6 +2759,131 @@ def _parse_dry_curriculum_schedule(spec: str) -> tuple[float, ...]:
                  f"--dry-curriculum-schedule p 值必须在 [0, 1] 内: {segment!r}")
         table.extend(values)
     return tuple(table)
+
+
+# ---- R9 深层起点课程(PREREG-R9,课程臂 prologue) ----
+
+# prologue 中局终(死亡/截断)换种子重抽的封顶次数;超限即放弃代打,
+# 换新种子按普通起点交棒(遥测 resamples 如实入 info)。
+_DEEP_START_MAX_RESAMPLES = 8
+
+
+def _parse_deep_start_curriculum(spec: str) -> dict:
+    """解析 --deep-start-curriculum 'p=0.5,target=2,cap=8' 为 dict。
+
+    p ∈ [0,1] 为每局独立触发概率(局种子派生确定性 RNG,不碰全局 RNG);
+    target ≥ 2 为 prologue 代打的目标 dungeon_level(起点恒 1 层);
+    cap ≥ 1 为代打窗数上限。三键必须给全,不允许未知键/重复键。
+    """
+    _require(isinstance(spec, str) and bool(spec.strip()),
+             "--deep-start-curriculum 不能为空")
+    fields: dict[str, float | int] = {}
+    for raw_item in spec.split(","):
+        item = raw_item.strip()
+        key, sep, value = item.partition("=")
+        _require(bool(sep),
+                 f"--deep-start-curriculum 项格式应为 key=value: {item!r}")
+        key = key.strip()
+        _require(key in ("p", "target", "cap"),
+                 f"--deep-start-curriculum 未知键(只允许 p/target/cap): {key!r}")
+        _require(key not in fields, f"--deep-start-curriculum 键重复: {key!r}")
+        try:
+            fields[key] = float(value) if key == "p" else int(value)
+        except ValueError as exc:
+            raise ValueError(
+                f"--deep-start-curriculum 数值不可解析: {item!r}") from exc
+    _require(set(fields) == {"p", "target", "cap"},
+             "--deep-start-curriculum 必须给全 p/target/cap 三键")
+    _require(math.isfinite(fields["p"]) and 0.0 <= fields["p"] <= 1.0,
+             f"--deep-start-curriculum p 必须在 [0, 1] 内: {fields['p']!r}")
+    _require(fields["target"] >= 2,
+             f"--deep-start-curriculum target 必须 ≥2(起点恒 1 层): {fields['target']!r}")
+    _require(fields["cap"] >= 1,
+             f"--deep-start-curriculum cap 必须 ≥1: {fields['cap']!r}")
+    return fields
+
+
+def _prologue_dungeon_level(env) -> int:
+    """OptionsEnv 当前 dungeon_level(桩环境同构可测;缺 raw 视为 1 层)。"""
+    raw = getattr(getattr(env, "env", None), "_raw", None)
+    if isinstance(raw, dict):
+        return int(raw.get("dungeon_level", 1))
+    return 1
+
+
+def _play_deep_start_prologue(env, obs, info, *, spec: dict, form: str):
+    """单次 prologue 代打;局终(死亡/截断)返回 None 交调用方重抽。
+
+    dive 形态:循环选 DIVE(被掩则 FARM)至 dungeon_level ≥ target 或窗数 ≥ cap;
+    exhausted 形态:FARM 至 榨干∧DIVE 合法(或 FARM 被掩=强制交权)即交棒。
+    掩码永不全假(OptionsEnv 契约:DIVE 非法时 FARM 保底),故所选动作恒合法。
+    """
+    from diablogym.options_env import DIVE, FARM
+
+    target = int(spec["target"])
+    cap = int(spec["cap"])
+    windows = 0
+    while windows < cap:
+        masks = env.action_masks()
+        if form == "dive":
+            if _prologue_dungeon_level(env) >= target:
+                break
+            action = DIVE if bool(masks[DIVE]) else FARM
+        else:  # exhausted
+            if ((bool(getattr(env, "exhausted", False)) and bool(masks[DIVE]))
+                    or not bool(masks[FARM])):
+                break
+            action = FARM
+        obs, _reward, terminated, truncated, info = env.step(action)
+        windows += 1
+        if terminated or truncated:
+            return None
+        if form == "dive" and _prologue_dungeon_level(env) >= target:
+            break
+    return obs, info, windows
+
+
+def _deep_start_prologue(env, obs, info, seed, *, spec: dict, form: str,
+                         resample_seed, reset):
+    """R9 深层起点课程 prologue 核(模块级,桩环境单测覆盖)。
+
+    触发判定每局独立:由环境局种子派生确定性 RNG(``random.Random(seed
+    ^ 0xD1CE)``),不触碰全局 RNG——同种子必然同判。prologue 中局终
+    (死亡/截断)经 ``resample_seed``/``reset`` 闭包换种子重抽,封顶
+    ``_DEEP_START_MAX_RESAMPLES``;超限放弃代打,换新种子按普通起点交棒。
+    返回 (obs, info, seed, telemetry);telemetry 四键
+    {prologue_triggered, start_dlvl, prologue_windows, resamples} 由调用方
+    并入 reset 返回的 info。
+    """
+    probability = float(spec["p"])
+    triggered = random.Random(seed ^ 0xD1CE).random() < probability
+    if not triggered:
+        return obs, info, seed, {
+            "prologue_triggered": False,
+            "start_dlvl": _prologue_dungeon_level(env),
+            "prologue_windows": 0,
+            "resamples": 0,
+        }
+    resamples = 0
+    while True:
+        outcome = _play_deep_start_prologue(env, obs, info, spec=spec, form=form)
+        if outcome is not None:
+            obs, info, windows = outcome
+            break
+        if resamples >= _DEEP_START_MAX_RESAMPLES:
+            seed = resample_seed()
+            obs, info = reset(seed)
+            windows = 0
+            break
+        resamples += 1
+        seed = resample_seed()
+        obs, info = reset(seed)
+    return obs, info, seed, {
+        "prologue_triggered": True,
+        "start_dlvl": _prologue_dungeon_level(env),
+        "prologue_windows": windows,
+        "resamples": resamples,
+    }
 
 
 def _resolve_dry_curriculum_start(
@@ -5654,6 +5835,21 @@ def _validate_args(args) -> None:
                  f"不足以覆盖本腿 {args.total_steps // rollout_quantum} 个 rollout"
                  "(腿相对锚定禁越界钳位)")
     _require(not args.worker_npz or args.options, "--worker-npz 只能与 --options 同用")
+    # R9:zip 工人组装口(认证发布件)——互斥/模式门与 npz 同型。
+    _require(not args.worker_zip or args.options, "--worker-zip 只能与 --options 同用")
+    _require(not (args.worker_zip and args.worker_npz),
+             "--worker-zip 与 --worker-npz 互斥(一个组装口只挂一个工人)")
+    _require(not args.worker_zip_sha256 or args.worker_zip,
+             "--worker-zip-sha256 必须与 --worker-zip 同用")
+    _require(args.worker_zip_sha256 is None or _is_sha256(args.worker_zip_sha256),
+             f"--worker-zip-sha256 必须是 64 位小写十六进制: {args.worker_zip_sha256!r}")
+    # R9 课程旋钮:仅 --options;形态旗不得脱离课程旗单独出现。
+    _require(not args.deep_start_curriculum or args.options,
+             "--deep-start-curriculum 只能与 --options 同用")
+    _require(args.deep_start_form is None or bool(args.deep_start_curriculum),
+             "--deep-start-form 必须与 --deep-start-curriculum 同用")
+    if args.deep_start_curriculum:
+        _parse_deep_start_curriculum(args.deep_start_curriculum)
     _require(not args.teacher_override or (args.resume_from and args.worker),
              "--teacher-override 只能与 worker 侧 --resume-from 同用")
     _require(not args.allow_manager_change or (args.resume_from and args.worker),
@@ -5797,6 +5993,11 @@ def _validate_args(args) -> None:
                      "PREREG-v25 D2:换届选举须 --n-steps 64 且显式 --seed")
             _require(pathlib.Path(args.worker_npz).is_file(),
                      f"工人 npz 不存在: {args.worker_npz}")
+        if args.worker_zip:
+            _require(args.n_steps == 64 and args.seed is not None,
+                     "PREREG-R9:zip 工人换届须 --n-steps 64 且显式 --seed")
+            _require(pathlib.Path(args.worker_zip).is_file(),
+                     f"工人 zip 不存在: {args.worker_zip}")
     if args.seed is not None:
         from diablogym.worker_env import is_reserved_train_seed
 
@@ -6623,12 +6824,20 @@ def make_env(max_steps: int = 1500, deep: bool = False, death_ladder: bool = Fal
              worker_additional_terminal_death_cost: float = 0.0,
              manager_npz_sha256: str | None = None,
              worker_npz_sha256: str | None = None,
+             worker_zip: str | None = None,
+             worker_zip_sha256: str | None = None,
+             deep_start_curriculum: dict | None = None,
+             deep_start_form: str = "dive",
              implementation_sha256: str | None = None):
     if implementation_sha256 is not None:
         actual_implementation = _implementation_bundle_sha256()
         _require(actual_implementation == implementation_sha256,
                  "训练实现 bundle 在 VecEnv 创建前发生漂移: "
                  f"{actual_implementation} != {implementation_sha256}")
+    _require(deep_start_curriculum is None or options,
+             "deep_start_curriculum 只适用于 --options 经理训练")
+    _require(deep_start_form in ("dive", "exhausted"),
+             f"deep_start_form 必须是 dive/exhausted: {deep_start_form!r}")
     from diablogym import DiabloGymEnv
 
     def with_seed_discipline(env):
@@ -6639,6 +6848,13 @@ def make_env(max_steps: int = 1500, deep: bool = False, death_ladder: bool = Fal
             is_reserved_train_seed,
             sample_train_seed,
         )
+
+        # R9 课程臂:prologue 仅 options 经理训练在位;包装顺序
+        # Monitor(_SeedDiscipline(OptionsEnv)) 保证代打步天然在 Monitor
+        # 记账之外,prologue 奖励不入经理回报账(PREREG-R9 §4)。
+        prologue_spec = (
+            dict(deep_start_curriculum)
+            if (options and deep_start_curriculum) else None)
 
         class _SeedDiscipline(gym.Wrapper):
             def __init__(self, wrapped):
@@ -6653,6 +6869,18 @@ def make_env(max_steps: int = 1500, deep: bool = False, death_ladder: bool = Fal
                 else:
                     seed = sample_train_seed(self._seed_rng)
                 obs, info = self.env.reset(seed=seed, options=options)
+                if prologue_spec is not None:
+                    # R9 课程臂:prologue 核在模块级(桩环境单测覆盖);
+                    # 重抽种子经既有种子纪律采样器,拒采全部登记评测池。
+                    obs, info, seed, telemetry = _deep_start_prologue(
+                        self.env, obs, info, seed,
+                        spec=prologue_spec, form=deep_start_form,
+                        resample_seed=lambda: sample_train_seed(self._seed_rng),
+                        reset=lambda new_seed: self.env.reset(
+                            seed=new_seed, options=options),
+                    )
+                    info = dict(info)
+                    info.update(telemetry)
                 info["episode_seed"] = seed
                 return obs, info
 
@@ -6686,9 +6914,58 @@ def make_env(max_steps: int = 1500, deep: bool = False, death_ladder: bool = Fal
         # v22:策略脑/操作脑——OptionsEnv 自带 deep+death_ladder 默认
         # v25:worker_npz 非空时挂 npz 工人(NumpyManager 在本函数体内构造——
         # spawn 子进程免 torch,PREREG-v25 D1 条款),并套种子纪律薄包装
+        # R9:worker_zip 非空时挂认证 SB3 zip 工人(dual-v4 asymmetric policy
+        # 无 npz 导出口;MaskablePPO 冻结前向逐子进程载入,载入前校验字节身份;
+        # 接法与双标签沿案卷 train/runs/efix-g0-evidence/probe_r9_dive.py:31-61)
         from diablogym import NumpyManager, OptionsEnv
 
-        if worker_npz:
+        if worker_zip:
+            _require(not worker_npz, "--worker-zip 与 --worker-npz 互斥")
+            import numpy as np
+            import leashed_ppo  # noqa: F401  自定义 policy class 注册(load 反序列化需要)
+            from sb3_contrib import MaskablePPO
+
+            zip_payload = pathlib.Path(worker_zip).read_bytes()
+            if worker_zip_sha256 is not None:
+                actual_zip_sha = hashlib.sha256(zip_payload).hexdigest()
+                _require(actual_zip_sha == worker_zip_sha256,
+                         "worker zip 在 VecEnv 创建前发生漂移: "
+                         f"{actual_zip_sha} != {worker_zip_sha256}")
+            model = MaskablePPO.load(io.BytesIO(zip_payload), device="cpu")
+            zip_contract = getattr(model, "diablogym_contract", None)
+            _require(isinstance(zip_contract, dict),
+                     "--worker-zip 必须携 diablogym_contract(认证发布件训练契约)")
+            _require(zip_contract.get("contract_revision") == 26,
+                     "--worker-zip 训练契约 contract_revision 必须为 26,"
+                     f"收到 {zip_contract.get('contract_revision')!r}")
+            zip_view = zip_contract["worker_policy_observation_view"]
+            zip_sovereignty = bool(zip_contract["drink_sovereignty"])
+
+            def zip_worker(policy_obs, mask):
+                policy_mask = mask
+                if not zip_sovereignty:
+                    # 非主权工人防御性恒掩 a12(probe_r9_dive 同款)。
+                    policy_mask = np.asarray(mask, dtype=bool).copy()
+                    policy_mask[12] = False
+                action, _ = model.predict(
+                    policy_obs, action_masks=policy_mask, deterministic=True)
+                return int(action)
+
+            zip_worker.diablogym_worker_observation_view = zip_view
+            zip_worker.diablogym_worker_action12_mode = (
+                "environment-mask" if zip_sovereignty
+                else "permanently-masked")
+            env = OptionsEnv(max_steps=max_steps,
+                             # None → 由 worker 双标签自绑定(单一真源);
+                             # OptionsEnv 会拒绝标签间/标签-显式值冲突。
+                             drink_sovereignty=None,
+                             manager_observation_view=(
+                                 manager_policy_observation_view),
+                             worker_observation_view=zip_view,
+                             workers={0: zip_worker})
+            _require(bool(env.drink_sovereignty) == zip_sovereignty,
+                     "OptionsEnv drink_sovereignty 未按 zip 工人契约自绑定")
+        elif worker_npz:
             # 条款要点:工人以 npz+numpy 前向进子进程(不 pickle 网络、不 load SB3
             # 模型、不逐拍 torch 前向)。torch 模块本身随 train_ppo 顶层 import 进入
             # 子进程(v23 先例同),"无 torch"断言不可实现,预注册已如实修正。
@@ -8196,6 +8473,22 @@ def _main(resources: _TrainingResources):
                     help="冻结经理权重 npz(export_manager_npz.py 产出)")
     ap.add_argument("--worker-npz", default=None,
                     help="v25:经理训练时挂 npz 工人(OptionsEnv workers 组装口)")
+    ap.add_argument("--worker-zip", default=None,
+                    help="R9:经理训练时挂 SB3 zip 工人(认证发布件,MaskablePPO"
+                         " 冻结前向在子进程内载入;与 --worker-npz 互斥,仅 --options)")
+    ap.add_argument("--worker-zip-sha256", default=None,
+                    help="R9:--worker-zip 的期望 SHA-256(64 位小写十六进制);"
+                         "给定则载入前先校验 zip 字节身份")
+    ap.add_argument("--deep-start-curriculum", default=None,
+                    help="R9 课程臂:深层起点 prologue,格式 'p=0.5,target=2,cap=8'"
+                         "(p=每局独立触发概率[局种子派生确定性 RNG],target=目标"
+                         " dungeon_level,cap=代打窗数上限;死亡/截断重抽封顶 8;"
+                         "prologue 在 _SeedDiscipline.reset 内完成,不进 Monitor 账;"
+                         "仅 --options)")
+    ap.add_argument("--deep-start-form", choices=["dive", "exhausted"], default=None,
+                    help="R9 课程 prologue 形态(缺省 dive):dive=循环选 DIVE(被掩则"
+                         " FARM)至 dungeon_level≥target;exhausted=FARM 至榨干∧DIVE"
+                         " 合法即交棒;仅与 --deep-start-curriculum 同用")
     ap.add_argument(
         "--manager-policy-observation-view",
         choices=["raw-v4", "legacy-v3"],
@@ -8422,6 +8715,8 @@ def _main(resources: _TrainingResources):
             protected_inputs.append(args.teacher_sd)
     if args.options and args.worker_npz:
         protected_inputs.append(args.worker_npz)
+    if args.options and args.worker_zip:
+        protected_inputs.append(args.worker_zip)
     if _bc_aux_active(args):
         protected_inputs.append(args.bc_aux_demos)   # E3:v2 示范集同受保护
     _prepare_run_dir(run_dir, args.resume_from, protected_inputs)
@@ -8434,9 +8729,17 @@ def _main(resources: _TrainingResources):
                           if args.worker else None)
     worker_npz_sha256 = (_capture_file_sha256(args.worker_npz, "worker_npz")
                          if args.worker_npz else None)
+    worker_zip_sha256 = (_capture_file_sha256(args.worker_zip, "worker_zip")
+                         if args.worker_zip else None)
+    if args.worker_zip_sha256 is not None:
+        # R9:命令行钉死的 zip 身份先于一切子进程载入核对(fail-loud)。
+        _require(worker_zip_sha256 == args.worker_zip_sha256,
+                 "--worker-zip-sha256 与实际 zip 字节不一致: "
+                 f"{worker_zip_sha256} != {args.worker_zip_sha256}")
     args.resolved_drink_sovereignty = (
         _resolve_training_drink_sovereignty(
-            args, worker_npz_sha256=worker_npz_sha256))
+            args, worker_npz_sha256=worker_npz_sha256,
+            worker_zip_sha256=worker_zip_sha256))
     implementation_sha256 = _implementation_bundle_sha256()
 
     fresh_teacher_sha256 = None
@@ -8456,6 +8759,12 @@ def _main(resources: _TrainingResources):
     dry_curriculum_table = (
         _parse_dry_curriculum_schedule(args.dry_curriculum_schedule)
         if args.dry_curriculum_schedule else None)
+
+    # R9:深层起点课程解析一次(_validate_args 已验);形态缺省 dive。
+    deep_start_curriculum = (
+        _parse_deep_start_curriculum(args.deep_start_curriculum)
+        if args.deep_start_curriculum else None)
+    deep_start_form = args.deep_start_form or "dive"
 
     # E3 ④乙:在位方加载 v2 示范集；辅助优化 bank 只能消费固定 training
     # episodes，原始 held-out episodes 完整留给最终发布硬门。随后在训练切分
@@ -8622,6 +8931,16 @@ def _main(resources: _TrainingResources):
         "resume_from": args.resume_from,
         "resume_checkpoint_sha256": resume_checkpoint_sha256,
         "worker_npz": args.worker_npz,        # v25 换届:经理训练挂 npz 工人
+        # R9 换届:经理训练挂认证 SB3 zip 工人(与 npz 组装口互斥)
+        "worker_zip": args.worker_zip,
+        "worker_zip_sha16": (worker_zip_sha256[:16]
+                             if worker_zip_sha256 else None),
+        # R9 课程臂回执(CLI 字面值 + 解析后生效值;不入 training_contract,
+        # 全 CLI 已由 invocation_argv 留痕)
+        "deep_start_curriculum": args.deep_start_curriculum,
+        "deep_start_curriculum_resolved": deep_start_curriculum,
+        "deep_start_form": (deep_start_form
+                            if deep_start_curriculum else None),
         # v30 接力:自证据链——本腿在谁治下、拴谁的锚,进程侧留回执(面板 minor)
         "manager_npz": args.manager_npz,
         "manager_npz_sha16": (manager_npz_sha256[:16]
@@ -8674,6 +8993,10 @@ def _main(resources: _TrainingResources):
             args.worker_additional_terminal_death_cost),
         manager_npz_sha256=manager_npz_sha256,
         worker_npz_sha256=worker_npz_sha256,
+        worker_zip=args.worker_zip,
+        worker_zip_sha256=worker_zip_sha256,
+        deep_start_curriculum=deep_start_curriculum,
+        deep_start_form=deep_start_form,
         implementation_sha256=implementation_sha256,
     )
     if args.num_envs == 1:
@@ -9094,6 +9417,7 @@ def _main(resources: _TrainingResources):
         args, model, batch_size,
         manager_npz_sha256=manager_npz_sha256,
         worker_npz_sha256=worker_npz_sha256,
+        worker_zip_sha256=worker_zip_sha256,
         demos_sha256=demos_sha256,
         implementation_sha256=implementation_sha256,
         bc_aux_demos_sha256=bc_aux_demos_sha256,   # E4 rev5:④乙在位载荷
