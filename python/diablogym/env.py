@@ -493,6 +493,7 @@ class DiabloGymEnv(gym.Env):
         death_ladder: bool = False,
         hero_class: int = 0,
         controller_snapshot_enabled: bool = False,
+        descend_fallback_promotion: bool = True,
     ):
         super().__init__()
         if (isinstance(ticks_per_step, bool)
@@ -513,6 +514,14 @@ class DiabloGymEnv(gym.Env):
             raise TypeError(
                 "controller_snapshot_enabled 必须是 bool，收到 "
                 f"{controller_snapshot_enabled!r}")
+        # E-fix 修 A(甲形态):避怪规划"成功但踏不上楼梯"时按秩比较提升
+        # 宽容规划(_macro_progression 同款既有立法);False = 旧行为端点,
+        # 系对照腿/旧档案位级重放专用。
+        if not isinstance(descend_fallback_promotion, (bool, np.bool_)):
+            raise TypeError(
+                "descend_fallback_promotion 必须是 bool，收到 "
+                f"{descend_fallback_promotion!r}")
+        self._descend_fallback_promotion = bool(descend_fallback_promotion)
 
         assets = str(pathlib.Path(assets_dir or _DEFAULT_ASSETS).expanduser().resolve())
         data = str(pathlib.Path(
@@ -3596,6 +3605,24 @@ class DiabloGymEnv(gym.Env):
         start_scene = _scene_identity(raw)
 
         path = self._plan_descend_path(raw, sx, sy, avoid_monsters=True)
+        if (getattr(self, "_descend_fallback_promotion", False)
+                and path is not None):
+            # E-fix 修 A:避怪 BFS 的口袋可达域会造出"原路返回更近"的
+            # partial path,与宽容规划形成确定性极限环(R8 seed 2122004:
+            # 6 窗 24 微步周期钉死原地)。与 _macro_progression 的既有
+            # 立法同款:避怪路径踏不上楼梯格时咨询宽容规划,终点严格
+            # 更近才提升;能踏上楼梯(remaining==0)时第二次 BFS 不发生,
+            # 行为逐位等旧。
+            def _remaining(candidate):
+                if not candidate:
+                    return max(abs(sx - int(px)), abs(sy - int(py)))
+                tail = candidate[-1]
+                return max(abs(sx - int(tail[0])), abs(sy - int(tail[1])))
+            remaining = _remaining(path)
+            if remaining > 0:
+                fallback = self._plan_descend_path(raw, sx, sy)
+                if fallback is not None and _remaining(fallback) < remaining:
+                    path = fallback
         if path is None:
             path = self._plan_descend_path(raw, sx, sy)  # 怪物封死唯一通路:退回旧行为
         if path is None:

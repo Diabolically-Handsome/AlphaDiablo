@@ -412,6 +412,7 @@ class OptionsEnv(gym.Env):
 
     def __init__(self, max_steps: int = 3000, workers: dict | None = None,
                  drink_sovereignty: bool | None = None,
+                 dive_stall_protocol: str = "no-progress-v1",
                  worker_observation_view: str = WORKER_OBSERVATION_VIEW_RAW_V4,
                  manager_observation_view: str = (
                      MANAGER_OBSERVATION_VIEW_RAW_V4),
@@ -424,6 +425,17 @@ class OptionsEnv(gym.Env):
         # 默认下成为单一真源；若调用方又显式给值，两者必须一致。
         self.drink_sovereignty = _resolve_worker_drink_sovereignty(
             self._workers, drink_sovereignty)
+        # E-fix 修 B(甲形态):DIVE 停滞钟协议。"no-progress-v1" = 新协议
+        # 常态:唯「历史最小目标距严格改善 ∨ 击杀 ∨ positive_progress
+        # 全集」给 DIVE 窗续命;KILL_PATIENCE 常数(冻结观测归一化分母)
+        # 一字不动,TAU_CAP=600 仍为硬顶。裸位移不算进展(极限环每拍都在
+        # 位移,裸位移判据会把死窗烧到 TAU_CAP)。"tau-v3" = 旧协议纯耗时
+        # 收窗,系对照腿/旧档案位级重放专用端点。
+        if dive_stall_protocol not in ("tau-v3", "no-progress-v1"):
+            raise ValueError(
+                "dive_stall_protocol 必须是 'tau-v3' 或 'no-progress-v1'，"
+                f"收到 {dive_stall_protocol!r}")
+        self.dive_stall_protocol = dive_stall_protocol
         if worker_observation_view not in WORKER_OBSERVATION_VIEWS:
             raise ValueError(
                 "worker_observation_view 必须是 "
@@ -690,6 +702,24 @@ class OptionsEnv(gym.Env):
         return m
 
     # ---- 共享窗口核(v23:OptionsEnv 与 WorkerWindowEnv 唯一实现)----
+    def _dive_target_distance(self, raw) -> int | None:
+        """DIVE 当前主线目标的 Chebyshev 距离(与 action_masks 同口径:
+        有剧情目标取各目标最小距,否则取 transition 触发器最近者)。"""
+        px, py = raw["player_x"], raw["player_y"]
+        targets = raw.get("progression_targets") or []
+        if targets:
+            return min(
+                max(abs(int(t["goal_x"]) - px), abs(int(t["goal_y"]) - py))
+                for t in targets)
+        transition = (bridge.WM_DIABRTNLVL if raw.get("is_set_level")
+                      else bridge.WM_DIABNEXTLVL)
+        stairs = [t for t in raw.get("triggers", [])
+                  if t.get("msg") == transition]
+        if not stairs:
+            return None
+        return min(
+            max(abs(t["x"] - px), abs(t["y"] - py)) for t in stairs)
+
     def _win_begin(self, option: int):
         if not self.action_space.contains(option):
             raise ValueError(f"选项必须是 {self.action_space}中的整数，收到 {option!r}")
@@ -709,6 +739,9 @@ class OptionsEnv(gym.Env):
             "scene0": _scene_identity(raw),
             "kills0": int(self.env._ep_kills),
             "floor": REVISIT_FLOOR if (option == FARM and self.exhausted) else 0,
+            "dive_best_d": (self._dive_target_distance(raw)
+                            if option == DIVE else None),
+            "dive_last_progress_tau": 0,
             "resupply_stall": 0,
             "R": 0.0, "W": 0.0, "bonus": 0.0,
             # 这两本账只覆盖 _win_step_worker：开窗前的 fuse recovery /
@@ -839,6 +872,23 @@ class OptionsEnv(gym.Env):
             steps_delta,
             positive_progress=positive_progress,
         )
+        _dive_w = getattr(self, "_win", None)
+        if (_dive_w is not None and _dive_w.get("opt") == DIVE
+                and getattr(self, "dive_stall_protocol", "tau-v3")
+                == "no-progress-v1"):
+            w = _dive_w
+            d_now = self._dive_target_distance(current)
+            best = w.get("dive_best_d")
+            improved = (
+                d_now is not None
+                and (best is None or d_now < best)
+            )
+            if improved:
+                w["dive_best_d"] = d_now
+            if (improved
+                    or int(self.env._ep_kills) > int(kills_b)
+                    or positive_progress):
+                w["dive_last_progress_tau"] = self.env._steps - w["t0"]
         executed_action = (
             int(a)
             if action_effect_audit["request_executed"]
@@ -929,8 +979,14 @@ class OptionsEnv(gym.Env):
                      or self.farm_scene_steps >= FARM_SCENE_CAP)):
             self._mark_exhausted()
             return "exhausted"
-        if opt == DIVE and tau >= KILL_PATIENCE:
-            return "stall"
+        if opt == DIVE:
+            if (getattr(self, "dive_stall_protocol", "tau-v3")
+                    == "no-progress-v1"):
+                if (tau - int(w.get("dive_last_progress_tau", 0))
+                        >= KILL_PATIENCE):
+                    return "stall"
+            elif tau >= KILL_PATIENCE:
+                return "stall"
         if opt == RESUPPLY:
             belt_free = DiabloGymEnv._belt_free_slots(raw)
             if belt_free >= belt_free_b:
