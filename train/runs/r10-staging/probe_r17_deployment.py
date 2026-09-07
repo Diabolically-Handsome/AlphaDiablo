@@ -86,13 +86,19 @@ _R16_ENV_KEYS = ("explore_global_hunt", "explore_global_fallback",
                  "resource_protocol", "resource_purchase_mode",
                  "resource_service_policy", "resource_readiness_law",
                  # R17 T0′:sustain-loot-v1 要求显式 completion-l2-v1 时钟
-                 "worker_time_protocol", "resource_retreat")
+                 "worker_time_protocol", "resource_retreat",
+                 # R18-D/E (2026-09-07): aggro cap + engagement priority flags
+                 "aggro_cap", "engagement_priority",
+                 # R18-G: global-hunt scope (the pull mechanism)
+                 "hunt_scope",
+                 # R18-F: Scroll of Town Portal interface
+                 "resource_portal")
 _R17_MANAGERS = ("readiness-v1", "readiness-v3", "readiness-v3-strict",
                  "const-FARM", "const-DIVE",
                  # R17 T0:协议开启时的脚本经理 = OptionsEnv.resource_option_choice
                  "resource")
 
-PROBE_VERSION = "r17-deployment-v3-r18a-retreat"
+PROBE_VERSION = "r17-deployment-v3-r18f"
 V3_PROBE_VERSION = "r15-deployment-v3"
 # probe_r15 v3 的每行字段(逐位回归口径);R17 行是其超集。
 V3_ROW_KEYS = (
@@ -668,6 +674,8 @@ def run_episode(env, cb, seed, stochastic, manager="readiness-v1"):
             "service_attempted": getattr(service, "attempted", None),
             "service_active_at_end": getattr(service, "active", None),
             "service_trigger": getattr(service, "trigger", None),
+            "service_reason": getattr(service, "reason", None),
+            "terminal_reason": getattr(env.env, "_resource_terminal_reason", None),
             "gold_final": int(raw.get("gold", 0)),
             "service_trip": state.get("service_trip"),
             "max_main_depth_reached": state.get("max_main_depth_reached"),
@@ -675,6 +683,17 @@ def run_episode(env, cb, seed, stochastic, manager="readiness-v1"):
             "retreats_started": state.get("retreats_started"),
             "retreat": (env.retreat_service.telemetry()
                         if getattr(env, "retreat_service", None) is not None else None),
+            # R18-D/E telemetry (off -> "off" / 0)
+            "aggro_cap": getattr(env.env, "aggro_cap", None),
+            "aggro_cap_mask_hits": getattr(env.env, "_aggro_cap_fired", None),
+            "engagement_priority": getattr(env.env, "engagement_priority", None),
+            "engagement_decisions": getattr(env.env, "_engagement_decisions", None),
+            "engagement_reordered": getattr(env.env, "_engagement_reordered", None),
+            "hunt_scope": getattr(env.env, "hunt_scope", None),
+            # R18-F portal-v1 telemetry (None when off)
+            "portals_started": state.get("portals_started"),
+            "portal": (env.portal_service.telemetry()
+                       if getattr(env, "portal_service", None) is not None else None),
         }
     return {
         "seed": seed, "depth": max_depth,

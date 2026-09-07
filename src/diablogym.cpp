@@ -87,6 +87,7 @@
 #include "qol/chatlog.h"
 #include "qol/stash.h"
 #include "quests.h"
+#include "spells.h" // R18-F portal-v1: IsValidSpellFrom for act_cast_town_portal
 #include "tables/monstdat.h"
 #include "tables/playerdat.hpp"
 #include "stores.h"
@@ -3014,10 +3015,12 @@ PYBIND11_MODULE(_diablogym, m)
 	m.def("observe", &Observe, "只读当前观测");
 	m.def("configure_resource_protocol", &ConfigureResourceProtocol, py::arg("enabled"), py::arg("ordinary_armor_scope") = false,
 	    py::arg("preserve_equipment_readiness") = false, py::arg("loot_economy") = false,
-	    py::arg("readiness_advisory") = false, py::arg("retreat") = false);
+	    py::arg("readiness_advisory") = false, py::arg("retreat") = false, py::arg("portal") = false);
 	m.def("configure_town_service", &ConfigureTownService, py::arg("authorized"));
 	m.def("configure_retreat", &ConfigureRetreat, py::arg("authorized"),
 	    "R18-A retreat-v1: authorize (or revoke) one one-floor ascent from main L2+");
+	m.def("configure_resource_portal", &ConfigureResourcePortal, py::arg("authorized"),
+	    "R18-F portal-v1: authorize (or revoke) one town-portal transit (main L2+ -> town, or town -> the open portal's floor)");
 	m.def("project_seen_resource_smith_items", &ProjectSeenResourceSmithItems, py::arg("identities"));
 	m.def("preview_resource_equipment_combinations", &PreviewResourceEquipmentCombinations, py::arg("sequences"), py::arg("max_gold_cost"));
 	m.def("act_pickup_loot_at", &ActPickupLootAt, py::arg("item_id"), py::arg("x"), py::arg("y"), py::arg("seed_hi"), py::arg("seed_lo"), py::arg("create_info"), py::arg("base_id"));
@@ -3026,6 +3029,8 @@ PYBIND11_MODULE(_diablogym, m)
 	m.def("act_talk_towner", &ActTalkTowner, py::arg("towner_id"));
 	m.def("act_dismiss_dialog", &ActDismissDialog);
 	m.def("act_buy_store_item", &ActBuyStoreItem, py::arg("vendor"), py::arg("index"), py::arg("seed_hi"), py::arg("seed_lo"), py::arg("create_info"), py::arg("base_id"));
+	m.def("act_cast_town_portal", &ActCastTownPortal, py::arg("spell_from"),
+	    "R18-F portal-v1: read a carried Scroll of Town Portal via CMD_SPELLXY (never UseInvItem, which would strand the cursor in CURSOR_TELEPORT)");
 	m.def("act_repair_equipped_item", &ActRepairEquippedItem, py::arg("slot"), py::arg("seed_hi"), py::arg("seed_lo"), py::arg("create_info"), py::arg("base_id"), py::arg("expected_durability"), py::arg("expected_price"));
 	m.def("act_equip_inventory_item", &ActEquipInventoryItem, py::arg("index"), py::arg("seed_hi"), py::arg("seed_lo"), py::arg("create_info"), py::arg("base_id"));
 	m.def("act_unequip_equipped_item", &ActUnequipEquippedItem, py::arg("slot"), py::arg("seed_hi"), py::arg("seed_lo"), py::arg("create_info"), py::arg("base_id"));
@@ -3266,6 +3271,28 @@ PYBIND11_MODULE(_diablogym, m)
 		}
 		throw std::runtime_error("portal fixture is not under player");
 	}, "Test fixture only: execute the actual portal collision handler without a game tick");
+	m.def("probe_resource_add_portal_scroll", [](bool belt) {
+		EnsureInGame("probe_resource_add_portal_scroll");
+		// GetItemAttrs at item level 1 is exactly how SpawnWitch builds the
+		// pinned scroll (items.cpp), and it draws no RNG, so a fixture scroll
+		// does not shift the gameplay stream the way a purchase would.
+		Item scroll = {};
+		GetItemAttrs(scroll, IDI_PORTAL, 1);
+		scroll._iCreateInfo = 1;
+		scroll._iIdentified = true;
+		scroll._iStatFlag = MyPlayer->CanUseItem(scroll);
+		const bool placed = belt ? AutoPlaceItemInBelt(*MyPlayer, scroll, true, false)
+		                         : AutoPlaceItemInInventory(*MyPlayer, scroll, false);
+		if (!placed) throw std::runtime_error("fixture portal scroll does not fit");
+		MyPlayer->CalcScrolls();
+	}, py::arg("belt") = false,
+	    "Test fixture only: place one real Scroll of Town Portal without a purchase");
+	m.def("probe_resource_portal_fixture", [](int level, int x, int y) {
+		EnsureInGame("probe_resource_portal_fixture");
+		if (level < 0 || level > 16) throw std::invalid_argument("fixture portal level out of range");
+		SetPortalStats(MyPlayerId, level > 0, Point { x, y }, level, DTYPE_CATHEDRAL, false);
+	}, py::arg("level"), py::arg("x") = 0, py::arg("y") = 0,
+	    "Test fixture only: set this player's Portals[] record (level 0 closes it) to exercise the WM_DIABWARPLVL guard branch without a real cast");
 	m.def("probe_resource_set_death_ui_flag", [](bool dead) {
 		EnsureInGame("probe_resource_set_death_ui_flag");
 		MyPlayerIsDead = dead;

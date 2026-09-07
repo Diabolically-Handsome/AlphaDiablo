@@ -34,6 +34,22 @@ COMPLETION_L2_V1 = CompletionRecipe()
 
 
 @dataclass(frozen=True)
+class CompletionRecipeR18C(CompletionRecipe):
+    """R18-C (2026-09-07): same arrival deadline and observation denominator as v1,
+    follow-up widened 1800 -> 9000 so a zero-training probe can watch
+    retreat -> recover -> re-descend loops. Immutable like v1; training rejects it."""
+
+    protocol: str = field(default="completion-l2-r18c", init=False)
+    followup_microsteps: int = field(default=9000, init=False)
+
+
+COMPLETION_L2_R18C = CompletionRecipeR18C()
+COMPLETION_RECIPES = {COMPLETION_L2_V1.protocol: COMPLETION_L2_V1,
+                      COMPLETION_L2_R18C.protocol: COMPLETION_L2_R18C}
+COMPLETION_PROTOCOLS = tuple(COMPLETION_RECIPES)
+
+
+@dataclass(frozen=True)
 class CompletionClockState:
     """Timing evidence only, with no synthetic native terminal flags."""
 
@@ -76,8 +92,9 @@ class CompletionClock:
     """
 
     def __init__(self, recipe: CompletionRecipe = COMPLETION_L2_V1):
-        if type(recipe) is not CompletionRecipe or recipe != COMPLETION_L2_V1:
-            raise ValueError("only the immutable completion-l2-v1 recipe is supported")
+        registered = COMPLETION_RECIPES.get(getattr(recipe, "protocol", None))
+        if registered is None or type(recipe) is not type(registered) or recipe != registered:
+            raise ValueError("only the immutable completion-l2-v1 / completion-l2-r18c recipes are supported")
         self._recipe = recipe
         self.reset()
 

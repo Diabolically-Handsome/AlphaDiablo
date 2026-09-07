@@ -30,6 +30,16 @@ bool gResourceRetreatEnabled = false;
 bool gRetreatAuthorized = false;
 int gResourceRetreatsStarted = 0;
 constexpr int MaxResourceRetreats = 3;
+// R18-F portal-v1 (2026-09-07): a Python-authorized Scroll of Town Portal round
+// trip -- main L2+ -> town (outbound) and town -> the portal's own floor
+// (return). portal.cpp deactivates the portal on the return leg, so one 200g
+// scroll buys exactly one round trip and the budget below counts round trips.
+// Off = every frozen verdict byte for byte (the WM_DIABWARPLVL receipt keeps
+// accepted=false, reason "unsupported_portal_or_warp" and target = -1).
+bool gResourcePortalEnabled = false;
+bool gPortalAuthorized = false;
+int gResourcePortalsStarted = 0;
+constexpr int MaxResourcePortals = 2;
 std::vector<ResourceItemIdentity> gResourceRetainedGear;
 std::vector<ResourceItemIdentity> gResourceLastRetainedGear;
 int gResourceLastRetentionGold = 0;
@@ -127,11 +137,42 @@ bool ResourceTransitionGuard(const Player &player, interface_mode mode, int targ
 	bool accepted = false;
 	bool targetIsSet = false;
 	std::string reason = "unauthorized_transition";
+	// R18-F portal-v1: a portal entry asks this guard TWICE. ProcessTownPortal
+	// asks first and, on acceptance, does ClrPlrPath + CMD_WARP + PM_NEWLVL;
+	// OnWarp -> StartWarpLvl then asks again, and by then PM_NEWLVL would make
+	// the transition_pending branch veto the transition the first call just
+	// authorized (StartWarpLvl returns early and the pair stands on a live
+	// portal that never fires). This recognises exactly that second half:
+	// PM_NEWLVL is already set but InitLevelChange has not yet set
+	// _pLvlChanging. Inert -- and therefore byte-identical -- while off.
+	const bool portalHandoff = gResourcePortalEnabled && mode == WM_DIABWARPLVL
+	    && player._pmode == PM_NEWLVL && !player._pLvlChanging;
 	if (player.hasNoLife() || player._pmode == PM_DEATH) {
 		reason = "dead";
-	} else if (player._pLvlChanging || player._pmode == PM_NEWLVL) {
+	} else if (!portalHandoff && (player._pLvlChanging || player._pmode == PM_NEWLVL)) {
 		reason = "transition_pending";
-	} else if (mode == WM_DIABWARPLVL || mode == WM_DIABRETOWN || mode == WM_DIABTWARPUP || mode == WM_DIABTOWNWARP) {
+	} else if (mode == WM_DIABWARPLVL) {
+		// R18-F portal-v1. ProcessTownPortal (missiles.cpp) and StartWarpLvl
+		// (player.cpp) both ask with target = -1, so this branch has to resolve
+		// the real destination itself. With the feature off nothing is resolved
+		// and nothing is written: accepted stays false, target stays -1 and the
+		// reason is the old shared verdict, byte for byte.
+		if (!gResourcePortalEnabled) {
+			reason = "unsupported_portal_or_warp";
+		} else if (!setlevel && leveltype != DTYPE_TOWN && source >= 2) {
+			target = 0; // outbound: GetPortalLevel always forces town
+			accepted = gPortalAuthorized;
+			reason = accepted ? "portal_to_town" : "portal_not_authorized";
+		} else if (!setlevel && leveltype == DTYPE_TOWN && source == 0
+		    && Portals[MyPlayerId].open && !Portals[MyPlayerId].setlvl
+		    && Portals[MyPlayerId].level >= 2) {
+			target = Portals[MyPlayerId].level; // return: the portal's own floor
+			accepted = gPortalAuthorized;
+			reason = accepted ? "portal_return" : "portal_not_authorized";
+		} else {
+			reason = "unsupported_portal_or_warp";
+		}
+	} else if (mode == WM_DIABRETOWN || mode == WM_DIABTWARPUP || mode == WM_DIABTOWNWARP) {
 		reason = "unsupported_portal_or_warp";
 	} else if (mode == WM_DIABSETLVL) {
 		// Quest entry is not descent; it must not be subject to L2 readiness.
@@ -185,7 +226,7 @@ bool ResourceTransitionGuard(const Player &player, interface_mode mode, int targ
 
 void ConfigureResourceProtocol(bool enabled, bool ordinaryArmorScope = false,
     bool preserveEquipmentReadiness = false, bool lootEconomy = false,
-    bool readinessAdvisory = false, bool retreat = false)
+    bool readinessAdvisory = false, bool retreat = false, bool portal = false)
 {
 	EnsureEngineProcess("configure_resource_protocol");
 	if (ordinaryArmorScope && !enabled)
@@ -198,11 +239,14 @@ void ConfigureResourceProtocol(bool enabled, bool ordinaryArmorScope = false,
 		throw std::invalid_argument("readiness advisory (coach-v03) requires l2-town-v1");
 	if (retreat && (!enabled || !readinessAdvisory))
 		throw std::invalid_argument("retreat-v1 requires l2-town-v1 under coach-v03");
+	if (portal && (!enabled || !readinessAdvisory))
+		throw std::invalid_argument("portal-v1 requires l2-town-v1 under coach-v03");
 	if (gInGame && (enabled != gResourceProtocol || ordinaryArmorScope != gResourceOrdinaryArmorScope
 	                  || preserveEquipmentReadiness != gResourcePreserveEquipmentReadiness
 	                  || lootEconomy != gResourceLootEconomy
 	                  || readinessAdvisory != gResourceReadinessAdvisory
-	                  || retreat != gResourceRetreatEnabled))
+	                  || retreat != gResourceRetreatEnabled
+	                  || portal != gResourcePortalEnabled))
 		throw std::runtime_error("resource protocol may change only between episodes");
 	if (gResourceOrdinaryArmorScope && !ordinaryArmorScope) gResourceSeenSmithItems.clear();
 	gResourceProtocol = enabled;
@@ -211,6 +255,7 @@ void ConfigureResourceProtocol(bool enabled, bool ordinaryArmorScope = false,
 	gResourceLootEconomy = lootEconomy;
 	gResourceReadinessAdvisory = readinessAdvisory;
 	gResourceRetreatEnabled = retreat;
+	gResourcePortalEnabled = portal;
 	LevelTransitionGuard = enabled ? ResourceTransitionGuard : nullptr;
 	DisableLevelBacktracking = !enabled;
 }
@@ -225,6 +270,8 @@ void ResetResourceEpisode(uint32_t episodeSeed)
 	gResourceServiceTripsStarted = 0;
 	gRetreatAuthorized = false;
 	gResourceRetreatsStarted = 0;
+	gPortalAuthorized = false;
+	gResourcePortalsStarted = 0;
 	gResourceRetainedGear.clear();
 	gResourceLastRetainedGear.clear();
 	gResourceLastRetentionGold = 0;
@@ -270,6 +317,25 @@ void ResourceAfterLoad()
 			gRetreatAuthorized = false;
 			++gResourceRetreatsStarted;
 		}
+		// R18-F portal-v1. The guard runs TWICE per portal entry (ProcessTownPortal
+		// then StartWarpLvl), so authorization is consumed on ARRIVAL, never by
+		// receipt sequence. Outbound opens the shops without spending a loot
+		// economy town trip; the return leg jumps town -> L2+ and therefore has to
+		// clear the town-trip flags itself, because the depth == 1 branch below
+		// (their only other owner) is never reached on that path.
+		if (gPortalAuthorized && gResourceTransition.accepted
+		    && gResourceTransition.reason == "portal_to_town" && depth == 0) {
+			gPortalAuthorized = false;
+			gTownServiceTrip = true;
+		}
+		if (gPortalAuthorized && gResourceTransition.accepted
+		    && gResourceTransition.reason == "portal_return"
+		    && depth >= 2 && depth == gResourceTransition.target) {
+			gPortalAuthorized = false;
+			++gResourcePortalsStarted;
+			gTownServiceTrip = false;
+			gTownServiceAuthorized = false;
+		}
 		if (depth == 0 && !gTownServiceTrip && gResourceTransition.accepted && gResourceTransition.reason == "town_service_departure") {
 			gTownServiceTrip = true;
 			if (gResourceLootEconomy) ++gResourceServiceTripsStarted;
@@ -309,11 +375,32 @@ void ConfigureRetreat(bool authorized)
 	gRetreatAuthorized = authorized;
 }
 
+void ConfigureResourcePortal(bool authorized)
+{
+	EnsureInGame("configure_resource_portal");
+	if (!gResourceProtocol || !gResourcePortalEnabled)
+		throw std::runtime_error("portal requires l2-town-v1 with portal-v1 enabled");
+	if (authorized && setlevel)
+		throw std::runtime_error("portal transits belong to the main dungeon");
+	if (authorized && currlevel != 0 && currlevel < 2)
+		throw std::runtime_error("portal can depart only from main L2 or deeper");
+	if (authorized && currlevel == 0
+	    && !(Portals[MyPlayerId].open && !Portals[MyPlayerId].setlvl && Portals[MyPlayerId].level >= 2))
+		throw std::runtime_error("portal return requires an open town portal to main L2 or deeper");
+	if (authorized && gResourcePortalsStarted >= MaxResourcePortals)
+		throw std::runtime_error("portal-v1 allows at most two portal round trips per episode");
+	gPortalAuthorized = authorized;
+}
+
 const char *ResourceVendorName(TalkID store)
 {
 	switch (store) {
 	case TalkID::Smith: case TalkID::SmithBuy: return "smith";
 	case TalkID::Healer: case TalkID::HealerBuy: return "healer";
+	// R18-F portal-v1: only ActTalkTowner can open a store in this bridge and
+	// it refuses the witch unless the feature is on, so with portal-v1 off
+	// ActiveStore can never be a witch page and this mapping is unobservable.
+	case TalkID::Witch: case TalkID::WitchBuy: return "witch";
 	default: return "none";
 	}
 }
@@ -633,6 +720,32 @@ py::list ObserveUnequipCandidates()
 	return candidates;
 }
 
+// inventory_items is armor-only, so a Scroll of Town Portal is otherwise
+// invisible to Python. Export the INVITEM_* spellFrom code act_cast_town_portal
+// needs plus the ordinary four-field seed identity. Only under portal-v1.
+py::list ObserveResourcePortalScrolls()
+{
+	py::list scrolls;
+	const Player &player = *MyPlayer;
+	auto append = [&scrolls](const Item &item, int spellFrom, const char *container, int slot) {
+		if (item.isEmpty() || !item.isScrollOf(SpellID::TownPortal)) return;
+		py::dict entry;
+		entry["seed_hi"] = HighWord(item._iSeed);
+		entry["seed_lo"] = LowWord(item._iSeed);
+		entry["create_info"] = item._iCreateInfo;
+		entry["base_id"] = static_cast<int>(item.IDidx);
+		entry["container"] = container;
+		entry["index"] = slot;
+		entry["spell_from"] = spellFrom;
+		scrolls.append(entry);
+	};
+	for (int index = 0; index < player._pNumInv; ++index)
+		append(player.InvList[index], INVITEM_INV_FIRST + index, "inventory", index);
+	for (int slot = 0; slot < MaxBeltItems; ++slot)
+		append(player.SpdList[slot], INVITEM_BELT_FIRST + slot, "belt", slot);
+	return scrolls;
+}
+
 // New loot APIs remain absent from legacy raw observations.
 #include "resource_loot.hpp"
 
@@ -657,10 +770,13 @@ py::dict ObserveResourceState()
 	if (!setlevel && currlevel == 0) {
 		for (size_t index = 0; index < Towners.size(); ++index) {
 			const Towner &npc = Towners[index];
-			if (npc._ttype != TOWN_SMITH && npc._ttype != TOWN_HEALER) continue;
+			// The witch appears only under portal-v1; every frozen arm keeps the
+			// two-vendor town observation byte for byte.
+			const bool witch = gResourcePortalEnabled && npc._ttype == TOWN_WITCH;
+			if (npc._ttype != TOWN_SMITH && npc._ttype != TOWN_HEALER && !witch) continue;
 			py::dict entry;
 			entry["id"] = index;
-			entry["type"] = npc._ttype == TOWN_SMITH ? "smith" : "healer";
+			entry["type"] = witch ? "witch" : (npc._ttype == TOWN_SMITH ? "smith" : "healer");
 			entry["x"] = npc.position.x;
 			entry["y"] = npc.position.y;
 			npcs.append(entry);
@@ -706,6 +822,8 @@ py::dict ObserveResourceState()
 			}
 		}
 		if (std::string(ResourceVendorName(ActiveStore)) == "healer") appendStock(HealerItems, "healer");
+		if (gResourcePortalEnabled && std::string(ResourceVendorName(ActiveStore)) == "witch")
+			appendStock(WitchItems, "witch");
 	}
 	for (int index = 0; index < MyPlayer->_pNumInv; ++index) {
 		if (MyPlayer->InvList[index].isEquipment()) {
@@ -750,6 +868,20 @@ py::dict ObserveResourceState()
 		result["retreat_authorized"] = gRetreatAuthorized;
 		result["retreats_started"] = gResourceRetreatsStarted;
 		result["max_retreats"] = MaxResourceRetreats;
+	}
+	result["portal_enabled"] = gResourcePortalEnabled;
+	if (gResourcePortalEnabled) {
+		const Portal &myPortal = Portals[MyPlayerId];
+		result["portal_authorized"] = gPortalAuthorized;
+		result["portals_started"] = gResourcePortalsStarted;
+		result["max_portals"] = MaxResourcePortals;
+		result["portal_open"] = myPortal.open;
+		result["portal_level"] = myPortal.level;
+		result["portal_x"] = myPortal.position.x;
+		result["portal_y"] = myPortal.position.y;
+		result["portal_set_level"] = myPortal.setlvl;
+		result["portal_on_level"] = PortalOnLevel(*MyPlayer);
+		result["portal_scrolls"] = ObserveResourcePortalScrolls();
 	}
 	result["max_main_depth_reached"] = gResourceMaxDepth;
 	// coach-v03 lifts the native curriculum wall (Python per-floor tables govern L3+).
@@ -832,7 +964,8 @@ int ActTalkTowner(int index)
 {
 	if (!ResourceTownActionAllowed("act_talk_towner") || qtextflag || index < 0 || static_cast<size_t>(index) >= Towners.size()) return 0;
 	const Towner &npc = Towners[index];
-	if ((npc._ttype != TOWN_HEALER && npc._ttype != TOWN_SMITH)
+	const bool witch = gResourcePortalEnabled && npc._ttype == TOWN_WITCH;
+	if ((npc._ttype != TOWN_HEALER && npc._ttype != TOWN_SMITH && !witch)
 	    || MyPlayer->position.tile.WalkingDistance(npc.position) >= 2) return 0;
 	NetSendCmdLocParam1(true, CMD_TALKXY, npc.position, static_cast<uint16_t>(index));
 	return 1;
@@ -864,17 +997,30 @@ py::dict ActBuyStoreItem(const std::string &vendor, int index, uint16_t seedHigh
 {
 	if (!ResourceTownActionAllowed("act_buy_store_item") || qtextflag) return ResourceActionResult(false, "unavailable");
 	const bool healer = vendor == "healer";
-	if ((!healer && vendor != "smith") || vendor != ResourceVendorName(ActiveStore)) return ResourceActionResult(false, "wrong_vendor");
-	const Towner *npc = GetTowner(healer ? TOWN_HEALER : TOWN_SMITH);
+	// R18-F portal-v1: the witch sells exactly one SKU (the pinned Scroll of Town
+	// Portal, WitchItems[2]), and only while the feature is on. Her general
+	// catalogue is never reachable from this API.
+	const bool witch = gResourcePortalEnabled && vendor == "witch";
+	if ((!healer && !witch && vendor != "smith") || vendor != ResourceVendorName(ActiveStore)) return ResourceActionResult(false, "wrong_vendor");
+	const Towner *npc = GetTowner(witch ? TOWN_WITCH : (healer ? TOWN_HEALER : TOWN_SMITH));
 	if (npc == nullptr || MyPlayer->position.tile.WalkingDistance(npc->position) >= 2) return ResourceActionResult(false, "not_adjacent");
-	const std::span<const Item> items = healer ? std::span<const Item>(HealerItems) : std::span<const Item>(SmithItems);
+	const std::span<const Item> items = witch ? std::span<const Item>(WitchItems)
+	    : (healer ? std::span<const Item>(HealerItems) : std::span<const Item>(SmithItems));
 	if (index < 0 || static_cast<size_t>(index) >= items.size()) return ResourceActionResult(false, "invalid_item");
 	const Item &item = items[index];
 	if (!MatchesItemIdentity(item, seedHigh, seedLow, createInfo, baseId)) return ResourceActionResult(false, "stale_item");
 	if (!MyPlayer->CanUseItem(item)) return ResourceActionResult(false, "cannot_use");
-	if (healer ? InstantHealKind(item) == 0 : (gResourceOrdinaryArmorScope ? !IsOrdinaryResourceArmor(item) : (!item.isArmor() || item._iMagical != ITEM_QUALITY_NORMAL))) return ResourceActionResult(false, "unsupported_item");
+	if (witch ? item.IDidx != IDI_PORTAL : (healer ? InstantHealKind(item) == 0 : (gResourceOrdinaryArmorScope ? !IsOrdinaryResourceArmor(item) : (!item.isArmor() || item._iMagical != ITEM_QUALITY_NORMAL)))) return ResourceActionResult(false, "unsupported_item");
+	// StoreAutoPlace prefers the belt and CanBePlacedOnBelt accepts a usable
+	// scroll, so the portal scroll can eat a slot the four-heal readiness law
+	// needs. Sell it only once those four heals are already in the belt.
+	if (witch) {
+		int beltHeals = 0;
+		for (const Item &belt : MyPlayer->SpdList) beltHeals += InstantHealKind(belt) != 0;
+		if (beltHeals < RequiredResourceBeltHeals) return ResourceActionResult(false, "belt_reserved_for_heals");
+	}
 	if (Stash.gold != 0) throw std::runtime_error("l2-town-v1 forbids shared-stash gold");
-	const auto purchase = TryBuyStoreItem(healer ? StoreVendor::Healer : StoreVendor::Smith, static_cast<size_t>(index), (uint32_t { seedHigh } << 16) | seedLow, createInfo, baseId);
+	const auto purchase = TryBuyStoreItem(witch ? StoreVendor::Witch : (healer ? StoreVendor::Healer : StoreVendor::Smith), static_cast<size_t>(index), (uint32_t { seedHigh } << 16) | seedLow, createInfo, baseId);
 	switch (purchase.status) {
 	case StoreBuyStatus::Success: return ResourceActionResult(true, "purchased", purchase.paid);
 	case StoreBuyStatus::InvalidItem: return ResourceActionResult(false, "invalid_item");
@@ -883,6 +1029,47 @@ py::dict ActBuyStoreItem(const std::string &vendor, int index, uint16_t seedHigh
 	case StoreBuyStatus::NoRoom: return ResourceActionResult(false, "no_room");
 	}
 	throw std::runtime_error("unknown store transaction status");
+}
+
+// R18-F portal-v1: read the Scroll of Town Portal WITHOUT UseInvItem. The bridge
+// forces ControlMode == KeyboardAndMouse, and items.cpp's UseItem turns a
+// TARGETED scroll (Town Portal is one) into CURSOR_TELEPORT instead of a cast;
+// after that inv.cpp makes every later UseInvItem -- including the ActDrink
+// reflex -- a silent no-op for the rest of the episode. Emit items.cpp's
+// non-targeted branch command (CMD_SPELLXY / SpellType::Scroll) directly.
+py::dict ActCastTownPortal(int spellFrom)
+{
+	if (!CanAcceptPlayerAction("act_cast_town_portal") || !gResourceProtocol || !gResourcePortalEnabled)
+		return ResourceActionResult(false, "unavailable");
+	Player &player = *MyPlayer;
+	if (player.hasNoLife() || player._pmode != PM_STAND || pcurs != CURSOR_HAND
+	    || qtextflag || IsPlayerInStore() || !player.HoldItem.isEmpty())
+		return ResourceActionResult(false, "unavailable");
+	if (setlevel || leveltype == DTYPE_TOWN || currlevel < 2)
+		return ResourceActionResult(false, "wrong_scene");
+	// A second scroll on the same floor would only replace the first one.
+	if (Portals[MyPlayerId].open && !Portals[MyPlayerId].setlvl
+	    && Portals[MyPlayerId].level == static_cast<int>(currlevel))
+		return ResourceActionResult(false, "portal_already_open");
+	if (spellFrom > INVITEM_BELT_LAST || !IsValidSpellFrom(spellFrom))
+		return ResourceActionResult(false, "invalid_item");
+	const Item *scroll = nullptr;
+	if (spellFrom >= INVITEM_INV_FIRST && spellFrom <= INVITEM_INV_LAST) {
+		const int inventoryIndex = spellFrom - INVITEM_INV_FIRST;
+		if (inventoryIndex < player._pNumInv) scroll = &player.InvList[inventoryIndex];
+	} else if (spellFrom >= INVITEM_BELT_FIRST && spellFrom <= INVITEM_BELT_LAST) {
+		scroll = &player.SpdList[spellFrom - INVITEM_BELT_FIRST];
+	}
+	if (scroll == nullptr || scroll->isEmpty() || !scroll->isScrollOf(SpellID::TownPortal))
+		return ResourceActionResult(false, "invalid_item");
+	if (!CanUseScroll(player, SpellID::TownPortal))
+		return ResourceActionResult(false, "cannot_use");
+	NetSendCmdLocParam3(true, CMD_SPELLXY, player.position.future,
+	    static_cast<int8_t>(SpellID::TownPortal), static_cast<uint8_t>(SpellType::Scroll),
+	    static_cast<uint16_t>(spellFrom));
+	py::dict result = ResourceActionResult(true, "cast_requested");
+	result["spell_from"] = spellFrom;
+	return result;
 }
 
 py::dict ActRepairEquippedItem(int slot, uint16_t seedHigh, uint16_t seedLow, uint16_t createInfo, int baseId, int expectedDurability, int expectedPrice)

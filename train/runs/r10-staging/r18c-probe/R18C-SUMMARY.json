@@ -1,0 +1,235 @@
+{
+ "table": {
+  "r18c-loot-retreat": {
+   "alive": 15,
+   "died": 33,
+   "l2_reach": 37,
+   "l2_deaths": 25,
+   "l2_beats_total": 67511,
+   "l2_hazard_per_1k": 0.3703,
+   "depth_hist": {
+    "2": 35,
+    "1": 11,
+    "3": 2
+   },
+   "l3": 2,
+   "clvl_mean": 3.23,
+   "kills_mean": 117.8,
+   "micro_steps_mean": 10165.3,
+   "death_dlvl_hist": {
+    "1": 7,
+    "2": 25,
+    "3": 1
+   },
+   "survivor_end_depth_hist": {
+    "3": 1,
+    "1": 9,
+    "2": 4,
+    "0": 1
+   },
+   "l2_arrival_plus_1800": {
+    "n": 1800,
+    "reached_l2": 37,
+    "observed": 36,
+    "alive": 26,
+    "censored_survivors": 1
+   },
+   "l2_arrival_plus_9000": {
+    "n": 9000,
+    "reached_l2": 37,
+    "observed": 35,
+    "alive": 9,
+    "censored_survivors": 2
+   }
+  },
+  "r18c-loot-noretreat": {
+   "alive": 5,
+   "died": 43,
+   "l2_reach": 37,
+   "l2_deaths": 34,
+   "l2_beats_total": 47385,
+   "l2_hazard_per_1k": 0.7175,
+   "depth_hist": {
+    "2": 35,
+    "1": 11,
+    "3": 2
+   },
+   "l3": 2,
+   "clvl_mean": 3.27,
+   "kills_mean": 114.8,
+   "micro_steps_mean": 7626.7,
+   "death_dlvl_hist": {
+    "1": 7,
+    "2": 34,
+    "3": 2
+   },
+   "survivor_end_depth_hist": {
+    "1": 4,
+    "2": 1
+   },
+   "l2_arrival_plus_1800": {
+    "n": 1800,
+    "reached_l2": 37,
+    "observed": 36,
+    "alive": 8,
+    "censored_survivors": 1
+   },
+   "l2_arrival_plus_9000": {
+    "n": 9000,
+    "reached_l2": 37,
+    "observed": 36,
+    "alive": 0,
+    "censored_survivors": 1
+   }
+  },
+  "t0pp-loot-retreat (1800)": {
+   "alive": 31,
+   "died": 17,
+   "l2_reach": 37,
+   "l2_deaths": 10,
+   "l2_beats_total": 19894,
+   "l2_hazard_per_1k": 0.5027,
+   "depth_hist": {
+    "2": 36,
+    "1": 11,
+    "3": 1
+   },
+   "l3": 1,
+   "clvl_mean": 2.96,
+   "kills_mean": 105.1,
+   "micro_steps_mean": 7668.1,
+   "death_dlvl_hist": {
+    "1": 7,
+    "2": 10
+   },
+   "survivor_end_depth_hist": {
+    "1": 15,
+    "2": 4,
+    "0": 12
+   },
+   "l2_arrival_plus_1800": {
+    "n": 1800,
+    "reached_l2": 37,
+    "observed": 36,
+    "alive": 26,
+    "censored_survivors": 1
+   }
+  },
+  "t0pp-loot-noretreat (1800)": {
+   "alive": 13,
+   "died": 35,
+   "l2_reach": 37,
+   "l2_deaths": 27,
+   "l2_beats_total": 35724,
+   "l2_hazard_per_1k": 0.7558,
+   "depth_hist": {
+    "2": 36,
+    "1": 11,
+    "3": 1
+   },
+   "l3": 1,
+   "clvl_mean": 3.25,
+   "kills_mean": 113.3,
+   "micro_steps_mean": 7373.9,
+   "death_dlvl_hist": {
+    "1": 7,
+    "2": 27,
+    "3": 1
+   },
+   "survivor_end_depth_hist": {
+    "2": 9,
+    "1": 4
+   },
+   "l2_arrival_plus_1800": {
+    "n": 1800,
+    "reached_l2": 37,
+    "observed": 36,
+    "alive": 8,
+    "censored_survivors": 1
+   }
+  }
+ },
+ "paired_retreat_vs_control": {
+  "n": 48,
+  "saved": 10,
+  "lost": 0,
+  "net": 10,
+  "death_rate_diff": -0.2083,
+  "ucb95_one_sided": -0.1109
+ },
+ "loops_retreat_arm": {
+  "episodes_redescended_after_ascent": 25,
+  "of_which_alive_at_end": 10,
+  "ascents_per_episode_hist": {
+   "0": 23,
+   "1": 4,
+   "2": 8,
+   "3": 13
+  },
+  "episodes_with_second_attempt": 25,
+  "second_attempt_ascended": 21,
+  "second_attempt_unresolved": 4,
+  "attempts_unresolved_total": 20,
+  "attempts_unresolved_in_died_episodes": 20,
+  "max_depth_hist": {
+   "2": 35,
+   "1": 11,
+   "3": 2
+  },
+  "l3_plus": 2,
+  "survivor_end_depth_hist": {
+   "3": 1,
+   "1": 9,
+   "2": 4,
+   "0": 1
+  }
+ },
+ "loops_control_arm": {
+  "episodes_redescended_after_ascent": 0,
+  "of_which_alive_at_end": 0,
+  "ascents_per_episode_hist": {
+   "0": 48
+  },
+  "episodes_with_second_attempt": 0,
+  "second_attempt_ascended": 0,
+  "second_attempt_unresolved": 0,
+  "attempts_unresolved_total": 0,
+  "attempts_unresolved_in_died_episodes": 0,
+  "max_depth_hist": {
+   "2": 35,
+   "1": 11,
+   "3": 2
+  },
+  "l3_plus": 2,
+  "survivor_end_depth_hist": {
+   "1": 4,
+   "2": 1
+  }
+ },
+ "occupancy_after_first_ascent_retreat_arm": {
+  "episodes": 25,
+  "l2plus_share_mean": 0.287,
+  "l2plus_share_median": 0.287,
+  "episodes_share_ge_0.5": 4,
+  "survivor_end_depth_hist_after_ascent": {
+   "3": 1,
+   "1": 5,
+   "2": 3,
+   "0": 1
+  }
+ },
+ "P6_control_prefix_equal_to_t0pp": true,
+ "P6_diff_seeds": [],
+ "protocol_receipts": {
+  "r18c-loot-retreat": "completion-l2-r18c",
+  "r18c-loot-noretreat": "completion-l2-r18c",
+  "t0pp-loot-retreat": "completion-l2-v1"
+ },
+ "verdict": "R18C_REPORT_ONLY",
+ "seeds": "2133000-2133047",
+ "clock": "completion-l2-r18c",
+ "elapsed_s": 1140.6,
+ "bridge": "/home/laure/r17_work/r17-1/build-res",
+ "rows_sha_retreat": "aba81b661070f3bb",
+ "rows_sha_control": "74ba21d47f15df49"
+}

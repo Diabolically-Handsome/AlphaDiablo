@@ -343,6 +343,10 @@ class _ControllerMonster:
     locally_engageable: bool
     dynamic_quantities: tuple[float, ...]
     combat_flags: int
+    # R18-E: runtime AI / level / damage for the engagement selector (not on the wire).
+    ai: int = 0
+    monster_level: int = 0
+    max_damage: int = 0
 
 
 @dataclass(frozen=True)
@@ -653,6 +657,10 @@ class DiabloGymEnv(gym.Env):
         resource_loot_economy: bool = False,
         resource_readiness_law: str = "veto-v1",
         resource_retreat: str = "off",
+        resource_portal: str = "off",
+        aggro_cap: str = "off",
+        engagement_priority: str = "off",
+        hunt_scope: str = "all",
     ):
         super().__init__()
         from .resource_protocol import validate_resource_config, validate_ordinary_armor_scope
@@ -680,6 +688,27 @@ class DiabloGymEnv(gym.Env):
         from .resource_protocol import validate_retreat_protocol
         self.resource_retreat = validate_retreat_protocol(
             self.resource_protocol, self.resource_readiness_law, resource_retreat)
+        # R18-F portal-v1: the Scroll of Town Portal vehicle for that same
+        # interface -- the retreat without the lost depth (default off =
+        # byte-identical; portal-v1 requires retreat-v1 to be on).
+        from .resource_protocol import validate_portal_protocol
+        self.resource_portal = validate_portal_protocol(
+            self.resource_protocol, self.resource_readiness_law,
+            self.resource_retreat, resource_portal)
+        # R18-D aggro cap / R18-E engagement priority (defaults off = byte-identical).
+        from .aggro_cap import validate_aggro_cap, AggroCapPolicy
+        self.aggro_cap = validate_aggro_cap(aggro_cap)
+        self._aggro_cap_policy = AggroCapPolicy() if self.aggro_cap != "off" else None
+        self._aggro_cap_fired = 0
+        from .engagement import validate_engagement_priority
+        self.engagement_priority = validate_engagement_priority(engagement_priority)
+        self._engagement_decisions = 0
+        self._engagement_reordered = 0
+        # R18-G (2026-09-07): scope of the a10 global hunt (the pull mechanism).
+        # "all" = frozen behaviour; "l1-only" = no global hunt on main L2+.
+        if hunt_scope not in ("all", "l1-only"):
+            raise ValueError(f"Unknown hunt_scope {hunt_scope!r}; expected all or l1-only")
+        self.hunt_scope = hunt_scope
         if dive_blocker_recovery not in ("off", "adjacent-v1"):
             raise ValueError("dive_blocker_recovery must be off or adjacent-v1")
         if dive_blocker_recovery != "off" and self.resource_protocol == "off":
@@ -915,6 +944,8 @@ class DiabloGymEnv(gym.Env):
         validate_native_readiness_law(raw, getattr(self, "resource_readiness_law", "veto-v1"))
         from .resource_protocol import validate_native_retreat
         validate_native_retreat(raw, getattr(self, "resource_retreat", "off"))
+        from .resource_protocol import validate_native_portal
+        validate_native_portal(raw, getattr(self, "resource_portal", "off"))
 
     # ---------- gymnasium API ----------
 
@@ -964,6 +995,9 @@ class DiabloGymEnv(gym.Env):
             self._visited = {(self._raw["player_x"], self._raw["player_y"])}
             # R16 C6 进展锚点与足迹同源起步(仅 progress_far_tiles>0 时读取)。
             self._resource_actual_microsteps = 0
+            self._aggro_cap_fired = 0
+            self._engagement_decisions = 0
+            self._engagement_reordered = 0
             self._resource_terminal_reason = None
             self._resource_pending_command = None
             self._resource_dive_authority = False
@@ -1504,6 +1538,10 @@ class DiabloGymEnv(gym.Env):
                 locally_engageable=is_locally_engageable,
                 dynamic_quantities=dynamic_quantities,
                 combat_flags=combat_flags,
+                ai=int(monster.get("ai", 0)),
+                monster_level=int(monster.get("monster_level", 0)),
+                max_damage=max(int(monster.get("max_damage", 0)),
+                               int(monster.get("max_damage_special", 0))),
             )
             monster_rows.append(row)
             if is_locally_engageable:
@@ -2137,6 +2175,16 @@ class DiabloGymEnv(gym.Env):
             for action in self._protected_walk_actions(raw):
                 mask[action] = False
         mask[9] = bool(snapshot.candidates)
+        if (getattr(self, "aggro_cap", "off") != "off" and mask[9]
+                and int(raw.get("dungeon_level") or 0) >= 2 and not raw.get("is_set_level")):
+            # v1 scope: main L2+ only, so the L1 prefix stays byte-identical to the
+            # retreat arm and paired comparisons isolate the L2 effect.
+            # R18-D hold-v1: a crowd is on us and we can fight it -> no new pulls
+            # (a10 masked). The mask[9] guard keeps a fight available: no deadlock.
+            from .aggro_cap import cap_fires
+            if cap_fires(raw, self._aggro_cap_policy, mask[9]):
+                mask[10] = False
+                self._aggro_cap_fired += 1  # mask-build hits (several per step), not steps
         mask[12] = (
             int(raw.get("belt_heals", 0)) > 0
             and int(raw.get("hp", 0)) < int(raw.get("max_hp", 0))
@@ -2182,7 +2230,8 @@ class DiabloGymEnv(gym.Env):
                         self, "resource_preserve_equipment_readiness", False)),
                     loot_economy=loot,
                     readiness_advisory=True,
-                    **({"retreat": True} if getattr(self, "resource_retreat", "off") != "off" else {}))
+                    **({"retreat": True} if getattr(self, "resource_retreat", "off") != "off" else {}),
+                    **({"portal": True} if getattr(self, "resource_portal", "off") != "off" else {}))
             elif getattr(self, "resource_preserve_equipment_readiness", False):
                 bridge.configure_resource_protocol(enabled,
                     ordinary_armor_scope=getattr(self, "resource_ordinary_armor_scope", False),
@@ -2392,12 +2441,28 @@ class DiabloGymEnv(gym.Env):
             result = bridge.act_dismiss_dialog()
         elif kind == "buy":
             result = bridge.act_buy_store_item(*args)
+        elif kind == "cast_portal":
+            # R18-F portal-v1. The native action emits CMD_SPELLXY directly;
+            # routing a targeted scroll through UseInvItem would strand the
+            # cursor in CURSOR_TELEPORT and silently disable every later drink.
+            if getattr(self, "resource_portal", "off") == "off":
+                raise ValueError("Reading a Scroll of Town Portal requires portal-v1")
+            result = bridge.act_cast_town_portal(*args)
+            if not isinstance(result, dict):
+                raise RuntimeError("Portal cast requires a real native receipt")
         elif kind == "equip":
             result = bridge.act_equip_inventory_item(*args)
         elif kind == "repair":
             if self.resource_purchase_mode != "full":
                 raise ValueError("Paid repair is restricted to the full resource arm")
             result = bridge.act_repair_equipped_item(*args)
+        elif kind == "hold":
+            # R18-F portal-v1: advance the engine without the wait/cancel semantics
+            # (act_wait calls player.Stop and StartStand on PM_SPELL, which kills a
+            # queued Scroll of Town Portal before its animation fires). Script-only.
+            if getattr(self, "resource_portal", "off") == "off":
+                raise ValueError("The hold command requires portal-v1")
+            result = 1
         elif kind == "wait":
             result = bridge.act_wait()
         else:
@@ -2414,6 +2479,29 @@ class DiabloGymEnv(gym.Env):
         start_scene = _scene_identity(self._raw)
         raw = self._step_native()
         beats = 1
+        if kind == "cast_portal" and receipt.get("accepted"):
+            # R18-F portal-v1: the queued Scroll of Town Portal must run to its cast
+            # frame BEFORE the generic settle fence (_settle_to_idle cancels intent
+            # with act_wait). Mirrors the accepted-open handling: step until the
+            # portal exists or the spell animation (PM_SPELL=9) has returned to
+            # PM_STAND, bounded by the service deadline and 16 beats.
+            deadline = min(self.max_steps,
+                           int(getattr(self, "_resource_service_deadline", self.max_steps)),
+                           clock_before + 16)
+            seen_spell = False
+            while (self._resource_actual_microsteps < deadline
+                   and not (raw.get("dead") or raw.get("game_over") or raw.get("victory"))
+                   and _scene_identity(raw) == start_scene):
+                mode = int(raw.get("player_mode", 0) or 0)
+                seen_spell = seen_spell or mode == 9
+                state = raw.get("resource_state", {}) or {}
+                if state.get("portal_open") or any(
+                        int(m.get("type", -1)) == 10 for m in raw.get("missiles", ())):
+                    break
+                if seen_spell and mode == 0:
+                    break
+                raw = self._step_native()
+                beats += 1
         if kind == "open" and receipt.get("accepted"):
             # Non-explosive barrels share the planner's softwall channel.
             # Let the accepted native operation finish its attack animation
@@ -2482,7 +2570,7 @@ class DiabloGymEnv(gym.Env):
                 native_execution["attempts"] = 1
                 native_execution["accepts"] = int(bool(resource_receipt.get("accepted")))
         elif action == 9:
-            engage_candidate = self._canonical_engage_candidate(
+            engage_candidate = self._engage_candidate_for_action9(
                 controller_snapshot)
             if engage_candidate is not None:
                 engage_target_generation_key = (
@@ -2599,6 +2687,21 @@ class DiabloGymEnv(gym.Env):
             receipt = self._raw.get("resource_state", {}).get("transition", {})
             authorized_retreat = bool(receipt.get("accepted")
                                       and receipt.get("reason") == "retreat_ascent")
+        if (not authorized_retreat and getattr(self, "resource_portal", "off") != "off"
+                and int(self._raw["dungeon_level"]) != int(prev["dungeon_level"])):
+            # R18-F portal-v1: the portal is the only sanctioned MULTI-floor
+            # transition. Outbound is L2+ -> 0, a depth drop this fail-closed
+            # invariant would otherwise kill the engine process for; the return
+            # leg 0 -> L2+ is an increase and already legal, and is listed only
+            # so both engine receipts are named in one place. Nothing is trusted
+            # except an ACCEPTED receipt whose reason and geometry both match.
+            receipt = self._raw.get("resource_state", {}).get("transition", {})
+            previous_depth = int(prev["dungeon_level"])
+            new_depth = int(self._raw["dungeon_level"])
+            if bool(receipt.get("accepted")) and receipt.get("reason") == "portal_to_town":
+                authorized_retreat = previous_depth >= 2 and new_depth == 0
+            elif bool(receipt.get("accepted")) and receipt.get("reason") == "portal_return":
+                authorized_retreat = previous_depth == 0 and new_depth >= 2
         if (self.start_in_dungeon and not authorized_retreat
                 and self._raw["dungeon_level"] < prev["dungeon_level"]):
             # 未来若出现新的回城/向上传送路径，宁可终止训练也
@@ -3263,6 +3366,35 @@ class DiabloGymEnv(gym.Env):
             snapshot.candidates[0],
         )
 
+    def _hunt_allowed_here(self, raw):
+        """R18-G hunt_scope: "all" (byte-identical) or "l1-only" (main L2+ never
+        hunts across the level; quest set-levels keep the frozen behaviour)."""
+        if getattr(self, "hunt_scope", "all") == "all":
+            return True
+        return bool(raw.get("is_set_level")) or int(raw.get("dungeon_level") or 0) <= 1
+
+    def _engage_candidate_for_action9(self, snapshot, record=True):
+        """R18-E: the target action 9 binds. threat-v1 re-ranks the same frozen
+        candidate set on main L2+ (a function of the snapshot plus the decision
+        floor, constant within a decision, so the a9 approach reward and the macro
+        agree); off = the wire-canonical first item, byte-identical."""
+        raw = getattr(self, "_raw", None) or {}
+        if (getattr(self, "engagement_priority", "off") == "off"
+                or int(raw.get("dungeon_level") or 0) < 2 or raw.get("is_set_level")):
+            # v1 scope: main L2+ only (L1 prefix byte-identical to the retreat arm).
+            return self._canonical_engage_candidate(snapshot)
+        from .engagement import choose_engage_candidate
+        chosen = choose_engage_candidate(snapshot)
+        if record:
+            # counted once per a9 step (the reward-key call in step()); _macro_engage
+            # re-selects on the same snapshot with record=False.
+            canonical = self._canonical_engage_candidate(snapshot)
+            self._engagement_decisions += 1
+            if (chosen is not None and canonical is not None
+                    and chosen.monster_id != canonical.monster_id):
+                self._engagement_reordered += 1
+        return chosen
+
     def _macro_engage(
         self,
         max_beats: int = 10,
@@ -3284,7 +3416,7 @@ class DiabloGymEnv(gym.Env):
             else self._capture_controller_snapshot(self._raw)
         )
         candidates = list(snapshot.candidates)
-        candidate = self._canonical_engage_candidate(snapshot)
+        candidate = self._engage_candidate_for_action9(snapshot, record=False)
         if candidate is None:
             return self._wait_step()
         if candidate.blocked:
@@ -3994,7 +4126,7 @@ class DiabloGymEnv(gym.Env):
         # (探针:以"无可接敌候选"为闸会在可见但暂不可接敌的怪旁 a9↔a10 振荡,
         # seed7002 击杀 96→48;以"窗内无占位"为闸则隔墙暗怪把 hunt 锁死,
         # seed9005 原地徘徊)。全图无可达存活怪(None)才落回局部边疆/回退。
-        if getattr(self, "_explore_global_hunt", False):
+        if getattr(self, "_explore_global_hunt", False) and self._hunt_allowed_here(raw):
             if snapshot is not None:
                 visible_in_window = any(snapshot.visible_monster)
             else:

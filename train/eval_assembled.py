@@ -2135,6 +2135,10 @@ def main():
                     choices=("veto-v1", "coach-v03"),
                     help="R17.1 ruling 3 readiness law; coach-v03 (six native "
                          "conditions, health excluded) requires l2-town-v1")
+    ap.add_argument("--resource-retreat", default="off",
+                    choices=("off", "retreat-v1"),
+                    help="R18-B return-to-town law; retreat-v1 requires "
+                         "l2-town-v1 under coach-v03")
     ap.add_argument("--dive-blocker-recovery", default="off", choices=("off", "adjacent-v1"),
                     help="Explicit bounded a11 blocker combat; requires resource protocol")
     ap.add_argument("--worker-window-registration", default="farm-only",
@@ -2174,6 +2178,12 @@ def main():
             and args.resource_protocol != "l2-town-v1"):
         ap.error("--resource-readiness-law coach-v03 requires "
                  "--resource-protocol l2-town-v1")
+    if (args.resource_retreat != "off"
+            and (args.resource_protocol != "l2-town-v1"
+                 or args.resource_readiness_law != "coach-v03")):
+        ap.error("--resource-retreat retreat-v1 requires "
+                 "--resource-protocol l2-town-v1 and "
+                 "--resource-readiness-law coach-v03")
     requested_r16 = {
         "explore_global_hunt": bool(args.explore_global_hunt),
         "explore_global_fallback": bool(args.explore_global_fallback),
@@ -2184,6 +2194,7 @@ def main():
         "resource_purchase_mode": args.resource_purchase_mode,
         "resource_service_policy": args.resource_service_policy,
         "resource_readiness_law": args.resource_readiness_law,
+        "resource_retreat": args.resource_retreat,
         "dive_blocker_recovery": args.dive_blocker_recovery,
     }
     # 身份只记非默认键;全默认 ⇒ 空字典 ⇒ env_kwargs/meta 逐字节不变。

@@ -439,6 +439,7 @@ class OptionsEnv(gym.Env):
                  resource_readiness_law: str = "veto-v1",
                  worker_time_protocol: str = "legacy",
                  resource_retreat: str = "off",
+                 resource_portal: str = "off",
                  **env_kwargs):
         super().__init__()
         from .resource_protocol import (
@@ -462,20 +463,28 @@ class OptionsEnv(gym.Env):
             self.resource_protocol, self.resource_readiness_law, resource_retreat)
         if self.resource_retreat != "off":
             env_kwargs["resource_retreat"] = self.resource_retreat
-        if worker_time_protocol not in ("legacy", "completion-l2-v1"):
+        # R18-F portal-v1 (default off = byte-identical kwargs).
+        from .resource_protocol import validate_portal_protocol
+        self.resource_portal = validate_portal_protocol(
+            self.resource_protocol, self.resource_readiness_law,
+            self.resource_retreat, resource_portal)
+        if self.resource_portal != "off":
+            env_kwargs["resource_portal"] = self.resource_portal
+        from .completion_clock import COMPLETION_PROTOCOLS, COMPLETION_RECIPES
+        if worker_time_protocol not in ("legacy", *COMPLETION_PROTOCOLS):
             raise ValueError("Unknown worker_time_protocol")
         self.worker_time_protocol = worker_time_protocol
-        if worker_time_protocol == "completion-l2-v1":
-            from .completion_clock import COMPLETION_L2_V1
+        if worker_time_protocol in COMPLETION_PROTOCOLS:
+            recipe = COMPLETION_RECIPES[worker_time_protocol]
             if (type(max_steps) is not int
-                    or max_steps != COMPLETION_L2_V1.actor_denominator
+                    or max_steps != recipe.actor_denominator
                     or self.resource_protocol != "l2-town-v1"
                     or self.resource_purchase_mode != "full"
                     or self.resource_service_policy not in ("sustain-v6", "sustain-loot-v1")
                     or self.resource_calibration is not None):
                 raise ValueError("completion-l2-v1 requires legacy observation denominator and l2-town-v1/full with sustain-v6 or sustain-loot-v1 without calibration")
-        if self.resource_service_policy == "sustain-loot-v1" and self.worker_time_protocol != "completion-l2-v1":
-            raise ValueError("sustain-loot-v1 requires the explicit completion-l2-v1 time protocol")
+        if self.resource_service_policy == "sustain-loot-v1" and self.worker_time_protocol not in COMPLETION_PROTOCOLS:
+            raise ValueError("sustain-loot-v1 requires an explicit completion-l2 time protocol")
         env_kwargs["resource_protocol"] = self.resource_protocol
         env_kwargs["resource_purchase_mode"] = self.resource_purchase_mode
         ordinary_scope = self.resource_service_policy in ("sustain-v5", "sustain-v6", "sustain-loot-v1")
@@ -607,11 +616,11 @@ class OptionsEnv(gym.Env):
         elif getattr(self, "resource_service_policy", "legacy-v1") == "sustain-v6":
             from .resource_sustain_armor import SustainEquipmentReadinessService
             service_type = SustainEquipmentReadinessService
-        if getattr(self, "worker_time_protocol", "legacy") == "completion-l2-v1":
+        if getattr(self, "worker_time_protocol", "legacy").startswith("completion-l2"):
             from .resource_sustain_completion import SustainCompletionService
-            from .completion_clock import CompletionClock
+            from .completion_clock import CompletionClock, COMPLETION_RECIPES
             service_type = SustainCompletionService
-            self._completion_clock = CompletionClock()
+            self._completion_clock = CompletionClock(COMPLETION_RECIPES[self.worker_time_protocol])
             self.env.max_steps = self._completion_clock.state.physical_deadline
             self.env._completion_prefix_active = False
             self.env._completion_time_failure = None
@@ -643,6 +652,12 @@ class OptionsEnv(gym.Env):
             self.retreat_service = RetreatService()
         else:
             self.retreat_service = None
+        # R18-F portal-v1: a fresh scripted portal service per episode; None when off.
+        if getattr(self, "resource_portal", "off") != "off":
+            from .resource_portal import PortalService
+            self.portal_service = PortalService()
+        else:
+            self.portal_service = None
         # 冻结的 V28 worker 与 M29 manager 都在 db7d26c 的 protocol-v3
         # 状态上训练。新协议可以改变收窗动力学，却不能把同宽度列静默换义；
         # 因此旧无新杀钟/榨干旗/本层起点独立维护，只供冻结网络观测。
@@ -677,10 +692,9 @@ class OptionsEnv(gym.Env):
         if getattr(self, "worker_time_protocol", "legacy") == "legacy":
             return None
         from dataclasses import asdict
-        from .completion_clock import COMPLETION_L2_V1
         clock = self._completion_clock
         return {"protocol": self.worker_time_protocol,
-                "recipe": COMPLETION_L2_V1.as_dict(),
+                "recipe": clock.recipe.as_dict(),
                 "clock": asdict(clock.state),
                 "effective_physical_limit": int(self.env.max_steps),
                 "observation_denominator": int(self.max_steps),
@@ -875,7 +889,7 @@ class OptionsEnv(gym.Env):
         # OptionsEnv 自身也是 Gym Env，必须建立它自己的 np_random；
         # 只给内层 env 传 seed 会被 env_checker 判为不符合 Gymnasium 契约。
         super().reset(seed=seed)
-        if getattr(self, "worker_time_protocol", "legacy") == "completion-l2-v1":
+        if getattr(self, "worker_time_protocol", "legacy").startswith("completion-l2"):
             self._completion_clock.reset()
             self.env.max_steps = self._completion_clock.state.physical_deadline
         if getattr(self, "resource_service_policy", "legacy-v1") in ("sustain-v3", "sustain-v4", "sustain-v5", "sustain-v6", "sustain-loot-v1"):
@@ -961,13 +975,53 @@ class OptionsEnv(gym.Env):
                     service.start(raw, self.env._steps, "cleared" if cleared else "farm_cap",
                                   farm_scene_steps=self.farm_scene_steps)
             retreat = getattr(self, "retreat_service", None)
-            if retreat is not None and not retreat.active and not service.active:
+            portal = getattr(self, "portal_service", None)
+            if (portal is not None and portal.awaiting_return and not portal.active
+                    and not service.active and int(raw.get("dungeon_level", 0)) == 0
+                    and not raw.get("is_set_level")
+                    and getattr(portal, "_town_visit_served", -1) != len(portal.attempts)):
+                # R18-F portal-v1: a portal arrival in town runs the ordinary town
+                # itinerary (heal / armor / potions / sell / scroll) BEFORE the return
+                # leg. The loot service normally departs from L1; started here it
+                # skips the stairs walk (outbound phase: depth 0 -> smith/healer) and
+                # is closed at its return phase by the RESUPPLY-loop intercept, after
+                # which the portal return trigger fires. One itinerary per visit.
+                portal._town_visit_served = len(portal.attempts)
+                if hasattr(service, "_begin_trip"):
+                    # sustain-loot-v1 forbids direct start(); its trip entry is _begin_trip
+                    # (maybe_start cannot fire in town by design). The visit counts as a trip.
+                    service._begin_trip(raw, int(self.env._steps), "portal_arrival",
+                                        int(self.farm_scene_steps), ["portal_arrival"])
+                else:
+                    service.start(raw, self.env._steps, "portal_arrival",
+                                  farm_scene_steps=self.farm_scene_steps)
+                # The collect phase (gold pickup) belongs to L1 and rejects town as an
+                # unexpected scene; a portal visit enters the itinerary at outbound
+                # (depth 0 -> sell / smith / healer / potions), which is exactly what
+                # collect does when it finds nothing to pick up.
+                service.phase = service._last_phase = "outbound"
+                bridge.configure_town_service(True)
+            if (portal is not None and not portal.active and not service.active
+                    and (retreat is None or not retreat.active)):
+                # R18-F portal-v1: consulted BEFORE the walking retreat. Its
+                # outbound law is the retreat law PLUS "a scroll is carried", so
+                # the coach prefers the portal exactly when the pair has one and
+                # falls through to the stairs retreat otherwise. It also owns the
+                # town-side legs (buy the scroll from Adria; walk back through).
+                trigger = portal.trigger_reason(raw, int(self.env._steps))
+                if trigger is not None:
+                    portal.start(raw, int(self.env._steps), bridge, trigger)
+            if (retreat is not None and not retreat.active and not service.active
+                    and (portal is None or not portal.active)):
                 # R18-A retreat-v1: the manager-side law fires here, exactly where the
                 # town trip starts; the mask then collapses to RESUPPLY (= retreat).
                 trigger = retreat.trigger_reason(raw, int(self.env._steps))
                 if trigger is not None:
                     retreat.start(raw, int(self.env._steps), bridge, trigger)
-            if retreat is not None and retreat.active:
+            if portal is not None and portal.active:
+                m[:] = False
+                m[RESUPPLY] = True
+            elif retreat is not None and retreat.active:
                 m[:] = False
                 m[RESUPPLY] = True
             elif service.active:
@@ -993,6 +1047,9 @@ class OptionsEnv(gym.Env):
             raise RuntimeError("Resource manager requires l2-town-v1")
         from .resource_protocol import law_ready
         mask = self.action_masks() if mask is None else mask
+        portal = getattr(self, "portal_service", None)
+        if portal is not None and portal.active:
+            return RESUPPLY
         retreat = getattr(self, "retreat_service", None)
         if retreat is not None and retreat.active:
             return RESUPPLY
@@ -1093,6 +1150,9 @@ class OptionsEnv(gym.Env):
             retreat = getattr(self, "retreat_service", None)
             self._win["retreat_window"] = bool(
                 retreat is not None and retreat.active and option == RESUPPLY)
+            portal = getattr(self, "portal_service", None)
+            self._win["portal_window"] = bool(
+                portal is not None and portal.active and option == RESUPPLY)
 
     def _beat(self, a: int, *, worker_authority: bool = False):
         """一拍:保险丝 → env.step → 观测缓存 → 停滞钟。
@@ -1270,6 +1330,16 @@ class OptionsEnv(gym.Env):
             return ("descend" if raw["dungeon_level"] > w["dlvl0"]
                     else "scene")
         opt = w["opt"]
+        portal = getattr(self, "portal_service", None)
+        if portal is not None:
+            # R18-F portal-v1 (constructed only when the flag is on): a portal
+            # window closes when the script hands back; any other window closes
+            # the beat a portal leg becomes legal so the mask can take the word.
+            if w.get("portal_window"):
+                return None if portal.active else "portal_complete"
+            if (opt != RESUPPLY and not portal.active
+                    and portal.trigger_reason(raw, self.env._steps) is not None):
+                return "portal_trigger"
         retreat = getattr(self, "retreat_service", None)
         if retreat is not None:
             # R18-A retreat-v1 (constructed only when the flag is on): a retreat
@@ -2152,12 +2222,22 @@ class OptionsEnv(gym.Env):
         worker = self._workers.get(int(option))
         ending = self._consume_fuse_recovery()
         retreat = getattr(self, "retreat_service", None)
-        service = (retreat if retreat is not None and retreat.active
+        portal = getattr(self, "portal_service", None)
+        # R18-F portal-v1 extends the two-rung chain to three; the town service
+        # is still the default owner of a RESUPPLY window.
+        service = (portal if portal is not None and portal.active
+                   else retreat if retreat is not None and retreat.active
                    else self.resource_service)
         if (getattr(self, "resource_protocol", "off") != "off"
                 and int(option) == RESUPPLY and service.active):
             while ending is None or ending.reason is None:
-                if getattr(self, "resource_readiness_law", "veto-v1") == "coach-v03":
+                if (portal is not None and service is portal and not portal.active
+                        and self.resource_service.active):
+                    # R18-F: a witch leg run inside a town trip has completed; the
+                    # town service resumes its own (return) phase.
+                    service = self.resource_service
+                if (getattr(self, "resource_readiness_law", "veto-v1") == "coach-v03"
+                        and not getattr(service, "settle_exempt", False)):
                     # R17.1 ruling 3 (T0′ crash, seed 2133003): a deadline-truncated
                     # service walk can leave the player mid-tile; the service's next
                     # decision — and, at completion, the worker's first decision —
@@ -2178,7 +2258,41 @@ class OptionsEnv(gym.Env):
                         settle += 1
                     if ending is not None and ending.reason is not None:
                         break
-                command = service.command(self.env, bridge)
+                if (portal is not None and not portal.active and not portal.awaiting_return
+                        and service is self.resource_service and service.active
+                        and getattr(service, "phase", None) == "return"
+                        and int(self.env._raw["dungeon_level"]) == 0
+                        and portal.trigger_reason(self.env._raw, int(self.env._steps)) == "buy_scroll"):
+                    # R18-F portal-v1: the witch leg runs INSIDE the town trip, after the
+                    # ordinary itinerary (heal / armor / potions / sell) and before the walk
+                    # back, so the scroll is bought last with the belt already full. The
+                    # town service never hands back while in town, so this is the only
+                    # moment the purchase can happen. Decided BEFORE the town service is
+                    # asked for a command (a discarded command would leave its pending
+                    # request without a receipt). The portal script owns the next
+                    # commands; the town service resumes its return phase afterwards.
+                    portal.start(self.env._raw, int(self.env._steps), bridge, "buy_scroll")
+                    service = portal
+                synthesized = False
+                if (portal is not None and portal.awaiting_return
+                        and service is self.resource_service and service.active
+                        and getattr(service, "phase", None) == "return"
+                        and int(self.env._raw["dungeon_level"]) == 0):
+                    # R18-F portal-v1. ResourceService's return phase walks to the
+                    # cathedral stairs and completes only on L1, which would throw away
+                    # the depth the scroll was bought to keep. Close the town service
+                    # here (its itinerary is finished by construction at this phase),
+                    # decided BEFORE asking it for a command so no pending request is
+                    # left without a receipt; the next window's manager law hands the
+                    # return leg to the portal script.
+                    service.active = False
+                    service.phase = "done"
+                    service.reason = "portal_return_pending"
+                    bridge.configure_town_service(False)
+                    command = ("complete",)
+                    synthesized = True
+                else:
+                    command = service.command(self.env, bridge)
                 self.env._resource_service_deadline = (
                     service.start_steps + service.service_microstep_cap)
                 if service is self.resource_service and getattr(self, "resource_service_policy", "legacy-v1") in ("sustain-v3", "sustain-v4", "sustain-v5", "sustain-v6", "sustain-loot-v1"):
@@ -2189,13 +2303,22 @@ class OptionsEnv(gym.Env):
                 finally:
                     self._resource_command = None
                 receipt = self._win.get("last_info", {}).get("resource_action_audit", {})
-                service.receipt(command, receipt)
+                if not synthesized:
+                    service.receipt(command, receipt)
+                if (portal is not None and service is portal and command[0] == "buy"
+                        and receipt.get("accepted") and self.resource_service.active):
+                    # R18-F: the scroll was bought inside the town trip; book it in the
+                    # town service ledger so the trip cash reconciliation stays exact.
+                    self.resource_service.purchases += 1
+                    self.resource_service.gold_spent += int(receipt.get("price", 0) or 0)
                 service.record_steps(self.env._steps, service.phase)
             extra, base_info, done, trunc = self._win_end(ending.reason)
             self._finish_loot_episode(done, trunc, base_info)
             extra["resource"] = self.resource_service.telemetry()
             if retreat is not None:
                 extra["retreat"] = retreat.telemetry()
+            if portal is not None:
+                extra["portal"] = portal.telemetry()
             info = dict(base_info)
             info["option_extra"] = extra
             return self._mgr_obs(self._last_base_obs), extra["R"], done, trunc, info
@@ -2258,6 +2381,12 @@ class OptionsEnv(gym.Env):
         info = dict(base_info)
         if getattr(self, "resource_protocol", "off") != "off":
             extra["resource"] = self.resource_service.telemetry()
+            retreat = getattr(self, "retreat_service", None)
+            if retreat is not None:
+                extra["retreat"] = retreat.telemetry()
+            portal = getattr(self, "portal_service", None)
+            if portal is not None:
+                extra["portal"] = portal.telemetry()
         info["option_extra"] = extra
         return self._mgr_obs(self._last_base_obs), extra["R"], done, trunc, info
 

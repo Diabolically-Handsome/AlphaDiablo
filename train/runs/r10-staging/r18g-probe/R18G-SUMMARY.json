@@ -1,0 +1,184 @@
+{
+ "table": {
+  "r18g-retreat": {
+   "alive": 15,
+   "died": 33,
+   "l2_reach": 37,
+   "l2_deaths": 25,
+   "l2_beats_total": 67511,
+   "l2_hazard_per_1k": 0.3703,
+   "l2_kills_per_1k_beats": 13.11,
+   "depth_hist": {
+    "2": 35,
+    "1": 11,
+    "3": 2
+   },
+   "l3": 2,
+   "clvl_mean": 3.23,
+   "death_dlvl_hist": {
+    "1": 7,
+    "2": 25,
+    "3": 1
+   },
+   "survivor_end_depth_hist": {
+    "3": 1,
+    "1": 9,
+    "2": 4,
+    "0": 1
+   },
+   "l2_arrival_plus_9000": {
+    "n": 9000,
+    "reached_l2": 37,
+    "observed": 35,
+    "alive": 9,
+    "censored_survivors": 2
+   },
+   "retreat_attempts": 79,
+   "retreat_ascended": 59,
+   "retreat_died_mid": 20,
+   "monsters_near0_at_trigger_mean": 6.14,
+   "aggro_cap_mask_hits_total": 0,
+   "engagement_decisions_total": 0,
+   "engagement_reordered_total": 0,
+   "loops": {
+    "episodes_redescended_after_ascent": 25,
+    "of_which_alive_at_end": 10,
+    "ascents_per_episode_hist": {
+     "0": 23,
+     "1": 4,
+     "2": 8,
+     "3": 13
+    },
+    "episodes_with_second_attempt": 25,
+    "second_attempt_ascended": 21,
+    "second_attempt_unresolved": 4,
+    "attempts_unresolved_total": 20,
+    "attempts_unresolved_in_died_episodes": 20,
+    "max_depth_hist": {
+     "2": 35,
+     "1": 11,
+     "3": 2
+    },
+    "l3_plus": 2,
+    "survivor_end_depth_hist": {
+     "3": 1,
+     "1": 9,
+     "2": 4,
+     "0": 1
+    }
+   },
+   "occupancy_after_first_ascent": {
+    "episodes": 25,
+    "l2plus_share_mean": 0.287,
+    "l2plus_share_median": 0.287,
+    "episodes_share_ge_0.5": 4,
+    "survivor_end_depth_hist_after_ascent": {
+     "3": 1,
+     "1": 5,
+     "2": 3,
+     "0": 1
+    }
+   }
+  },
+  "r18g-retreat-hunt-l1": {
+   "alive": 19,
+   "died": 29,
+   "l2_reach": 37,
+   "l2_deaths": 22,
+   "l2_beats_total": 96380,
+   "l2_hazard_per_1k": 0.2283,
+   "l2_kills_per_1k_beats": 8.87,
+   "depth_hist": {
+    "2": 35,
+    "1": 11,
+    "3": 2
+   },
+   "l3": 2,
+   "clvl_mean": 3.21,
+   "death_dlvl_hist": {
+    "1": 7,
+    "2": 22
+   },
+   "survivor_end_depth_hist": {
+    "2": 9,
+    "1": 8,
+    "0": 2
+   },
+   "l2_arrival_plus_9000": {
+    "n": 9000,
+    "reached_l2": 37,
+    "observed": 36,
+    "alive": 14,
+    "censored_survivors": 1
+   },
+   "retreat_attempts": 85,
+   "retreat_ascended": 70,
+   "retreat_died_mid": 15,
+   "monsters_near0_at_trigger_mean": 5.45,
+   "aggro_cap_mask_hits_total": 0,
+   "engagement_decisions_total": 0,
+   "engagement_reordered_total": 0,
+   "loops": {
+    "episodes_redescended_after_ascent": 30,
+    "of_which_alive_at_end": 14,
+    "ascents_per_episode_hist": {
+     "3": 17,
+     "0": 18,
+     "1": 7,
+     "2": 6
+    },
+    "episodes_with_second_attempt": 28,
+    "second_attempt_ascended": 23,
+    "second_attempt_unresolved": 5,
+    "attempts_unresolved_total": 15,
+    "attempts_unresolved_in_died_episodes": 15,
+    "max_depth_hist": {
+     "2": 35,
+     "1": 11,
+     "3": 2
+    },
+    "l3_plus": 2,
+    "survivor_end_depth_hist": {
+     "2": 9,
+     "1": 8,
+     "0": 2
+    }
+   },
+   "occupancy_after_first_ascent": {
+    "episodes": 30,
+    "l2plus_share_mean": 0.337,
+    "l2plus_share_median": 0.372,
+    "episodes_share_ge_0.5": 8,
+    "survivor_end_depth_hist_after_ascent": {
+     "2": 8,
+     "1": 4,
+     "0": 2
+    }
+   }
+  }
+ },
+ "paired_hunt_l1_vs_retreat": {
+  "n": 48,
+  "saved": 8,
+  "lost": 4,
+  "net": 4,
+  "death_rate_diff": -0.0833,
+  "ucb95_one_sided": 0.035
+ },
+ "hypotheses": {
+  "H1_hazard_lt_ctl": true,
+  "H2_paired_net_gt_0_and_ucb_lt_0": false,
+  "H3_monsters_near0_lt_ctl": true,
+  "H4_kills_per_1k_le_ctl_expected_cost": true,
+  "H5_l3_plus": {
+   "r18g-retreat": 2,
+   "r18g-retreat-hunt-l1": 2
+  }
+ },
+ "regression_control_equal_to_r18de": true,
+ "prefix_diff_seeds": [],
+ "verdict": "R18G_REPORT_ONLY",
+ "seeds": "2133000-2133047",
+ "clock": "completion-l2-r18c",
+ "elapsed_s": 1444.3
+}

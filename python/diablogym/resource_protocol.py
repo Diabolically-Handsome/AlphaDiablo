@@ -11,6 +11,7 @@ RESOURCE_PURCHASE_MODES = ("none", "heal", "potions", "armor", "full")
 # stands; forced-unready descents are accounted and paid no escrow.
 RESOURCE_READINESS_LAWS = ("veto-v1", "coach-v03")
 RESOURCE_RETREAT_PROTOCOLS = ("off", "retreat-v1")
+RESOURCE_PORTAL_PROTOCOLS = ("off", "portal-v1")
 RESOURCE_FARM_CAP = 3600
 RESOURCE_SERVICE_CAP = 600
 
@@ -172,6 +173,35 @@ def validate_native_retreat(raw, expected="off"):
     observed = state.get("retreat_enabled", False)
     if type(observed) is not bool or observed != (expected != "off"):
         raise RuntimeError("Native retreat identity mismatch; isolated rebuild required")
+
+
+def validate_portal_protocol(protocol, law, retreat, portal):
+    """R18-F portal-v1: the Scroll of Town Portal interface.
+
+    The portal is the retreat done without losing depth, so it is layered on
+    top of retreat-v1 rather than beside it: the same manager law fires, and
+    the walking retreat stays the fallback whenever no scroll is carried.
+    Default off is byte-identical."""
+    if portal not in RESOURCE_PORTAL_PROTOCOLS:
+        raise ValueError(f"Unknown resource_portal {portal!r}; expected one of {RESOURCE_PORTAL_PROTOCOLS}")
+    if portal != "off":
+        if protocol != "l2-town-v1" or law != "coach-v03":
+            raise ValueError("portal-v1 requires l2-town-v1 under coach-v03")
+        if retreat != "retreat-v1":
+            raise ValueError("portal-v1 requires retreat-v1 (the portal is the retreat vehicle)")
+    return portal
+
+
+def validate_native_portal(raw, expected="off"):
+    """Fail closed: the native portal flag must match the Python contract."""
+    state = raw.get("resource_state", {}) if isinstance(raw, dict) else {}
+    if not isinstance(state, dict) or not state:
+        if expected != "off":
+            raise RuntimeError("Native portal identity mismatch; isolated rebuild required")
+        return
+    observed = state.get("portal_enabled", False)
+    if type(observed) is not bool or observed != (expected != "off"):
+        raise RuntimeError("Native portal identity mismatch; isolated rebuild required")
 
 
 @dataclass

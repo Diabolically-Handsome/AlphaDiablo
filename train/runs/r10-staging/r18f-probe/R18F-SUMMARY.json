@@ -1,0 +1,254 @@
+{
+ "table": {
+  "r18f-retreat": {
+   "alive": 15,
+   "died": 33,
+   "l2_reach": 37,
+   "l2_deaths": 25,
+   "l2_beats_total": 67511,
+   "l2_hazard_per_1k": 0.3703,
+   "l2_kills_per_1k_beats": 13.11,
+   "depth_hist": {
+    "2": 35,
+    "1": 11,
+    "3": 2
+   },
+   "l3": 2,
+   "clvl_mean": 3.23,
+   "death_dlvl_hist": {
+    "1": 7,
+    "2": 25,
+    "3": 1
+   },
+   "survivor_end_depth_hist": {
+    "3": 1,
+    "1": 9,
+    "2": 4,
+    "0": 1
+   },
+   "l2_arrival_plus_9000": {
+    "n": 9000,
+    "reached_l2": 37,
+    "observed": 35,
+    "alive": 9,
+    "censored_survivors": 2
+   },
+   "retreat_attempts": 79,
+   "retreat_ascended": 59,
+   "retreat_died_mid": 20,
+   "monsters_near0_at_trigger_mean": 6.14,
+   "aggro_cap_mask_hits_total": 0,
+   "engagement_decisions_total": 0,
+   "engagement_reordered_total": 0,
+   "loops": {
+    "episodes_redescended_after_ascent": 25,
+    "of_which_alive_at_end": 10,
+    "ascents_per_episode_hist": {
+     "0": 23,
+     "1": 4,
+     "2": 8,
+     "3": 13
+    },
+    "episodes_with_second_attempt": 25,
+    "second_attempt_ascended": 21,
+    "second_attempt_unresolved": 4,
+    "attempts_unresolved_total": 20,
+    "attempts_unresolved_in_died_episodes": 20,
+    "max_depth_hist": {
+     "2": 35,
+     "1": 11,
+     "3": 2
+    },
+    "l3_plus": 2,
+    "survivor_end_depth_hist": {
+     "3": 1,
+     "1": 9,
+     "2": 4,
+     "0": 1
+    }
+   },
+   "occupancy_after_first_ascent": {
+    "episodes": 25,
+    "l2plus_share_mean": 0.287,
+    "l2plus_share_median": 0.287,
+    "episodes_share_ge_0.5": 4,
+    "survivor_end_depth_hist_after_ascent": {
+     "3": 1,
+     "1": 5,
+     "2": 3,
+     "0": 1
+    }
+   }
+  },
+  "r18f-retreat-portal": {
+   "alive": 17,
+   "died": 31,
+   "l2_reach": 35,
+   "l2_deaths": 22,
+   "l2_beats_total": 82851,
+   "l2_hazard_per_1k": 0.2655,
+   "l2_kills_per_1k_beats": 13.26,
+   "depth_hist": {
+    "2": 31,
+    "1": 13,
+    "3": 4
+   },
+   "l3": 4,
+   "clvl_mean": 3.29,
+   "death_dlvl_hist": {
+    "1": 7,
+    "2": 22,
+    "3": 2
+   },
+   "survivor_end_depth_hist": {
+    "2": 6,
+    "1": 9,
+    "0": 2
+   },
+   "l2_arrival_plus_9000": {
+    "n": 9000,
+    "reached_l2": 35,
+    "observed": 34,
+    "alive": 10,
+    "censored_survivors": 1
+   },
+   "retreat_attempts": 66,
+   "retreat_ascended": 50,
+   "retreat_died_mid": 16,
+   "monsters_near0_at_trigger_mean": 4.94,
+   "aggro_cap_mask_hits_total": 0,
+   "engagement_decisions_total": 0,
+   "engagement_reordered_total": 0,
+   "loops": {
+    "episodes_redescended_after_ascent": 23,
+    "of_which_alive_at_end": 10,
+    "ascents_per_episode_hist": {
+     "3": 11,
+     "0": 25,
+     "1": 7,
+     "2": 5
+    },
+    "episodes_with_second_attempt": 21,
+    "second_attempt_ascended": 16,
+    "second_attempt_unresolved": 5,
+    "attempts_unresolved_total": 16,
+    "attempts_unresolved_in_died_episodes": 16,
+    "max_depth_hist": {
+     "2": 31,
+     "1": 13,
+     "3": 4
+    },
+    "l3_plus": 4,
+    "survivor_end_depth_hist": {
+     "2": 6,
+     "1": 9,
+     "0": 2
+    }
+   },
+   "occupancy_after_first_ascent": {
+    "episodes": 23,
+    "l2plus_share_mean": 0.363,
+    "l2plus_share_median": 0.459,
+    "episodes_share_ge_0.5": 8,
+    "survivor_end_depth_hist_after_ascent": {
+     "2": 5,
+     "1": 3,
+     "0": 2
+    }
+   },
+   "portal": {
+    "episodes_with_portal_activity": 32,
+    "legs": 93,
+    "leg_reasons": {
+     "portal_scroll_carried": 37,
+     "portal_expired": 5,
+     "portal_to_town": 21,
+     "portal_return": 21,
+     "portal_cast_crowded": 5,
+     "portal_cast_failed": 1,
+     "None": 3
+    },
+    "scrolls_bought": 37,
+    "casts": 27,
+    "portals_completed_hist": {
+     "0": 29,
+     "1": 17,
+     "2": 2
+    },
+    "gold_final_mean": 71.4
+   }
+  }
+ },
+ "paired_portal_vs_retreat": {
+  "n": 48,
+  "saved": 5,
+  "lost": 3,
+  "net": 2,
+  "death_rate_diff": -0.0417,
+  "ucb95_one_sided": 0.0558
+ },
+ "hypotheses": {
+  "H0_l2_reach_not_lower": true,
+  "H1_hazard_lt_ctl": true,
+  "H2_paired_net_gt_0_and_ucb_lt_0": false,
+  "H3_retreat_died_share_lt_ctl": true,
+  "H4_redescents_and_occupancy_ge_ctl": false,
+  "H5_portal_economy": {
+   "episodes_with_portal_activity": 32,
+   "legs": 93,
+   "leg_reasons": {
+    "portal_scroll_carried": 37,
+    "portal_expired": 5,
+    "portal_to_town": 21,
+    "portal_return": 21,
+    "portal_cast_crowded": 5,
+    "portal_cast_failed": 1,
+    "None": 3
+   },
+   "scrolls_bought": 37,
+   "casts": 27,
+   "portals_completed_hist": {
+    "0": 29,
+    "1": 17,
+    "2": 2
+   },
+   "gold_final_mean": 71.4
+  }
+ },
+ "regression_control_equal_to_r18g": false,
+ "prefix_diff_seeds": [
+  2133000,
+  2133001,
+  2133007,
+  2133008,
+  2133009,
+  2133010,
+  2133011,
+  2133012,
+  2133013,
+  2133020,
+  2133025,
+  2133026,
+  2133027,
+  2133029,
+  2133031,
+  2133033,
+  2133034,
+  2133035,
+  2133036,
+  2133040,
+  2133041,
+  2133042,
+  2133045,
+  2133046,
+  2133047
+ ],
+ "verdict": "R18F_REPORT_ONLY",
+ "seeds": "2133000-2133047",
+ "clock": "completion-l2-r18c",
+ "elapsed_s": 1480.3,
+ "bridge": "/home/laure/r17_work/r17-1/build-res",
+ "regression_control_equal_to_r18g_after_key_strip": true,
+ "regression_note": "the driver stripped the R18-D/E/G/F keys but not service_reason/terminal_reason (added to the probe row at 03:0x, after R18-G ran); with those two None-valued keys stripped the control rows are byte-identical",
+ "verdict_original": "R18F_VOID"
+}

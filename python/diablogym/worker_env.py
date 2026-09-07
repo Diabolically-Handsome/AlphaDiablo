@@ -838,22 +838,26 @@ class WorkerWindowEnv(gym.Env):
             self.resource_protocol, resource_readiness_law)
         if self.resource_readiness_law != "veto-v1":
             env_kwargs["resource_readiness_law"] = self.resource_readiness_law
-        # R18-A retreat-v1 is a deployment/probe interface first; the training
-        # window (escrow, receipts) is wired only after the T0-double-prime probe.
-        if resource_retreat != "off":
-            raise ValueError("retreat-v1 is not yet wired into WorkerWindowEnv (R18-A probe scope)")
-        self.resource_retreat = "off"
+        # R18-B retreat-v1 passthrough (default off keeps kwargs byte-identical).
+        from .resource_protocol import validate_retreat_protocol
+        self.resource_retreat = validate_retreat_protocol(
+            self.resource_protocol, self.resource_readiness_law, resource_retreat)
+        if self.resource_retreat != "off":
+            env_kwargs["resource_retreat"] = self.resource_retreat
         # R13 教室改革主旗:默认 farm-only 逐位复现旧法(非 FARM 窗脚本
         # 快进);farm-dive-v1 使 DIVE 窗成为一等 live 学习窗并向
         # OptionsEnv 移交窗内主权(a11/踏格)。
         self.learning_window_scope = _coerce_learning_window_scope(
             learning_window_scope)
-        if worker_time_protocol not in ("legacy", "completion-l2-v1"):
+        # R18-B2: every immutable completion-l2 recipe is accepted here; the
+        # completion-l2-v1 path keeps the identical guards and kwargs.
+        from .completion_clock import COMPLETION_PROTOCOLS
+        if worker_time_protocol not in ("legacy", *COMPLETION_PROTOCOLS):
             raise ValueError("Unknown worker_time_protocol")
         self.worker_time_protocol = worker_time_protocol
         if worker_time_protocol != "legacy":
             if self.learning_window_scope != "earned-dive-suffix-v1":
-                raise ValueError("completion-l2-v1 requires earned-dive-suffix-v1")
+                raise ValueError("completion-l2 protocols require earned-dive-suffix-v1")
             env_kwargs["worker_time_protocol"] = worker_time_protocol
         prefix_values = (prefix_worker, prefix_worker_sha256,
                          prefix_max_attempts, prefix_max_microsteps)
@@ -1798,7 +1802,7 @@ class WorkerWindowEnv(gym.Env):
 
     def _prefix_validate_limits(self, *, active):
         expected = self._prefix_deadline if active else self._prefix_original_physical_limit
-        if (not active and getattr(self, "worker_time_protocol", "legacy") == "completion-l2-v1"):
+        if (not active and getattr(self, "worker_time_protocol", "legacy").startswith("completion-l2")):
             expected = self.oe._completion_clock.state.physical_deadline
         if (expected is None or int(self.oe.env.max_steps) != expected
                 or int(self.oe.max_steps) != self._prefix_observation_limit):
@@ -1849,7 +1853,7 @@ class WorkerWindowEnv(gym.Env):
         if self._prefix_deadline <= clock:
             raise RuntimeError("normal reset returned beyond the prefix physical budget")
         self.oe.env.max_steps = self._prefix_deadline
-        if getattr(self, "worker_time_protocol", "legacy") == "completion-l2-v1":
+        if getattr(self, "worker_time_protocol", "legacy").startswith("completion-l2"):
             self.oe.env._completion_prefix_active = True
             self.oe.env._completion_prefix_deadline = self._prefix_deadline
         self._prefix_accounted_clock = clock
@@ -1880,7 +1884,7 @@ class WorkerWindowEnv(gym.Env):
             self._prefix_validate_limits(active=True)
             self.oe.env.max_steps = self._prefix_original_physical_limit
             self._prefix_deadline = None
-            if getattr(self, "worker_time_protocol", "legacy") == "completion-l2-v1":
+            if getattr(self, "worker_time_protocol", "legacy").startswith("completion-l2"):
                 self.oe.env._completion_prefix_active = False
                 self.oe.env._completion_prefix_deadline = None
 
@@ -2321,7 +2325,14 @@ class WorkerWindowEnv(gym.Env):
         if f <= 0.0:
             return 0.0
         pending = float(getattr(self, "_descend_escrow", 0.0))
-        if close_reason == "death":
+        # R18-B 撤退触发的窗不发托管:retreat_trigger 恰好在 hp <= 50%(最大
+        # 死亡风险处)收窗,与死亡等价罚没;否则等于开一条"带伤潜到半血再
+        # 撤退"的套现通道,把可罚没的危险津贴变成现金。旗关(off)时该分支
+        # 恒不可达,短路后与旧法逐位同构。
+        _forfeit_reason = close_reason == "death" or (
+            getattr(self, "resource_retreat", "off") != "off"
+            and close_reason == "retreat_trigger")
+        if _forfeit_reason:
             if pending:
                 self.stats["descend_escrow_forfeited"] = float(
                     self.stats.get(

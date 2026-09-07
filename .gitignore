@@ -46,3 +46,19 @@ train/runs/r10-staging/t0-prime/*
 !train/runs/r10-staging/t0-double-prime/
 train/runs/r10-staging/t0-double-prime/*
 !train/runs/r10-staging/t0-double-prime/T0-DOUBLE-PRIME-SUMMARY.json
+# 2026-09-07: R18 probe summaries are receipts
+!train/runs/r10-staging/r18c-probe/
+train/runs/r10-staging/r18c-probe/*
+!train/runs/r10-staging/r18c-probe/R18C-SUMMARY.json
+!train/runs/r10-staging/r18de-probe/
+train/runs/r10-staging/r18de-probe/*
+!train/runs/r10-staging/r18de-probe/R18DE-SUMMARY.json
+!train/runs/r10-staging/r18g-probe/
+train/runs/r10-staging/r18g-probe/*
+!train/runs/r10-staging/r18g-probe/R18G-SUMMARY.json
+!train/runs/r10-staging/r18f-probe/
+train/runs/r10-staging/r18f-probe/*
+!train/runs/r10-staging/r18f-probe/R18F-SUMMARY.json
+!train/runs/r10-staging/r18p0-probe/
+train/runs/r10-staging/r18p0-probe/*
+!train/runs/r10-staging/r18p0-probe/R18P0-SUMMARY.json

@@ -1,0 +1,53 @@
+diff --git a/Source/stores.cpp b/Source/stores.cpp
+index 5099dc4..753d0ea 100644
+--- a/Source/stores.cpp
++++ b/Source/stores.cpp
+@@ -2151,6 +2151,10 @@ StoreBuyResult TryBuyStoreItem(StoreVendor vendor, size_t index,
+ 		if (index < HealerItems.size())
+ 			stockItem = &HealerItems[index];
+ 		break;
++	case StoreVendor::Witch:
++		if (index < WitchItems.size())
++			stockItem = &WitchItems[index];
++		break;
+ 	}
+ 	if (stockItem == nullptr || stockItem->isEmpty() || stockItem->_iIvalue < 0)
+ 		return { StoreBuyStatus::InvalidItem };
+@@ -2186,8 +2190,10 @@ StoreBuyResult TryBuyStoreItem(StoreVendor vendor, size_t index,
+ 	const auto previousReadiedSpell = player._pRSpell;
+ 	const auto previousReadiedSpellType = player._pRSplType;
+ 	const uint32_t previousRng = GetLCGEngineState();
+-	const bool infinite = vendor == StoreVendor::Healer
+-	    && index < static_cast<size_t>(gbIsMultiplayer ? 3 : 2);
++	const bool infinite = (vendor == StoreVendor::Healer
++	        && index < static_cast<size_t>(gbIsMultiplayer ? 3 : 2))
++	    || (vendor == StoreVendor::Witch
++	        && index < static_cast<size_t>(NumWitchPinnedItems));
+ 	if (infinite)
+ 		item._iSeed = AdvanceRndSeed();
+ 	if (item._iMagical == ITEM_QUALITY_NORMAL)
+@@ -2213,7 +2219,10 @@ StoreBuyResult TryBuyStoreItem(StoreVendor vendor, size_t index,
+ 	}
+ 	if (vendor == StoreVendor::Smith)
+ 		SmithItems.erase(SmithItems.begin() + index);
+-	else if (!infinite)
++	else if (vendor == StoreVendor::Witch) {
++		if (!infinite)
++			WitchItems.erase(WitchItems.begin() + index);
++	} else if (!infinite)
+ 		HealerItems.erase(HealerItems.begin() + index);
+ 	if (!infinite)
+ 		CalcPlrInv(player, true);
+diff --git a/Source/stores.h b/Source/stores.h
+index 8bd07ac..adb8718 100644
+--- a/Source/stores.h
++++ b/Source/stores.h
+@@ -204,7 +204,7 @@ bool StoreAutoPlaceForPlayer(Player &player, Item &item, bool persistItem, bool
+ int TakePlayerGold(Player &player, int cost, bool sendNetworkMessage = false);
+ bool PlayerCanAfford(int price);
+ 
+-enum class StoreVendor { Smith, Healer };
++enum class StoreVendor { Smith, Healer, Witch };
+ enum class StoreBuyStatus { Success, InvalidItem, StaleItem, NoMoney, NoRoom };
+ struct StoreBuyResult {
+ 	StoreBuyStatus status;

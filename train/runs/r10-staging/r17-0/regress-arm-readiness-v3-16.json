@@ -1,5 +1,5 @@
 {
- "probe": "r17-deployment-v3-r18a-retreat",
+ "probe": "r17-deployment-v3-r18f",
  "v3_compat": {
   "probe": "r15-deployment-v3",
   "row_keys": [
@@ -24,16 +24,16 @@
   "rows_sha_v3": "33023de128cf54e60dc6add49ea47d173802b9afae02bcba18336f593485e59b"
  },
  "source_identity": {
-  "train/eval_contract.py": "b01cacd90cb7821678bcde97b160046696a4e841a495c935bce6a97236ae1906",
+  "train/eval_contract.py": "f9246429446efe96bd98a43220eef78b85f07223cf2e6139da2f0e0d89ec8f01",
   "train/leashed_ppo.py": "4a9c3dcaf8a84550c0397b7c80327d438e434982ef6d7a44923ba0b484857cfe",
   "python/diablogym/__init__.py": "5c18d997980f5310b5de1b40975047fd7d50afd28f54e7df20e0d2db47b27768",
   "python/diablogym/controller_wire.py": "7ff86ea8ff7547e5a7e219bbd7d1ca716918904ca3b1d2b515c1446dae166095",
-  "python/diablogym/env.py": "8caea5f8d7b71b7770b5f02f2a06b4d2541a732b356002e9212f3bd90976e672",
+  "python/diablogym/env.py": "ad93f18db4c2d4859baf4cc90904a6f7f25aa19a902c843ad33a086f36ad7b8d",
   "python/diablogym/nav.py": "15d79605a958c5239a171c1d06e3a0c8967dc73603d75d3c61c24db2c0648b86",
-  "python/diablogym/options_env.py": "e9685975766014965096255a5cc147678fd889b5d24dd01cfcf1181c3f85b6f7",
-  "python/diablogym/worker_env.py": "e1677255de592655a7e00082f80ea84e515a6b8313820d3906d345a2b5c4efbd",
+  "python/diablogym/options_env.py": "467294198059189d0fe6ee3e96b0a459c03cb54e3c98417fa88962084643d0f9",
+  "python/diablogym/worker_env.py": "f66fef0bb4ddc1bb95de992c00ea9516ceab1706957c23f3ecc3299410800072",
   "train/runs/r10-staging/probe_r15_deployment.py": "d7994cdde2db739c288fee69717e66dc329d128db09ef01211d64f687febc8fd",
-  "train/runs/r10-staging/probe_r17_deployment.py": "7d4ed83e79033476fe92cf0d696474158d50f4078d951b94ad9411cd3f15a160",
+  "train/runs/r10-staging/probe_r17_deployment.py": "5fef62c68cefd7e39902c0e3eb5c27bf9866ae7d282febb375414b84473f3f06",
   "worker_zip": "7e31dc5402caed733443abb9fef383c877d93b3623b199ba4b5c6293092592f0"
  },
  "source_changed_during_run": [],

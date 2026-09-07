@@ -677,14 +677,24 @@ class WorkerConstructorBoundaryTests(unittest.TestCase):
                           side_effect=lambda **kw: self.StubOptions(**kw)) as options:
             return worker_env.WorkerWindowEnv(**arguments), options
 
-    def test_retreat_v1_is_rejected_before_the_options_constructor(self):
+    def test_retreat_v1_without_the_coach_law_is_rejected_before_the_options_constructor(self):
+        # R18-B (2026-09-07): the wrapper now forwards retreat-v1, but only under
+        # l2-town-v1 + coach-v03; the default (protocol off) still rejects it.
         with patch.object(worker_env, "OptionsEnv") as options:
             with self.assertRaises(ValueError) as caught:
                 worker_env.WorkerWindowEnv(manager_npz=None,
                                            manager_heuristic="readiness-v1",
                                            resource_retreat="retreat-v1")
-        self.assertIn("retreat-v1 is not yet wired", str(caught.exception))
+        self.assertIn("retreat-v1 requires l2-town-v1 under coach-v03", str(caught.exception))
         options.assert_not_called()
+
+    def test_retreat_v1_under_the_coach_law_is_forwarded(self):
+        env, options = self._build(resource_protocol="l2-town-v1",
+                                   resource_readiness_law="coach-v03",
+                                   resource_retreat="retreat-v1")
+        self.assertEqual(env.resource_retreat, "retreat-v1")
+        options.assert_called_once()
+        self.assertEqual(env.oe.kwargs.get("resource_retreat"), "retreat-v1")
 
     def test_unknown_retreat_values_are_rejected_too(self):
         for value in ("retreat-v2", "on", True):

@@ -135,6 +135,7 @@ R16_ENVIRONMENT_DEFAULTS = {
     "resource_purchase_mode": "full",
     "resource_service_policy": "legacy-v1",
     "resource_readiness_law": "veto-v1",
+    "resource_retreat": "off",
     "dive_blocker_recovery": "off",
 }
 
@@ -865,6 +866,13 @@ def validate_r16_environment(value: Any) -> dict[str, Any]:
                      "resource_readiness_law must be coach-v03 (veto-v1 is omitted)")
             _require(value.get("resource_protocol") == "l2-town-v1",
                      "resource_readiness_law coach-v03 requires resource_protocol l2-town-v1")
+        elif key == "resource_retreat":
+            _require(item == "retreat-v1",
+                     "resource_retreat must be retreat-v1 (off is omitted)")
+            _require(value.get("resource_protocol") == "l2-town-v1"
+                     and value.get("resource_readiness_law") == "coach-v03",
+                     "resource_retreat retreat-v1 requires resource_protocol "
+                     "l2-town-v1 and resource_readiness_law coach-v03")
         elif key == "dive_blocker_recovery":
             _require(item == "adjacent-v1", "dive_blocker_recovery must be adjacent-v1 (off is omitted)")
             _require(value.get("resource_protocol") == "l2-town-v1",

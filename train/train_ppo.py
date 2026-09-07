@@ -2730,6 +2730,11 @@ def _training_contract(args, model, batch_size: int,
         "resource_readiness_law": (
             getattr(args, "resource_readiness_law", "veto-v1")
             if getattr(args, "resource_readiness_law", "veto-v1") != "veto-v1" else None),
+        # R18-B: off (the legacy default) always writes None; only retreat-v1
+        # is literal, so old checkpoint contracts stay equal.
+        "resource_retreat": (
+            getattr(args, "resource_retreat", "off")
+            if getattr(args, "resource_retreat", "off") != "off" else None),
         "worker_hp_loss_price": (
             float(getattr(args, "worker_hp_loss_price", 0.0))
             if (getattr(args, "worker", False)
@@ -2900,6 +2905,9 @@ _ENVIRONMENT_RESTART_ALLOWED_DRIFT = frozenset({
     # R17.1 主席裁决三:战备法(六条件教练法,排除血量),None→coach-v03
     # 的漂移属预注册点名立法(readiness_table 同款)。
     "resource_readiness_law",
+    # R18-B:撤退法(retreat-v1 返城),None→retreat-v1 的漂移属预注册
+    # 点名立法(readiness_law 同款)。
+    "resource_retreat",
     # R16 修宪(2026-09-01,预注册点名):a13 拾药冷启动先验,
     # None→bonus 的漂移属预注册点名立法(a11 同款)。
     "worker_potion_action13_logit_bonus",
@@ -2941,7 +2949,7 @@ def _validate_worker_time_resume_identity(saved: dict | None, current: dict) -> 
             _require(isinstance(actual, dict) and actual == expected
                      and all(type(actual[key]) is type(value)
                              for key, value in expected.items()),
-                     f"{label} worker_time_recipe is not the exact completion-l2-v1 recipe")
+                     f"{label} worker_time_recipe is not the exact {protocol} recipe")
         identities.append(expected)
     _require(identities[0] == identities[1],
              "worker time protocol changes require separately identified initialization; ordinary resume is forbidden")
@@ -2983,8 +2991,10 @@ def _validate_resource_resume_identity(saved: dict | None, current: dict) -> Non
                 identity.get("resource_purchase_mode"), identity["resource_service_policy"])
             _require(identity.get("resource_service_recipe") == expected,
                      f"{label} resource_service_recipe has mismatched native armor/preservation scope/version")
+    # R18-B: 撤退法进入恒等键组;旗关两侧都是 None,旧续训逐位不变。
     keys = ("resource_protocol", "resource_purchase_mode",
-            "resource_service_policy", "resource_service_recipe")
+            "resource_service_policy", "resource_service_recipe",
+            "resource_retreat")
     _require(all(saved.get(key) == current.get(key) for key in keys),
              "resource_service version change requires a separately identified initialization; ordinary resume is forbidden")
 
@@ -5967,10 +5977,10 @@ def _assert_bc_v1_demos_frozen(path: str | pathlib.Path) -> str:
 def _worker_time_identity(protocol="legacy") -> dict | None:
     if protocol == "legacy":
         return None
-    from diablogym.completion_clock import COMPLETION_L2_V1
-    _require(isinstance(protocol, str) and protocol == COMPLETION_L2_V1.protocol,
-             "worker_time_protocol must be legacy/completion-l2-v1")
-    return COMPLETION_L2_V1.as_dict()
+    from diablogym.completion_clock import COMPLETION_PROTOCOLS, COMPLETION_RECIPES
+    _require(isinstance(protocol, str) and protocol in COMPLETION_PROTOCOLS,
+             "worker_time_protocol must be legacy/" + "/".join(COMPLETION_PROTOCOLS))
+    return COMPLETION_RECIPES[protocol].as_dict()
 
 
 def _validate_worker_time_config(protocol="legacy", *, worker,
@@ -5980,13 +5990,13 @@ def _validate_worker_time_config(protocol="legacy", *, worker,
     if recipe is None:
         return None
     _require(worker and worker_learning_window_scope == EARNED_DIVE_SUFFIX_SCOPE,
-             "completion-l2-v1 requires an earned-dive-suffix-v1 Worker")
+             "completion-l2 protocols require an earned-dive-suffix-v1 Worker")
     _require(resource_protocol == "l2-town-v1" and resource_purchase_mode == "full"
              and resource_service_policy == "sustain-v6",
-             "completion-l2-v1 requires l2-town-v1/full/sustain-v6")
+             "completion-l2 protocols require l2-town-v1/full/sustain-v6")
     _require(max_steps == recipe["actor_denominator"]
              and farm_scene_cap == recipe["farm_microsteps"],
-             "completion-l2-v1 requires max_steps=6000 (observation only) and farm_scene_cap=3600")
+             "completion-l2 protocols require max_steps=6000 (observation only) and farm_scene_cap=3600")
     return recipe
 
 
@@ -6433,6 +6443,16 @@ def _validate_args(args) -> None:
              "--resource-readiness-law must be veto-v1/coach-v03")
     _require(resource_readiness_law == "veto-v1" or resource_protocol == "l2-town-v1",
              "--resource-readiness-law coach-v03 requires --resource-protocol l2-town-v1")
+    # R18-B: retreat-v1 只在 l2-town-v1/coach-v03 的教室里成立(引擎侧同款)。
+    resource_retreat = getattr(args, "resource_retreat", "off")
+    _require(resource_retreat in ("off", "retreat-v1"),
+             "--resource-retreat must be off/retreat-v1")
+    _require(resource_retreat == "off" or (resource_protocol == "l2-town-v1"
+                                           and resource_readiness_law == "coach-v03"),
+             "--resource-retreat retreat-v1 requires --resource-protocol l2-town-v1 "
+             "and --resource-readiness-law coach-v03")
+    _require(resource_retreat == "off" or args.worker or args.options,
+             "--resource-retreat requires --worker/--options")
     progress_far_tiles = int(getattr(args, "progress_far_tiles", 0))
     _require(
         progress_far_tiles >= 0,
@@ -7647,6 +7667,7 @@ def make_env(max_steps: int = 1500, deep: bool = False, death_ladder: bool = Fal
              resource_purchase_mode: str = "full",
              resource_service_policy: str = "legacy-v1",
              resource_readiness_law: str = "veto-v1",
+             resource_retreat: str = "off",
              dive_blocker_recovery: str = "off",
              manager_npz_sha256: str | None = None,
              worker_npz_sha256: str | None = None,
@@ -7680,6 +7701,14 @@ def make_env(max_steps: int = 1500, deep: bool = False, death_ladder: bool = Fal
              "resource_readiness_law must be veto-v1/coach-v03")
     _require(resource_readiness_law == "veto-v1" or resource_protocol == "l2-town-v1",
              "resource_readiness_law coach-v03 requires resource_protocol l2-town-v1")
+    # R18-B: retreat-v1 只在 l2-town-v1/coach-v03 的教室里成立(引擎侧同款)。
+    _require(resource_retreat in ("off", "retreat-v1"),
+             "resource_retreat must be off/retreat-v1")
+    _require(resource_retreat == "off" or (resource_protocol == "l2-town-v1"
+                                           and resource_readiness_law == "coach-v03"),
+             "resource_retreat retreat-v1 requires l2-town-v1 under coach-v03")
+    _require(resource_retreat == "off" or worker or options,
+             "resource_retreat requires WorkerWindowEnv/OptionsEnv")
     validate_dive_blocker_recovery(resource_protocol, dive_blocker_recovery)
     _require(resource_protocol in ("off", "l2-town-v1"),
              "resource_protocol must be off/l2-town-v1")
@@ -7697,6 +7726,9 @@ def make_env(max_steps: int = 1500, deep: bool = False, death_ladder: bool = Fal
     # R17.1 ruling 3: the default law adds no keyword, so old calls stay identical.
     if resource_readiness_law != "veto-v1":
         resource_kwargs["resource_readiness_law"] = resource_readiness_law
+    # R18-B: off adds no keyword, so old calls stay identical.
+    if resource_retreat != "off":
+        resource_kwargs["resource_retreat"] = resource_retreat
     if dive_blocker_recovery != "off":
         resource_kwargs["dive_blocker_recovery"] = dive_blocker_recovery
     if time_identity is not None:
@@ -9599,6 +9631,10 @@ def _main(resources: _TrainingResources):
                     choices=("veto-v1", "coach-v03"),
                     help="R17.1 ruling 3 readiness law; coach-v03 (six native "
                          "conditions, health excluded) requires l2-town-v1")
+    ap.add_argument("--resource-retreat", default="off",
+                    choices=("off", "retreat-v1"),
+                    help="R18-B return-to-town law; retreat-v1 requires "
+                         "l2-town-v1 under coach-v03 and --worker/--options")
     ap.add_argument("--dive-blocker-recovery", default="off", choices=("off", "adjacent-v1"),
                     help="Explicit bounded a11 blocker combat; requires resource protocol")
     ap.add_argument("--manager-heuristic", default=None,
@@ -9727,7 +9763,8 @@ def _main(resources: _TrainingResources):
                     help="explicit per-env lifetime prefix attempt cap")
     ap.add_argument("--worker-prefix-max-microsteps", type=int, default=None,
                      help="explicit per-env lifetime formal prefix microstep cap")
-    ap.add_argument("--worker-time-protocol", choices=["legacy", "completion-l2-v1"],
+    ap.add_argument("--worker-time-protocol",
+                    choices=["legacy", "completion-l2-v1", "completion-l2-r18c"],
                     default="legacy",
                     help="explicit physical arrival/followup and service deadlines; max_steps remains the original observation denominator")
     ap.add_argument(
@@ -10114,6 +10151,9 @@ def _main(resources: _TrainingResources):
             "resource_service_policy": (args.resource_service_policy if args.resource_service_policy != "legacy-v1" else None),
             "resource_service_recipe": resource_service_recipe(
                 args.resource_protocol, args.resource_purchase_mode, args.resource_service_policy),
+            # R18-B: 与 _training_contract 同款 None-off 写法。
+            "resource_retreat": (getattr(args, "resource_retreat", "off")
+                                 if getattr(args, "resource_retreat", "off") != "off" else None),
         })
 
     dry_curriculum_start_index = None
@@ -10345,6 +10385,7 @@ def _main(resources: _TrainingResources):
         resource_purchase_mode=getattr(args, "resource_purchase_mode", "full"),
         resource_service_policy=getattr(args, "resource_service_policy", "legacy-v1"),
         resource_readiness_law=getattr(args, "resource_readiness_law", "veto-v1"),
+        resource_retreat=getattr(args, "resource_retreat", "off"),
         dive_blocker_recovery=getattr(args, "dive_blocker_recovery", "off"),
         manager_npz_sha256=manager_npz_sha256,
         worker_npz_sha256=worker_npz_sha256,
