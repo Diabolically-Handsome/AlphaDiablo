@@ -26,7 +26,10 @@ import zipfile
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "python"))
 
-from eval_contract import PROTOCOL_VERSION, RUNTIME_PACKAGE_VERSIONS
+from eval_contract import (PROTOCOL_VERSION, RUNTIME_PACKAGE_VERSIONS,
+                           resource_service_recipe, validate_resource_service_config,
+                           dive_blocker_recovery_recipe, validate_dive_blocker_recovery,
+                           worker_prefix_recipe, EARNED_DIVE_SUFFIX_SCOPE)
 from sb3_contrib import RecurrentPPO
 from stable_baselines3 import PPO
 from stable_baselines3.common.callbacks import BaseCallback
@@ -125,9 +128,23 @@ _WORKER_NO_PROGRESS_TIMEOUT_CONTRACT = {
         "death-ladder-base-plus-additional-terminal-death-cost"
     ),
 }
+# R16 修宪接线常量:CLI 默认值即"未启用"(契约恒写 None)。
+# farm_scene_cap 默认镜像 diablogym.options_env.FARM_SCENE_CAP(=1800);
+# no_progress_timeout_credit 默认 death-equivalent = 旧法(停滞超时按
+# 死亡等价计账),zero = R16 新记账口径(语义由 worker_env 侧实现)。
+_FARM_SCENE_CAP_DEFAULT = 1800
+_WORKER_NO_PROGRESS_TIMEOUT_CREDIT_DEFAULT = "death-equivalent"
+_WORKER_NO_PROGRESS_TIMEOUT_CREDITS = ("death-equivalent", "zero")
 _WORKER_VIEW_LEGACY_V3 = "legacy-v3"
 _WORKER_VIEW_A12_OVERLAY = "legacy-v3-a12-overlay"
 _WORKER_VIEW_DUAL_V4_ASYMMETRIC = "dual-v4-asymmetric-v3"
+# R13 教室改革:v5 = v4 逐位前缀 + 12 维窗口模式追加块(见 options_env)。
+_WORKER_VIEW_DUAL_V5_WINDOW_MODE = "dual-v5-window-mode-v1"
+# dual 家族视图共用 asymmetric policy class 与 dual 续训分类机器。
+_WORKER_DUAL_VIEWS = frozenset({
+    _WORKER_VIEW_DUAL_V4_ASYMMETRIC,
+    _WORKER_VIEW_DUAL_V5_WINDOW_MODE,
+})
 _DUAL_LEGACY_ACTOR_MIGRATION = "legacy-actor-migration"
 _DUAL_ENV_RESTART_CONTINUATION = (
     "parameter-continuation-with-environment-restart-v1"
@@ -783,6 +800,12 @@ def _capture_file_sha256(path: str | pathlib.Path, label: str) -> str:
 
 _IMPLEMENTATION_SOURCE_FILES = (
     "train/train_ppo.py",
+    "train/migrate_resource_candidate.py",
+    "train/migrate_completion_candidate.py",
+    "train/prefix_worker.py",
+    "train/training_diagnostics.py",
+    "train/rollout_diagnostics.py",
+    "train/analyze_first_update.py",
     "train/leashed_ppo.py",
     "train/models.py",
     "train/eval_contract.py",
@@ -792,6 +815,14 @@ _IMPLEMENTATION_SOURCE_FILES = (
     "python/diablogym/nav.py",
     "python/diablogym/options_env.py",
     "python/diablogym/worker_env.py",
+    "python/diablogym/completion_clock.py",
+    "python/diablogym/resource_protocol.py",
+    "python/diablogym/resource_navigation.py",
+    "python/diablogym/resource_sustain.py",
+    "python/diablogym/resource_gold_memory.py",
+    "python/diablogym/resource_sustain_gold.py",
+    "python/diablogym/resource_sustain_armor.py",
+    "python/diablogym/resource_sustain_completion.py",
 )
 
 
@@ -1213,7 +1244,7 @@ def _classify_dual_worker_resume(args, resume_data: dict) -> str | None:
     classifier name and the required CLI acknowledgement.
     """
     if (_worker_policy_observation_view(args)
-            != _WORKER_VIEW_DUAL_V4_ASYMMETRIC):
+            not in _WORKER_DUAL_VIEWS):
         return None
     _require(isinstance(resume_data, dict),
              "dual-v4 resume checkpoint data 不是对象")
@@ -1357,7 +1388,7 @@ def _validate_worker_policy_observation_binding(args, model) -> None:
         or (
             asymmetric
             and not legacy_view
-            and selected_view == _WORKER_VIEW_DUAL_V4_ASYMMETRIC
+            and selected_view in _WORKER_DUAL_VIEWS
         )
         or (
             not custom
@@ -1368,8 +1399,8 @@ def _validate_worker_policy_observation_binding(args, model) -> None:
     )
     _require(
         asymmetric
-        is (selected_view == _WORKER_VIEW_DUAL_V4_ASYMMETRIC),
-        "dual-v4-asymmetric-v3 观测与实际 asymmetric policy class 不一致",
+        is (selected_view in _WORKER_DUAL_VIEWS),
+        "dual 家族观测与实际 asymmetric policy class 不一致",
     )
     expected_action14_bonus = float(getattr(
         args, "worker_action14_logit_bonus", 0.0))
@@ -1392,6 +1423,44 @@ def _validate_worker_policy_observation_binding(args, model) -> None:
             and actual_action14_bonus is None
         ),
         "CLI action14 logit prior 与实际 Worker policy 不一致",
+    )
+    # R13:a11 冷启动先验绑定(post-load 双写后核验,活体==CLI)。
+    expected_action11_bonus = float(getattr(
+        args, "worker_dive_action11_logit_bonus", 0.0))
+    actual_action11_bonus = getattr(
+        model.policy, "action11_logit_bonus", None)
+    _require(
+        (
+            asymmetric
+            and isinstance(actual_action11_bonus, float)
+            and math.isclose(
+                actual_action11_bonus, expected_action11_bonus,
+                rel_tol=0, abs_tol=0)
+        )
+        or (
+            not asymmetric
+            and expected_action11_bonus == 0.0
+        ),
+        "CLI action11 logit prior 与实际 Worker policy 不一致",
+    )
+    # R16:a13 拾药先验绑定(post-load 双写后核验,活体==CLI;a11 同款)。
+    expected_action13_bonus = float(getattr(
+        args, "worker_potion_action13_logit_bonus", 0.0))
+    actual_action13_bonus = getattr(
+        model.policy, "action13_logit_bonus", None)
+    _require(
+        (
+            asymmetric
+            and isinstance(actual_action13_bonus, float)
+            and math.isclose(
+                actual_action13_bonus, expected_action13_bonus,
+                rel_tol=0, abs_tol=0)
+        )
+        or (
+            not asymmetric
+            and expected_action13_bonus == 0.0
+        ),
+        "CLI action13 logit prior 与实际 Worker policy 不一致",
     )
     actor_migration = getattr(model, "_actor_migration_receipt", None)
     _require(
@@ -2146,7 +2215,10 @@ def _canonical_asymmetric_worker_migration_evidence(
 
 def _policy_source_roles(args, demos_sha256: str | None) -> dict:
     """Describe which frozen artifacts can actually change policy parameters."""
-    resume = bool(getattr(args, "resume_from", None))
+    # Parameter provenance only: the independent warm-start receipt explicitly
+    # denies optimizer/counter/trajectory continuation.
+    resume = bool(getattr(args, "resume_from", None)
+                  or getattr(args, "resource_warm_start", None))
     bc_init = bool(getattr(args, "bc_init", None))
     beta = float(getattr(args, "distill_beta", 0.0))
     teacher_override = bool(getattr(args, "teacher_override", None))
@@ -2535,6 +2607,10 @@ def _training_contract(args, model, batch_size: int,
         "schema_version": 2,
         "contract_revision": _CONTRACT_REVISION,   # v32:+drink_sovereignty(④丙 环境语义入契约)
         "implementation_sha256": implementation_sha256,
+        # R12:经济法案入契约(v1=历史默认;后人续训可见工资制度身份)
+        "reward_economy": getattr(args, "reward_economy", "v1"),
+        # R12 修正案二:脚本教练身份入契约(None=npz 经理)
+        "manager_heuristic": getattr(args, "manager_heuristic", None),
         "mode": mode,
         "arch": args.arch,
         "max_steps": args.max_steps,
@@ -2582,6 +2658,147 @@ def _training_contract(args, model, batch_size: int,
         "worker_additional_terminal_death_cost":
             float(getattr(
                 args, "worker_additional_terminal_death_cost", 0.0)),
+        # R13:课堂范围入契约。未启用(farm-only)恒写 None,旧 checkpoint
+        # 契约 .get 同为 None → resume 等式兼容,revision 26 不动
+        # (worker_zip_sha256 先例);启用漂移走白名单(v0.3 修订)。
+        "worker_learning_window_scope": (
+            getattr(args, "worker_learning_window_scope", "farm-only")
+            if (getattr(args, "worker", False)
+                and getattr(
+                    args, "worker_learning_window_scope", "farm-only")
+                != "farm-only")
+            else None),
+        # R13 冷启动杠杆同款记账:0.0(未启用)恒写 None。
+        "worker_dive_action11_logit_bonus": (
+            float(getattr(
+                args, "worker_dive_action11_logit_bonus", 0.0))
+            if (getattr(args, "worker", False)
+                and float(getattr(
+                    args, "worker_dive_action11_logit_bonus", 0.0))
+                > 0.0)
+            else None),
+        # R16 拾药先验同款记账:0.0(未启用)恒写 None。
+        "worker_potion_action13_logit_bonus": (
+            float(getattr(
+                args, "worker_potion_action13_logit_bonus", 0.0))
+            if (getattr(args, "worker", False)
+                and float(getattr(
+                    args, "worker_potion_action13_logit_bonus", 0.0))
+                > 0.0)
+            else None),
+        # R16 修宪:环境/教室/工资侧新参数各一 None-off 键——CLI 默认值
+        # (False/0/1800/death-equivalent)恒写 None,旧 checkpoint 契约 .get
+        # 同为 None → resume 等式兼容,revision 26 不动(worker_zip_sha256
+        # 先例);启用漂移走 _ENVIRONMENT_RESTART_ALLOWED_DRIFT 白名单。
+        "explore_global_fallback": (
+            True
+            if bool(getattr(args, "explore_global_fallback", False))
+            else None),
+        # R16 C5 主力(A 队追加,fallback 同款记账):False(未启用)恒写 None。
+        "explore_global_hunt": (
+            True
+            if bool(getattr(args, "explore_global_hunt", False))
+            else None),
+        "progress_far_tiles": (
+            int(getattr(args, "progress_far_tiles", 0))
+            if int(getattr(args, "progress_far_tiles", 0)) > 0
+            else None),
+        "farm_scene_cap": (
+            int(getattr(args, "farm_scene_cap", _FARM_SCENE_CAP_DEFAULT))
+            if int(getattr(args, "farm_scene_cap", _FARM_SCENE_CAP_DEFAULT))
+            != _FARM_SCENE_CAP_DEFAULT
+            else None),
+        "reset_layer_clock_on_window": (
+            True
+            if bool(getattr(args, "reset_layer_clock_on_window", False))
+            else None),
+        "resource_protocol": (
+            getattr(args, "resource_protocol", "off")
+            if getattr(args, "resource_protocol", "off") != "off" else None),
+        "resource_purchase_mode": (
+            getattr(args, "resource_purchase_mode", "full")
+            if getattr(args, "resource_protocol", "off") != "off" else None),
+        "resource_service_policy": (
+            getattr(args, "resource_service_policy", "legacy-v1")
+            if getattr(args, "resource_service_policy", "legacy-v1") != "legacy-v1" else None),
+        "resource_service_recipe": resource_service_recipe(
+            getattr(args, "resource_protocol", "off"),
+            getattr(args, "resource_purchase_mode", "full"),
+            getattr(args, "resource_service_policy", "legacy-v1")),
+        # R17.1 ruling 3: veto-v1 (the legacy law) always writes None; only
+        # coach-v03 is literal, so old checkpoint contracts stay equal.
+        "resource_readiness_law": (
+            getattr(args, "resource_readiness_law", "veto-v1")
+            if getattr(args, "resource_readiness_law", "veto-v1") != "veto-v1" else None),
+        "worker_hp_loss_price": (
+            float(getattr(args, "worker_hp_loss_price", 0.0))
+            if (getattr(args, "worker", False)
+                and float(getattr(args, "worker_hp_loss_price", 0.0))
+                > 0.0)
+            else None),
+        "worker_potion_pickup_bonus": (
+            float(getattr(args, "worker_potion_pickup_bonus", 0.0))
+            if (getattr(args, "worker", False)
+                and float(getattr(
+                    args, "worker_potion_pickup_bonus", 0.0)) > 0.0)
+            else None),
+        "worker_no_progress_timeout_credit": (
+            str(getattr(
+                args, "worker_no_progress_timeout_credit",
+                _WORKER_NO_PROGRESS_TIMEOUT_CREDIT_DEFAULT))
+            if (getattr(args, "worker", False)
+                and getattr(
+                    args, "worker_no_progress_timeout_credit",
+                    _WORKER_NO_PROGRESS_TIMEOUT_CREDIT_DEFAULT)
+                != _WORKER_NO_PROGRESS_TIMEOUT_CREDIT_DEFAULT)
+            else None),
+        # R13.2 甲案同款记账:0.0(未启用)恒写 None。
+        "worker_depth_shaping_unit": (
+            float(getattr(args, "worker_depth_shaping_unit", 0.0))
+            if (getattr(args, "worker", False)
+                and float(getattr(
+                    args, "worker_depth_shaping_unit", 0.0)) > 0.0)
+            else None),
+        # R14 乙案同款记账:0.0(未启用)恒写 None。
+        "worker_descend_bonus_fraction": (
+            float(getattr(
+                args, "worker_descend_bonus_fraction", 0.0))
+            if (getattr(args, "worker", False)
+                and float(getattr(
+                    args, "worker_descend_bonus_fraction", 0.0)) > 0.0)
+            else None),
+        # R14.2 丁案同款记账:0.0(未启用)恒写 None。
+        "worker_descend_escrow_fraction": (
+            float(getattr(
+                args, "worker_descend_escrow_fraction", 0.0))
+            if (getattr(args, "worker", False)
+                and float(getattr(
+                    args, "worker_descend_escrow_fraction", 0.0)) > 0.0)
+            else None),
+        # R15 修正案二:False(未启用)恒写 None。
+        "worker_descend_escrow_readiness_gate": (
+            True
+            if (getattr(args, "worker", False)
+                and bool(getattr(
+                    args, "worker_descend_escrow_readiness_gate",
+                    False)))
+            else None),
+        # R17.0 修正案一:v1(旧尺,未启用)恒写 None;仅 v2 写字面值。
+        "worker_descend_escrow_readiness_table": (
+            "v2"
+            if (getattr(args, "worker", False)
+                and str(getattr(
+                    args, "worker_descend_escrow_readiness_table",
+                    "v1")) == "v2")
+            else None),
+        # R14.3 戊案:power=1.0(线性旧法)恒写 None。
+        "worker_descend_escrow_power": (
+            float(getattr(
+                args, "worker_descend_escrow_power", 1.0))
+            if (getattr(args, "worker", False)
+                and float(getattr(
+                    args, "worker_descend_escrow_power", 1.0)) != 1.0)
+            else None),
         "legacy_policy_observation_view": (
             _worker_policy_observation_view(args)
             == _WORKER_VIEW_LEGACY_V3),
@@ -2625,6 +2842,19 @@ def _training_contract(args, model, batch_size: int,
             "target_kl": getattr(args, "target_kl", None),
         },
     }
+    prefix_identity = _worker_prefix_identity(args)
+    if prefix_identity is not None:
+        contract["worker_prefix"] = prefix_identity
+    time_identity = _worker_time_identity(
+        getattr(args, "worker_time_protocol", "legacy"))
+    if time_identity is not None:
+        _validate_worker_time_args(args)
+        contract["worker_time_protocol"] = time_identity["protocol"]
+        contract["worker_time_recipe"] = time_identity
+    recovery = getattr(args, "dive_blocker_recovery", "off")
+    validate_dive_blocker_recovery(getattr(args, "resource_protocol", "off"), recovery)
+    if recovery != "off":
+        contract["dive_blocker_recovery"] = recovery
     _validate_policy_source_roles(contract)
     if (
         args.worker
@@ -2636,11 +2866,138 @@ def _training_contract(args, model, batch_size: int,
     return contract
 
 
+# R12 修法(2026-08-30,主席批路线甲后的实施条款):环境重启续接的
+# 白名单豁免。再教育 = 同一工人在"合法变更后的世界"继续训练,以下
+# 字段的漂移属预注册点名的立法本身,不构成契约违约;白名单之外
+# (视图/动作空间/几何/算法配方等)仍铁腕相等。
+_ENVIRONMENT_RESTART_ALLOWED_DRIFT = frozenset({
+    "demos_sha256", "distill_beta", "distillation", "dry_curriculum",
+    "implementation_sha256", "policy_source_roles", "teacher_sha256",
+    "worker_additional_terminal_death_cost", "reward_economy",
+    # R13 修法(2026-08-30,主席批教室改革后的实施条款):课堂范围是
+    # 预注册点名的立法本身(None→farm-dive-v1),与 reward_economy 同款。
+    "worker_learning_window_scope",
+    # R13 冷启动杠杆(主席裁决点5预授权,G0 验收未达标时启用):
+    # None→bonus 的漂移属预注册点名立法。
+    "worker_dive_action11_logit_bonus",
+    # R13.2 甲案(主席 2026-08-31「按甲来说吧」):势函数深度塑形,
+    # None→unit 的漂移属预注册点名立法。
+    "worker_depth_shaping_unit",
+    # R14 乙案(主席 2026-08-31「先做乙」):有界下楼奖金返还,
+    # None→fraction 的漂移属预注册点名立法。
+    "worker_descend_bonus_fraction",
+    # R14.2 丁案(主席夜间条例「乙不行直接按丁走」):托管发放,
+    # None→fraction 的漂移属预注册点名立法。
+    "worker_descend_escrow_fraction",
+    # R14.3 戊案(主席夜令「挖掘一条能用的曲线」):凸曲线计价,
+    # None→power 的漂移属预注册点名立法。
+    "worker_descend_escrow_power",
+    # R15 修正案二:战备条件托管,None→True 的漂移属预注册点名立法。
+    "worker_descend_escrow_readiness_gate",
+    # R17.0 修正案一(合议庭更正二.1):托管战备门尺子选择器,
+    # None→v2 的漂移属预注册点名立法。
+    "worker_descend_escrow_readiness_table",
+    # R17.1 主席裁决三:战备法(六条件教练法,排除血量),None→coach-v03
+    # 的漂移属预注册点名立法(readiness_table 同款)。
+    "resource_readiness_law",
+    # R16 修宪(2026-09-01,预注册点名):a13 拾药冷启动先验,
+    # None→bonus 的漂移属预注册点名立法(a11 同款)。
+    "worker_potion_action13_logit_bonus",
+    # R16 修宪:环境侧(探索全局回退/全图猎怪/远格进展计数)与教室侧
+    # (农窗场景上限/层钟窗内重置)语义变更,None→值 的漂移属预注册
+    # 点名立法。explore_global_hunt = R16 C5 主力(A 队 8 种子探针:
+    # fallback 375→375 杀几乎不触发,hunt 375→670 杀),与 fallback 同款。
+    "explore_global_fallback",
+    "explore_global_hunt",
+    "progress_far_tiles",
+    "farm_scene_cap",
+    "reset_layer_clock_on_window",
+    # R16 修宪:工资侧(掉血计价/拾药奖金/停滞超时记账口径),
+    # None→值 的漂移属预注册点名立法(worker_additional_terminal_death_cost
+    # 同款)。
+    "worker_hp_loss_price",
+    "worker_potion_pickup_bonus",
+    "worker_no_progress_timeout_credit",
+    # R16 修宪:训练局长(max_steps 3000→≥6000)与开放喝药主权
+    # (drink_sovereignty)均为预注册点名的立法漂移;白名单之外的
+    # 视图/动作空间/几何/算法配方仍铁腕相等。
+    "max_steps",
+    "drink_sovereignty",
+})
+
+
+def _validate_worker_time_resume_identity(saved: dict | None, current: dict) -> None:
+    """Physical time contracts never inherit broad environment-drift waivers."""
+    identities = []
+    for label, identity in (("saved", saved), ("current", current)):
+        record = identity if isinstance(identity, dict) else {}
+        protocol = record.get("worker_time_protocol")
+        expected = _worker_time_identity("legacy" if protocol is None else protocol)
+        actual = record.get("worker_time_recipe")
+        if expected is None:
+            _require(actual is None, f"{label} legacy time protocol cannot carry a recipe")
+        else:
+            _require(isinstance(identity, dict), f"{label} completion time contract is missing")
+            _require(isinstance(actual, dict) and actual == expected
+                     and all(type(actual[key]) is type(value)
+                             for key, value in expected.items()),
+                     f"{label} worker_time_recipe is not the exact completion-l2-v1 recipe")
+        identities.append(expected)
+    _require(identities[0] == identities[1],
+             "worker time protocol changes require separately identified initialization; ordinary resume is forbidden")
+
+
+def _validate_worker_prefix_resume_identity(saved: dict | None, current: dict) -> None:
+    """Prefix scope/caps/source are never covered by broad drift allowances."""
+    previous = saved if isinstance(saved, dict) else {}
+    scopes = (previous.get("worker_learning_window_scope"),
+              current.get("worker_learning_window_scope"))
+    if EARNED_DIVE_SUFFIX_SCOPE not in scopes:
+        _require(previous.get("worker_prefix") is None and current.get("worker_prefix") is None,
+                 "worker_prefix metadata requires earned-dive-suffix-v1")
+        return
+    _require(isinstance(saved, dict), "earned suffix resume requires an exact contract")
+    for label, identity in (("saved", previous), ("current", current)):
+        if identity.get("worker_learning_window_scope") == EARNED_DIVE_SUFFIX_SCOPE:
+            recipe = identity.get("worker_prefix")
+            _require(isinstance(recipe, dict), f"{label} earned suffix lacks worker_prefix")
+            expected = worker_prefix_recipe(EARNED_DIVE_SUFFIX_SCOPE,
+                recipe.get("source_sha256"), recipe.get("max_attempts"), recipe.get("max_microsteps"))
+            _require(recipe == expected, f"{label} worker_prefix recipe is not exact")
+    _require(scopes[0] == scopes[1] and previous.get("worker_prefix") == current.get("worker_prefix"),
+             "earned suffix scope/source/budget changes require separately identified initialization; ordinary resume is forbidden")
+
+
+def _validate_resource_resume_identity(saved: dict | None, current: dict) -> None:
+    """Native armor/preservation versions cannot bypass exact resume identity."""
+    saved_policy = saved.get("resource_service_policy") if isinstance(saved, dict) else None
+    protected_policies = ("sustain-v5", "sustain-v6")
+    if not any(policy in protected_policies
+               for policy in (saved_policy, current.get("resource_service_policy"))):
+        return
+    _require(isinstance(saved, dict),
+             "sustain-v5/sustain-v6 resume requires an exact resource_service contract; legacy bypass is unavailable")
+    for label, identity in (("saved", saved), ("current", current)):
+        if identity.get("resource_service_policy") in protected_policies:
+            expected = resource_service_recipe(identity.get("resource_protocol"),
+                identity.get("resource_purchase_mode"), identity["resource_service_policy"])
+            _require(identity.get("resource_service_recipe") == expected,
+                     f"{label} resource_service_recipe has mismatched native armor/preservation scope/version")
+    keys = ("resource_protocol", "resource_purchase_mode",
+            "resource_service_policy", "resource_service_recipe")
+    _require(all(saved.get(key) == current.get(key) for key in keys),
+             "resource_service version change requires a separately identified initialization; ordinary resume is forbidden")
+
+
 def _validate_resume_contract(saved: dict | None, current: dict,
                               allow_manager_change: bool = False,
                               allow_legacy_resume: bool = False,
                               allow_optimizer_reset: bool = False,
-                              allow_target_kl_change: bool = False) -> None:
+                              allow_target_kl_change: bool = False,
+                               allow_environment_restart: bool = False) -> None:
+    _validate_worker_time_resume_identity(saved, current)
+    _validate_worker_prefix_resume_identity(saved, current)
+    _validate_resource_resume_identity(saved, current)
     if saved is None:
         _require(allow_legacy_resume,
                  "resume checkpoint 无 training_contract，无法证明原训练环境/资源；"
@@ -2649,7 +3006,16 @@ def _validate_resume_contract(saved: dict | None, current: dict,
               f"本腿将写入 contract_revision {_CONTRACT_REVISION} 契约")
         return
     _require(isinstance(saved, dict), "checkpoint training_contract 不是对象")
-    allowed = {"manager_npz_sha256"} if allow_manager_change else set()
+    allowed = ({"manager_npz_sha256", "manager_heuristic"}
+               if allow_manager_change else set())
+    if allow_environment_restart:
+        allowed |= _ENVIRONMENT_RESTART_ALLOWED_DRIFT
+        drifted = sorted(
+            k for k in _ENVIRONMENT_RESTART_ALLOWED_DRIFT
+            if saved.get(k) != current.get(k))
+        if drifted:
+            print("   [environment-restart resume] 白名单豁免漂移字段: "
+                  + ", ".join(drifted))
     if allow_optimizer_reset:
         # reset 明确切断旧 Adam moments；学习率与 reset 回执因此属于本腿
         # 新 optimizer 身份，不应拿上一腿契约阻止该显式迁移。reset 本身是
@@ -5598,7 +5964,145 @@ def _assert_bc_v1_demos_frozen(path: str | pathlib.Path) -> str:
     return actual
 
 
+def _worker_time_identity(protocol="legacy") -> dict | None:
+    if protocol == "legacy":
+        return None
+    from diablogym.completion_clock import COMPLETION_L2_V1
+    _require(isinstance(protocol, str) and protocol == COMPLETION_L2_V1.protocol,
+             "worker_time_protocol must be legacy/completion-l2-v1")
+    return COMPLETION_L2_V1.as_dict()
+
+
+def _validate_worker_time_config(protocol="legacy", *, worker,
+        worker_learning_window_scope, resource_protocol, resource_purchase_mode,
+        resource_service_policy, max_steps, farm_scene_cap) -> dict | None:
+    recipe = _worker_time_identity(protocol)
+    if recipe is None:
+        return None
+    _require(worker and worker_learning_window_scope == EARNED_DIVE_SUFFIX_SCOPE,
+             "completion-l2-v1 requires an earned-dive-suffix-v1 Worker")
+    _require(resource_protocol == "l2-town-v1" and resource_purchase_mode == "full"
+             and resource_service_policy == "sustain-v6",
+             "completion-l2-v1 requires l2-town-v1/full/sustain-v6")
+    _require(max_steps == recipe["actor_denominator"]
+             and farm_scene_cap == recipe["farm_microsteps"],
+             "completion-l2-v1 requires max_steps=6000 (observation only) and farm_scene_cap=3600")
+    return recipe
+
+
+def _validate_worker_time_args(args) -> None:
+    _validate_worker_time_config(getattr(args, "worker_time_protocol", "legacy"),
+        worker=getattr(args, "worker", False),
+        worker_learning_window_scope=getattr(args, "worker_learning_window_scope", "farm-only"),
+        resource_protocol=getattr(args, "resource_protocol", "off"),
+        resource_purchase_mode=getattr(args, "resource_purchase_mode", "full"),
+        resource_service_policy=getattr(args, "resource_service_policy", "legacy-v1"),
+        max_steps=getattr(args, "max_steps", None),
+        farm_scene_cap=getattr(args, "farm_scene_cap", None))
+
+
+def _worker_prefix_identity(args) -> dict | None:
+    scope = getattr(args, "worker_learning_window_scope", "farm-only")
+    path = getattr(args, "worker_prefix_model", None)
+    attempts = getattr(args, "worker_prefix_max_attempts", None)
+    microsteps = getattr(args, "worker_prefix_max_microsteps", None)
+    if scope != EARNED_DIVE_SUFFIX_SCOPE:
+        # Reject stray flags before opening any model in the legacy scopes.
+        return worker_prefix_recipe(scope, "specified" if path is not None else None,
+                                    attempts, microsteps)
+    _require(path is not None, "earned-dive-suffix-v1 requires --worker-prefix-model")
+    return worker_prefix_recipe(scope, _capture_file_sha256(path, "worker_prefix_model"),
+                                attempts, microsteps)
+
+
+def _validate_worker_prefix_args(args) -> None:
+    if _worker_prefix_identity(args) is None:
+        return
+    _require(args.worker and args.algo == "mppo" and str(args.device) == "cpu",
+             "earned-dive-suffix-v1 requires CPU Worker MaskablePPO")
+    _require(args.seed is not None and args.max_steps == 6000,
+             "earned-dive-suffix-v1 requires an explicit seed and max_steps=6000")
+    fixed = {
+        "resource_protocol": "l2-town-v1", "resource_purchase_mode": "full",
+        "resource_service_policy": "sustain-v6", "dive_blocker_recovery": "adjacent-v1",
+        "worker_policy_observation_view": "dual-v4-asymmetric-v3",
+        "reward_economy": "v4", "worker_action14_logit_bonus": 2.5,
+        "worker_dive_action11_logit_bonus": 2.0, "worker_potion_action13_logit_bonus": 2.0,
+        "worker_hp_loss_price": 0.1, "worker_potion_pickup_bonus": 2.0,
+        "worker_no_progress_timeout_credit": "zero",
+        "worker_descend_escrow_fraction": 0.5, "worker_descend_escrow_power": 1.6,
+        "worker_descend_escrow_readiness_gate": True,
+        "farm_scene_cap": 3600, "reset_layer_clock_on_window": True,
+    }
+    for key, expected in fixed.items():
+        _require(getattr(args, key, None) == expected,
+                 f"earned-dive-suffix-v1 requires {key}={expected!r}")
+    _require(not any(getattr(args, key, None) for key in (
+        "skip_dry", "dry_curriculum_schedule", "deep_start_curriculum", "deep",
+        "death_ladder", "resource_calibration", "teacher_override", "bc_init",
+        "freeze_policy_steps", "worker_zip", "worker_npz")),
+        "earned-dive-suffix-v1 forbids alternate prefix/curriculum/teacher overrides")
+    _require(_requested_drink_sovereignty(args) is not False,
+             "earned-dive-suffix-v1 requires environment-mask drink sovereignty")
+    _require(args.distill_beta == 0 and not _bc_aux_active(args),
+             "earned-dive-suffix-v1 excludes teacher/BC training")
+
+
+def _validate_resource_warm_start_args(args) -> None:
+    if not getattr(args, "resource_warm_start", None):
+        return
+    _require(args.worker and args.algo == "mppo" and str(args.device) == "cpu",
+             "--resource-warm-start requires CPU Worker MaskablePPO")
+    _require(args.seed is not None,
+             "--resource-warm-start requires an explicit seed")
+    _require(not any(getattr(args, key, None) for key in (
+        "resume_from", "bc_init", "teacher_override", "reset_optimizer",
+        "reset_worker_critic", "allow_legacy_resume", "allow_manager_change",
+        "allow_environment_restart_resume", "freeze_policy_steps",
+        "deep_start_curriculum", "dry_curriculum_schedule", "skip_dry")),
+        "resource warm-start cannot combine with resume/migration/reset/curriculum overrides")
+    _require(args.distill_beta == 0 and not _bc_aux_active(args),
+             "resource warm-start preserves the parent disabled teacher/BC regime")
+    _require(getattr(args, "resource_protocol", "off") == "l2-town-v1"
+             and getattr(args, "resource_purchase_mode", "full") == "full"
+             and getattr(args, "resource_service_policy", "legacy-v1") in ("sustain-v2", "sustain-v3", "sustain-v4", "sustain-v5", "sustain-v6"),
+             "resource warm-start requires an explicit sustain-v2/sustain-v3/sustain-v4/sustain-v5/sustain-v6 environment")
+    _require(pathlib.Path(args.resource_warm_start).is_file(),
+             "resource warm-start manifest does not exist")
+
+
+def _validate_first_update_diagnostic_args(args) -> None:
+    mode = getattr(args, "diagnostic_rollout", "disabled")
+    _require(mode in ("disabled", "first-update-v1"),
+             "unknown diagnostic rollout mode")
+    if mode == "disabled":
+        return
+    _require(args.worker and args.algo == "mppo" and str(args.device) == "cpu"
+             and getattr(args, "artifact_scope", "production") == "candidate",
+             "first-update-v1 requires a CPU Worker MaskablePPO candidate")
+    _require(bool(getattr(args, "resource_warm_start", None))
+             and not getattr(args, "resume_from", None),
+             "first-update-v1 requires a fresh resource warm-start")
+    _require(args.total_steps == args.n_steps * args.num_envs,
+             "first-update-v1 records exactly one complete rollout")
+    _require(not getattr(args, "calib_probes", "")
+             and not getattr(args, "calib_record_only", False),
+             "first-update-v1 excludes calibration interruptions")
+
+
+def _first_update_diagnostic_callback(args, run_dir, implementation_sha256):
+    if getattr(args, "diagnostic_rollout", "disabled") == "disabled":
+        return None
+    _validate_first_update_diagnostic_args(args)
+    from rollout_diagnostics import FirstUpdateDiagnosticCallback
+    return FirstUpdateDiagnosticCallback(run_dir, implementation_sha256)
+
+
 def _validate_args(args) -> None:
+    _validate_worker_time_args(args)
+    _validate_worker_prefix_args(args)
+    _validate_resource_warm_start_args(args)
+    _validate_first_update_diagnostic_args(args)
     _require(args.total_steps > 0, "--total-steps 必须 > 0")
     _require(args.num_envs > 0, "--num-envs 必须 > 0")
     _require(args.n_steps > 0, "--n-steps 必须 > 0")
@@ -5631,6 +6135,139 @@ def _validate_args(args) -> None:
         ),
         "--worker-action14-logit-bonus 非零只适用于 "
         "dual-v4 asymmetric Worker MaskablePPO",
+    )
+    action11_logit_bonus = float(getattr(
+        args, "worker_dive_action11_logit_bonus", 0.0))
+    _require(
+        math.isfinite(action11_logit_bonus)
+        and 0.0 <= action11_logit_bonus <= 10.0,
+        "--worker-dive-action11-logit-bonus 必须是 [0,10] 内有限数",
+    )
+    _require(
+        action11_logit_bonus == 0.0
+        or (
+            args.worker
+            and args.algo == "mppo"
+            and getattr(
+                args, "worker_learning_window_scope", "farm-only")
+            in ("farm-dive-v1", EARNED_DIVE_SUFFIX_SCOPE)
+        ),
+        "--worker-dive-action11-logit-bonus 非零只适用于 "
+        "live-DIVE 教室的 Worker MaskablePPO(R13 冷启动杠杆)",
+    )
+    action13_logit_bonus = float(getattr(
+        args, "worker_potion_action13_logit_bonus", 0.0))
+    _require(
+        math.isfinite(action13_logit_bonus)
+        and 0.0 <= action13_logit_bonus <= 10.0,
+        "--worker-potion-action13-logit-bonus 必须是 [0,10] 内有限数",
+    )
+    # R16:先验挂在 asymmetric policy class 上(policy_kwargs 只在
+    # dual-v4 视图下装配),故非零仅限 dual-v4 Worker MaskablePPO(a14 同款)。
+    _require(
+        action13_logit_bonus == 0.0
+        or (
+            args.worker
+            and args.algo == "mppo"
+            and _worker_policy_observation_view(args)
+            == _WORKER_VIEW_DUAL_V4_ASYMMETRIC
+        ),
+        "--worker-potion-action13-logit-bonus 非零只适用于 "
+        "dual-v4 asymmetric Worker MaskablePPO(R16 拾药先验)",
+    )
+    depth_shaping_unit = float(getattr(
+        args, "worker_depth_shaping_unit", 0.0))
+    _require(
+        math.isfinite(depth_shaping_unit)
+        and 0.0 <= depth_shaping_unit <= 100.0,
+        "--worker-depth-shaping-unit 必须是 [0,100] 内有限数",
+    )
+    _require(
+        depth_shaping_unit == 0.0
+        or (
+            args.worker
+            and args.algo == "mppo"
+            and getattr(
+                args, "worker_learning_window_scope", "farm-only")
+            in ("farm-dive-v1", EARNED_DIVE_SUFFIX_SCOPE)
+        ),
+        "--worker-depth-shaping-unit 非零只适用于 "
+        "live-DIVE 教室的 Worker MaskablePPO(R13.2 甲案)",
+    )
+    descend_bonus_fraction = float(getattr(
+        args, "worker_descend_bonus_fraction", 0.0))
+    _require(
+        math.isfinite(descend_bonus_fraction)
+        and 0.0 <= descend_bonus_fraction <= 1.0,
+        "--worker-descend-bonus-fraction 必须在 [0,1] 内",
+    )
+    _require(
+        descend_bonus_fraction == 0.0
+        or (
+            args.worker
+            and args.algo == "mppo"
+            and getattr(
+                args, "worker_learning_window_scope", "farm-only")
+            in ("farm-dive-v1", EARNED_DIVE_SUFFIX_SCOPE)
+        ),
+        "--worker-descend-bonus-fraction 非零只适用于 "
+        "live-DIVE 教室的 Worker MaskablePPO(R14 乙案)",
+    )
+    descend_escrow_fraction = float(getattr(
+        args, "worker_descend_escrow_fraction", 0.0))
+    _require(
+        math.isfinite(descend_escrow_fraction)
+        and 0.0 <= descend_escrow_fraction <= 1.0,
+        "--worker-descend-escrow-fraction 必须在 [0,1] 内",
+    )
+    _require(
+        descend_escrow_fraction == 0.0
+        or (
+            args.worker
+            and args.algo == "mppo"
+            and getattr(
+                args, "worker_learning_window_scope", "farm-only")
+            in ("farm-dive-v1", EARNED_DIVE_SUFFIX_SCOPE)
+        ),
+        "--worker-descend-escrow-fraction 非零只适用于 "
+        "live-DIVE 教室的 Worker MaskablePPO(R14.2 丁案)",
+    )
+    _require(
+        descend_escrow_fraction == 0.0
+        or descend_bonus_fraction == 0.0,
+        "乙案(bonus)与丁案(escrow)互斥,不得同时启用",
+    )
+    descend_escrow_power = float(getattr(
+        args, "worker_descend_escrow_power", 1.0))
+    _require(
+        math.isfinite(descend_escrow_power)
+        and 1.0 <= descend_escrow_power <= 3.0,
+        "--worker-descend-escrow-power 必须在 [1,3] 内",
+    )
+    _require(
+        descend_escrow_power == 1.0
+        or descend_escrow_fraction > 0.0,
+        "--worker-descend-escrow-power ≠ 1 仅与托管同时生效(R14.3 戊案)",
+    )
+    _require(
+        not getattr(args, "worker_descend_escrow_readiness_gate", False)
+        or descend_escrow_fraction > 0.0,
+        "--worker-descend-escrow-readiness-gate 仅与托管同时生效"
+        "(R15 修正案二)",
+    )
+    descend_escrow_readiness_table = str(getattr(
+        args, "worker_descend_escrow_readiness_table", "v1"))
+    _require(
+        descend_escrow_readiness_table in ("v1", "v2"),
+        "--worker-descend-escrow-readiness-table 必须是 v1/v2",
+    )
+    _require(
+        descend_escrow_readiness_table == "v1"
+        or bool(getattr(
+            args, "worker_descend_escrow_readiness_gate", False)),
+        "--worker-descend-escrow-readiness-table v2 仅与战备门"
+        "(--worker-descend-escrow-readiness-gate)同时生效"
+        "(R17.0 修正案一)",
     )
     distill_anneal_actor_rollouts = int(getattr(
         args, "distill_anneal_actor_rollouts", 0))
@@ -5704,8 +6341,9 @@ def _validate_args(args) -> None:
         )
     _require(
         gradient_clip_mode == "global"
-        or (args.worker and args.algo == "mppo" and bool(args.resume_from)),
-        "分组裁剪只适用于 Worker MaskablePPO continuation",
+        or (args.worker and args.algo == "mppo"
+            and bool(args.resume_from or getattr(args, "resource_warm_start", None))),
+        "分组裁剪只适用于 Worker MaskablePPO continuation/resource warm-start",
     )
     _require(args.freeze_policy_steps >= 0, "--freeze-policy-steps 不能为负")
     _require(args.ckpt_every_steps > 0, "--ckpt-every-steps 必须 > 0")
@@ -5738,6 +6376,97 @@ def _validate_args(args) -> None:
         ),
         "Worker 奖励契约旋钮只适用于 --worker",
     )
+    # R16 修宪:工资侧新旋钮(WorkerWindowEnv 显式参数)——范围 + 仅 --worker。
+    worker_hp_loss_price = float(getattr(
+        args, "worker_hp_loss_price", 0.0))
+    _require(
+        math.isfinite(worker_hp_loss_price) and worker_hp_loss_price >= 0.0,
+        "--worker-hp-loss-price 必须是有限非负数",
+    )
+    worker_potion_pickup_bonus = float(getattr(
+        args, "worker_potion_pickup_bonus", 0.0))
+    _require(
+        math.isfinite(worker_potion_pickup_bonus)
+        and worker_potion_pickup_bonus >= 0.0,
+        "--worker-potion-pickup-bonus 必须是有限非负数",
+    )
+    worker_no_progress_timeout_credit = getattr(
+        args, "worker_no_progress_timeout_credit",
+        _WORKER_NO_PROGRESS_TIMEOUT_CREDIT_DEFAULT)
+    _require(
+        worker_no_progress_timeout_credit
+        in set(_WORKER_NO_PROGRESS_TIMEOUT_CREDITS),
+        "--worker-no-progress-timeout-credit 只允许 "
+        + "/".join(_WORKER_NO_PROGRESS_TIMEOUT_CREDITS),
+    )
+    _require(
+        args.worker
+        or (
+            worker_hp_loss_price == 0.0
+            and worker_potion_pickup_bonus == 0.0
+            and worker_no_progress_timeout_credit
+            == _WORKER_NO_PROGRESS_TIMEOUT_CREDIT_DEFAULT
+        ),
+        "R16 工资侧旋钮(--worker-hp-loss-price/--worker-potion-pickup-bonus/"
+        "--worker-no-progress-timeout-credit)只适用于 --worker",
+    )
+    # R16 修宪:环境侧/教室侧新参数——范围 + 教室参数仅限持有 OptionsEnv
+    # 的模式(--worker/--options);DiabloGymEnv 级参数(explore_global_
+    # fallback/explore_global_hunt/progress_far_tiles)各模式皆可——三条
+    # make_env 路径都直接构造 DiabloGymEnv,bool 开关无范围可校。
+    resource_protocol = getattr(args, "resource_protocol", "off")
+    resource_purchase_mode = getattr(args, "resource_purchase_mode", "full")
+    resource_service_policy = getattr(args, "resource_service_policy", "legacy-v1")
+    validate_resource_service_config(resource_protocol, resource_purchase_mode,
+                                     resource_service_policy)
+    validate_dive_blocker_recovery(resource_protocol, getattr(args, "dive_blocker_recovery", "off"))
+    _require(resource_protocol in ("off", "l2-town-v1"),
+             "--resource-protocol must be off/l2-town-v1")
+    _require(resource_purchase_mode in ("none", "heal", "potions", "armor", "full"),
+             "--resource-purchase-mode must be none/heal/potions/armor/full")
+    _require(resource_protocol != "off" or resource_purchase_mode == "full",
+             "--resource-purchase-mode requires --resource-protocol l2-town-v1")
+    _require(resource_protocol == "off" or args.worker or args.options,
+             "--resource-protocol requires --worker/--options")
+    resource_readiness_law = getattr(args, "resource_readiness_law", "veto-v1")
+    _require(resource_readiness_law in ("veto-v1", "coach-v03"),
+             "--resource-readiness-law must be veto-v1/coach-v03")
+    _require(resource_readiness_law == "veto-v1" or resource_protocol == "l2-town-v1",
+             "--resource-readiness-law coach-v03 requires --resource-protocol l2-town-v1")
+    progress_far_tiles = int(getattr(args, "progress_far_tiles", 0))
+    _require(
+        progress_far_tiles >= 0,
+        "--progress-far-tiles 不能为负",
+    )
+    farm_scene_cap = int(getattr(
+        args, "farm_scene_cap", _FARM_SCENE_CAP_DEFAULT))
+    _require(
+        farm_scene_cap > 0,
+        "--farm-scene-cap 必须 > 0",
+    )
+    _require(
+        args.worker or args.options
+        or (
+            farm_scene_cap == _FARM_SCENE_CAP_DEFAULT
+            and not bool(getattr(
+                args, "reset_layer_clock_on_window", False))
+        ),
+        "--farm-scene-cap/--reset-layer-clock-on-window 是 OptionsEnv 教室"
+        "参数,只适用于 --worker/--options",
+    )
+    _require(
+        getattr(args, "worker_learning_window_scope", "farm-only") in {
+            "farm-only", "farm-dive-v1", EARNED_DIVE_SUFFIX_SCOPE
+        },
+        "--worker-learning-window-scope 只允许 farm-only/farm-dive-v1/earned-dive-suffix-v1",
+    )
+    _require(
+        args.worker
+        or getattr(
+            args, "worker_learning_window_scope", "farm-only")
+        == "farm-only",
+        "--worker-learning-window-scope 只适用于 --worker",
+    )
     legacy_policy_view = bool(getattr(
         args, "legacy_worker_policy_observation_view", False))
     explicit_worker_view = getattr(
@@ -5747,9 +6476,21 @@ def _validate_args(args) -> None:
             None,
             _WORKER_VIEW_LEGACY_V3,
             _WORKER_VIEW_DUAL_V4_ASYMMETRIC,
+            _WORKER_VIEW_DUAL_V5_WINDOW_MODE,
         },
         "--worker-policy-observation-view 只允许 "
-        "legacy-v3/dual-v4-asymmetric-v3",
+        "legacy-v3/dual-v4-asymmetric-v3/dual-v5-window-mode-v1",
+    )
+    # R13 交叉门(v0.3 修订):live-DIVE 课堂要求 dual-v4 视图——主权
+    # 移交后工人掩码特征(617-632)天然携带窗口模式信号(m[11] 仅在
+    # live DIVE 窗内可为 1),v4 观测语义如实反映新法,无混叠盲区;
+    # 显式模式 one-hot(v5)列 R13.2 预备役。
+    _require(
+        getattr(args, "worker_learning_window_scope", "farm-only")
+        == "farm-only"
+        or explicit_worker_view == _WORKER_VIEW_DUAL_V4_ASYMMETRIC,
+        "live-DIVE worker scope 必须搭配 "
+        "--worker-policy-observation-view dual-v4-asymmetric-v3",
     )
     _require(
         args.worker or not legacy_policy_view,
@@ -5789,9 +6530,15 @@ def _validate_args(args) -> None:
             )
         elif explicit_worker_view == _WORKER_VIEW_DUAL_V4_ASYMMETRIC:
             _require(
-                bool(args.resume_from),
+                bool(args.resume_from or getattr(args, "resource_warm_start", None)),
                 "dual-v4-asymmetric-v3 必须从已登记 Worker checkpoint "
-                "点火或显式环境重启式参数续接",
+                "点火、显式环境重启式参数续接或独立 resource warm-start",
+            )
+        elif explicit_worker_view == _WORKER_VIEW_DUAL_V5_WINDOW_MODE:
+            _require(
+                bool(args.resume_from),
+                "dual-v5-window-mode-v1 必须从 v4→v5 迁移入学 zip 续接"
+                "(零填充扩维,D0 门保 argmax 同一)",
             )
         else:
             _require(
@@ -5975,10 +6722,19 @@ def _validate_args(args) -> None:
                  f"教师覆写文件不存在: {args.teacher_override}")
         _validate_export_manifest(pathlib.Path(args.teacher_override))
     if args.worker:
-        _require(args.algo == "mppo" and args.gamma == 1.0 and args.max_steps == 3000,
-                 "PREREG-v23:--worker 须配 --algo mppo --gamma 1.0 --max-steps 3000")
-        _require(pathlib.Path(args.manager_npz).is_file(),
-                 f"经理 npz 不存在: {args.manager_npz}")
+        # R16 修宪:局长 3000(旧法)或 ≥6000(新法,审计 C6/C11:1800 拍场景
+        # 预算+3000 拍局长把工人赶下楼;白名单已放行 max_steps 漂移)。
+        _require(args.algo == "mppo" and args.gamma == 1.0
+                 and (args.max_steps == 3000 or args.max_steps >= 6000),
+                 "PREREG-v23/R16:--worker 须配 --algo mppo --gamma 1.0 "
+                 "--max-steps 3000 或 ≥6000")
+        if getattr(args, "manager_heuristic", None):
+            # --manager-npz 带 argparse 默认路径;脚本教练模式下将其置空,
+            # 单一真源归 heuristic(显式同传两者时以本行为准,契约只记 heuristic)。
+            args.manager_npz = None
+        else:
+            _require(pathlib.Path(args.manager_npz).is_file(),
+                     f"经理 npz 不存在: {args.manager_npz}")
         if args.distill_beta > 0 and not args.resume_from:
             _require(pathlib.Path(args.teacher_sd).is_file(),
                      f"教师 state_dict 不存在: {args.teacher_sd}")
@@ -5986,8 +6742,10 @@ def _validate_args(args) -> None:
         # E1 四门之 demos/BC 预检门:skip_dry ∨ schedule(谓词在助手内,断言原封)
         _precheck_dry_window_demos(args)
     if args.options:
-        _require(args.algo == "mppo" and args.gamma == 1.0 and args.max_steps == 3000,
-                 "PREREG-v25:--options 须配 --algo mppo --gamma 1.0 --max-steps 3000")
+        _require(args.algo == "mppo" and args.gamma == 1.0
+                 and (args.max_steps == 3000 or args.max_steps >= 6000),
+                 "PREREG-v25/R16:--options 须配 --algo mppo --gamma 1.0 "
+                 "--max-steps 3000 或 ≥6000")
         if args.worker_npz:
             _require(args.n_steps == 64 and args.seed is not None,
                      "PREREG-v25 D2:换届选举须 --n-steps 64 且显式 --seed")
@@ -6079,10 +6837,50 @@ class _TrainingResources:
         self.vec_env = None
 
     @staticmethod
+    def _reap_failed_vec_env(processes, remotes) -> dict:
+        """Bounded recovery of this VecEnv's handles after normal close failed."""
+        import time
+
+        result = {"terminate": [], "kill": [], "remaining": [], "errors": []}
+
+        def attempt(label, operation):
+            try:
+                return operation()
+            except Exception as exc:
+                result["errors"].append(f"{label}: {type(exc).__name__}: {exc}")
+                return None
+
+        # Never recv again: a dead worker may have left waiting=True and a pipe
+        # with no reply. Close only the endpoints owned by this VecEnv.
+        for remote in remotes:
+            attempt("remote.close", remote.close)
+        for operation in ("terminate", "kill"):
+            for process in processes:
+                if attempt("process.is_alive", process.is_alive):
+                    def signal_owned(process=process, operation=operation):
+                        getattr(process, operation)()
+                        result[operation].append(process.pid)
+                    attempt(f"process.{operation}", signal_owned)
+            # One deadline for all workers, not a fresh allowance per worker.
+            deadline = time.monotonic() + 2.0
+            for process in processes:
+                attempt("process.join", lambda process=process: process.join(
+                    timeout=max(0.0, deadline - time.monotonic())))
+        for process in processes:
+            if attempt("process.is_alive", process.is_alive):
+                result["remaining"].append(process.pid)
+        return result
+
+    @staticmethod
     def _close_vec_env(vec_env) -> None:
         import signal
         import threading
 
+        # Preserve the exact owned handles even if close fails partway through.
+        # No global child enumeration or process-group signalling is permitted.
+        processes = tuple(getattr(vec_env, "processes", ()))
+        remotes = tuple(getattr(vec_env, "remotes", ()))
+        close_error = None
         # SIGALRM is process-global and can only be installed from the main
         # thread.  Keep embedding/tests safe by falling back to an ordinary
         # close outside it, and restore any host handler/timer afterwards.
@@ -6108,13 +6906,18 @@ class _TrainingResources:
         try:
             vec_env.close()
         except Exception as exc:
-            print(f"vec_env.close 异常(忽略,不影响已保存的模型): {exc}")
+            close_error = exc
         finally:
             if armed:
                 signal.alarm(0)
                 signal.signal(signal.SIGALRM, previous_handler)
                 if previous_alarm:
                     signal.alarm(previous_alarm)
+        if close_error is not None:
+            print(f"vec_env.close 异常: {type(close_error).__name__}: {close_error}")
+            if processes:
+                recovery = _TrainingResources._reap_failed_vec_env(processes, remotes)
+                print(f"vec_env.close 自有进程回收: {json.dumps(recovery, sort_keys=True)}")
 
     def close(self) -> None:
         # Clear ownership before calling user/library cleanup so a recursive
@@ -6817,18 +7620,51 @@ def make_env(max_steps: int = 1500, deep: bool = False, death_ladder: bool = Fal
              worker: bool = False, manager_npz: str | None = None,
              worker_npz: str | None = None, skip_dry: float | bool = False,
              drink_sovereignty: bool | None = None,
+             reward_economy: str = "v1",
+             manager_heuristic: str | None = None,
              legacy_policy_observation_view: bool = False,
              worker_policy_observation_view: str | None = None,
              manager_policy_observation_view: str = "raw-v4",
              worker_fast_forward_reward_credit: str = "none",
              worker_additional_terminal_death_cost: float = 0.0,
+             worker_learning_window_scope: str = "farm-only",
+             worker_depth_shaping_unit: float = 0.0,
+             worker_descend_bonus_fraction: float = 0.0,
+             worker_descend_escrow_fraction: float = 0.0,
+             worker_descend_escrow_power: float = 1.0,
+             worker_descend_escrow_readiness_gate: bool = False,
+             worker_descend_escrow_readiness_table: str = "v1",
+             worker_hp_loss_price: float = 0.0,
+             worker_potion_pickup_bonus: float = 0.0,
+             worker_no_progress_timeout_credit: str = (
+                 _WORKER_NO_PROGRESS_TIMEOUT_CREDIT_DEFAULT),
+             explore_global_fallback: bool = False,
+             explore_global_hunt: bool = False,
+             progress_far_tiles: int = 0,
+             farm_scene_cap: int = _FARM_SCENE_CAP_DEFAULT,
+             reset_layer_clock_on_window: bool = False,
+             resource_protocol: str = "off",
+             resource_purchase_mode: str = "full",
+             resource_service_policy: str = "legacy-v1",
+             resource_readiness_law: str = "veto-v1",
+             dive_blocker_recovery: str = "off",
              manager_npz_sha256: str | None = None,
              worker_npz_sha256: str | None = None,
              worker_zip: str | None = None,
              worker_zip_sha256: str | None = None,
              deep_start_curriculum: dict | None = None,
              deep_start_form: str = "dive",
-             implementation_sha256: str | None = None):
+             implementation_sha256: str | None = None,
+             worker_prefix_model: str | None = None,
+             worker_prefix_sha256: str | None = None,
+             worker_prefix_max_attempts: int | None = None,
+             worker_prefix_max_microsteps: int | None = None,
+             worker_time_protocol: str = "legacy"):
+    time_identity = _validate_worker_time_config(worker_time_protocol,
+        worker=worker, worker_learning_window_scope=worker_learning_window_scope,
+        resource_protocol=resource_protocol, resource_purchase_mode=resource_purchase_mode,
+        resource_service_policy=resource_service_policy, max_steps=max_steps,
+        farm_scene_cap=farm_scene_cap)
     if implementation_sha256 is not None:
         actual_implementation = _implementation_bundle_sha256()
         _require(actual_implementation == implementation_sha256,
@@ -6838,6 +7674,38 @@ def make_env(max_steps: int = 1500, deep: bool = False, death_ladder: bool = Fal
              "deep_start_curriculum 只适用于 --options 经理训练")
     _require(deep_start_form in ("dive", "exhausted"),
              f"deep_start_form 必须是 dive/exhausted: {deep_start_form!r}")
+    validate_resource_service_config(resource_protocol, resource_purchase_mode,
+                                     resource_service_policy)
+    _require(resource_readiness_law in ("veto-v1", "coach-v03"),
+             "resource_readiness_law must be veto-v1/coach-v03")
+    _require(resource_readiness_law == "veto-v1" or resource_protocol == "l2-town-v1",
+             "resource_readiness_law coach-v03 requires resource_protocol l2-town-v1")
+    validate_dive_blocker_recovery(resource_protocol, dive_blocker_recovery)
+    _require(resource_protocol in ("off", "l2-town-v1"),
+             "resource_protocol must be off/l2-town-v1")
+    _require(resource_purchase_mode in ("none", "heal", "potions", "armor", "full"),
+             "invalid resource_purchase_mode")
+    _require(resource_protocol != "off" or resource_purchase_mode == "full",
+             "resource_purchase_mode requires resource_protocol")
+    _require(resource_protocol == "off" or worker or options,
+             "resource_protocol requires WorkerWindowEnv/OptionsEnv")
+    resource_kwargs = ({"resource_protocol": resource_protocol,
+                        "resource_purchase_mode": resource_purchase_mode}
+                       if resource_protocol != "off" else {})
+    if resource_service_policy != "legacy-v1":
+        resource_kwargs["resource_service_policy"] = resource_service_policy
+    # R17.1 ruling 3: the default law adds no keyword, so old calls stay identical.
+    if resource_readiness_law != "veto-v1":
+        resource_kwargs["resource_readiness_law"] = resource_readiness_law
+    if dive_blocker_recovery != "off":
+        resource_kwargs["dive_blocker_recovery"] = dive_blocker_recovery
+    if time_identity is not None:
+        resource_kwargs["worker_time_protocol"] = time_identity["protocol"]
+    prefix_spec = worker_prefix_recipe(worker_learning_window_scope, worker_prefix_sha256,
+                                       worker_prefix_max_attempts, worker_prefix_max_microsteps)
+    _require((prefix_spec is not None) == (worker_prefix_model is not None),
+             "worker prefix model and earned scope must be supplied together")
+    _require(prefix_spec is None or worker, "earned prefix requires WorkerWindowEnv")
     from diablogym import DiabloGymEnv
 
     def with_seed_discipline(env):
@@ -6895,9 +7763,17 @@ def make_env(max_steps: int = 1500, deep: bool = False, death_ladder: bool = Fal
         # (rng_seed=None → 各子进程独立熵源,种子采样器拒采全部登记评测池)
         # v26:skip_dry=True 时干层复访窗由脚本代跑,不进学习分布(绿洲处方)
         from diablogym import WorkerWindowEnv
+        if prefix_spec is not None:
+            from prefix_worker import load_prefix_worker
+            resource_kwargs.update(
+                prefix_worker=load_prefix_worker(worker_prefix_model, expected_sha256=worker_prefix_sha256),
+                prefix_worker_sha256=worker_prefix_sha256,
+                prefix_max_attempts=worker_prefix_max_attempts,
+                prefix_max_microsteps=worker_prefix_max_microsteps)
         worker_drink_sovereignty = (
             True if drink_sovereignty is None else drink_sovereignty)
         return Monitor(WorkerWindowEnv(manager_npz=manager_npz, max_steps=max_steps,
+                                       **resource_kwargs,
                                        skip_dry=skip_dry,
                                        drink_sovereignty=worker_drink_sovereignty,
                                        legacy_policy_observation_view=(
@@ -6908,8 +7784,43 @@ def make_env(max_steps: int = 1500, deep: bool = False, death_ladder: bool = Fal
                                            worker_fast_forward_reward_credit),
                                        additional_terminal_death_cost=(
                                            worker_additional_terminal_death_cost),
+                                       learning_window_scope=(
+                                           worker_learning_window_scope),
+                                       depth_shaping_unit=(
+                                           worker_depth_shaping_unit),
+                                       worker_descend_bonus_fraction=(
+                                           worker_descend_bonus_fraction),
+                                       worker_descend_escrow_fraction=(
+                                           worker_descend_escrow_fraction),
+                                       worker_descend_escrow_power=(
+                                           worker_descend_escrow_power),
+                                       worker_descend_escrow_readiness_gate=(
+                                           worker_descend_escrow_readiness_gate),
+                                       worker_descend_escrow_readiness_table=(
+                                           worker_descend_escrow_readiness_table),
+                                       # R16 修宪:工资侧显式参数(WorkerWindowEnv
+                                       # 具名消费,不进 env_kwargs)
+                                       worker_hp_loss_price=worker_hp_loss_price,
+                                       worker_potion_pickup_bonus=(
+                                           worker_potion_pickup_bonus),
+                                       worker_no_progress_timeout_credit=(
+                                           worker_no_progress_timeout_credit),
                                        seed_scope="train",
-                                       manager_sha256=manager_npz_sha256))
+                                       manager_sha256=manager_npz_sha256,
+                                       manager_heuristic=manager_heuristic,
+                                       # R12:经济法案经 env_kwargs 直通
+                                       # OptionsEnv→DiabloGymEnv(v1 默认不变)
+                                       reward_economy=reward_economy,
+                                       # R16 修宪:教室侧参数经 env_kwargs 由
+                                       # OptionsEnv 具名消费;环境侧参数再直通
+                                       # DiabloGymEnv 具名消费(默认值=旧法)
+                                       farm_scene_cap=farm_scene_cap,
+                                       reset_layer_clock_on_window=(
+                                           reset_layer_clock_on_window),
+                                       explore_global_fallback=(
+                                           explore_global_fallback),
+                                       explore_global_hunt=explore_global_hunt,
+                                       progress_far_tiles=progress_far_tiles))
     if options:
         # v22:策略脑/操作脑——OptionsEnv 自带 deep+death_ladder 默认
         # v25:worker_npz 非空时挂 npz 工人(NumpyManager 在本函数体内构造——
@@ -6956,13 +7867,21 @@ def make_env(max_steps: int = 1500, deep: bool = False, death_ladder: bool = Fal
                 "environment-mask" if zip_sovereignty
                 else "permanently-masked")
             env = OptionsEnv(max_steps=max_steps,
+                             **resource_kwargs,
                              # None → 由 worker 双标签自绑定(单一真源);
                              # OptionsEnv 会拒绝标签间/标签-显式值冲突。
                              drink_sovereignty=None,
                              manager_observation_view=(
                                  manager_policy_observation_view),
                              worker_observation_view=zip_view,
-                             workers={0: zip_worker})
+                             workers={0: zip_worker},
+                             reward_economy=reward_economy,
+                             farm_scene_cap=farm_scene_cap,
+                             reset_layer_clock_on_window=(
+                                 reset_layer_clock_on_window),
+                             explore_global_fallback=explore_global_fallback,
+                             explore_global_hunt=explore_global_hunt,
+                             progress_far_tiles=progress_far_tiles)
             _require(bool(env.drink_sovereignty) == zip_sovereignty,
                      "OptionsEnv drink_sovereignty 未按 zip 工人契约自绑定")
         elif worker_npz:
@@ -6973,17 +7892,33 @@ def make_env(max_steps: int = 1500, deep: bool = False, death_ladder: bool = Fal
             net.require_io_shape(298, 15, "Options worker")
             net.require_worker_contract()
             env = OptionsEnv(max_steps=max_steps,
+                             **resource_kwargs,
                              drink_sovereignty=drink_sovereignty,
                              manager_observation_view=(
                                  manager_policy_observation_view),
                              worker_observation_view=(
                                  net.worker_observation_view),
-                             workers={0: net.worker_callback()})
+                             workers={0: net.worker_callback()},
+                             reward_economy=reward_economy,
+                             farm_scene_cap=farm_scene_cap,
+                             reset_layer_clock_on_window=(
+                                 reset_layer_clock_on_window),
+                             explore_global_fallback=explore_global_fallback,
+                             explore_global_hunt=explore_global_hunt,
+                             progress_far_tiles=progress_far_tiles)
         else:
             env = OptionsEnv(max_steps=max_steps,
+                             **resource_kwargs,
                              drink_sovereignty=drink_sovereignty,
                              manager_observation_view=(
-                                 manager_policy_observation_view))
+                                 manager_policy_observation_view),
+                             reward_economy=reward_economy,
+                             farm_scene_cap=farm_scene_cap,
+                             reset_layer_clock_on_window=(
+                                 reset_layer_clock_on_window),
+                             explore_global_fallback=explore_global_fallback,
+                             explore_global_hunt=explore_global_hunt,
+                             progress_far_tiles=progress_far_tiles)
 
         # 无论是否挂 npz 工人，经理训练都必须遵守同一种子纪律。
         return with_seed_discipline(env)
@@ -6992,7 +7927,10 @@ def make_env(max_steps: int = 1500, deep: bool = False, death_ladder: bool = Fal
         from diablogym import StagnationClockWrapper
         return with_seed_discipline(StagnationClockWrapper(DiabloGymEnv(
             ticks_per_step=4, max_steps=max_steps, start_in_dungeon=True,
-            include_raw=False, descend_ladder=True, death_ladder=True)))
+            include_raw=False, descend_ladder=True, death_ladder=True,
+            explore_global_fallback=explore_global_fallback,
+            explore_global_hunt=explore_global_hunt,
+            progress_far_tiles=progress_far_tiles)))
     env = DiabloGymEnv(
         ticks_per_step=4,      # 每个决策 = 0.2 秒游戏时间
         max_steps=max_steps,   # 1500 = 冠军(v6)配方;3000 = v10 长局实验 + v17 深水区。
@@ -7001,6 +7939,10 @@ def make_env(max_steps: int = 1500, deep: bool = False, death_ladder: bool = Fal
         include_raw=False,     # 训练不传 raw 大字典(多进程 IPC 减负)
         descend_ladder=deep,   # v17:下楼奖金层数递进(8×N),给"往下活着"一个未来
         death_ladder=death_ladder,  # v18:死在 N 层罚 8×N——"活着抵达"要赢过"摸到深度"
+        # R16 修宪:环境侧参数直通(默认 False/False/0 = 旧法逐位不变)
+        explore_global_fallback=explore_global_fallback,
+        explore_global_hunt=explore_global_hunt,
+        progress_far_tiles=progress_far_tiles,
     )
     return with_seed_discipline(env)
 
@@ -7254,8 +8196,8 @@ def _asymmetric_worker_deployment_evidence_complete(model) -> bool:
         return False
 
 
-def _is_exact_training_completion(model, target_global_steps: int) -> bool:
-    """只有完整更新边界且全局步精确到达冻结目标才允许发布。
+def _training_completion_report(model, target_global_steps: int) -> dict:
+    """Evaluate the existing publication predicates once and name each result.
 
     Callback 返回 ``False`` 时 SB3 的 ``learn`` 会正常返回；仅检查 full
     buffer 会把任意较早 rollout 边界误认成完整腿。严格相等也同时拦住
@@ -7263,8 +8205,16 @@ def _is_exact_training_completion(model, target_global_steps: int) -> bool:
     """
     migration_start = getattr(
         model, "_critic_warmup_start_timesteps", None)
+    inherited_resource = getattr(model, "_resource_warm_start_receipt", None)
+    inherited_resource_valid = False
+    if inherited_resource is not None:
+        try:
+            model._assert_critic_migration_contract()
+            inherited_resource_valid = True
+        except (AttributeError, RuntimeError, TypeError, ValueError):
+            inherited_resource_valid = False
     worker_pg_complete = True
-    if migration_start is not None:
+    if migration_start is not None or inherited_resource is not None:
         try:
             from leashed_ppo import worker_onpolicy_pg_audit_complete
             worker_pg_complete = worker_onpolicy_pg_audit_complete(model)
@@ -7287,44 +8237,83 @@ def _is_exact_training_completion(model, target_global_steps: int) -> bool:
                 model, "_critic_warmup_until_timesteps", 2**63 - 1))
         )
     )
+    if inherited_resource is not None:
+        migration_complete = (inherited_resource_valid
+            and int(getattr(model, "_actor_optimizer_steps_completed", 0)) > 0)
     asymmetric_complete = (
         _asymmetric_worker_deployment_evidence_complete(model))
-    return (
-        _is_publishable_rollout_boundary(model)
-        and int(getattr(model, "num_timesteps", -1))
-        == int(target_global_steps)
-        and migration_complete
-        and worker_pg_complete
-        and asymmetric_complete
-    )
+    checks = {
+        "rollout_boundary": _is_publishable_rollout_boundary(model),
+        "exact_target": (int(getattr(model, "num_timesteps", -1))
+                         == int(target_global_steps)),
+        "migration": bool(migration_complete),
+        "worker_pg": bool(worker_pg_complete),
+        "asymmetric": bool(asymmetric_complete),
+    }
+    counters = {
+        "num_timesteps": int(getattr(model, "num_timesteps", -1)),
+        "target_global_steps": int(target_global_steps),
+        "last_completed_ppo_rollout_steps": getattr(
+            model, "_last_completed_ppo_rollout_steps", None),
+        "ppo_optimizer_steps_completed": getattr(
+            model, "_ppo_optimizer_steps_completed", None),
+        "actor_optimizer_steps_completed": getattr(
+            model, "_actor_optimizer_steps_completed", None),
+        "worker_onpolicy_pg_joint_rollouts": getattr(
+            model, "_worker_onpolicy_pg_joint_rollouts", None),
+        "worker_onpolicy_pg_qualifying_rollouts": getattr(
+            model, "_worker_onpolicy_pg_qualifying_rollouts", None),
+    }
+    return {
+        "schema": "diablogym-training-completion/1",
+        "publication_eligible": all(checks.values()),
+        "checks": checks,
+        "failed_checks": [name for name, passed in checks.items() if not passed],
+        "counters": counters,
+    }
 
 
-def _require_exact_training_completion(model, target_global_steps: int) -> None:
+def _is_exact_training_completion(model, target_global_steps: int) -> bool:
+    return _training_completion_report(model, target_global_steps)[
+        "publication_eligible"]
+
+
+class _TrainingCompletionRejected(RuntimeError):
+    def __init__(self, report: dict):
+        self.report = report
+        checks = report["checks"]
+        prefix = ("训练更新已完成，但最终发布验收未通过"
+                  if checks["rollout_boundary"] and checks["exact_target"]
+                  else "训练未精确停在已完成更新的冻结目标")
+        super().__init__(f"{prefix}: failed_checks={report['failed_checks']}, "
+                         f"counters={report['counters']}")
+
+
+def _require_exact_training_completion(model, target_global_steps: int) -> dict:
     """把 SB3 的“正常提前返回”提升为进程失败，禁止调度器假成功。"""
-    if _is_exact_training_completion(model, target_global_steps):
-        return
-    raise RuntimeError(
-        "训练未精确停在已完成更新的冻结目标:"
-        f" num_timesteps={int(getattr(model, 'num_timesteps', -1))},"
-        f" target_global_steps={int(target_global_steps)},"
-        f" rollout_full={bool(getattr(getattr(model, 'rollout_buffer', None), 'full', False))},"
-        f" calib_tripped={bool(getattr(model, '_calib_tripped', False))},"
-        " last_completed_ppo_rollout_steps="
-        f"{getattr(model, '_last_completed_ppo_rollout_steps', None)!r},"
-        " ppo_optimizer_steps_completed="
-        f"{getattr(model, '_ppo_optimizer_steps_completed', None)!r},"
-        " critic_warmup_complete="
-        f"{getattr(model, '_critic_warmup_completed', None)!r},"
-        " critic_warmup_optimizer_steps="
-        f"{getattr(model, '_critic_warmup_optimizer_steps_completed', None)!r},"
-        " actor_optimizer_steps="
-        f"{getattr(model, '_actor_optimizer_steps_completed', None)!r},"
-        " worker_onpolicy_pg_joint_rollouts="
-        f"{getattr(model, '_worker_onpolicy_pg_joint_rollouts', None)!r},"
-        " worker_onpolicy_pg_qualifying_rollouts="
-        f"{getattr(model, '_worker_onpolicy_pg_qualifying_rollouts', None)!r},"
-        " actor_context_enabled="
-        f"{getattr(getattr(getattr(model, 'policy', None), 'mlp_extractor', None), 'actor_context_enabled', None)!r}")
+    report = _training_completion_report(model, target_global_steps)
+    if report["publication_eligible"]:
+        return report
+    raise _TrainingCompletionRejected(report)
+
+
+def _retain_refused_training_diagnostic(
+        model, run_dir: pathlib.Path, report: dict,
+        expected_implementation: str) -> dict:
+    """Retain an isolated diagnostic only after a normal, consumed end boundary."""
+    checks = report["checks"]
+    if (not all(checks[name] for name in (
+            "rollout_boundary", "exact_target", "migration"))
+            or getattr(model, "_resource_warm_start_receipt", None) is None):
+        return {"status": "NOT_ELIGIBLE", "reason": "no exact inherited completed boundary"}
+    _require(_implementation_bundle_sha256() == expected_implementation,
+             "诊断保存前实现/引擎/游戏内容发生漂移")
+    from leashed_ppo import validate_worker_onpolicy_pg_receipt
+    from training_diagnostics import archive_refused_training
+    return archive_refused_training(
+        model, run_dir, report, expected_implementation=expected_implementation,
+        checkpoint_validator=_validate_checkpoint_bytes,
+        receipt_validator=validate_worker_onpolicy_pg_receipt)
 
 
 class AtomicRolloutCheckpointCallback(BaseCallback):
@@ -7568,6 +8557,112 @@ class WorkerSentinelCallback(BaseCallback):
         # 腿长常取 499,712(<500k)；若只按间隔写，完整腿反而零哨兵记录。
         if self.num_timesteps > 0 and self._last_emit_step != int(self.num_timesteps):
             self._emit(final=True)
+
+
+class PrefixAuditCallback(BaseCallback):
+    """Persist actual per-env prefix ledgers separately from learner transitions."""
+    def __init__(self, run_dir):
+        super().__init__()
+        self.path = pathlib.Path(run_dir) / "worker_prefix_audit.jsonl"
+
+    def _emit(self, stage):
+        receipt = {"version": "earned-dive-prefix-audit-v1", "stage": stage,
+                   "learner_steps": int(self.num_timesteps),
+                   "prefix_training_contract": "excluded",
+                   "per_env": self.training_env.env_method("get_prefix_ledger")}
+        with self.path.open("a", encoding="utf-8") as stream:
+            stream.write(json.dumps(receipt, ensure_ascii=False, sort_keys=True) + "\n")
+
+    def _on_rollout_start(self):
+        self._emit("rollout_start")
+
+    def _on_rollout_end(self):
+        self._emit("rollout_end")
+
+    def _on_training_end(self):
+        self._emit("training_end")
+
+    def _on_step(self):
+        return True
+
+
+class R13DiveAuditCallback(BaseCallback):
+    """R13 教室改革审计(纯读+IO,只记不裁):分窗计量与课堂发生性。
+
+    仅在 live-DIVE worker scope 挂载。逐 env 读取
+    WorkerWindowEnv.stats 的 dive_live_*/farm_live_steps 计数(旗开分支
+    专属键,.get 容缺),聚合写 r13_dive_audit.jsonl。独立新类,不触碰
+    WorkerSentinelCallback 的冻结发射面(R7 schema/get_attr 白名单)。
+    """
+
+    _KEYS = (
+        "dive_live_windows", "dive_live_steps", "farm_live_steps",
+        "dive_live_descends", "dive_live_stalls", "dive_live_deaths",
+        "dive_live_a11_requests", "dive_live_a11_executed",
+        # R17.0 修正案一:过战备门(两把尺均计)的下楼次数
+        "descend_escrow_ready_vested_count",
+    )
+    # R13.2:塑形账目(浮点,守恒审计:credited+refunded=策略净得);
+    # R14 乙案:descend_bonus_kept 为各 env 保留额镜像(绝对值,直加)
+    _FLOAT_KEYS = ("depth_shaping_credited", "depth_shaping_refunded",
+                   "descend_bonus_kept",
+                   "descend_escrow_vested", "descend_escrow_forfeited",
+                   "descend_escrow_unready_denied",
+                   # R16 修宪:失血计价 / 拾药记账(worker_env stats;缺省 0.0)
+                   "hp_loss_charged", "potion_pickup_credited")
+
+    def __init__(self, run_dir: pathlib.Path, every: int = 63_488):
+        super().__init__()
+        self.run_dir = run_dir
+        self.every = every
+        self.next_at = every
+
+    def _emit_line(self, final: bool) -> None:
+        per_env = self.training_env.get_attr("stats")
+        agg = {key: 0 for key in self._KEYS}
+        agg.update({key: 0.0 for key in self._FLOAT_KEYS})
+        for stats in per_env:
+            for key in self._KEYS:
+                agg[key] += int(stats.get(key, 0))
+            for key in self._FLOAT_KEYS:
+                agg[key] = round(
+                    agg[key] + float(stats.get(key, 0.0)), 3)
+        # R17.0 仪表:逐次过门遥测(worker_env stats descend_escrow_gate_log,
+        # 旗关缺省空)——每次发射整体重写 r17_descend_gate.jsonl,行内附 env 序。
+        gate_rows = []
+        for env_index, stats in enumerate(per_env):
+            for row in (stats.get("descend_escrow_gate_log") or ()):
+                gate_rows.append({"env": int(env_index), **row})
+        if gate_rows:
+            with open(self.run_dir / "r17_descend_gate.jsonl", "w") as f:
+                for row in gate_rows:
+                    f.write(json.dumps(row, ensure_ascii=False) + "\n")
+        live = agg["dive_live_steps"] + agg["farm_live_steps"]
+        line = {
+            "r13_dive_audit": "v1", "step": int(self.num_timesteps),
+            **agg,
+            "descend_escrow_gate_rows": len(gate_rows),
+            "dive_share": (
+                agg["dive_live_steps"] / live if live else 0.0),
+            "descends_per_10_windows": (
+                10.0 * agg["dive_live_descends"]
+                / agg["dive_live_windows"]
+                if agg["dive_live_windows"] else 0.0),
+            "final": bool(final),
+        }
+        with open(self.run_dir / "r13_dive_audit.jsonl", "a") as f:
+            f.write(json.dumps(line, ensure_ascii=False) + "\n")
+        print(f"   [R13课堂] {line}", flush=True)
+
+    def _on_step(self) -> bool:
+        if self.num_timesteps >= self.next_at:
+            self.next_at = (
+                (self.num_timesteps // self.every) + 1) * self.every
+            self._emit_line(False)
+        return True
+
+    def _on_training_end(self) -> None:
+        self._emit_line(True)
 
 
 class DryAnchorSentinel(BaseCallback):
@@ -8388,7 +9483,10 @@ class EpisodeJsonlCallback(BaseCallback):
 def _record_run_publication_status(
         run_dir: pathlib.Path, state: str, *,
         model_sha256: str | None = None,
-        detail: str | None = None) -> None:
+        detail: str | None = None,
+        completion_report: dict | None = None,
+        diagnostic_artifact: dict | None = None,
+        learn_returned: bool | None = None) -> None:
     """Atomically disambiguate "training ended" from "model published".
 
     ``EpisodeJsonlCallback`` necessarily finishes before the final behavior and
@@ -8424,6 +9522,12 @@ def _record_run_publication_status(
         "publication_detail": detail,
         "updated_at": time.time(),
     })
+    if completion_report is not None:
+        status["training_completion"] = completion_report
+    if diagnostic_artifact is not None:
+        status["training_diagnostic"] = diagnostic_artifact
+    if learn_returned is not None:
+        status["learn_returned_normally"] = bool(learn_returned)
     tmp = run_dir / "status.tmp.json"
     tmp.write_text(json.dumps(status, ensure_ascii=False))
     tmp.replace(status_path)
@@ -8443,6 +9547,9 @@ def _main(resources: _TrainingResources):
              " model_final.zip/PUBLISHED",
     )
     ap.add_argument("--num-envs", type=int, default=4)
+    ap.add_argument("--diagnostic-rollout", choices=("disabled", "first-update-v1"),
+                    default="disabled",
+                    help="Optional single-update evidence capture; fresh resource candidate only; no publication override")
     ap.add_argument("--run-name", default=None)
     ap.add_argument("--device", default="cpu", help="cpu / mps(小 MLP 通常 cpu 更快)")
     ap.add_argument("--lr", type=float, default=3e-4)
@@ -8479,6 +9586,56 @@ def _main(resources: _TrainingResources):
     ap.add_argument("--worker-zip-sha256", default=None,
                     help="R9:--worker-zip 的期望 SHA-256(64 位小写十六进制);"
                          "给定则载入前先校验 zip 字节身份")
+    ap.add_argument("--resource-protocol", default="off",
+                    choices=("off", "l2-town-v1"),
+                    help="Versioned native readiness gate and L1 town service")
+    ap.add_argument("--resource-purchase-mode", default="full",
+                    choices=("none", "heal", "potions", "armor", "full"),
+                    help="Resource ablation arm; requires resource protocol")
+    ap.add_argument("--resource-service-policy", default="legacy-v1",
+                    choices=("legacy-v1", "sustain-v2", "sustain-v3", "sustain-v4", "sustain-v5", "sustain-v6"),
+                    help="Explicit service identity; sustain-v2/v3/v4/v5/v6 require l2-town-v1/full")
+    ap.add_argument("--resource-readiness-law", default="veto-v1",
+                    choices=("veto-v1", "coach-v03"),
+                    help="R17.1 ruling 3 readiness law; coach-v03 (six native "
+                         "conditions, health excluded) requires l2-town-v1")
+    ap.add_argument("--dive-blocker-recovery", default="off", choices=("off", "adjacent-v1"),
+                    help="Explicit bounded a11 blocker combat; requires resource protocol")
+    ap.add_argument("--manager-heuristic", default=None,
+                    choices=("level-margin-1", "readiness-v1",
+                             "readiness-v2", "readiness-v3"),
+                    help="R12 修正案二:worker 模式脚本教练(榨干或高一级即潜,"
+                         "否则农;仓库正典规则)。与 --manager-npz 互斥")
+    ap.add_argument("--reward-economy", default="v1",
+                    choices=("v1", "v2", "v3", "v3b", "v4"),
+                    help="R10:奖励经济法案。v1=历史常量逐位不变(默认);"
+                         "v2=深度经济(A 下楼奖金上调/B farm 收入深度乘数/"
+                         "C 主席版递减死亡罚金/D 反躺平/E1 装备重定价,"
+                         "记账全额归经理;2026-08-27 批文);v4=R16 修宪"
+                         "经济(语义由 env.py 侧立法)")
+    # R16 修宪:环境侧(DiabloGymEnv)/教室侧(OptionsEnv)新参数——经
+    # make_env 显式直通(worker 路径走 WorkerWindowEnv **env_kwargs →
+    # OptionsEnv → DiabloGymEnv,各自 __init__ 消费具名参数)。默认值
+    # 逐位复现旧法;语义由 A 队/主刀在 env.py/options_env.py 侧实现。
+    ap.add_argument("--explore-global-fallback", action="store_true",
+                    help="R16(DiabloGymEnv):探索宏全局回退——局部候选耗尽"
+                         "时退到全图未探索目标;默认关=旧法")
+    ap.add_argument("--explore-global-hunt", action="store_true",
+                    help="R16 C5 主力(DiabloGymEnv,A 队追加):a10 在 25×25 窗"
+                         "内无可见怪时以越权信息(radius-112 全图 BFS)朝最近"
+                         "存活怪推进;8 种子探针 fallback 375→375 杀几乎不触发,"
+                         "hunt 375→670 杀;默认关=旧法")
+    ap.add_argument("--progress-far-tiles", type=int, default=0,
+                    help="R16(DiabloGymEnv):远格进展判据的格数阈值;"
+                         "0=关闭(旧法)")
+    ap.add_argument("--farm-scene-cap", type=int,
+                    default=_FARM_SCENE_CAP_DEFAULT,
+                    help="R16(OptionsEnv):FARM 窗场景步数上限;默认 1800 "
+                         "镜像 options_env.FARM_SCENE_CAP(旧法);仅 "
+                         "--worker/--options")
+    ap.add_argument("--reset-layer-clock-on-window", action="store_true",
+                    help="R16(OptionsEnv):每个窗口开始时重置层钟;"
+                         "默认关=旧法;仅 --worker/--options")
     ap.add_argument("--deep-start-curriculum", default=None,
                     help="R9 课程臂:深层起点 prologue,格式 'p=0.5,target=2,cap=8'"
                          "(p=每局独立触发概率[局种子派生确定性 RNG],target=目标"
@@ -8537,6 +9694,9 @@ def _main(resources: _TrainingResources):
         choices=[
             _WORKER_VIEW_LEGACY_V3,
             _WORKER_VIEW_DUAL_V4_ASYMMETRIC,
+            # v5(dual-v5-window-mode-v1)为 R13.2 预备役:环境侧观测已
+            # 实现,但 asymmetric policy 的冻结布局/参数计数尚未扩容,
+            # 故 CLI 不放行,防止 13012/13024 拓扑错配深水炸弹。
         ],
         default=None,
         help="显式 Worker 输入契约。dual-v4-asymmetric-v3 保留前298列"
@@ -8553,11 +9713,118 @@ def _main(resources: _TrainingResources):
              "阶段发生的真实底层死亡分量传给 PPO，不领取其正收益",
     )
     ap.add_argument(
+        "--worker-learning-window-scope",
+        choices=["farm-only", "farm-dive-v1", EARNED_DIVE_SUFFIX_SCOPE],
+        default="farm-only",
+        help="R13 教室改革：默认 farm-only 逐位复现旧法(非 FARM 窗脚本"
+             "快进)；farm-dive-v1 使 DIVE 窗成为一等 live 学习窗并移交"
+             "窗内 a11/踏格主权；earned-dive-suffix-v1 由固定R16完成前缀后从首个战备DIVE接手"
+             "(两者须搭配 dual-v4-asymmetric-v3 视图)",
+    )
+    ap.add_argument("--worker-prefix-model", default=None,
+                    help="earned suffix only: exact registered R16 sampled prefix model")
+    ap.add_argument("--worker-prefix-max-attempts", type=int, default=None,
+                    help="explicit per-env lifetime prefix attempt cap")
+    ap.add_argument("--worker-prefix-max-microsteps", type=int, default=None,
+                     help="explicit per-env lifetime formal prefix microstep cap")
+    ap.add_argument("--worker-time-protocol", choices=["legacy", "completion-l2-v1"],
+                    default="legacy",
+                    help="explicit physical arrival/followup and service deadlines; max_steps remains the original observation denominator")
+    ap.add_argument(
+        "--worker-dive-action11-logit-bonus",
+        type=float,
+        default=0.0,
+        help="R13 冷启动杠杆(G0 课堂发生性验收未达标时凭预授权启用):"
+             "live DIVE 窗内对合法 a11 施加 on-policy logit prior,"
+             "a14 bonus 同款机制;a11 在旧法域恒被掩,先验自动惰性",
+    )
+    ap.add_argument(
+        "--worker-potion-action13-logit-bonus",
+        type=float,
+        default=0.0,
+        help="R16 拾药冷启动先验([0,10],默认 0=关):仅在环境掩码判 a13"
+             "(拾药)合法的行上施加 on-policy logit prior,a11/a14 同款"
+             "机制,梯度照流;掩码恒掩的旧法域先验自动惰性;"
+             "dual-v4 Worker MaskablePPO 专用",
+    )
+    ap.add_argument(
+        "--worker-depth-shaping-unit",
+        type=float,
+        default=0.0,
+        help="R13.2 甲案(主席批):势函数深度塑形 φ=unit×(dungeon_level−1),"
+             "F=unit×Δd 逐 transition + true-terminal 退款(φ(absorbing)=0);"
+             "只进工人 policy_reward,不进经理账本/考卷,剥薪法条零触碰",
+    )
+    ap.add_argument(
+        "--worker-descend-bonus-fraction",
+        type=float,
+        default=0.0,
+        help="R14 乙案(主席批「先做乙」):live DIVE 窗内工人保留的下楼"
+             "奖金比例([0,1],默认 0=全额剥薪旧法);修宪试验——检验"
+             "有界返还是否复活速通哥;恒等式 R≡W+实际剥除额 继续成立",
+    )
+    ap.add_argument(
+        "--worker-descend-escrow-fraction",
+        type=float,
+        default=0.0,
+        help="R14.2 丁案(主席夜间条例):下楼费托管发放——新最深层下楼"
+             "费×fraction 入托管,下一非死亡收窗 vest 进 policy_reward,"
+             "死亡全额罚没(R11 认证阀门工人侧移植);与乙案互斥",
+    )
+    ap.add_argument(
+        "--worker-descend-escrow-readiness-gate",
+        action="store_true",
+        help="R15 修正案二(工资侧执法):托管只为 readiness>=1 的下楼"
+             "计账——掩码法可强制交权,但未达标下楼分文不入;"
+             "仅与 escrow_fraction>0 同用",
+    )
+    ap.add_argument(
+        "--worker-descend-escrow-readiness-table",
+        choices=("v1", "v2"),
+        default="v1",
+        help="R17.0 修正案一(合议庭更正二.1):托管战备门的尺子——v1="
+             "readiness_power_ratio(v0.1 表,旧法逐位默认);v2="
+             "readiness_power_ratio_v2(v0.2 表,与 readiness-v3 教练同尺,"
+             "修复 R16 vested 0/denied 6441 的尺子伪影);仅与"
+             "--worker-descend-escrow-readiness-gate 同用",
+    )
+    ap.add_argument(
+        "--worker-descend-escrow-power",
+        type=float,
+        default=1.0,
+        help="R14.3 戊案(主席夜令):托管工钱凸曲线,每层计价 d^power"
+             "([1,3],默认 1.0=线性旧法)。实测风险几何上涨(h≈0.23×"
+             "1.53^(d−1)),凸度须追上风险凸度(拟合建议 1.6);仅与"
+             "escrow_fraction>0 同时生效",
+    )
+    ap.add_argument(
         "--worker-additional-terminal-death-cost",
         type=float,
         default=0.0,
         help="rev13 Worker 生存风险成本；仅真实 death 恰好计一次，"
              "FARM 内/快进终局同构，默认 0 保持旧语义",
+    )
+    # R16 修宪:工资侧新旋钮(WorkerWindowEnv 显式参数,不进 env_kwargs)。
+    ap.add_argument(
+        "--worker-hp-loss-price",
+        type=float,
+        default=0.0,
+        help="R16(WorkerWindowEnv):工人掉血计价(每点 HP 损失的 "
+             "policy_reward 扣减,≥0);默认 0=旧法;仅 --worker",
+    )
+    ap.add_argument(
+        "--worker-potion-pickup-bonus",
+        type=float,
+        default=0.0,
+        help="R16(WorkerWindowEnv):工人拾药(a13 成功入腰带)奖金(≥0);"
+             "默认 0=旧法;仅 --worker",
+    )
+    ap.add_argument(
+        "--worker-no-progress-timeout-credit",
+        choices=list(_WORKER_NO_PROGRESS_TIMEOUT_CREDITS),
+        default=_WORKER_NO_PROGRESS_TIMEOUT_CREDIT_DEFAULT,
+        help="R16(WorkerWindowEnv):停滞超时记账口径。death-equivalent=旧法"
+             "(超时按死亡等价计账);zero=超时不计死亡罚金;仅 --worker",
     )
     ap.add_argument(
         "--worker-action14-logit-bonus",
@@ -8612,6 +9879,8 @@ def _main(resources: _TrainingResources):
         help="在位 aux 正式腿的必选门：环境点火前，以 resume worker/Adam 的隔离 clone "
              "运行本腿同数 aux 调用；仅 training episodes 裁安全可学门，"
              "FAIL 即拒绝训练")
+    ap.add_argument("--resource-warm-start", default=None,
+                    help="Exact zero-step resource initialization manifest; independent of --resume-from")
     ap.add_argument("--resume-from", default=None,
                     help="v24 分腿续训:上一腿 model_final.zip 路径(禁与 --bc-init/--freeze 同用)")
     ap.add_argument("--reset-optimizer", action="store_true",
@@ -8708,7 +9977,10 @@ def _main(resources: _TrainingResources):
     except RuntimeError as exc:
         ap.error(str(exc))
     resources.run_lock = run_lock
-    protected_inputs = [args.bc_init, args.teacher_override]
+    protected_inputs = [args.bc_init, args.teacher_override,
+                        getattr(args, "resource_warm_start", None)]
+    if getattr(args, "worker_learning_window_scope", "farm-only") == EARNED_DIVE_SUFFIX_SCOPE:
+        protected_inputs.append(args.worker_prefix_model)
     if args.worker:
         protected_inputs.append(args.manager_npz)
         if args.distill_beta > 0 and not args.resume_from:
@@ -8725,8 +9997,10 @@ def _main(resources: _TrainingResources):
     # load them.  Children receive these exact expectations and parse from a
     # single read, so an atomic path replacement is fail-loud rather than a
     # silent mixed-policy run.
-    manager_npz_sha256 = (_capture_file_sha256(args.manager_npz, "manager_npz")
-                          if args.worker else None)
+    manager_npz_sha256 = (
+        _capture_file_sha256(args.manager_npz, "manager_npz")
+        if args.worker and not getattr(args, "manager_heuristic", None)
+        else None)
     worker_npz_sha256 = (_capture_file_sha256(args.worker_npz, "worker_npz")
                          if args.worker_npz else None)
     worker_zip_sha256 = (_capture_file_sha256(args.worker_zip, "worker_zip")
@@ -8741,6 +10015,7 @@ def _main(resources: _TrainingResources):
             args, worker_npz_sha256=worker_npz_sha256,
             worker_zip_sha256=worker_zip_sha256))
     implementation_sha256 = _implementation_bundle_sha256()
+    worker_prefix_identity = _worker_prefix_identity(args)
 
     fresh_teacher_sha256 = None
     if args.worker and args.distill_beta > 0 and not args.resume_from:
@@ -8800,6 +10075,14 @@ def _main(resources: _TrainingResources):
         print("   [④乙] --bc-aux-lambda>0 但未给 --bc-aux-demos:"
               "辅助通路按 E3 零侵入条款不在位")
 
+    resource_warm_start_payload = None
+    resource_warm_start_manifest = None
+    if args.resource_warm_start:
+        from migrate_resource_candidate import capture_initialization
+        (resource_warm_start_payload, _resource_warm_start_data,
+         resource_warm_start_manifest) = capture_initialization(
+            args.resource_warm_start, implementation_sha256)
+
     resume_checkpoint_bytes = None
     resume_data = None
     resume_checkpoint_sha256 = None
@@ -8817,6 +10100,21 @@ def _main(resources: _TrainingResources):
             resume_checkpoint_bytes, str(_resume_path), False)
         resume_checkpoint_sha256 = hashlib.sha256(
             resume_checkpoint_bytes).hexdigest()
+
+    if args.resume_from:
+        # Check the captured checkpoint before any VecEnv/native reset. The
+        # full contract equality remains enforced again after model loading.
+        _validate_worker_prefix_resume_identity(resume_data.get("diablogym_contract"), {
+            "worker_learning_window_scope": args.worker_learning_window_scope,
+            **({"worker_prefix": worker_prefix_identity} if worker_prefix_identity is not None else {}),
+        })
+        _validate_resource_resume_identity(resume_data.get("diablogym_contract"), {
+            "resource_protocol": (args.resource_protocol if args.resource_protocol != "off" else None),
+            "resource_purchase_mode": (args.resource_purchase_mode if args.resource_protocol != "off" else None),
+            "resource_service_policy": (args.resource_service_policy if args.resource_service_policy != "legacy-v1" else None),
+            "resource_service_recipe": resource_service_recipe(
+                args.resource_protocol, args.resource_purchase_mode, args.resource_service_policy),
+        })
 
     dry_curriculum_start_index = None
     dry_curriculum_start_probability = None
@@ -8900,6 +10198,7 @@ def _main(resources: _TrainingResources):
         "worker_additional_terminal_death_cost":
             float(args.worker_additional_terminal_death_cost),
         "artifact_scope": args.artifact_scope,
+        "diagnostic_rollout": args.diagnostic_rollout,
         # E4 rev5 双键(契约与 config 回执同构增键;skip_dry 键仍 CLI 旗
         # 字面值,机制在位状态由此二键承载,rev3 勘正)
         "dry_curriculum": _contract_dry_curriculum(args),
@@ -8929,6 +10228,9 @@ def _main(resources: _TrainingResources):
         "distill_anneal_actor_rollouts": int(getattr(
             args, "distill_anneal_actor_rollouts", 0)),
         "resume_from": args.resume_from,
+        "resource_warm_start": args.resource_warm_start,
+        "resource_warm_start_receipt": (resource_warm_start_manifest["receipt"]
+            if resource_warm_start_manifest else None),
         "resume_checkpoint_sha256": resume_checkpoint_sha256,
         "worker_npz": args.worker_npz,        # v25 换届:经理训练挂 npz 工人
         # R9 换届:经理训练挂认证 SB3 zip 工人(与 npz 组装口互斥)
@@ -8962,11 +10264,28 @@ def _main(resources: _TrainingResources):
         "distill_ce_probe_every": args.distill_ce_probe_every,
         "drywin_metrics_every": args.drywin_metrics_every,
     }
+    prefix_env_kwargs = {}
+    time_identity = _worker_time_identity(args.worker_time_protocol)
+    if time_identity is not None:
+        config["worker_time_protocol"] = time_identity["protocol"]
+        config["worker_time_recipe"] = time_identity
+        prefix_env_kwargs["worker_time_protocol"] = time_identity["protocol"]
+    if worker_prefix_identity is not None:
+        config["worker_prefix"] = worker_prefix_identity
+        config["worker_prefix_model"] = str(args.worker_prefix_model)
+        prefix_env_kwargs.update({
+            "worker_prefix_model": args.worker_prefix_model,
+            "worker_prefix_sha256": worker_prefix_identity["source_sha256"],
+            "worker_prefix_max_attempts": worker_prefix_identity["max_attempts"],
+            "worker_prefix_max_microsteps": worker_prefix_identity["max_microsteps"],
+        })
+    if args.dive_blocker_recovery != "off":
+        config["dive_blocker_recovery_recipe"] = dive_blocker_recovery_recipe(args.dive_blocker_recovery)
     print(f"== DiabloGym PPO 训练 == run={run_name}")
     print(f"   {config}")
 
     env_fn = functools.partial(
-        make_env,
+        make_env, **prefix_env_kwargs,
         max_steps=args.max_steps,
         deep=args.deep,
         death_ladder=args.death_ladder,
@@ -8991,6 +10310,42 @@ def _main(resources: _TrainingResources):
             args.worker_fast_forward_reward_credit),
         worker_additional_terminal_death_cost=(
             args.worker_additional_terminal_death_cost),
+        worker_learning_window_scope=getattr(
+            args, "worker_learning_window_scope", "farm-only"),
+        worker_depth_shaping_unit=float(getattr(
+            args, "worker_depth_shaping_unit", 0.0)),
+        worker_descend_bonus_fraction=float(getattr(
+            args, "worker_descend_bonus_fraction", 0.0)),
+        worker_descend_escrow_fraction=float(getattr(
+            args, "worker_descend_escrow_fraction", 0.0)),
+        worker_descend_escrow_power=float(getattr(
+            args, "worker_descend_escrow_power", 1.0)),
+        worker_descend_escrow_readiness_gate=bool(getattr(
+            args, "worker_descend_escrow_readiness_gate", False)),
+        worker_descend_escrow_readiness_table=str(getattr(
+            args, "worker_descend_escrow_readiness_table", "v1")),
+        # R16 修宪:工资侧显式参数 + 环境/教室侧直通参数(_validate_args 已验)
+        worker_hp_loss_price=float(getattr(
+            args, "worker_hp_loss_price", 0.0)),
+        worker_potion_pickup_bonus=float(getattr(
+            args, "worker_potion_pickup_bonus", 0.0)),
+        worker_no_progress_timeout_credit=getattr(
+            args, "worker_no_progress_timeout_credit",
+            _WORKER_NO_PROGRESS_TIMEOUT_CREDIT_DEFAULT),
+        explore_global_fallback=bool(getattr(
+            args, "explore_global_fallback", False)),
+        explore_global_hunt=bool(getattr(
+            args, "explore_global_hunt", False)),
+        progress_far_tiles=int(getattr(args, "progress_far_tiles", 0)),
+        farm_scene_cap=int(getattr(
+            args, "farm_scene_cap", _FARM_SCENE_CAP_DEFAULT)),
+        reset_layer_clock_on_window=bool(getattr(
+            args, "reset_layer_clock_on_window", False)),
+        resource_protocol=getattr(args, "resource_protocol", "off"),
+        resource_purchase_mode=getattr(args, "resource_purchase_mode", "full"),
+        resource_service_policy=getattr(args, "resource_service_policy", "legacy-v1"),
+        resource_readiness_law=getattr(args, "resource_readiness_law", "veto-v1"),
+        dive_blocker_recovery=getattr(args, "dive_blocker_recovery", "off"),
         manager_npz_sha256=manager_npz_sha256,
         worker_npz_sha256=worker_npz_sha256,
         worker_zip=args.worker_zip,
@@ -8998,6 +10353,8 @@ def _main(resources: _TrainingResources):
         deep_start_curriculum=deep_start_curriculum,
         deep_start_form=deep_start_form,
         implementation_sha256=implementation_sha256,
+        reward_economy=args.reward_economy,
+        manager_heuristic=args.manager_heuristic,
     )
     if args.num_envs == 1:
         vec_env = DummyVecEnv([env_fn])
@@ -9035,6 +10392,16 @@ def _main(resources: _TrainingResources):
     ):
         policy_kwargs["action14_logit_bonus"] = float(
             args.worker_action14_logit_bonus)
+        if float(getattr(
+                args, "worker_dive_action11_logit_bonus", 0.0)) > 0.0:
+            policy_kwargs["action11_logit_bonus"] = float(
+                args.worker_dive_action11_logit_bonus)
+        # R16:a13 拾药先验同 a11 先例——非零才进 policy_kwargs(默认路径
+        # 逐位不变)。
+        if float(getattr(
+                args, "worker_potion_action13_logit_bonus", 0.0)) > 0.0:
+            policy_kwargs["action13_logit_bonus"] = float(
+                args.worker_potion_action13_logit_bonus)
     if args.arch == "attn":
         from models import EntityAttentionExtractor
         policy_kwargs = dict(
@@ -9057,7 +10424,18 @@ def _main(resources: _TrainingResources):
         # 整体更换,开牌异常时首要嫌疑人(诚实账本已记)。
         # v24:worker 路一律走 LeashedMaskablePPO(β=0 时 G-KL-B 证与原版逐位等价)
         calib = [int(x) for x in args.calib_probes.split(",") if x.strip()]
-        if args.resume_from and args.options:
+        if args.resource_warm_start:
+            from migrate_resource_candidate import load_initialization
+            _require(resource_warm_start_payload is not None
+                     and resource_warm_start_manifest is not None,
+                     "resource warm-start capture is missing")
+            model = load_initialization(resource_warm_start_payload,
+                resource_warm_start_manifest, env=vec_env, seed=args.seed)
+            model.tensorboard_log = str(run_dir / "tb")
+            actor_migration_receipt = dict(model._actor_migration_receipt)
+            critic_migration_receipt = dict(model._critic_migration_receipt)
+            print("   [resource warm-start] preserved parent weights; new-world steps=0, empty Adam")
+        elif args.resume_from and args.options:
             # v31 经理续训口:类保真(存什么类续什么类,M29 系平 MaskablePPO;
             # 不涉教师/β,无 G-KL-B 义务);封条断言照 v24 原封。
             from sb3_contrib import MaskablePPO
@@ -9190,6 +10568,28 @@ def _main(resources: _TrainingResources):
                         "dual-v4 continuation checkpoint "
                         "缺完整 migration receipts",
                     )
+                _a11_bonus = float(getattr(
+                    args, "worker_dive_action11_logit_bonus", 0.0))
+                if _a11_bonus > 0.0:
+                    # R13 冷启动杠杆:旧 zip 无此 kwarg,load 后显式双写——
+                    # 活体属性(本腿 forward 生效)与 policy_kwargs(save 时
+                    # 烘焙进产物 zip,考卷载入同先验,杠杆不在考场蒸发)。
+                    _require(
+                        hasattr(model.policy, "action11_logit_bonus"),
+                        "policy 缺 action11_logit_bonus(leashed 版本过旧)")
+                    model.policy.action11_logit_bonus = _a11_bonus
+                    model.policy_kwargs["action11_logit_bonus"] = _a11_bonus
+                _a13_bonus = float(getattr(
+                    args, "worker_potion_action13_logit_bonus", 0.0))
+                if _a13_bonus > 0.0:
+                    # R16 拾药先验:旧 zip 无此 kwarg,load 后显式双写(a11
+                    # 先例)——活体属性(本腿 forward 生效)与 policy_kwargs
+                    # (save 时烘焙进产物 zip,考卷载入同先验)。
+                    _require(
+                        hasattr(model.policy, "action13_logit_bonus"),
+                        "policy 缺 action13_logit_bonus(leashed 版本过旧)")
+                    model.policy.action13_logit_bonus = _a13_bonus
+                    model.policy_kwargs["action13_logit_bonus"] = _a13_bonus
             if getattr(model, "teacher_path", None) and not args.teacher_override:
                 _validate_bc_report(pathlib.Path(model.teacher_path), "data_gate")
             # PREREG-v24 D4:β 显式覆盖(load 直写 __dict__ 无校验,不许静默续命);
@@ -9428,7 +10828,15 @@ def _main(resources: _TrainingResources):
             allow_manager_change=args.allow_manager_change,
             allow_legacy_resume=args.allow_legacy_resume,
             allow_optimizer_reset=args.reset_optimizer,
-            allow_target_kl_change=args.target_kl is not None)
+            allow_target_kl_change=args.target_kl is not None,
+            allow_environment_restart=args.allow_environment_restart_resume)
+    if args.resource_warm_start:
+        # No drift allowances apply here. Missing historical optional keys and
+        # explicit None retain the existing strict-resume equivalence only.
+        _validate_resume_contract(resource_warm_start_manifest["target_contract"],
+                                  current_contract)
+        from migrate_resource_candidate import validate_inherited_receipt
+        validate_inherited_receipt(model._resource_warm_start_receipt, current_contract)
     model.diablogym_contract = current_contract
     config["training_contract"] = current_contract
     config["teacher_sha256"] = getattr(model, "teacher_sha256", None)
@@ -9569,6 +10977,15 @@ def _main(resources: _TrainingResources):
         implementation_sha256=implementation_sha256)
     sentinel_cb = (WorkerSentinelCallback(run_dir, every=args.sentinel_every)
                    if args.worker else None)
+    # R13:课堂审计仪表(纯读+IO,独立于冻结哨兵发射面),仅旗开挂载
+    r13_dive_audit_cb = (
+        R13DiveAuditCallback(run_dir, every=args.sentinel_every)
+        if (args.worker
+            and getattr(args, "worker_learning_window_scope", "farm-only")
+            in ("farm-dive-v1", EARNED_DIVE_SUFFIX_SCOPE))
+        else None)
+    prefix_audit_cb = (PrefixAuditCallback(run_dir)
+                       if worker_prefix_identity is not None else None)
     # E1 四门之 dry_cb 挂载门:worker ∧ (skip_dry ∨ schedule)(谓词在助手内)
     dry_cb = (DryAnchorSentinel(run_dir, str(pathlib.Path(__file__).resolve().parent
                                              / "runs" / "bc-worker" / "demos.npz"),
@@ -9594,25 +11011,50 @@ def _main(resources: _TrainingResources):
                  if (args.worker and args.drywin_metrics_every > 0) else None)
     # 让唯一持有文件句柄的 callback 最后构造；其后的 setup 不再有可失败 I/O。
     callback = EpisodeJsonlCallback(run_dir, config)
+    learn_returned = False
     learn_completed = False
+    completion_report = None
+    diagnostic_artifact = None
     try:
+        first_update_cb = _first_update_diagnostic_callback(
+            args, run_dir, implementation_sha256)
         # E1 回调序钉死:课程回调居列首——rollout-start 先登记下一边界的
         # per-env 倒计时，rollout-tail 再先于其他回调核验环境内原子提交。
         cbs = (([curriculum_cb] if curriculum_cb else [])
                + [callback, ckpt] + ([unfreeze_cb] if unfreeze_cb else [])
                + ([sentinel_cb] if sentinel_cb else [])
+               + ([r13_dive_audit_cb] if r13_dive_audit_cb else [])
+               + ([prefix_audit_cb] if prefix_audit_cb else [])
                + ([dry_cb] if dry_cb else [])
                # E5 仪表居列尾(纯读+IO;不在位时本两项为空,列与 HEAD 等价)
                + ([distill_ce_cb] if distill_ce_cb else [])
-               + ([drywin_cb] if drywin_cb else []))
+               + ([drywin_cb] if drywin_cb else [])
+               + ([first_update_cb] if first_update_cb else []))
         # v24:resume 腿 reset_num_timesteps=False(False 语义 = 再训 N 步,全局步连续
         # → ckpt 文件名全局唯一、β 日程与预算记账不断;审计 BLOCKER 2)
         model.learn(total_timesteps=args.total_steps, callback=cbs,
                     reset_num_timesteps=not args.resume_from)
+        learn_returned = True
         # collect_rollouts 被 callback 中途终止时 learn() 也会正常返回；此外
         # G-CAL 可在 full buffer 的首个 minibatch 拒绝整个更新。两者都不能
         # 把 num_timesteps 已记、梯度未吃的权重发布成正式终点。
-        _require_exact_training_completion(model, target_global_steps)
+        try:
+            completion_report = _require_exact_training_completion(
+                model, target_global_steps)
+        except _TrainingCompletionRejected as exc:
+            completion_report = exc.report
+            if args.artifact_scope == "candidate":
+                try:
+                    diagnostic_artifact = _retain_refused_training_diagnostic(
+                        model, run_dir, completion_report, implementation_sha256)
+                except Exception as diagnostic_exc:
+                    # Retention must not replace the original refusal or skip cleanup.
+                    diagnostic_artifact = {
+                        "status": "FAILED",
+                        "error": f"{type(diagnostic_exc).__name__}: {diagnostic_exc}",
+                    }
+                    print(f"诊断工件保存失败: {diagnostic_exc}")
+            raise
         learn_completed = True
     finally:
         active_exception = sys.exc_info()[1]
@@ -9664,7 +11106,13 @@ def _main(resources: _TrainingResources):
         else:
             # 异常或半 rollout 早停时，num_timesteps 已可能包含尚未更新的样本；
             # 这类权重不能冒充正式终点。最近的 rollout-boundary ckpt 仍可恢复。
-            print(f"训练未停在完整更新边界，拒绝生成 {output_name}")
+            if (completion_report is not None
+                    and completion_report["checks"]["rollout_boundary"]
+                    and completion_report["checks"]["exact_target"]):
+                print(f"训练更新已完成，发布验收未通过，拒绝生成 {output_name}: "
+                      f"{completion_report['failed_checks']}")
+            else:
+                print(f"训练未停在完整更新边界，拒绝生成 {output_name}")
         if model_saved:
             publication_state = successful_publication_state
             publication_sha256 = _capture_file_sha256(
@@ -9687,7 +11135,10 @@ def _main(resources: _TrainingResources):
             _record_run_publication_status(
                 run_dir, publication_state,
                 model_sha256=publication_sha256,
-                detail=publication_detail)
+                detail=publication_detail,
+                completion_report=completion_report,
+                diagnostic_artifact=diagnostic_artifact,
+                learn_returned=learn_returned)
         except Exception as status_exc:
             # 先保留异常并完成资源回收。若训练/保存本身没有更早异常，
             # terminal status 是正式工件事务的一部分，失败必须令子进程

@@ -1,0 +1,932 @@
+{
+ "doc": "r17-0-summary",
+ "t": "2026-09-02 14:19:37",
+ "purpose": "R17.0 A0' 基线 + 强制下楼份额测量(零训练,零 C++;panel memo §三 R17.0(a))",
+ "seeds": "2114000-2114047",
+ "max_steps": 6000,
+ "decoding": "sample",
+ "form": {
+  "explore_global_hunt": true,
+  "farm_scene_cap": 3600,
+  "reset_layer_clock_on_window": true,
+  "reward_economy": "v4",
+  "drink_sovereignty": true
+ },
+ "managers": [
+  "readiness-v3",
+  "readiness-v3-strict",
+  "const-FARM",
+  "const-DIVE"
+ ],
+ "workers": {
+  "arm": "/home/laure/AlphaDiablo/diablogym/train/runs/r16-arm-a-constitution/model_candidate.zip",
+  "cert": "/home/laure/AlphaDiablo/diablogym/train/runs/r9-reeducation/staging/worker.zip"
+ },
+ "probe": "/home/laure/AlphaDiablo/diablogym/train/runs/r10-staging/probe_r17_deployment.py",
+ "probe_sha256": "f45f2e75b9cf8eba5a6fdefd0ed31ce0cdce6f13dda02f8fcfbb22c92b5c4c0e",
+ "regression": {
+  "archive": "/home/laure/AlphaDiablo/diablogym/train/runs/r10-staging/r16-deploy-arm.json",
+  "archive_probe": "r15-deployment-v3",
+  "archive_rows_sha_v3": "33023de128cf54e60dc6add49ea47d173802b9afae02bcba18336f593485e59b",
+  "probe_out": "/home/laure/AlphaDiablo/diablogym/train/runs/r10-staging/r17-0/regress-arm-readiness-v3-16.json",
+  "probe_rows_sha_v3": "33023de128cf54e60dc6add49ea47d173802b9afae02bcba18336f593485e59b",
+  "rows_sha_equal": true,
+  "n_rows": [
+   16,
+   16
+  ],
+  "diff_seeds": [],
+  "agg_v3_equal": true,
+  "elapsed_s": 104.1,
+  "source_changed_during_run": []
+ },
+ "metric_semantics": {
+  "forced_descent_share": "forced 下楼(决策时 ¬mask[FARM])/ 全部下楼",
+  "l2_hazard_per_1k": "L2 死亡数 / ΣL2 停留拍 × 1000",
+  "alive_at_first_descent_plus_1800": "有下楼的局中,首降拍+1800 时仍存活的份额(存活截断早于该拍者计存活并在 fd_plus_1800_censored_n 计数);None=无人下楼",
+  "l1_kills_per_1k_beats": "L1 击杀 / ΣL1 停留拍 × 1000(榨取率)",
+  "descent_ac_hist/descent_belt_hist": "每次下楼时 AC / 腰带药数分布"
+ },
+ "combos": {
+  "arm-readiness-v3": {
+   "worker": "arm",
+   "manager": "readiness-v3",
+   "worker_zip": "/home/laure/AlphaDiablo/diablogym/train/runs/r16-arm-a-constitution/model_candidate.zip",
+   "worker_sha16": "7e31dc5402caed73",
+   "alive": 17,
+   "ready_over_descents": "18/28",
+   "rows_sha_v3": "6ed071fbd32d6aea7250555a817044543a989d6ed01ff1145b6a188e52c92457",
+   "source_changed_during_run": [
+    "python/diablogym/worker_env.py",
+    "train/leashed_ppo.py"
+   ],
+   "n": 48,
+   "died": 31,
+   "alive_n": 17,
+   "l2_reach": 28,
+   "depth_hist": {
+    "2": 28,
+    "1": 20
+   },
+   "depth_mean": 1.583,
+   "descents_total": 28,
+   "forced_descents": 15,
+   "forced_descent_share": 0.5357,
+   "ready_descents": 18,
+   "ready_descent_share": 0.6429,
+   "descent_trigger_hist": {
+    "coach_ready": 17,
+    "mask_forced": 11
+   },
+   "descent_forced_reason_hist": {
+    "cap": 15
+   },
+   "episodes_with_descent": 28,
+   "mean_beat_first_descent": 4535.0,
+   "median_beat_first_descent": 4511.5,
+   "alive_at_first_descent_plus_1800": 0.2143,
+   "alive_at_first_descent_plus_1800_n": "6/28",
+   "fd_plus_1800_censored_n": 6,
+   "l2_beats_total": 16429,
+   "l2_deaths": 22,
+   "l2_hazard_per_1k": 1.3391,
+   "l1_beats_total": 201307,
+   "l1_kills_total": 4431,
+   "l1_kills_per_1k_beats": 22.011,
+   "clvl_mean": 2.98,
+   "ac_mean": 8.6,
+   "kills_mean": 100.3,
+   "hit_damage_mean": 7.3,
+   "xp_per_1k_mean": 1604.2,
+   "alive_clvl_mean": 3.18,
+   "alive_ac_mean": 10.8,
+   "alive_kills_mean": 108.6,
+   "dead_clvl_mean": 2.87,
+   "dead_ac_mean": 7.4,
+   "dead_kills_mean": 95.7,
+   "median_steps_dead": 4451.0,
+   "descent_ac_hist": {
+    "7": 9,
+    "8": 1,
+    "9": 2,
+    "10": 7,
+    "11": 2,
+    "12": 1,
+    "13": 2,
+    "14": 1,
+    "16": 3
+   },
+   "descent_ac_mean": 10.04,
+   "descent_belt_hist": {
+    "0": 4,
+    "1": 4,
+    "2": 6,
+    "3": 4,
+    "4": 5,
+    "5": 1,
+    "6": 2,
+    "7": 2
+   },
+   "descent_belt_mean": 2.82,
+   "descent_clvl_hist": {
+    "3": 26,
+    "4": 2
+   },
+   "descent_hp_frac_mean": 0.88,
+   "descent_ratio_v2_mean": 1.05,
+   "descent_floor_beats_median": 4511.5,
+   "descent_monsters_left_prev_floor_median": 5.0,
+   "dive_windows_total": 161,
+   "dive_windows_descended": 28,
+   "dive_window_end_reason_hist": {
+    "cap": 81,
+    "end": 14,
+    "fuse": 13,
+    "death": 5,
+    "stall": 20,
+    "descend": 28
+   },
+   "dive_window_tau_median": 600.0,
+   "windows_total": 517,
+   "mask_forced_decisions_total": 92,
+   "forced_dive_windows_total": 92,
+   "death_dlvl_hist": {
+    "1": 9,
+    "2": 22
+   },
+   "death_beats_on_floor_median": 566.0,
+   "death_belt_last_live_hist": {
+    "0": 31
+   },
+   "death_floor_potions_visible_mean": 0.06,
+   "death_floor_potions_reachable_mean": 0.0,
+   "death_floor_potions_total_mean": 1.81,
+   "job": {
+    "rc": 0,
+    "elapsed_s": 388.7
+   }
+  },
+  "arm-readiness-v3-strict": {
+   "worker": "arm",
+   "manager": "readiness-v3-strict",
+   "worker_zip": "/home/laure/AlphaDiablo/diablogym/train/runs/r16-arm-a-constitution/model_candidate.zip",
+   "worker_sha16": "7e31dc5402caed73",
+   "alive": 17,
+   "ready_over_descents": "18/28",
+   "rows_sha_v3": "6ed071fbd32d6aea7250555a817044543a989d6ed01ff1145b6a188e52c92457",
+   "source_changed_during_run": [
+    "python/diablogym/worker_env.py",
+    "train/leashed_ppo.py"
+   ],
+   "n": 48,
+   "died": 31,
+   "alive_n": 17,
+   "l2_reach": 28,
+   "depth_hist": {
+    "2": 28,
+    "1": 20
+   },
+   "depth_mean": 1.583,
+   "descents_total": 28,
+   "forced_descents": 15,
+   "forced_descent_share": 0.5357,
+   "ready_descents": 18,
+   "ready_descent_share": 0.6429,
+   "descent_trigger_hist": {
+    "coach_ready": 17,
+    "mask_forced": 11
+   },
+   "descent_forced_reason_hist": {
+    "cap": 15
+   },
+   "episodes_with_descent": 28,
+   "mean_beat_first_descent": 4535.0,
+   "median_beat_first_descent": 4511.5,
+   "alive_at_first_descent_plus_1800": 0.2143,
+   "alive_at_first_descent_plus_1800_n": "6/28",
+   "fd_plus_1800_censored_n": 6,
+   "l2_beats_total": 16429,
+   "l2_deaths": 22,
+   "l2_hazard_per_1k": 1.3391,
+   "l1_beats_total": 201307,
+   "l1_kills_total": 4431,
+   "l1_kills_per_1k_beats": 22.011,
+   "clvl_mean": 2.98,
+   "ac_mean": 8.6,
+   "kills_mean": 100.3,
+   "hit_damage_mean": 7.3,
+   "xp_per_1k_mean": 1604.2,
+   "alive_clvl_mean": 3.18,
+   "alive_ac_mean": 10.8,
+   "alive_kills_mean": 108.6,
+   "dead_clvl_mean": 2.87,
+   "dead_ac_mean": 7.4,
+   "dead_kills_mean": 95.7,
+   "median_steps_dead": 4451.0,
+   "descent_ac_hist": {
+    "7": 9,
+    "8": 1,
+    "9": 2,
+    "10": 7,
+    "11": 2,
+    "12": 1,
+    "13": 2,
+    "14": 1,
+    "16": 3
+   },
+   "descent_ac_mean": 10.04,
+   "descent_belt_hist": {
+    "0": 4,
+    "1": 4,
+    "2": 6,
+    "3": 4,
+    "4": 5,
+    "5": 1,
+    "6": 2,
+    "7": 2
+   },
+   "descent_belt_mean": 2.82,
+   "descent_clvl_hist": {
+    "3": 26,
+    "4": 2
+   },
+   "descent_hp_frac_mean": 0.88,
+   "descent_ratio_v2_mean": 1.05,
+   "descent_floor_beats_median": 4511.5,
+   "descent_monsters_left_prev_floor_median": 5.0,
+   "dive_windows_total": 161,
+   "dive_windows_descended": 28,
+   "dive_window_end_reason_hist": {
+    "cap": 81,
+    "end": 14,
+    "fuse": 13,
+    "death": 5,
+    "stall": 20,
+    "descend": 28
+   },
+   "dive_window_tau_median": 600.0,
+   "windows_total": 517,
+   "mask_forced_decisions_total": 92,
+   "forced_dive_windows_total": 92,
+   "death_dlvl_hist": {
+    "1": 9,
+    "2": 22
+   },
+   "death_beats_on_floor_median": 566.0,
+   "death_belt_last_live_hist": {
+    "0": 31
+   },
+   "death_floor_potions_visible_mean": 0.06,
+   "death_floor_potions_reachable_mean": 0.0,
+   "death_floor_potions_total_mean": 1.81,
+   "job": {
+    "rc": 0,
+    "elapsed_s": 388.7
+   }
+  },
+  "arm-const-FARM": {
+   "worker": "arm",
+   "manager": "const-FARM",
+   "worker_zip": "/home/laure/AlphaDiablo/diablogym/train/runs/r16-arm-a-constitution/model_candidate.zip",
+   "worker_sha16": "7e31dc5402caed73",
+   "alive": 17,
+   "ready_over_descents": "18/29",
+   "rows_sha_v3": "53fb65e32713ae691ed369cfe7b1587da18d83783ad4109ee0d8f688fd068bf9",
+   "source_changed_during_run": [
+    "python/diablogym/worker_env.py",
+    "train/leashed_ppo.py"
+   ],
+   "n": 48,
+   "died": 31,
+   "alive_n": 17,
+   "l2_reach": 29,
+   "depth_hist": {
+    "2": 29,
+    "1": 19
+   },
+   "depth_mean": 1.604,
+   "descents_total": 29,
+   "forced_descents": 29,
+   "forced_descent_share": 1.0,
+   "ready_descents": 18,
+   "ready_descent_share": 0.6207,
+   "descent_trigger_hist": {
+    "mask_forced": 29
+   },
+   "descent_forced_reason_hist": {
+    "cap": 29
+   },
+   "episodes_with_descent": 29,
+   "mean_beat_first_descent": 4608.3,
+   "median_beat_first_descent": 4638.0,
+   "alive_at_first_descent_plus_1800": 0.2759,
+   "alive_at_first_descent_plus_1800_n": "8/29",
+   "fd_plus_1800_censored_n": 8,
+   "l2_beats_total": 17184,
+   "l2_deaths": 21,
+   "l2_hazard_per_1k": 1.2221,
+   "l1_beats_total": 198004,
+   "l1_kills_total": 4407,
+   "l1_kills_per_1k_beats": 22.257,
+   "clvl_mean": 2.92,
+   "ac_mean": 8.1,
+   "kills_mean": 100.4,
+   "hit_damage_mean": 7.4,
+   "xp_per_1k_mean": 1619.06,
+   "alive_clvl_mean": 3.12,
+   "alive_ac_mean": 9.9,
+   "alive_kills_mean": 112.6,
+   "dead_clvl_mean": 2.81,
+   "dead_ac_mean": 7.1,
+   "dead_kills_mean": 93.6,
+   "median_steps_dead": 4465.0,
+   "descent_ac_hist": {
+    "7": 10,
+    "8": 1,
+    "9": 2,
+    "10": 6,
+    "11": 2,
+    "12": 1,
+    "13": 2,
+    "14": 2,
+    "16": 3
+   },
+   "descent_ac_mean": 10.07,
+   "descent_belt_hist": {
+    "0": 4,
+    "1": 5,
+    "2": 8,
+    "3": 1,
+    "4": 6,
+    "5": 1,
+    "6": 1,
+    "7": 3
+   },
+   "descent_belt_mean": 2.76,
+   "descent_clvl_hist": {
+    "3": 26,
+    "4": 3
+   },
+   "descent_hp_frac_mean": 0.866,
+   "descent_ratio_v2_mean": 1.042,
+   "descent_floor_beats_median": 4638.0,
+   "descent_monsters_left_prev_floor_median": 6.0,
+   "dive_windows_total": 129,
+   "dive_windows_descended": 29,
+   "dive_window_end_reason_hist": {
+    "cap": 54,
+    "end": 9,
+    "fuse": 13,
+    "stall": 24,
+    "descend": 29
+   },
+   "dive_window_tau_median": 491.0,
+   "windows_total": 526,
+   "mask_forced_decisions_total": 129,
+   "forced_dive_windows_total": 129,
+   "death_dlvl_hist": {
+    "1": 10,
+    "2": 21
+   },
+   "death_beats_on_floor_median": 533.0,
+   "death_belt_last_live_hist": {
+    "0": 31
+   },
+   "death_floor_potions_visible_mean": 0.06,
+   "death_floor_potions_reachable_mean": 0.0,
+   "death_floor_potions_total_mean": 1.77,
+   "job": {
+    "rc": 0,
+    "elapsed_s": 388.7
+   }
+  },
+  "arm-const-DIVE": {
+   "worker": "arm",
+   "manager": "const-DIVE",
+   "worker_zip": "/home/laure/AlphaDiablo/diablogym/train/runs/r16-arm-a-constitution/model_candidate.zip",
+   "worker_sha16": "7e31dc5402caed73",
+   "alive": 16,
+   "ready_over_descents": "17/30",
+   "rows_sha_v3": "72d1ab3caf16a5e1671a737ff21d2fe2cae2dc1ec9366f8777cf71856ac4233e",
+   "source_changed_during_run": [
+    "python/diablogym/worker_env.py"
+   ],
+   "n": 48,
+   "died": 32,
+   "alive_n": 16,
+   "l2_reach": 30,
+   "depth_hist": {
+    "2": 30,
+    "1": 18
+   },
+   "depth_mean": 1.625,
+   "descents_total": 30,
+   "forced_descents": 0,
+   "forced_descent_share": 0.0,
+   "ready_descents": 17,
+   "ready_descent_share": 0.5667,
+   "descent_trigger_hist": {
+    "const_dive": 13,
+    "coach_ready": 17
+   },
+   "descent_forced_reason_hist": {},
+   "episodes_with_descent": 30,
+   "mean_beat_first_descent": 4370.8,
+   "median_beat_first_descent": 4356.0,
+   "alive_at_first_descent_plus_1800": 0.2,
+   "alive_at_first_descent_plus_1800_n": "6/30",
+   "fd_plus_1800_censored_n": 4,
+   "l2_beats_total": 18227,
+   "l2_deaths": 24,
+   "l2_hazard_per_1k": 1.3167,
+   "l1_beats_total": 202088,
+   "l1_kills_total": 4586,
+   "l1_kills_per_1k_beats": 22.693,
+   "clvl_mean": 2.98,
+   "ac_mean": 8.1,
+   "kills_mean": 103.7,
+   "hit_damage_mean": 7.7,
+   "xp_per_1k_mean": 1592.38,
+   "alive_clvl_mean": 3.06,
+   "alive_ac_mean": 10.1,
+   "alive_kills_mean": 111.8,
+   "dead_clvl_mean": 2.94,
+   "dead_ac_mean": 7.2,
+   "dead_kills_mean": 99.7,
+   "median_steps_dead": 4339.0,
+   "descent_ac_hist": {
+    "7": 11,
+    "8": 2,
+    "9": 3,
+    "10": 5,
+    "11": 2,
+    "12": 1,
+    "13": 1,
+    "14": 3,
+    "16": 2
+   },
+   "descent_ac_mean": 9.7,
+   "descent_belt_hist": {
+    "0": 3,
+    "1": 5,
+    "2": 4,
+    "3": 10,
+    "4": 3,
+    "5": 3,
+    "6": 1,
+    "8": 1
+   },
+   "descent_belt_mean": 2.8,
+   "descent_clvl_hist": {
+    "3": 27,
+    "4": 3
+   },
+   "descent_hp_frac_mean": 0.922,
+   "descent_ratio_v2_mean": 0.998,
+   "descent_floor_beats_median": 4356.0,
+   "descent_monsters_left_prev_floor_median": 5.5,
+   "dive_windows_total": 449,
+   "dive_windows_descended": 30,
+   "dive_window_end_reason_hist": {
+    "cap": 305,
+    "end": 16,
+    "fuse": 36,
+    "death": 32,
+    "stall": 30,
+    "descend": 30
+   },
+   "dive_window_tau_median": 601.0,
+   "windows_total": 449,
+   "mask_forced_decisions_total": 0,
+   "forced_dive_windows_total": 0,
+   "death_dlvl_hist": {
+    "1": 8,
+    "2": 24
+   },
+   "death_beats_on_floor_median": 459.5,
+   "death_belt_last_live_hist": {
+    "0": 31,
+    "1": 1
+   },
+   "death_floor_potions_visible_mean": 0.06,
+   "death_floor_potions_reachable_mean": 0.03,
+   "death_floor_potions_total_mean": 1.94,
+   "job": {
+    "rc": 0,
+    "elapsed_s": 369.6
+   }
+  },
+  "cert-readiness-v3": {
+   "worker": "cert",
+   "manager": "readiness-v3",
+   "worker_zip": "/home/laure/AlphaDiablo/diablogym/train/runs/r9-reeducation/staging/worker.zip",
+   "worker_sha16": "2837288dad19a685",
+   "alive": 34,
+   "ready_over_descents": "0/3",
+   "rows_sha_v3": "873329bf85f94d86a6490b68a5dccb90b97085efec95a274ce75aaef7af92c73",
+   "source_changed_during_run": [
+    "python/diablogym/worker_env.py"
+   ],
+   "n": 48,
+   "died": 14,
+   "alive_n": 34,
+   "l2_reach": 3,
+   "depth_hist": {
+    "1": 45,
+    "2": 3
+   },
+   "depth_mean": 1.062,
+   "descents_total": 3,
+   "forced_descents": 3,
+   "forced_descent_share": 1.0,
+   "ready_descents": 0,
+   "ready_descent_share": 0.0,
+   "descent_trigger_hist": {
+    "mask_forced": 3
+   },
+   "descent_forced_reason_hist": {
+    "cap": 2,
+    "idle_clock": 1
+   },
+   "episodes_with_descent": 3,
+   "mean_beat_first_descent": 3047.0,
+   "median_beat_first_descent": 3791.0,
+   "alive_at_first_descent_plus_1800": 0.0,
+   "alive_at_first_descent_plus_1800_n": "0/3",
+   "fd_plus_1800_censored_n": 0,
+   "l2_beats_total": 2602,
+   "l2_deaths": 3,
+   "l2_hazard_per_1k": 1.153,
+   "l1_beats_total": 226612,
+   "l1_kills_total": 3768,
+   "l1_kills_per_1k_beats": 16.628,
+   "clvl_mean": 2.5,
+   "ac_mean": 8.4,
+   "kills_mean": 79.4,
+   "hit_damage_mean": 7.0,
+   "xp_per_1k_mean": 1153.2,
+   "alive_clvl_mean": 2.82,
+   "alive_ac_mean": 9.0,
+   "alive_kills_mean": 94.8,
+   "dead_clvl_mean": 1.71,
+   "dead_ac_mean": 7.1,
+   "dead_kills_mean": 42.0,
+   "median_steps_dead": 1256.0,
+   "descent_ac_hist": {
+    "7": 3
+   },
+   "descent_ac_mean": 7.0,
+   "descent_belt_hist": {
+    "1": 2,
+    "2": 1
+   },
+   "descent_belt_mean": 1.33,
+   "descent_clvl_hist": {
+    "1": 1,
+    "3": 2
+   },
+   "descent_hp_frac_mean": 0.979,
+   "descent_ratio_v2_mean": 0.685,
+   "descent_floor_beats_median": 3791.0,
+   "descent_monsters_left_prev_floor_median": 17.0,
+   "dive_windows_total": 244,
+   "dive_windows_descended": 3,
+   "dive_window_end_reason_hist": {
+    "cap": 102,
+    "end": 34,
+    "fuse": 11,
+    "death": 3,
+    "stall": 91,
+    "descend": 3
+   },
+   "dive_window_tau_median": 541.5,
+   "windows_total": 526,
+   "mask_forced_decisions_total": 126,
+   "forced_dive_windows_total": 126,
+   "death_dlvl_hist": {
+    "1": 11,
+    "2": 3
+   },
+   "death_beats_on_floor_median": 1041.0,
+   "death_belt_last_live_hist": {
+    "0": 14
+   },
+   "death_floor_potions_visible_mean": 0.14,
+   "death_floor_potions_reachable_mean": 0.07,
+   "death_floor_potions_total_mean": 2.14,
+   "job": {
+    "rc": 0,
+    "elapsed_s": 391.0
+   }
+  },
+  "cert-readiness-v3-strict": {
+   "worker": "cert",
+   "manager": "readiness-v3-strict",
+   "worker_zip": "/home/laure/AlphaDiablo/diablogym/train/runs/r9-reeducation/staging/worker.zip",
+   "worker_sha16": "2837288dad19a685",
+   "alive": 34,
+   "ready_over_descents": "0/3",
+   "rows_sha_v3": "873329bf85f94d86a6490b68a5dccb90b97085efec95a274ce75aaef7af92c73",
+   "source_changed_during_run": [
+    "python/diablogym/worker_env.py"
+   ],
+   "n": 48,
+   "died": 14,
+   "alive_n": 34,
+   "l2_reach": 3,
+   "depth_hist": {
+    "1": 45,
+    "2": 3
+   },
+   "depth_mean": 1.062,
+   "descents_total": 3,
+   "forced_descents": 3,
+   "forced_descent_share": 1.0,
+   "ready_descents": 0,
+   "ready_descent_share": 0.0,
+   "descent_trigger_hist": {
+    "mask_forced": 3
+   },
+   "descent_forced_reason_hist": {
+    "cap": 2,
+    "idle_clock": 1
+   },
+   "episodes_with_descent": 3,
+   "mean_beat_first_descent": 3047.0,
+   "median_beat_first_descent": 3791.0,
+   "alive_at_first_descent_plus_1800": 0.0,
+   "alive_at_first_descent_plus_1800_n": "0/3",
+   "fd_plus_1800_censored_n": 0,
+   "l2_beats_total": 2602,
+   "l2_deaths": 3,
+   "l2_hazard_per_1k": 1.153,
+   "l1_beats_total": 226612,
+   "l1_kills_total": 3768,
+   "l1_kills_per_1k_beats": 16.628,
+   "clvl_mean": 2.5,
+   "ac_mean": 8.4,
+   "kills_mean": 79.4,
+   "hit_damage_mean": 7.0,
+   "xp_per_1k_mean": 1153.2,
+   "alive_clvl_mean": 2.82,
+   "alive_ac_mean": 9.0,
+   "alive_kills_mean": 94.8,
+   "dead_clvl_mean": 1.71,
+   "dead_ac_mean": 7.1,
+   "dead_kills_mean": 42.0,
+   "median_steps_dead": 1256.0,
+   "descent_ac_hist": {
+    "7": 3
+   },
+   "descent_ac_mean": 7.0,
+   "descent_belt_hist": {
+    "1": 2,
+    "2": 1
+   },
+   "descent_belt_mean": 1.33,
+   "descent_clvl_hist": {
+    "1": 1,
+    "3": 2
+   },
+   "descent_hp_frac_mean": 0.979,
+   "descent_ratio_v2_mean": 0.685,
+   "descent_floor_beats_median": 3791.0,
+   "descent_monsters_left_prev_floor_median": 17.0,
+   "dive_windows_total": 244,
+   "dive_windows_descended": 3,
+   "dive_window_end_reason_hist": {
+    "cap": 102,
+    "end": 34,
+    "fuse": 11,
+    "death": 3,
+    "stall": 91,
+    "descend": 3
+   },
+   "dive_window_tau_median": 541.5,
+   "windows_total": 526,
+   "mask_forced_decisions_total": 126,
+   "forced_dive_windows_total": 126,
+   "death_dlvl_hist": {
+    "1": 11,
+    "2": 3
+   },
+   "death_beats_on_floor_median": 1041.0,
+   "death_belt_last_live_hist": {
+    "0": 14
+   },
+   "death_floor_potions_visible_mean": 0.14,
+   "death_floor_potions_reachable_mean": 0.07,
+   "death_floor_potions_total_mean": 2.14,
+   "job": {
+    "rc": 0,
+    "elapsed_s": 391.0
+   }
+  },
+  "cert-const-FARM": {
+   "worker": "cert",
+   "manager": "const-FARM",
+   "worker_zip": "/home/laure/AlphaDiablo/diablogym/train/runs/r9-reeducation/staging/worker.zip",
+   "worker_sha16": "2837288dad19a685",
+   "alive": 32,
+   "ready_over_descents": "2/5",
+   "rows_sha_v3": "81f9c9711debe4518b1d69dcb0a97ba9d47e6596305da639fe3bcfec4793ae70",
+   "source_changed_during_run": [],
+   "n": 48,
+   "died": 16,
+   "alive_n": 32,
+   "l2_reach": 5,
+   "depth_hist": {
+    "1": 43,
+    "2": 5
+   },
+   "depth_mean": 1.104,
+   "descents_total": 5,
+   "forced_descents": 5,
+   "forced_descent_share": 1.0,
+   "ready_descents": 2,
+   "ready_descent_share": 0.4,
+   "descent_trigger_hist": {
+    "mask_forced": 5
+   },
+   "descent_forced_reason_hist": {
+    "cap": 4,
+    "idle_clock": 1
+   },
+   "episodes_with_descent": 5,
+   "mean_beat_first_descent": 3765.6,
+   "median_beat_first_descent": 4229.0,
+   "alive_at_first_descent_plus_1800": 0.2,
+   "alive_at_first_descent_plus_1800_n": "1/5",
+   "fd_plus_1800_censored_n": 1,
+   "l2_beats_total": 3887,
+   "l2_deaths": 4,
+   "l2_hazard_per_1k": 1.0291,
+   "l1_beats_total": 221882,
+   "l1_kills_total": 3852,
+   "l1_kills_per_1k_beats": 17.361,
+   "clvl_mean": 2.56,
+   "ac_mean": 8.6,
+   "kills_mean": 81.9,
+   "hit_damage_mean": 7.0,
+   "xp_per_1k_mean": 1204.63,
+   "alive_clvl_mean": 2.94,
+   "alive_ac_mean": 9.2,
+   "alive_kills_mean": 99.4,
+   "dead_clvl_mean": 1.81,
+   "dead_ac_mean": 7.2,
+   "dead_kills_mean": 46.9,
+   "median_steps_dead": 1466.5,
+   "descent_ac_hist": {
+    "7": 3,
+    "12": 1,
+    "16": 1
+   },
+   "descent_ac_mean": 9.8,
+   "descent_belt_hist": {
+    "1": 3,
+    "2": 2
+   },
+   "descent_belt_mean": 1.4,
+   "descent_clvl_hist": {
+    "1": 1,
+    "2": 1,
+    "3": 3
+   },
+   "descent_hp_frac_mean": 0.962,
+   "descent_ratio_v2_mean": 0.911,
+   "descent_floor_beats_median": 4229.0,
+   "descent_monsters_left_prev_floor_median": 17.0,
+   "dive_windows_total": 188,
+   "dive_windows_descended": 5,
+   "dive_window_end_reason_hist": {
+    "cap": 75,
+    "end": 31,
+    "fuse": 11,
+    "death": 1,
+    "stall": 65,
+    "descend": 5
+   },
+   "dive_window_tau_median": 550.0,
+   "windows_total": 519,
+   "mask_forced_decisions_total": 188,
+   "forced_dive_windows_total": 188,
+   "death_dlvl_hist": {
+    "1": 12,
+    "2": 4
+   },
+   "death_beats_on_floor_median": 1041.0,
+   "death_belt_last_live_hist": {
+    "0": 16
+   },
+   "death_floor_potions_visible_mean": 0.12,
+   "death_floor_potions_reachable_mean": 0.06,
+   "death_floor_potions_total_mean": 2.12,
+   "job": {
+    "rc": 0,
+    "elapsed_s": 329.3
+   }
+  },
+  "cert-const-DIVE": {
+   "worker": "cert",
+   "manager": "const-DIVE",
+   "worker_zip": "/home/laure/AlphaDiablo/diablogym/train/runs/r9-reeducation/staging/worker.zip",
+   "worker_sha16": "2837288dad19a685",
+   "alive": 32,
+   "ready_over_descents": "0/6",
+   "rows_sha_v3": "f8f38f5e3b48cb4e26841797a71a1695b22d363b9fcf06344ea3610362b2110d",
+   "source_changed_during_run": [],
+   "n": 48,
+   "died": 16,
+   "alive_n": 32,
+   "l2_reach": 6,
+   "depth_hist": {
+    "1": 42,
+    "2": 6
+   },
+   "depth_mean": 1.125,
+   "descents_total": 6,
+   "forced_descents": 0,
+   "forced_descent_share": 0.0,
+   "ready_descents": 0,
+   "ready_descent_share": 0.0,
+   "descent_trigger_hist": {
+    "const_dive": 6
+   },
+   "descent_forced_reason_hist": {},
+   "episodes_with_descent": 6,
+   "mean_beat_first_descent": 3712.3,
+   "median_beat_first_descent": 4564.0,
+   "alive_at_first_descent_plus_1800": 0.1667,
+   "alive_at_first_descent_plus_1800_n": "1/6",
+   "fd_plus_1800_censored_n": 1,
+   "l2_beats_total": 2721,
+   "l2_deaths": 5,
+   "l2_hazard_per_1k": 1.8376,
+   "l1_beats_total": 218046,
+   "l1_kills_total": 3614,
+   "l1_kills_per_1k_beats": 16.574,
+   "clvl_mean": 2.46,
+   "ac_mean": 8.2,
+   "kills_mean": 76.0,
+   "hit_damage_mean": 7.0,
+   "xp_per_1k_mean": 1157.05,
+   "alive_clvl_mean": 2.94,
+   "alive_ac_mean": 8.7,
+   "alive_kills_mean": 97.9,
+   "dead_clvl_mean": 1.5,
+   "dead_ac_mean": 7.2,
+   "dead_kills_mean": 32.2,
+   "median_steps_dead": 1134.5,
+   "descent_ac_hist": {
+    "7": 5,
+    "8": 1
+   },
+   "descent_ac_mean": 7.17,
+   "descent_belt_hist": {
+    "0": 3,
+    "1": 1,
+    "2": 1,
+    "3": 1
+   },
+   "descent_belt_mean": 1.0,
+   "descent_clvl_hist": {
+    "1": 1,
+    "2": 4,
+    "3": 1
+   },
+   "descent_hp_frac_mean": 0.709,
+   "descent_ratio_v2_mean": 0.75,
+   "descent_floor_beats_median": 4564.0,
+   "descent_monsters_left_prev_floor_median": 44.0,
+   "dive_windows_total": 452,
+   "dive_windows_descended": 6,
+   "dive_window_end_reason_hist": {
+    "cap": 289,
+    "end": 32,
+    "fuse": 14,
+    "death": 16,
+    "stall": 95,
+    "descend": 6
+   },
+   "dive_window_tau_median": 601.0,
+   "windows_total": 452,
+   "mask_forced_decisions_total": 0,
+   "forced_dive_windows_total": 0,
+   "death_dlvl_hist": {
+    "1": 11,
+    "2": 5
+   },
+   "death_beats_on_floor_median": 647.0,
+   "death_belt_last_live_hist": {
+    "0": 16
+   },
+   "death_floor_potions_visible_mean": 0.19,
+   "death_floor_potions_reachable_mean": 0.19,
+   "death_floor_potions_total_mean": 2.06,
+   "job": {
+    "rc": 0,
+    "elapsed_s": 301.7
+   }
+  }
+ }
+}

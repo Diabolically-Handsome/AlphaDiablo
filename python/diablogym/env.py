@@ -103,6 +103,7 @@ action mask，且失败表耗尽后必须开启下一轮，不能永久删除合
 
 from __future__ import annotations
 
+import dataclasses
 from dataclasses import dataclass
 import math
 import os
@@ -143,6 +144,131 @@ TERMINAL_DEATH_REWARD_SPEC = TerminalDeathRewardSpec(
     flat_cost=2.0,
     ladder_cost_per_depth=8.0,
 )
+
+
+@dataclass(frozen=True)
+class RewardEconomy:
+    """R10 经济法案:全部工资常量的单一真源(v1=历史逐位不变)。
+
+    v2(R10 深度经济,主席批文 2026-08-27,记账全额归经理):
+      - A 下楼奖金:descend_unit 上调(仍按 v17 递进公式 8×N 结构,换单价);
+      - B 深度乘数:farm 收入(xp+击杀)×(1+kill_depth_beta×(d-1));
+      - C 主席版死亡罚金:flat + c0×gamma^(d-1),随深度递减(拧反 v1 的
+        ladder 递增恐惧项);
+      - D 反躺平:同层滞留超 idle_threshold_steps 后 farm 收入 ×idle_factor
+        (抵达新的本局最深层即重置);
+      - E1 装备重定价:scale 降 / cap 升,一次真实升级≈数只怪。
+    """
+
+    name: str
+    descend_unit: float
+    kill_depth_beta: float
+    death_flat: float
+    death_c0: float
+    death_gamma: float
+    death_uses_ladder_spec: bool
+    gear_scale: float
+    gear_cap: float
+    idle_threshold_steps: int
+    idle_kill_factor: float
+    # R11 主席版杀怪锁:>0 时,下楼奖金记入"未解锁"托管;该层击杀满
+    # 此数解锁;死于解锁前全额罚没(gamma=1.0 下与到账托管数学等价)。
+    # 0 = 关闭(v1/v2 语义不变)。
+    descend_vest_kills: int
+    # R16 修宪(C8,2026-09-01)反躺平重定义,两个默认关字段:
+    #   idle_counts_micro_beats: D 条款 idle 钟按底层微拍(self._steps 增量)
+    #     计数,而非按 _reward 调用次数(=决策/宏)计数;
+    #   idle_reset_on_kill: 本决策发生原生击杀即把 idle 钟清零(先按清零前
+    #     的钟结算本决策的 farm 乘数,再清零;新最深层清零照旧)。
+    # v1/v2/v3/v3b 均取默认 False → 旧行为逐位不变。
+    idle_counts_micro_beats: bool = False
+    idle_reset_on_kill: bool = False
+
+
+REWARD_ECONOMY_V1 = RewardEconomy(
+    name="v1",
+    descend_unit=DESCEND_UNIT,
+    kill_depth_beta=0.0,
+    death_flat=TERMINAL_DEATH_REWARD_SPEC.flat_cost,
+    death_c0=0.0,
+    death_gamma=1.0,
+    death_uses_ladder_spec=True,
+    gear_scale=GEAR_COMBAT_UTILITY_REWARD_SCALE,
+    gear_cap=GEAR_COMBAT_UTILITY_REWARD_CAP,
+    idle_threshold_steps=0,
+    idle_kill_factor=1.0,
+    descend_vest_kills=0,
+)
+
+REWARD_ECONOMY_V2 = RewardEconomy(
+    name="v2",
+    # rev2(G0 校准 2026-08-27):rev1 探针 DIVE-FARM=-29.3 未翻符——
+    # B 乘数无差别肥了守旧派。下楼奖 24→48、beta 0.5→0.25、
+    # 反躺平 900→300 步。终值以冻结预注册为准。
+    descend_unit=48.0,
+    kill_depth_beta=0.25,
+    death_flat=2.0,
+    death_c0=24.0,
+    death_gamma=0.7,
+    death_uses_ladder_spec=False,
+    gear_scale=1024.0,
+    gear_cap=12.0,
+    idle_threshold_steps=300,
+    idle_kill_factor=0.5,
+    descend_vest_kills=0,
+)
+
+# R11 试跑版(2026-08-28 深夜主席令「今晚先试跑一轮」):v2 + 杀怪锁 K=3。
+# 单变量纪律:除 vest_kills 外与 v2 逐字相同,便于明晨干净归因。
+REWARD_ECONOMY_V3 = RewardEconomy(
+    name="v3",
+    descend_unit=48.0,
+    kill_depth_beta=0.25,
+    death_flat=2.0,
+    death_c0=24.0,
+    death_gamma=0.7,
+    death_uses_ladder_spec=False,
+    gear_scale=1024.0,
+    gear_cap=12.0,
+    idle_threshold_steps=300,
+    idle_kill_factor=0.5,
+    descend_vest_kills=3,
+)
+
+# R11 试跑二(二分搜索:K=3 端点证伪潜行,退一格):v3 仅改 vest_kills=1。
+REWARD_ECONOMY_V3B = RewardEconomy(
+    name="v3b",
+    descend_unit=48.0,
+    kill_depth_beta=0.25,
+    death_flat=2.0,
+    death_c0=24.0,
+    death_gamma=0.7,
+    death_uses_ladder_spec=False,
+    gear_scale=1024.0,
+    gear_cap=12.0,
+    idle_threshold_steps=300,
+    idle_kill_factor=0.5,
+    descend_vest_kills=1,
+)
+
+# R16 修宪 v4(C8 判词:v2 的 D 条款按决策计数、只在新最深层清零、击杀不
+# 清零,>300 后 farm 收入减半——专打在本层磨等级的轨迹)。v4 = v2 全部参数
+# (dataclasses.replace 保证逐字段同源)+ 反躺平重定义:idle 钟按底层微拍
+# 计数且击杀发生即清零。v2 本身一字不动。
+REWARD_ECONOMY_V4 = dataclasses.replace(
+    REWARD_ECONOMY_V2,
+    name="v4",
+    idle_counts_micro_beats=True,
+    idle_reset_on_kill=True,
+)
+
+REWARD_ECONOMIES = {
+    "v1": REWARD_ECONOMY_V1,
+    "v2": REWARD_ECONOMY_V2,
+    "v3": REWARD_ECONOMY_V3,
+    "v3b": REWARD_ECONOMY_V3B,
+    "v4": REWARD_ECONOMY_V4,
+}
 
 
 def gear_combat_utility_value(raw, label: str) -> int:
@@ -282,13 +408,17 @@ class _ControllerSnapshot:
 
 
 def terminal_death_reward_component(
-        *, dead: bool, dungeon_level, death_ladder: bool) -> float:
+        *, dead: bool, dungeon_level, death_ladder: bool,
+        economy: RewardEconomy = REWARD_ECONOMY_V1) -> float:
     """Return only the terminal-death component of the native reward.
 
     This pure function is shared by :class:`DiabloGymEnv` when it settles the
     real transition and by ``WorkerWindowEnv`` when it reconstructs that one
     component across a frozen manager/script boundary.  No XP, combat,
     movement, progression, or victory credit is included.
+
+    economy=v1(默认)逐位复现历史行为;economy=v2 时死亡罚金改为主席版
+    递减函数 flat + c0×gamma^(max(d,1)-1),death_ladder 分支被 v2 覆盖。
     """
     if not isinstance(dead, (bool, np.bool_)):
         raise TypeError(f"dead 必须是 bool，收到 {dead!r}")
@@ -312,6 +442,12 @@ def terminal_death_reward_component(
             or depth < 0):
         raise ValueError(
             f"死亡终局 dungeon_level 必须是非负整数，收到 {dungeon_level!r}")
+    if not economy.death_uses_ladder_spec:
+        # v2 主席版:一层死罚最重,越深越轻(2026-08-27 批文)。
+        cost = economy.death_flat + (
+            economy.death_c0
+            * (economy.death_gamma ** (max(depth, 1) - 1)))
+        return -float(cost)
     cost = (
         TERMINAL_DEATH_REWARD_SPEC.ladder_cost_per_depth * depth
         if bool(death_ladder)
@@ -456,6 +592,17 @@ def _create_locked_temp_save_dir():
 class DiabloGymEnv(gym.Env):
     metadata = {"render_modes": []}
 
+    # R10 经济法案的类级默认:v1 = 历史逐位不变。既有测试/法证脚本常以
+    # __new__ 裸构造实例直呼 _reward,类级默认保证该路径永远落在 v1;
+    # 正常 __init__ 会按入参覆写实例属性。
+    reward_economy = REWARD_ECONOMY_V1
+    _econ_steps_on_level = 0
+    _econ_idle_prev_steps = 0  # R16 v4:上次 _reward 时的 self._steps(微拍计数用)
+    _econ_episode_max_depth = 0
+    _econ_unvested = 0.0
+    _econ_kills_on_floor = 0
+    _econ_prev_epkills = 0
+
     # DevilutionX 是进程内全局单例，不是可重入的多实例引擎。同一
     # 进程可以顺序复用多个 wrapper，但不能交错 step；多环境必须用
     # SubprocVecEnv 之类的多进程方案。在这里显式记账，把静默串状态
@@ -494,8 +641,73 @@ class DiabloGymEnv(gym.Env):
         hero_class: int = 0,
         controller_snapshot_enabled: bool = False,
         descend_fallback_promotion: bool = True,
+        reward_economy: str = "v1",
+        explore_global_fallback: bool = False,
+        progress_far_tiles: int = 0,
+        explore_global_hunt: bool = False,
+        resource_protocol: str = "off",
+        resource_purchase_mode: str = "full",
+        dive_blocker_recovery: str = "off",
+        resource_ordinary_armor_scope: bool = False,
+        resource_preserve_equipment_readiness: bool = False,
+        resource_readiness_law: str = "veto-v1",
     ):
         super().__init__()
+        from .resource_protocol import validate_resource_config, validate_ordinary_armor_scope
+        self.resource_protocol, self.resource_purchase_mode = validate_resource_config(
+            resource_protocol, resource_purchase_mode)
+        self.resource_ordinary_armor_scope = validate_ordinary_armor_scope(
+            self.resource_protocol, self.resource_purchase_mode, resource_ordinary_armor_scope)
+        from .resource_protocol import validate_equipment_readiness_preservation
+        self._resource_preserve_equipment_readiness = validate_equipment_readiness_preservation(
+            self.resource_protocol, resource_preserve_equipment_readiness)
+        # R17.1 ruling 3: readiness law (veto-v1 = R18-R23 native veto, bit-identical;
+        # coach-v03 = six-condition coach + accounted forced descents).
+        from .resource_protocol import validate_readiness_law
+        self.resource_readiness_law = validate_readiness_law(
+            self.resource_protocol, resource_readiness_law)
+        if dive_blocker_recovery not in ("off", "adjacent-v1"):
+            raise ValueError("dive_blocker_recovery must be off or adjacent-v1")
+        if dive_blocker_recovery != "off" and self.resource_protocol == "off":
+            raise ValueError("dive_blocker_recovery requires the resource protocol")
+        self.dive_blocker_recovery = dive_blocker_recovery
+        self._resource_pending_command = None
+        self._resource_terminal_reason = None
+        self._resource_dive_authority = False
+        self._resource_actual_microsteps = 0
+        self._resource_scene_ledgers = {}
+        self._resource_max_main_depth = 0
+        self._resource_transition_receipts = []
+        self._resource_reward_depth_before = 0
+        self._resource_step_bonus = 0.0
+        # R16 修宪(2026-09-01)两把默认关的开关,默认值下代码路径逐位不变:
+        #   explore_global_fallback(C5):a10 在 25×25 窗内无边疆/软墙候选时,
+        #     不再直接 wait,而是全图 BFS 找最近的未踏足可达格或存活怪占位
+        #     格,取其路径落在窗内的最远局部可达前缀点作本次 frontier;
+        #   progress_far_tiles(C6):>0 时只有与既有"进展锚点"切比雪夫距离
+        #     ≥ 该值的新格才推进 exploration_progress(踱步不算),0 = 旧法
+        #     (任何首次踏足格都算)。
+        if not isinstance(explore_global_fallback, (bool, np.bool_)):
+            raise TypeError(
+                "explore_global_fallback 必须是 bool，收到 "
+                f"{explore_global_fallback!r}")
+        self._explore_global_fallback = bool(explore_global_fallback)
+        if (isinstance(progress_far_tiles, bool)
+                or not isinstance(progress_far_tiles, (int, np.integer))
+                or int(progress_far_tiles) < 0):
+            raise ValueError(
+                "progress_far_tiles 必须是非负整数(0=旧法)，收到 "
+                f"{progress_far_tiles!r}")
+        self._progress_far_tiles = int(progress_far_tiles)
+        # R16 C5 附加变体(默认关,探针发现 fallback 单独几乎不触发):a10 在
+        # 25×25 窗内没有任何可见怪时,不等局部边疆耗尽,直接全图 BFS 朝最近
+        # 存活怪(含隔墙/未照亮的)推进(仍只取窗内航点、走既有逐步走格
+        # 机制);全图无可达怪才回到局部边疆探索。
+        if not isinstance(explore_global_hunt, (bool, np.bool_)):
+            raise TypeError(
+                "explore_global_hunt 必须是 bool，收到 "
+                f"{explore_global_hunt!r}")
+        self._explore_global_hunt = bool(explore_global_hunt)
         if (isinstance(ticks_per_step, bool)
                 or not isinstance(ticks_per_step, (int, np.integer))
                 or int(ticks_per_step) <= 0):
@@ -611,6 +823,17 @@ class DiabloGymEnv(gym.Env):
         # 教训十六:阶梯 8/16/24 对上死亡 -2,冲刺期望值稳赚(+5.8),
         # "活着抵达"必须在拍卖行里赢过"摸到深度"
         self.death_ladder = death_ladder
+        # R10 经济法案:v1 = 全部历史常量逐位不变(默认);v2 = 深度经济
+        # (A/B/C/D/E1,主席批文 2026-08-27)。字符串入口,单一真源在
+        # REWARD_ECONOMIES。
+        if reward_economy not in REWARD_ECONOMIES:
+            raise ValueError(
+                f"reward_economy 必须是 {sorted(REWARD_ECONOMIES)},"
+                f" 收到 {reward_economy!r}")
+        self.reward_economy = REWARD_ECONOMIES[reward_economy]
+        # D 条款状态:同层滞留步数与本局最深层(reset 时清零)。
+        self._econ_steps_on_level = 0
+        self._econ_episode_max_depth = 0
         # 旧 295/298 视图不消费 controller wire，默认不为每个决策额外抓取
         # 25×25 地图，也不要求旧 raw 具备新协议字段。dual Worker 在 wrapper
         # 构造时显式开启；宏动作仍会在按键边界做一次局部、非缓存快照。
@@ -655,6 +878,20 @@ class DiabloGymEnv(gym.Env):
         ] = {}
         self._controller_snapshot: _ControllerSnapshot | None = None
 
+    @property
+    def resource_preserve_equipment_readiness(self):
+        """Constructor-only protocol identity; reset reapplies the same native flag."""
+        return getattr(self, "_resource_preserve_equipment_readiness", False)
+
+    def _validate_native_resource_flags(self, raw):
+        from .resource_protocol import (
+            validate_native_armor_scope, validate_native_equipment_readiness_preservation)
+        validate_native_armor_scope(raw, getattr(self, "resource_ordinary_armor_scope", False))
+        validate_native_equipment_readiness_preservation(
+            raw, getattr(self, "resource_preserve_equipment_readiness", False))
+        from .resource_protocol import validate_native_readiness_law
+        validate_native_readiness_law(raw, getattr(self, "resource_readiness_law", "veto-v1"))
+
     # ---------- gymnasium API ----------
 
     def reset(self, *, seed: int | None = None, options=None):
@@ -664,17 +901,32 @@ class DiabloGymEnv(gym.Env):
                 "禁止在 fork 子进程 reset 父进程已初始化的 DevilutionX；"
                 "多环境训练必须使用 spawn")
         super().reset(seed=seed)
+        # R10 经济 v2 的 D 条款状态按局清零(v1 下为无害恒零)。
+        self._econ_steps_on_level = 0
+        self._econ_idle_prev_steps = 0  # R16 v4 微拍基线(仅 v4 读取)
+        self._econ_episode_max_depth = 0
+        # R11 杀怪锁状态按局清零。
+        self._econ_unvested = 0.0
+        self._econ_kills_on_floor = 0
+        self._econ_prev_epkills = 0
         actual_seed = seed if seed is not None else int(self.np_random.integers(2**31))
         actual_seed = int(actual_seed)
         if not 0 <= actual_seed <= np.iinfo(np.uint32).max:
             raise ValueError(f"seed 必须在 uint32 范围 [0, 2**32-1] 内，收到 {actual_seed}")
         try:
             DiabloGymEnv._active_token = self._token
+            self._configure_native_resource_protocol()
             self._raw = bridge.reset(seed=actual_seed)
+            self._validate_native_resource_flags(self._raw)
             self._native_generation = int(bridge.episode_generation())
             if self.start_in_dungeon:
                 # 城镇布局固定,脚本化走到教堂楼梯(约 500-900 tick,~0.05s)
-                self._raw = nav.descend_to_dungeon(bridge)
+                if getattr(self, "resource_preserve_equipment_readiness", False):
+                    self._raw = nav.descend_to_dungeon(
+                        bridge, raw_validator=self._validate_native_resource_flags)
+                else:
+                    self._raw = nav.descend_to_dungeon(bridge)
+                self._validate_native_resource_flags(self._raw)
             if self._native_monster_kill_delta(
                     self._raw, self._raw) is None:
                 raise RuntimeError(
@@ -686,6 +938,17 @@ class DiabloGymEnv(gym.Env):
             self._ep_kills = 0
             self._ep_start_xp = int(self._raw["xp"])
             self._visited = {(self._raw["player_x"], self._raw["player_y"])}
+            # R16 C6 进展锚点与足迹同源起步(仅 progress_far_tiles>0 时读取)。
+            self._resource_actual_microsteps = 0
+            self._resource_terminal_reason = None
+            self._resource_pending_command = None
+            self._resource_dive_authority = False
+            self._resource_scene_ledgers = {}
+            self._resource_max_main_depth = int(self._raw["dungeon_level"])
+            self._resource_transition_receipts = []
+            self._resource_reward_depth_before = self._resource_max_main_depth
+            self._resource_step_bonus = 0.0
+            self._progress_anchors = set(self._visited)
             self._exploration_progress = 0
             self._softwalls_opened = 0
             self._explore_target = None
@@ -1837,8 +2100,18 @@ class DiabloGymEnv(gym.Env):
         # Flat/base policies receive the same hard authority boundary as the
         # hierarchical Worker.  A nominal adjacent CMD_WALKXY may otherwise
         # re-plan around a blocked edge and step on a stair/quest trigger.
-        for action in self._protected_walk_actions(raw):
-            mask[action] = False
+        if getattr(self, "resource_protocol", "off") != "off":
+            from .resource_protocol import progression_allowed
+            protected = self._resource_direction_protected_tiles(raw)
+            px, py = int(raw["player_x"]), int(raw["player_y"])
+            for action, (dx, dy) in enumerate(_DIRS, start=1):
+                if (px + dx, py + dy) in protected:
+                    mask[action] = False
+            mask[11] = progression_allowed(
+                raw, getattr(self, "resource_readiness_law", "veto-v1"))
+        else:
+            for action in self._protected_walk_actions(raw):
+                mask[action] = False
         mask[9] = bool(snapshot.candidates)
         mask[12] = (
             int(raw.get("belt_heals", 0)) > 0
@@ -1865,13 +2138,260 @@ class DiabloGymEnv(gym.Env):
         """Backward-compatible name for the now-canonical exact mask."""
         return self.action_masks()
 
+    def _configure_native_resource_protocol(self):
+        enabled = getattr(self, "resource_protocol", "off") != "off"
+        if hasattr(bridge, "configure_resource_protocol"):
+            bridge.end_game()
+            if getattr(self, "resource_readiness_law", "veto-v1") == "coach-v03":
+                # New keyword: only reachable with a bridge built after R17.1 ruling 3.
+                bridge.configure_resource_protocol(enabled,
+                    ordinary_armor_scope=getattr(self, "resource_ordinary_armor_scope", False),
+                    preserve_equipment_readiness=getattr(
+                        self, "resource_preserve_equipment_readiness", False),
+                    readiness_advisory=True)
+            elif getattr(self, "resource_preserve_equipment_readiness", False):
+                bridge.configure_resource_protocol(enabled,
+                    ordinary_armor_scope=getattr(self, "resource_ordinary_armor_scope", False),
+                    preserve_equipment_readiness=True)
+            elif getattr(self, "resource_ordinary_armor_scope", False):
+                bridge.configure_resource_protocol(enabled, ordinary_armor_scope=True)
+            else:
+                # Preserve the original one-argument ABI for every old policy.
+                bridge.configure_resource_protocol(enabled)
+        elif enabled:
+            raise RuntimeError("Native bridge lacks the resource protocol; rebuild required")
+
+    def _step_native(self):
+        raw = bridge.step(ticks=self.ticks_per_step)
+        if getattr(self, "resource_protocol", "off") != "off":
+            self._resource_actual_microsteps += 1
+        DiabloGymEnv._validate_native_resource_flags(self, raw)
+        if getattr(self, "resource_protocol", "off") != "off":
+            time_callback = getattr(self, "resource_time_callback", None)
+            if time_callback is not None:
+                time_callback(self, raw, self._resource_actual_microsteps)
+            observer = getattr(self, "resource_observation_callback", None)
+            if observer is not None:
+                observer(self, raw, self._resource_actual_microsteps)
+            callback = getattr(self, "resource_tick_callback", None)
+            if callback is not None:
+                callback(self, raw, self._resource_actual_microsteps)
+        return raw
+
+    def step_resource(self, command):
+        """Execute a script-owned service command through normal env accounting.
+
+        The internal wait action number is never a Worker-labelled transition;
+        resource_action_audit identifies the actual source and command.
+        """
+        if getattr(self, "resource_protocol", "off") == "off":
+            raise RuntimeError("Resource command requires l2-town-v1")
+        if self._resource_pending_command is not None:
+            raise RuntimeError("Nested resource command")
+        self._resource_pending_command = tuple(command)
+        try:
+            return self.step(0)
+        finally:
+            self._resource_pending_command = None
+
+    def _execute_resource_command(self, command):
+        kind, *args = command
+        receipt = {"accepted": False, "reason": kind, "price": 0}
+        if kind in ("finish", "complete"):
+            if kind == "finish":
+                self._resource_terminal_reason = str(args[0])
+            return self._raw, 0, receipt
+        if kind in ("attack_monster", "drink", "unequip"):
+            # New script-only commands. Keep the legacy service dispatch below
+            # untouched; every mutation here is bounded by actual native clocks.
+            if kind == "unequip" and self.resource_purchase_mode != "full":
+                raise ValueError("Unequip is restricted to the full resource arm")
+            if kind == "attack_monster":
+                if (len(args) != 2 or type(args[1]) is not int or args[1] <= 0):
+                    raise ValueError("attack_monster requires id and positive microstep budget")
+                command_budget = min(12, args[1])
+            else:
+                command_budget = 1
+            clock_before = self._resource_actual_microsteps
+            fixed_deadline = clock_before + command_budget
+
+            def time_available():
+                return self._resource_actual_microsteps < min(
+                    fixed_deadline, self.max_steps,
+                    int(getattr(self, "_resource_service_deadline", self.max_steps)))
+
+            if not time_available():
+                receipt["reason"] = "resource_command_deadline"
+                return self._raw, 0, receipt
+            before = self._raw
+            if (before.get("dead") or before.get("game_over") or before.get("victory")
+                    or int(before.get("hp", 0)) <= 0):
+                receipt["reason"] = "resource_command_terminal"
+                return before, 0, receipt
+            start_scene = _scene_identity(before)
+            px, py = int(before["player_x"]), int(before["player_y"])
+            if kind == "attack_monster":
+                target_before = next((monster for monster in before.get("monsters", ())
+                                      if int(monster.get("id", -1)) == int(args[0])
+                                      and bool(monster.get("visible", False))
+                                      and not bool(monster.get("is_invalid", False))
+                                      and int(monster.get("type", -1)) != 109
+                                      and int(monster.get("hp", 0)) > 0), None)
+                target_key = (None if target_before is None else tuple(
+                    target_before.get(name) for name in
+                    ("id", "type", "rnd_item_seed_hi", "rnd_item_seed_lo")))
+                adjacent = target_before is not None and max(
+                    abs(int(target_before.get("future_x", target_before["x"]))
+                        - int(before.get("future_x", px))),
+                    abs(int(target_before.get("future_y", target_before["y"]))
+                        - int(before.get("future_y", py)))) <= 1
+                result = (bridge.act_controller_attack_monster(int(args[0]), px, py, 1)
+                          if adjacent else 0)
+                receipt["accepted"] = int(result) == 1
+                receipt["monster_id"] = int(args[0])
+                receipt["microstep_budget"] = command_budget
+            elif kind == "drink":
+                kinds = before.get("belt_heal_kinds")
+                belt_before = (sum(int(value) in (1, 2, 3, 4) for value in kinds)
+                               if kinds is not None else int(before.get(
+                                   "resource_state", {}).get("readiness", {}).get("belt_heals", 0)))
+                # Same FIFO fence and certified return convention as action12:
+                # the result is zero or the PRE-drink belt count, not bool(1).
+                bridge.act_wait()
+                result = bridge.act_drink()
+                if not isinstance(result, (bool, np.bool_, int, np.integer)):
+                    raise RuntimeError("resource drink native receipt must be an integer")
+                accepted = int(result)
+                if accepted not in (0, belt_before):
+                    raise RuntimeError("resource drink native receipt disagrees with pre-drink belt")
+                receipt.update(accepted=accepted > 0, accepted_belt_before=accepted,
+                               belt_before=belt_before, hp_before=int(before.get("hp", 0)),
+                               consumed=accepted > 0)
+            else:
+                result = bridge.act_unequip_equipped_item(*args)
+                if not isinstance(result, dict):
+                    raise RuntimeError("resource unequip native receipt must be a dictionary")
+                receipt = dict(result)
+            if not receipt.get("accepted") and kind != "drink":
+                bridge.act_wait()
+            raw = self._step_native()
+            beats = 1
+            if kind == "attack_monster" and receipt.get("accepted"):
+                # Do not cancel a swing after its first native beat. Preserve
+                # its ordinary animation, but never chase an out-of-range or
+                # no-longer-visible target and never cross a live deadline.
+                while (time_available()
+                       and not (raw.get("dead") or raw.get("game_over") or raw.get("victory"))
+                       and _scene_identity(raw) == start_scene
+                       and not self._decision_idle(raw)):
+                    target = next((monster for monster in raw.get("monsters", ())
+                                   if int(monster.get("id", -1)) == int(args[0])
+                                   and bool(monster.get("visible", False))
+                                   and int(monster.get("hp", 0)) > 0), None)
+                    if (target is None or tuple(target.get(name) for name in
+                            ("id", "type", "rnd_item_seed_hi", "rnd_item_seed_lo")) != target_key):
+                        break
+                    if max(
+                            abs(int(target.get("future_x", target["x"]))
+                                - int(raw.get("future_x", raw["player_x"]))),
+                            abs(int(target.get("future_y", target["y"]))
+                                - int(raw.get("future_y", raw["player_y"])))) > 1:
+                        break
+                    raw = self._step_native()
+                    beats += 1
+            if kind == "drink":
+                kinds = raw.get("belt_heal_kinds")
+                belt_after = (sum(int(value) in (1, 2, 3, 4) for value in kinds)
+                              if kinds is not None else int(raw.get(
+                                  "resource_state", {}).get("readiness", {}).get("belt_heals", 0)))
+                hp_after = int(raw.get("hp", 0))
+                receipt.update(belt_after=belt_after, hp_after=hp_after,
+                               belt_consumed_observed=belt_after < receipt["belt_before"],
+                               post_tick_effect_visible=(belt_after < receipt["belt_before"]
+                                                         or hp_after > receipt["hp_before"]))
+                # Native ActDrink already certifies synchronous consumption or
+                # HP increase. An intervening attack/auto-refill may hide that
+                # effect in the net post-tick delta; retain both facts explicitly.
+            return raw, beats, receipt
+        px, py = int(self._raw["player_x"]), int(self._raw["player_y"])
+        if kind == "walk":
+            result = bridge.act_explore_walk(*args, (), px, py, self._DESCEND_RADIUS)
+        elif kind == "open":
+            result = bridge.act_controller_operate(*args, px, py, self._DESCEND_RADIUS)
+        elif kind == "gold":
+            result = bridge.act_pickup_gold_at(*args)
+        elif kind == "talk":
+            result = bridge.act_talk_towner(*args)
+        elif kind == "dismiss":
+            result = bridge.act_dismiss_dialog()
+        elif kind == "buy":
+            result = bridge.act_buy_store_item(*args)
+        elif kind == "equip":
+            result = bridge.act_equip_inventory_item(*args)
+        elif kind == "repair":
+            if self.resource_purchase_mode != "full":
+                raise ValueError("Paid repair is restricted to the full resource arm")
+            result = bridge.act_repair_equipped_item(*args)
+        elif kind == "wait":
+            result = bridge.act_wait()
+        else:
+            raise ValueError(f"Unknown resource command: {kind!r}")
+        if isinstance(result, dict):
+            receipt = dict(result)
+        else:
+            receipt["accepted"] = int(result) == 1
+        # Rejections still advance a real, explicit wait. This avoids zero-time
+        # service retry loops while never inventing a phantom microstep.
+        if not receipt.get("accepted"):
+            bridge.act_wait()
+        clock_before = self._resource_actual_microsteps
+        start_scene = _scene_identity(self._raw)
+        raw = self._step_native()
+        beats = 1
+        if kind == "open" and receipt.get("accepted"):
+            # Non-explosive barrels share the planner's softwall channel.
+            # Let the accepted native operation finish its attack animation
+            # before the generic settle fence cancels further intent. Without
+            # this, a one-beat command starts a swing and immediately cancels
+            # it before impact on every retry (seed 2114004, object type 57).
+            deadline = min(self.max_steps,
+                           int(getattr(self, "_resource_service_deadline", self.max_steps)),
+                           clock_before + 12)
+            while (self._resource_actual_microsteps < deadline
+                   and not (raw.get("dead") or raw.get("game_over") or raw.get("victory"))
+                   and _scene_identity(raw) == start_scene
+                   and not bool(bridge.probe_tile(int(args[0]), int(args[1]))["walkable"])
+                   and not self._decision_idle(raw)
+                   and (getattr(self, "_resource_calibration", None) is None
+                        or self._resource_actual_microsteps < self.max_steps)):
+                raw = self._step_native()
+                beats += 1
+        return raw, beats, receipt
+
     def step(self, action: int, *, worker_authority: bool = False):
         self._ensure_active()
         if not self.action_space.contains(action):
             raise ValueError(f"动作必须是 {self.action_space}中的整数，收到 {action!r}")
         prev = self._raw
+        resource_command = getattr(self, "_resource_pending_command", None)
+        resource_receipt = None
+        resource_clock_before = getattr(self, "_resource_actual_microsteps", 0)
+        self._resource_reward_depth_before = getattr(self, "_resource_max_main_depth", 0)
+        self._resource_step_bonus = 0.0
         action = int(action)
+        if getattr(self, "dive_blocker_recovery", "off") != "off":
+            self._dive_blocker_audit = None  # receipt is strictly per action
         remaining = self.max_steps - self._steps
+        if resource_command is not None:
+            remaining = min(remaining, max(0, int(getattr(
+                self, "_resource_service_deadline", self.max_steps)) - self._resource_actual_microsteps))
+            if resource_command[0] == "attack_monster":
+                if (len(resource_command) != 3 or type(resource_command[2]) is not int
+                        or resource_command[2] <= 0):
+                    raise ValueError("attack_monster requires id and positive microstep budget")
+                remaining = min(remaining, 12, resource_command[2])
+            elif resource_command[0] in ("drink", "unequip"):
+                remaining = min(remaining, 1)
         drink_audit = None
         action14_audit = None
         native_execution = {"attempts": 0, "accepts": 0}
@@ -1890,7 +2410,12 @@ class DiabloGymEnv(gym.Env):
                 if getattr(self, "_controller_snapshot_enabled", False)
                 else self._capture_controller_snapshot(prev)
             )
-        if action == 9:
+        if resource_command is not None:
+            self._raw, micro, resource_receipt = self._execute_resource_command(resource_command)
+            if resource_command[0] not in ("finish", "complete"):
+                native_execution["attempts"] = 1
+                native_execution["accepts"] = int(bool(resource_receipt.get("accepted")))
+        elif action == 9:
             engage_candidate = self._canonical_engage_candidate(
                 controller_snapshot)
             if engage_candidate is not None:
@@ -1928,7 +2453,7 @@ class DiabloGymEnv(gym.Env):
                 raise RuntimeError(
                     "action12 原生回执与请求前腰带数不一致:"
                     f"accepted={accepted},before={belt_before}")
-            self._raw = bridge.step(ticks=self.ticks_per_step)
+            self._raw = self._step_native()
             micro = 1
             # ``act_drink`` can be rejected while the player is in hit/block
             # recovery even though the visible hp/belt predicate is true.
@@ -1976,18 +2501,31 @@ class DiabloGymEnv(gym.Env):
             if action != 0:
                 self._record_native_execution(
                     native_execution, accepted, "direction")
-            self._raw = bridge.step(ticks=self.ticks_per_step)
+            self._raw = self._step_native()
             micro = 1
+        dive_recovery_audit = getattr(self, "_dive_blocker_audit", None)
+        if dive_recovery_audit is not None:
+            dive_recovery_audit["attack_core_micro_steps"] = dive_recovery_audit["micro_steps"]
+            dive_recovery_audit["core_micro_steps"] = self._resource_actual_microsteps - resource_clock_before
+            dive_recovery_audit["core_after_microstep"] = self._resource_actual_microsteps
         # 295 维策略观测不含 future/mode/path。所有非终局决策边界必须把
         # 本动作已经提交的单格/硬直动画结清到 PM_STAND；这些 settle 拍
         # 属于本动作，照常占用 max_steps、奖励差分及 Options 的 τ/时钟。
-        self._raw, micro = self._settle_to_idle(
-            self._raw,
-            micro,
-            max_beats=remaining,
-            start_scene=_scene_identity(prev),
-        )
-        if (self.start_in_dungeon
+        if resource_command is None or resource_command[0] not in ("finish", "complete"):
+            self._raw, micro = self._settle_to_idle(
+                self._raw,
+                micro,
+                max_beats=remaining,
+                start_scene=_scene_identity(prev),
+            )
+        if getattr(self, "resource_protocol", "off") != "off":
+            micro = self._resource_actual_microsteps - resource_clock_before
+        authorized_retreat = (
+            getattr(self, "resource_protocol", "off") != "off"
+            and int(prev["dungeon_level"]) == 1
+            and int(self._raw["dungeon_level"]) == 0
+            and bool(self._raw.get("resource_state", {}).get("service_trip")))
+        if (self.start_in_dungeon and not authorized_retreat
                 and self._raw["dungeon_level"] < prev["dungeon_level"]):
             # 未来若出现新的回城/向上传送路径，宁可终止训练也
             # 不能把 depth=0 空耗轨迹静默喂给 PPO。原生触发层已封住
@@ -2006,15 +2544,42 @@ class DiabloGymEnv(gym.Env):
                 f"DiabloGym 禁止地牢层级回退: {bad_transition[0]}→{bad_transition[1]}")
         self._steps += micro
         same_scene = _scene_identity(self._raw) == _scene_identity(prev)
+        if not same_scene and getattr(self, "resource_protocol", "off") != "off":
+            names = ("_visited", "_progress_anchors", "_explore_target",
+                     "_explore_blocked_targets", "_engage_blocked_keys", "_combat_hp_floor")
+            self._resource_scene_ledgers[_scene_identity(prev)] = {
+                name: getattr(self, name) for name in names}
         if not same_scene:
             # 新主层或任务副本:足迹清零。不同地图共用同一坐标系,不清的话
             # 探索宏会把旧图足迹当"已踏足",边疆逻辑整层失效；伤害最低
             # 血线也必须换账本，怪物 id 只在单场景内有意义。
             self._visited = set()
+            self._progress_anchors = set()  # R16 C6:锚点与足迹同场景清零
             self._explore_target = None
             self._explore_blocked_targets = set()
             self._engage_blocked_keys = set()
             self._reset_combat_ledger(self._raw)
+            if getattr(self, "resource_protocol", "off") != "off":
+                for name, value in self._resource_scene_ledgers.get(
+                        _scene_identity(self._raw), {}).items():
+                    setattr(self, name, value)
+        if getattr(self, "resource_protocol", "off") != "off" and not self._raw.get("is_set_level"):
+            depth = int(self._raw["dungeon_level"])
+            if depth > self._resource_max_main_depth:
+                receipt = dict(self._raw.get("resource_state", {}).get("transition", {}))
+                if getattr(self, "resource_readiness_law", "veto-v1") == "coach-v03":
+                    # Forced-unready descents are legal under the frozen mask law;
+                    # the receipt must exist and be accepted, readiness is accounting.
+                    if depth > 1 and not receipt.get("accepted"):
+                        raise RuntimeError("New main depth lacks an accepted transition receipt")
+                elif depth > 1 and (not receipt.get("accepted")
+                        or not receipt.get("pretransition_ready")):
+                    raise RuntimeError("New main depth lacks an accepted pretransition readiness receipt")
+                self._resource_transition_receipts.append(receipt)
+                self._resource_max_main_depth = depth
+            if self._resource_max_main_depth > self._resource_reward_depth_before:
+                self._econ_steps_on_level = 0
+            self._econ_episode_max_depth = self._resource_max_main_depth
         self._record_visit((self._raw["player_x"], self._raw["player_y"]))
 
         # Native MonsterDeath is the only event-complete kill ledger.  Endpoint
@@ -2051,13 +2616,16 @@ class DiabloGymEnv(gym.Env):
             _scene_identity(self._raw) == _scene_identity(prev)
             and (action == 0 or not request_executed)
         )
+        if resource_command is not None:
+            request_executed = bool((resource_receipt or {}).get("accepted"))
+            stall_cost_applied = bool(same_scene and not request_executed and micro > 0)
         same_scene_for_reward = bool(
             _scene_identity(self._raw) == _scene_identity(prev))
 
         reward = self._reward(
             prev,
             self._raw,
-            requested_action=action,
+            requested_action=None if resource_command is not None else action,
             engage_target_generation_key=engage_target_generation_key,
             action_executed=request_executed,
             action14_utility_delta=(
@@ -2065,6 +2633,9 @@ class DiabloGymEnv(gym.Env):
                 if action14_audit is not None else None
             ),
         )
+        if resource_command is not None and resource_command[0] in ("finish", "complete"):
+            reward = 0.0
+            stall_cost_applied = False
         # 奖励会推进 combat ledger；下一决策的候选账本必须在这之后冻结。
         self._controller_snapshot = (
             self._capture_controller_snapshot(self._raw)
@@ -2083,7 +2654,33 @@ class DiabloGymEnv(gym.Env):
          unsettled_budget_terminal) = self._episode_boundary(
              self._raw, self._steps, self.max_steps)
 
+        resource_failure_terminal = bool(
+            getattr(self, "resource_protocol", "off") != "off"
+            and self._resource_terminal_reason is not None
+        )
+        if resource_failure_terminal:
+            # A failed service itinerary ends this protocol episode. It is
+            # not a settled TimeLimit that SB3 may bootstrap through, even
+            # when the player is alive or the episode clock also runs out.
+            terminated, truncated = True, False
         info = self._info(self._raw)
+        if getattr(self, "resource_protocol", "off") != "off":
+            info["resource_protocol"] = {
+                "protocol": self.resource_protocol, "purchase_mode": self.resource_purchase_mode,
+                "max_main_depth": self._resource_max_main_depth,
+                "terminal_reason": self._resource_terminal_reason,
+                "new_main_depth_bonus": self._resource_step_bonus,
+                "curriculum_boundary": int(self._raw["dungeon_level"]) >= 2,
+                "readiness": dict(self._raw["resource_state"]["readiness"]),
+                "transition": dict(self._raw["resource_state"].get("transition", {})),
+            }
+            calibration = getattr(self, "_resource_calibration", None)
+            if calibration is not None:
+                info["resource_protocol"]["calibration"] = calibration.metadata()
+            if resource_command is not None:
+                info["resource_action_audit"] = {
+                    "source": "resupply-script", "command": resource_command,
+                    "micro_steps": micro, **(resource_receipt or {})}
         info["action_effect_audit"] = {
             "requested_action": action,
             "native_attempts": int(native_execution["attempts"]),
@@ -2094,6 +2691,15 @@ class DiabloGymEnv(gym.Env):
             "same_scene": same_scene_for_reward,
             "stall_cost_applied": stall_cost_applied,
         }
+        if dive_recovery_audit is not None:
+            info["dive_blocker_recovery_audit"] = {
+                **dive_recovery_audit,
+                "transition_before_microstep": resource_clock_before,
+                "after_microstep": self._resource_actual_microsteps,
+                "micro_steps": micro,
+                "settle_micro_steps": micro - dive_recovery_audit["core_micro_steps"],
+                "decision_idle": self._decision_idle(self._raw),
+            }
         if drink_audit is not None:
             belt_after = int(self._raw.get("belt_heals", 0))
             info["action12_audit"] = {
@@ -2108,6 +2714,13 @@ class DiabloGymEnv(gym.Env):
                 "decision_idle": bool(decision_idle),
                 "unsettled_budget_terminal": unsettled_budget_terminal,
                 "time_limit_bootstrap_safe": bool(truncated),
+            })
+        if resource_failure_terminal:
+            info.update({
+                "resource_failure_terminal": True,
+                "decision_idle": bool(decision_idle),
+                "unsettled_budget_terminal": unsettled_budget_terminal,
+                "time_limit_bootstrap_safe": False,
             })
         if terminated or truncated:
             info["episode_extra"] = {
@@ -2125,6 +2738,9 @@ class DiabloGymEnv(gym.Env):
 
     def _info(self, raw):
         info = {"episode_seed": self._episode_seed}
+        time_info = getattr(self, "resource_time_info_callback", None)
+        if time_info is not None:
+            info["completion_time"] = time_info()
         if self.include_raw:
             # info 属于调用方；不得把内部奖励/宏状态依赖的可变 raw
             # 直接泄露出去，否则回调或调试代码修改 info["raw"] 会篡改下一拍奖励。
@@ -2203,11 +2819,32 @@ class DiabloGymEnv(gym.Env):
     # ---------- 内部 ----------
 
     def _record_visit(self, pos) -> bool:
-        """登记真实落脚点；首次踏足同时推进 Options 的探索进展钟。"""
+        """登记真实落脚点；首次踏足同时推进 Options 的探索进展钟。
+
+        R16 C6(progress_far_tiles>0):足迹登记不变,但只有与既有"进展锚点"
+        (起点 + 历次已计进展的格)切比雪夫距离 ≥ progress_far_tiles 的新格才
+        推进 exploration_progress,并自身成为新锚点。沿走廊直行每 far 格计
+        一次;在足迹附近踱步永远计不到。锚点若按"全部足迹"衡量,直行时脚
+        后跟永远距离 1,任何走动都计不到——故以锚点集而非足迹集作参照。
+        """
         point = (int(pos[0]), int(pos[1]))
         if point in self._visited:
             return False
         self._visited.add(point)
+        far = int(getattr(self, "_progress_far_tiles", 0))
+        if far > 0:
+            anchors = getattr(self, "_progress_anchors", None)
+            if anchors is None:
+                anchors = set(self._visited)
+                anchors.discard(point)
+                self._progress_anchors = anchors
+            if any(
+                (point[0] + dx, point[1] + dy) in anchors
+                for dx in range(1 - far, far)
+                for dy in range(1 - far, far)
+            ):
+                return True
+            anchors.add(point)
         self._exploration_progress += 1
         return True
 
@@ -2228,9 +2865,12 @@ class DiabloGymEnv(gym.Env):
             # commit.  Restricting this to Worker left flat/base training able
             # to invoke unrestricted path replanning and cross protected
             # progression tiles under a nominal adjacent action.
+            direction_protected = (self._resource_direction_protected_tiles(obs)
+                if getattr(self, "resource_protocol", "off") != "off"
+                else self._explore_protected_tiles(obs))
             protected = sorted(
                 point
-                for point in self._explore_protected_tiles(obs)
+                for point in direction_protected
                 if max(abs(point[0] - px), abs(point[1] - py)) <= 1
             )
             return bridge.act_explore_walk(
@@ -2269,7 +2909,7 @@ class DiabloGymEnv(gym.Env):
     def _wait_step(self):
         """取消旧命令并消耗一个标准 micro-step；供无目标/不可达宏返回。"""
         bridge.act_wait()
-        raw = bridge.step(ticks=self.ticks_per_step)
+        raw = self._step_native()
         if (not raw.get("dead") and not raw.get("game_over") and not raw.get("victory")
                 and int(raw.get("dest_action", bridge.ACTION_NONE)) != bridge.ACTION_NONE):
             raise RuntimeError(
@@ -2294,6 +2934,12 @@ class DiabloGymEnv(gym.Env):
         if not bridge.act_wait():
             return raw, beats
         refreshed = bridge.observe()
+        if raw.get("resource_state", {}).get("preserve_equipment_readiness") is True:
+            from .resource_protocol import (
+                validate_native_armor_scope, validate_native_equipment_readiness_preservation)
+            validate_native_armor_scope(
+                refreshed, raw["resource_state"].get("ordinary_armor_scope", False))
+            validate_native_equipment_readiness_preservation(refreshed, True)
         if (int(refreshed.get("dest_action", bridge.ACTION_NONE)) != bridge.ACTION_NONE
                 or int(refreshed.get("walkpath0", bridge.WALK_NONE)) != bridge.WALK_NONE):
             raise RuntimeError(
@@ -2466,7 +3112,35 @@ class DiabloGymEnv(gym.Env):
         terminal = (
             raw.get("dead") or raw.get("game_over") or raw.get("victory")
         )
-        if terminal or beats >= max_beats:
+        calibration = getattr(self, "_resource_calibration", None)
+        resource_command = getattr(self, "_resource_pending_command", None)
+        bounded_resource = bool(resource_command and resource_command[0]
+                                in ("attack_monster", "drink", "unequip"))
+
+        bounded_dive = getattr(self, "_dive_blocker_audit", None) is not None
+        completion_time = getattr(self, "resource_time_callback", None) is not None
+        settle_clock_start = (self._resource_actual_microsteps - beats
+                              if completion_time else None)
+
+        def settle_limit():
+            if not completion_time:
+                return max_beats
+            physical = self.max_steps - settle_clock_start
+            # A new arrival may extend or shorten the physical horizon inside
+            # this very action. Only its pending animation gets the new room;
+            # resource-command budgets retain their existing tighter limits.
+            return physical if resource_command is None else min(max_beats, physical)
+
+        def resource_time_available():
+            return ((not bounded_resource or self._resource_actual_microsteps < min(
+                self.max_steps,
+                int(getattr(self, "_resource_service_deadline", self.max_steps))))
+                and (not bounded_dive or self._resource_actual_microsteps < self.max_steps)
+                and (not completion_time or self._resource_actual_microsteps < self.max_steps))
+
+        if (terminal or beats >= settle_limit() or not resource_time_available()
+                or (calibration is not None
+                    and self._resource_actual_microsteps >= self.max_steps)):
             return raw, beats
 
         # ActWait 立即清 path/dest/攻击；已经提交的单格走路、受击/格挡
@@ -2474,14 +3148,19 @@ class DiabloGymEnv(gym.Env):
         # 旧网络包不会在下一拍重新装回长命令。
         settle_scene = _scene_identity(raw)
         bridge.act_wait()
-        while (beats < max_beats
-               and not self._decision_idle(raw)):
-            raw = bridge.step(ticks=self.ticks_per_step)
+        while (beats < settle_limit()
+               and not self._decision_idle(raw)
+               and resource_time_available()
+               and (calibration is None or self._resource_actual_microsteps < self.max_steps)):
+            raw = self._step_native()
             beats += 1
             current_scene = _scene_identity(raw)
             if current_scene == start_scene:
                 self._record_visit((raw["player_x"], raw["player_y"]))
-            if raw.get("dead") or raw.get("game_over") or raw.get("victory"):
+            if (raw.get("dead") or raw.get("game_over") or raw.get("victory")
+                    or not resource_time_available()
+                    or (calibration is not None
+                        and self._resource_actual_microsteps >= self.max_steps)):
                 break
             if current_scene != settle_scene:
                 # 换图后的首个 manager/worker 观测同样必须是 idle；重新在
@@ -2646,7 +3325,7 @@ class DiabloGymEnv(gym.Env):
                         break
                     active_step = (nx, ny)
 
-            raw = bridge.step(ticks=self.ticks_per_step)
+            raw = self._step_native()
             if _scene_identity(raw) == start_scene:
                 self._record_visit((raw["player_x"], raw["player_y"]))
             if (raw["dead"] or _scene_identity(raw) != start_scene):
@@ -2937,7 +3616,7 @@ class DiabloGymEnv(gym.Env):
                     if not accepted:
                         break
 
-            raw = bridge.step(ticks=self.ticks_per_step)
+            raw = self._step_native()
             pos = (raw["player_x"], raw["player_y"])
             if _scene_identity(raw) == start_scene:
                 self._record_visit(pos)
@@ -3010,6 +3689,21 @@ class DiabloGymEnv(gym.Env):
                 stall = 0
             last_pos = pos
         return self._finish_macro(raw, beats, start_scene)
+
+    def _resource_direction_protected_tiles(self, raw):
+        protected = self._explore_protected_tiles(raw)
+        if not getattr(self, "_resource_dive_authority", False):
+            return protected
+        from .resource_protocol import progression_allowed
+        if not progression_allowed(raw, getattr(self, "resource_readiness_law", "veto-v1")):
+            return protected
+        transition = bridge.WM_DIABRTNLVL if raw.get("is_set_level") else bridge.WM_DIABNEXTLVL
+        allowed = {(int(t["x"]), int(t["y"])) for t in raw.get("triggers", [])
+                   if t.get("msg") == transition}
+        for target in raw.get("progression_targets", []):
+            allowed.add((int(target["x"]), int(target["y"])))
+            allowed.add((int(target["goal_x"]), int(target["goal_y"])))
+        return protected - allowed
 
     @staticmethod
     def _explore_protected_tiles(raw) -> set[tuple[int, int]]:
@@ -3217,12 +3911,153 @@ class DiabloGymEnv(gym.Env):
                 self._explore_target = None
             else:
                 return ("frontier", sticky[0], sticky[1])
+        # R16 C5 附加 hunt(默认关):窗内没有任何可见怪(隔墙/未照亮的怪不
+        # 算可见)时优先全图寻怪;窗内一旦有可见怪就交还局部逻辑/a9 掩码/反射
+        # (探针:以"无可接敌候选"为闸会在可见但暂不可接敌的怪旁 a9↔a10 振荡,
+        # seed7002 击杀 96→48;以"窗内无占位"为闸则隔墙暗怪把 hunt 锁死,
+        # seed9005 原地徘徊)。全图无可达存活怪(None)才落回局部边疆/回退。
+        if getattr(self, "_explore_global_hunt", False):
+            if snapshot is not None:
+                visible_in_window = any(snapshot.visible_monster)
+            else:
+                visible_in_window = any(
+                    bool(m.get("visible"))
+                    and in_window(int(m["x"]), int(m["y"]))
+                    for m in raw.get("monsters", ())
+                )
+            if not visible_in_window:
+                command = self._plan_explore_global_waypoint(
+                    raw, px, py, reachable, blocked_targets,
+                    monsters_only=True)
+                if command is not None:
+                    self._explore_target = (
+                        (command[1], command[2])
+                        if command[0] == "frontier" else None)
+                    return command
         if candidates:
             _, tx, ty = min(candidates)  # 最近的边疆点(便宜且稳)
             self._explore_target = (tx, ty)
             return ("frontier", tx, ty)
+        # R16 C5(默认关):窗内无候选时全图 BFS 回退,取通往最近的未踏足
+        # 可达格/存活怪占位格路径上、落在本窗内且局部可达的最远前缀点作为
+        # 本次 frontier(前缀被窗内软墙截断则改发 approach/open);随后交给
+        # 既有的逐步走格/粘性目标机制。仍无候选才返回 None。
+        if getattr(self, "_explore_global_fallback", False):
+            command = self._plan_explore_global_waypoint(
+                raw, px, py, reachable, blocked_targets)
+            if command is not None:
+                self._explore_target = (
+                    (command[1], command[2])
+                    if command[0] == "frontier" else None)
+                return command
         self._explore_target = None
         return None
+
+    def _plan_explore_global_waypoint(
+        self,
+        raw,
+        px: int,
+        py: int,
+        reachable,
+        blocked_targets,
+        *,
+        monsters_only: bool = False,
+    ):
+        """R16 C5:全图 4 向 BFS(同 _plan_descend_path 的口径:关门视为可通,
+        hazard/explosive-softwall/trigger/剧情格为墙)找最近目标,返回一条
+        与局部规划同款的命令:("frontier", x, y) = 其路径在 25×25 窗内、且
+        属于本次局部 reachable 连通域的最远前缀点;若前缀被窗内软墙截断则
+        返回 ("approach", x, y) / ("open", x, y);无目标/无前缀返回 None。
+
+        目标(BFS 首个弹出即最近):
+          - 存活怪占位格(radius-112 monster 通道,dMonster≠0);
+          - 窗外、未踏足且不在全局足迹 ±1 光环内的可走格。
+        窗内的可走未踏足格已由局部候选穷举(离玩家 <5 或在光环内的不算),
+        不再重复作为目标。怪物占位格只作目标不再扩展。整段无随机数。
+        monsters_only=True(hunt 变体)只把怪物占位格当目标。
+        前缀点若已在 blocked_targets 中则退到更近的前缀点;全部被阻塞时
+        与局部候选同款:清除这些阻塞记忆后仍取最远前缀点,避免同一可见
+        地图永久退化成 wait。
+        """
+        r = self._EXPLORE_RADIUS
+        big = self._DESCEND_RADIUS
+        side = 2 * big + 1
+        lm = bridge.local_map(radius=big)
+        walk, door = lm["walkable"], lm["door"]
+        hazard = lm.get("hazard", [0] * (side * side))
+        explosive = lm.get("explosive_softwall", [0] * (side * side))
+        mon = lm["monster"]
+        protected = self._explore_protected_tiles(raw)
+        visited = getattr(self, "_visited", set())
+
+        def idx(tx, ty):
+            return (ty - py + big) * side + (tx - px + big)
+
+        def is_goal(tx, ty):
+            if mon[idx(tx, ty)]:
+                return True
+            if monsters_only or (abs(tx - px) <= r and abs(ty - py) <= r):
+                return False
+            for dx in (-1, 0, 1):
+                for dy in (-1, 0, 1):
+                    if (tx + dx, ty + dy) in visited:
+                        return False
+            return True
+
+        start = (px, py)
+        prev = {start: None}
+        queue = deque([start])
+        goal = None
+        while queue and goal is None:
+            cx, cy = queue.popleft()
+            for ddx, ddy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                nx, ny = cx + ddx, cy + ddy
+                if (abs(nx - px) > big or abs(ny - py) > big
+                        or (nx, ny) in prev or (nx, ny) in protected):
+                    continue
+                i = idx(nx, ny)
+                if hazard[i] or explosive[i]:
+                    continue
+                if not walk[i] and not door[i]:
+                    continue
+                prev[(nx, ny)] = (cx, cy)
+                if is_goal(nx, ny):
+                    goal = (nx, ny)
+                    break
+                queue.append((nx, ny))
+        if goal is None:
+            return None
+        path = []
+        cur = goal
+        while cur != start:
+            path.append(cur)
+            cur = prev[cur]
+        path.reverse()
+        prefix = []
+        for point in path:
+            if point not in reachable:
+                break
+            prefix.append(point)
+        if len(prefix) < len(path):
+            # 前缀被窗内软墙(普通闭门/非爆炸实心桶,BFS 视作可通)截断:改发
+            # 既有的 approach/open 命令交给 act_controller_operate,而不是把
+            # 航点停在软墙前一格——否则每次都选同一航点永久打转(seed7002
+            # hunt 实锤:桶前同一航点重复 25 次)。怪物堵门则仍走航点。
+            blocker = path[len(prefix)]
+            bi = idx(*blocker)
+            if (abs(blocker[0] - px) <= r and abs(blocker[1] - py) <= r
+                    and door[bi] and not mon[bi]):
+                approach = prefix[-1] if prefix else start
+                if approach == start:
+                    return ("open", blocker[0], blocker[1])
+                return ("approach", approach[0], approach[1])
+        if not prefix:
+            return None
+        for point in reversed(prefix):
+            if point not in blocked_targets:
+                return ("frontier", point[0], point[1])
+        self._explore_blocked_targets.difference_update(prefix)
+        return ("frontier", prefix[-1][0], prefix[-1][1])
 
     def _macro_explore(
         self,
@@ -3335,7 +4170,7 @@ class DiabloGymEnv(gym.Env):
                     break
                 active_step = (nx, ny)
 
-            raw = bridge.step(ticks=self.ticks_per_step)
+            raw = self._step_native()
             beats += 1
             pos = (int(raw["player_x"]), int(raw["player_y"]))
             if _scene_identity(raw) == start_scene:
@@ -3571,6 +4406,125 @@ class DiabloGymEnv(gym.Env):
         path.reverse()
         return path
 
+    @staticmethod
+    def _descend_blocker_health(monster):
+        if "hp_fixed_hi" in monster and "hp_fixed_lo" in monster:
+            return (int(monster["hp_fixed_hi"]) << 16) + int(monster["hp_fixed_lo"])
+        return 64 * int(monster.get("hp", 0))
+
+    @classmethod
+    def _descend_observed_blocker(cls, raw, target_x, target_y):
+        """Bind only a visible live hostile occupying this exact next edge.
+
+        A moving monster can reserve the edge with future while its tile still
+        lies elsewhere. Adjacency uses future on both sides, matching native
+        radius-one attack validation; this never permits a chase.
+        """
+        px = int(raw.get("future_x", raw["player_x"]))
+        py = int(raw.get("future_y", raw["player_y"]))
+        edge = (int(target_x), int(target_y))
+        for monster in raw.get("monsters", ()):
+            if (not bool(monster.get("visible", False))
+                    or bool(monster.get("is_invalid", False))
+                    or bool(monster.get("is_player_minion", False))
+                    or int(monster.get("type", -1)) == 109
+                    or cls._descend_blocker_health(monster) <= 0):
+                continue
+            tile = (int(monster["x"]), int(monster["y"]))
+            future = (int(monster.get("future_x", tile[0])),
+                      int(monster.get("future_y", tile[1])))
+            if edge in (tile, future) and max(abs(future[0] - px), abs(future[1] - py)) <= 1:
+                return monster
+        return None
+
+    def _macro_descend_blocker(self, raw, blocker, *, beats_before,
+                              macro_deadline, start_scene, execution_audit):
+        """One native adjacent attack command, then return for real replanning.
+
+        The command may span multiple ordinary attack frames within the core
+        budget; this does not promise exactly one swing or one damage event.
+
+        There is no cross-action recovery state. The attack core shares this
+        a11 call's remaining budget; normal idle settle is charged separately
+        and remains bounded by the live episode deadline. Receipts distinguish
+        native acceptance, observed damage and actual committed displacement.
+        """
+        start_clock = self._resource_actual_microsteps
+        initial_position = (int(raw["player_x"]), int(raw["player_y"]))
+        key = self._monster_generation_key(blocker)
+        initial_hp = self._descend_blocker_health(blocker)
+        receipt = {"source": "dive-blocker:adjacent-v1", "monster_generation": key,
+                   "before_microstep": start_clock, "macro_deadline": int(macro_deadline),
+                   "accepted": False, "monster_hp_fixed_before": initial_hp,
+                   "monster_hp_fixed_after": initial_hp, "damage_observed": False,
+                   "target_alive_observed": True, "position_changed": False,
+                   "after_microstep": start_clock, "micro_steps": 0,
+                   "reason": "deadline"}
+        self._dive_blocker_audit = receipt
+
+        def time_available():
+            return self._resource_actual_microsteps < min(macro_deadline, self.max_steps)
+
+        def canonical_ready(observed):
+            return bool(observed.get("resource_state", {}).get("readiness", {}).get("ready", False))
+
+        if not time_available() or not canonical_ready(raw):
+            receipt["reason"] = "deadline" if not time_available() else "readiness_lost"
+            return self._finish_macro(raw, beats_before, start_scene)
+        result = bridge.act_controller_attack_monster(
+            int(blocker["id"]), int(raw["player_x"]), int(raw["player_y"]), 1)
+        if execution_audit is not None:
+            accepted = self._record_native_execution(execution_audit, result, "action11 blocker attack")
+        else:
+            accepted = int(result) == 1
+        receipt["accepted"] = bool(accepted)
+        if not accepted:
+            bridge.act_wait()
+        receipt["reason"] = "attack_rejected" if not accepted else "macro_cap"
+        beats = int(beats_before)
+        while time_available():
+            raw = self._step_native()
+            beats += 1
+            if _scene_identity(raw) == start_scene:
+                self._record_visit((raw["player_x"], raw["player_y"]))
+            if raw.get("dead") or raw.get("game_over") or raw.get("victory"):
+                receipt["reason"] = "terminal"
+                break
+            if _scene_identity(raw) != start_scene:
+                receipt["reason"] = "scene_changed"
+                break
+            target = next((m for m in raw.get("monsters", ())
+                           if self._monster_generation_key(m) == key), None)
+            if target is not None:
+                current_hp = self._descend_blocker_health(target)
+                receipt["monster_hp_fixed_after"] = current_hp
+                receipt["damage_observed"] = receipt["damage_observed"] or current_hp < initial_hp
+                receipt["target_alive_observed"] = current_hp > 0
+            else:
+                # Disappearance / generation replacement is not proof of a kill.
+                receipt["monster_hp_fixed_after"] = None
+                receipt["target_alive_observed"] = None
+            if not canonical_ready(raw):
+                receipt["reason"] = "readiness_lost"
+                break
+            if not accepted:
+                break
+            if target is None or self._descend_blocker_health(target) <= 0:
+                receipt["reason"] = "target_changed" if target is None else "target_dead_observed"
+                break
+            if (not bool(target.get("visible", False))
+                    or self._engage_distance(raw, target) > 1):
+                receipt["reason"] = "target_left_adjacency"
+                break
+            if self._decision_idle(raw):
+                receipt["reason"] = "swing_complete"
+                break
+        receipt["after_microstep"] = self._resource_actual_microsteps
+        receipt["micro_steps"] = self._resource_actual_microsteps - start_clock
+        receipt["position_changed"] = (
+            int(raw["player_x"]), int(raw["player_y"])) != initial_position
+        return self._finish_macro(raw, beats, start_scene)
+
     def _macro_descend(
         self,
         max_beats: int = 12,
@@ -3634,7 +4588,24 @@ class DiabloGymEnv(gym.Env):
         stall = 0
         beats = 0
         last_pos = (px, py)
+        blocker_recovery = (
+            getattr(self, "dive_blocker_recovery", "off") == "adjacent-v1"
+            and int(raw.get("dungeon_level", 0)) > 0
+            and not bool(raw.get("is_set_level", False))
+        )
+        macro_deadline = (self._resource_actual_microsteps + max_beats
+                          if blocker_recovery else None)
         for beats in range(1, max_beats + 1):
+            if blocker_recovery:
+                next_edge = (target[1:3] if target is not None else
+                             path[pi][:2] if pi < len(path) else None)
+                blocker = (self._descend_observed_blocker(raw, *next_edge)
+                           if next_edge is not None else None)
+                if blocker is not None:
+                    return self._macro_descend_blocker(
+                        raw, blocker, beats_before=beats - 1,
+                        macro_deadline=macro_deadline, start_scene=start_scene,
+                        execution_audit=execution_audit)
             if target is None:
                 if pi >= len(path):
                     break  # 路径走完(最近可达格≠楼梯时会发生),交还控制权
@@ -3669,7 +4640,7 @@ class DiabloGymEnv(gym.Env):
                     accepted = int(accepted) == 1
                 if not accepted:
                     break
-            raw = bridge.step(ticks=self.ticks_per_step)
+            raw = self._step_native()
             pos = (raw["player_x"], raw["player_y"])
             if _scene_identity(raw) == start_scene:
                 self._record_visit(pos)
@@ -3838,6 +4809,8 @@ class DiabloGymEnv(gym.Env):
                         raise RuntimeError(
                             "action14 同一策略动作出现重复成功提交")
                     committed = bridge.observe()
+                    if getattr(self, "resource_preserve_equipment_readiness", False):
+                        self._validate_native_resource_flags(committed)
                     utility_after = gear_combat_utility_value(
                         committed, "action14_after_native_commit")
                     utility_delta = utility_after - utility_before
@@ -3949,7 +4922,7 @@ class DiabloGymEnv(gym.Env):
                         if not accepted:
                             break
 
-            raw = bridge.step(ticks=self.ticks_per_step)
+            raw = self._step_native()
             pos = (int(raw["player_x"]), int(raw["player_y"]))
             if _scene_identity(raw) == start_scene:
                 self._record_visit(pos)
@@ -4380,6 +5353,12 @@ class DiabloGymEnv(gym.Env):
         elif action == 11:
             if position_changed:
                 reasons.append("move")
+            recovery = getattr(self, "_dive_blocker_audit", None)
+            if (getattr(self, "dive_blocker_recovery", "off") == "adjacent-v1"
+                    and recovery is not None
+                    and recovery.get("accepted") is True
+                    and recovery.get("damage_observed") is True):
+                reasons.append("blocker_damage")
             if (
                 self._progression_effect_signature(cur)
                 != self._progression_effect_signature(prev)
@@ -4418,38 +5397,101 @@ class DiabloGymEnv(gym.Env):
         action14_utility_delta: int | None = None,
     ) -> float:
         cls = type(self)
-        r = 0.01 * (cur["xp"] - prev["xp"])
+        econ = self.reward_economy
+        xp_term = 0.01 * (cur["xp"] - prev["xp"])
+        r = xp_term
         dl = cur["dungeon_level"] - prev["dungeon_level"]
+        actual_prev, actual_cur = prev, cur
+        if getattr(self, "resource_protocol", "off") != "off":
+            before = self._resource_reward_depth_before
+            after = self._resource_max_main_depth
+            dl = max(0, after - before)
+            paid = econ.descend_unit * (sum(range(before, after))
+                    if self.descend_ladder else dl)
+            self._resource_step_bonus = float(paid)
+            # Preserve the remainder of the old accounting using equivalent
+            # synthetic monotonic endpoints; raw game state is never changed.
+            prev = dict(prev, dungeon_level=before)
+            cur = dict(cur, dungeon_level=after)
         if self.descend_ladder and dl > 0:
             # v17:深度递进——每个 N→N+1 付 8×N(L1→2 仍是 8,锚定旧章;
             # L2→3 付 16、L3→4 付 24……越深越值钱,给"往下活着"一个未来)
             r += DESCEND_UNIT * sum(range(prev["dungeon_level"], cur["dungeon_level"]))
         else:
             r += DESCEND_UNIT * dl
+        if dl > 0 and econ.descend_unit != DESCEND_UNIT:
+            # R10 v2 A 条款:下楼单价上调,以对 v1 的精确增量追加
+            # (层数为整数,差价乘积在 float64 中无损;v1 路径零触碰)。
+            if self.descend_ladder:
+                r += (econ.descend_unit - DESCEND_UNIT) * sum(
+                    range(prev["dungeon_level"], cur["dungeon_level"]))
+            else:
+                r += (econ.descend_unit - DESCEND_UNIT) * dl
+        if econ.descend_vest_kills > 0:
+            # R11 杀怪锁(主席版,2026-08-28):下楼奖金先记"未解锁"托管;
+            # 该层击杀满 vest_kills 只解锁(托管清零、钱留账);死于解锁前
+            # 全额罚没。gamma=1.0 下与真托管到账数学等价,且不动工资剥薪
+            # 恒等式。超时局终不罚(主席原文只判死刑)。
+            if dl > 0:
+                paid = econ.descend_unit * (
+                    sum(range(prev["dungeon_level"], cur["dungeon_level"]))
+                    if self.descend_ladder else dl)
+                self._econ_unvested += float(paid)
+                self._econ_kills_on_floor = 0
+            kills_now = int(getattr(self, "_ep_kills", 0))
+            kill_delta = kills_now - self._econ_prev_epkills
+            self._econ_prev_epkills = kills_now
+            if kill_delta > 0 and dl == 0 and self._econ_unvested > 0.0:
+                self._econ_kills_on_floor += kill_delta
+                if self._econ_kills_on_floor >= econ.descend_vest_kills:
+                    self._econ_unvested = 0.0
+            if bool(cur["dead"]) and self._econ_unvested > 0.0:
+                r -= self._econ_unvested
+                self._econ_unvested = 0.0
+        prev, cur = actual_prev, actual_cur
         # The native replacement comparator, observation and this shaping
         # consume one shared uint32 ledger.  Unlike the old ΔAC-only reward,
         # weapon damage/to-hit, shields/block, resistances, affixes and usable
         # durability all receive credit.  Strict replacement makes growth
         # monotonic at pickup time; the cap bounds any rare large unique.
         if action14_utility_delta is None:
-            r += gear_upgrade_reward_component(prev, cur)
+            gear_term = gear_upgrade_reward_component(prev, cur)
+            r += gear_term
         else:
             # Action 14 publishes the comparator result synchronously at the
             # native commit.  Its later settle endpoint may already include
             # durability loss or other combat changes, so endpoint Δutility
             # is not a causal receipt and must neither erase nor double-pay
             # the accepted upgrade.
-            r += gear_upgrade_reward_delta_component(
+            gear_term = gear_upgrade_reward_delta_component(
                 action14_utility_delta)
+            r += gear_term
+        if econ.name != "v1" and gear_term > 0.0:
+            # R10 v2 E1 条款:装备重定价(scale 降/cap 升)。a14 因果分支
+            # 有精确 Δutility 可重算;(prev,cur) 分支按 v1 分量等比换算,
+            # 仅 v1 饱和(=cap)时保守低估——预注册已如实登记该近似。
+            if action14_utility_delta is not None:
+                repriced = min(
+                    econ.gear_cap,
+                    float(int(action14_utility_delta)) / econ.gear_scale)
+            else:
+                repriced = min(
+                    econ.gear_cap,
+                    gear_term * (GEAR_COMBAT_UTILITY_REWARD_SCALE
+                                 / econ.gear_scale))
+            r += repriced - gear_term
         same_scene = _scene_identity(cur) == _scene_identity(prev)
+        combat_term = 0.0
         if same_scene:
-            r += self._combat_reward(prev, cur)
+            combat_term = self._combat_reward(prev, cur)
+            r += combat_term
         else:
             # Damage ledgers are scene-local, but a monster killed earlier in
             # the same macro must not lose its terminal unit merely because
             # the final micro-beat also crossed a level/quest boundary.
             native_kills = self._native_monster_kill_delta(prev, cur)
             if native_kills is not None:
+                combat_term = float(native_kills)
                 r += native_kills
         # 接近塑形:仅当本拍请求了非等待动作且是"自己走近"才有奖励。
         # ActWait 为避免破坏引擎占位，允许上一拍已提交的单格动画自然收尾；
@@ -4491,7 +5533,43 @@ class DiabloGymEnv(gym.Env):
             dead=bool(cur["dead"]),
             dungeon_level=cur["dungeon_level"],
             death_ladder=bool(self.death_ladder),
+            economy=econ,
         )
+        if econ.name != "v1":
+            # R10 v2 B×D 条款:深度乘数与反躺平,只作用于正向 farm 收入
+            # (xp+击杀),不触碰下楼/装备/塑形/死亡/胜利各项;记账归经理。
+            d_now = max(int(cur["dungeon_level"]), 1)
+            if econ.idle_counts_micro_beats:
+                # R16 v4:idle 钟按底层微拍计数。step() 在调用 _reward 前已
+                # 把本决策全部拍(含 settle)累进 self._steps,取其增量。
+                steps_now = int(getattr(self, "_steps", 0))
+                idle_tick = max(
+                    0, steps_now - int(getattr(
+                        self, "_econ_idle_prev_steps", 0)))
+                self._econ_idle_prev_steps = steps_now
+            else:
+                idle_tick = 1
+            if int(cur["dungeon_level"]) > self._econ_episode_max_depth:
+                self._econ_episode_max_depth = int(cur["dungeon_level"])
+                self._econ_steps_on_level = 0
+            elif dl == 0:
+                self._econ_steps_on_level += idle_tick
+            else:
+                self._econ_steps_on_level = 0
+            mult = 1.0 + econ.kill_depth_beta * (d_now - 1)
+            if (econ.idle_threshold_steps > 0
+                    and self._econ_steps_on_level
+                    > econ.idle_threshold_steps):
+                mult *= econ.idle_kill_factor
+            farm = xp_term + combat_term
+            if farm > 0.0:
+                r += farm * (mult - 1.0)
+            if econ.idle_reset_on_kill:
+                # R16 v4:击杀发生即清零(结算在前:终结长时间空转的那一杀
+                # 仍按清零前的钟计价;此后钟重新起算)。
+                idle_kills = self._native_monster_kill_delta(prev, cur)
+                if idle_kills is not None and idle_kills > 0:
+                    self._econ_steps_on_level = 0
         if cur["victory"]:
             r += 10.0
         return float(r)

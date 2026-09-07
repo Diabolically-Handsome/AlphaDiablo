@@ -8,6 +8,9 @@
   金评(唯一一次):… --worker <胜者> --seeds 9000-9031 --board
 协议:argmax(经理 numpy 前向 = G0' 位级对账过的同一段代码)、3000 微步、
 回报 = 经理不折现账本。R4 哨兵(换层率/override/cap/τ̄)一并产出。
+R16(C3):--worker-decoding {argmax,sample},默认 argmax 逐位复现旧卷;
+sample = SB3 工人按训练分布采样(每局 model.set_random_seed(seed)、
+torch 单线程,逐位可复现),解码方式写入 meta.protocol.worker_decoding。
 """
 from __future__ import annotations
 
@@ -33,9 +36,11 @@ sys.path.insert(0, str(ROOT / "python"))
 
 from eval_contract import (DEFAULT_MANAGER_SHA256, PROTOCOL_MAX_STEPS,
                            PUBLISHED_WORKER_RECEIPT_NAME,
+                           R16_ENVIRONMENT_DEFAULTS,
                            SCHEMA_VERSION, UINT32_MAX, EvalContractError,
                            OutputReservationError, PROTOCOL_VERSION,
                            PROTOCOL_SOURCE_FILES,
+                           validate_r16_environment, validate_resource_service_config, validate_dive_blocker_recovery,
                            bridge_binary_path, checkpoint_num_timesteps_bytes,
                            exclusive_lock,
                            expected_eval_identity, file_identity, make_meta,
@@ -57,6 +62,7 @@ LB = ROOT / "train" / f"leaderboard-assembled-v{PROTOCOL_VERSION}.md"
 OUTDIR = ROOT / "train" / "runs" / "eval-assembled"
 LB_LOCK = ROOT / "train" / "runs" / "eval-locks" / "leaderboard-assembled.lock"
 FARM = 0
+DIVE = 1   # R13 考试新法:farm-dive-v1 注册把工人回调同挂 DIVE 窗
 _NATIVE_RUNTIME = None
 _WORKER_OBSERVATION_VIEWS = frozenset({
     "raw-v4",
@@ -107,11 +113,23 @@ def _native_runtime(expected_runtime: dict | None = None):
     global _NATIVE_RUNTIME
     if _NATIVE_RUNTIME is None:
         from diablogym import NumpyManager, OptionsEnv, bridge
+        from diablogym.options_env import DIVE as actual_dive
         from diablogym.options_env import FARM as actual_farm
 
         if actual_farm != FARM:
             raise EvalContractError(
                 f"OptionsEnv FARM 编号漂移:{actual_farm} != {FARM}")
+        if actual_dive != DIVE:
+            raise EvalContractError(
+                f"OptionsEnv DIVE 编号漂移:{actual_dive} != {DIVE}")
+        # R16 新法锚:档案身份按"非默认才记"编码,故 CLI/contract 的默认值
+        # 必须与 OptionsEnv 旧法常量逐位一致,漂移即 fail-closed。
+        from diablogym.options_env import FARM_SCENE_CAP as actual_scene_cap
+        if actual_scene_cap != R16_ENVIRONMENT_DEFAULTS["farm_scene_cap"]:
+            raise EvalContractError(
+                "OptionsEnv FARM_SCENE_CAP 与 R16_ENVIRONMENT_DEFAULTS 漂移:"
+                f"{actual_scene_cap} != "
+                f"{R16_ENVIRONMENT_DEFAULTS['farm_scene_cap']}")
         _NATIVE_RUNTIME = (NumpyManager, OptionsEnv, bridge)
     manager_class, env_class, loaded_bridge = _NATIVE_RUNTIME
     if expected_runtime is not None:
@@ -1144,8 +1162,21 @@ def load_worker(
         require_published: bool = False,
         expected_manager_sha256: str | None = None,
         expected_implementation_sha256: str | None = None,
-        expected_provenance: dict | None = None):
-    """返回 (workers、标签、身份清单)。spec ∈ script | bc | *.npz | SB3 zip。"""
+        expected_provenance: dict | None = None,
+        worker_decoding: str = "argmax"):
+    """返回 (workers、标签、身份清单)。spec ∈ script | bc | *.npz | SB3 zip。
+
+    worker_decoding(R16/C3):argmax = 旧法逐位不变;sample 只对 SB3
+    checkpoint 有定义(numpy/BC/script 工人没有可采样的 torch 分布)。
+    """
+    if worker_decoding not in ("argmax", "sample"):
+        raise EvalContractError(
+            f"worker_decoding 只允许 argmax/sample: {worker_decoding!r}")
+    if worker_decoding == "sample" and (
+            spec in {"script", "bc"}
+            or pathlib.Path(spec).suffix.lower() == ".npz"):
+        raise EvalContractError(
+            "--worker-decoding sample 只适用于 SB3 checkpoint 工人")
     if spec == "script":
         return None, "script", script_worker_identity(protocol_bundle_sha256)
     if spec == "bc":
@@ -1577,6 +1608,11 @@ def load_worker(
         raise EvalContractError(
             f"不支持的 Worker training contract revision:{contract_revision!r}")
 
+    # R16(C3):默认 argmax 传 deterministic=True,与旧法逐位同一调用;
+    # sample 走 predict(deterministic=False) = 训练时的同一 masked
+    # Categorical 采样(torch 全局 RNG,由 evaluate() 逐局定种)。
+    deterministic_decoding = worker_decoding == "argmax"
+
     def w(policy_obs, mask):
         policy_mask = mask
         if force_action12_mask:
@@ -1592,7 +1628,8 @@ def load_worker(
             # different, undefined policy.
             policy_mask[12] = False
         a, _ = model.predict(
-            policy_obs, action_masks=policy_mask, deterministic=True)
+            policy_obs, action_masks=policy_mask,
+            deterministic=deterministic_decoding)
         return int(a)
     # Selection is performed by OptionsEnv while native raw entities/items are
     # still available.  The custom A12 adapter receives an exact v3 base plus
@@ -1602,6 +1639,13 @@ def load_worker(
         worker_policy_view)
     w.diablogym_worker_action12_mode = (
         "permanently-masked" if force_action12_mask else "environment-mask")
+    w.diablogym_worker_decoding = worker_decoding
+    if worker_decoding == "sample":
+        # 逐局定种钩子:python/numpy/torch 全局 RNG + action_space 一并按
+        # 该局 seed 复位(SB3 set_random_seed;env=None 故不触及环境)。
+        def _episode_reseed(seed: int) -> None:
+            model.set_random_seed(int(seed))
+        w.diablogym_worker_episode_reseed = _episode_reseed
     return {FARM: w}, pathlib.Path(spec).stem, identity
 
 
@@ -1699,7 +1743,9 @@ def _action14_option_receipt(extra: dict) -> tuple[int, int, int]:
 
 def evaluate(
         workers, seeds, manager_npz=None, manager_sha256=None,
-        manager_policy_observation_view=None):
+        manager_policy_observation_view=None, reward_economy="v1",
+        worker_window_registration="farm-only", worker_decoding="argmax",
+        r16_environment=None):
     if manager_policy_observation_view is None:
         if manager_npz is not None:
             raise EvalContractError(
@@ -1716,7 +1762,18 @@ def evaluate(
         str(manager_path), expected_sha256=expected_manager_sha256)
     # evaluate() 也会被测试/法证脚本在同一进程重复调用。不要原地包裹调用方的
     # workers 字典，否则第二次调用会叠加 instrumentation，甚至闭包到旧 env。
+    if worker_window_registration not in ("farm-only", "farm-dive-v1"):
+        raise EvalContractError(
+            "worker_window_registration 必须是 farm-only/farm-dive-v1,"
+            f"收到 {worker_window_registration!r}")
     active_workers = dict(workers) if workers else None
+    if worker_window_registration == "farm-dive-v1":
+        # R13 考试新法:工人回调同挂 DIVE 窗(主权移交考场侧)。script
+        # 工人无 callback 可挂,farm-dive-v1 对其无意义,fail-closed。
+        if not active_workers:
+            raise EvalContractError(
+                "farm-dive-v1 注册需要工人 callback(script 工人不适用)")
+        active_workers[DIVE] = active_workers[FARM]
     drink_sovereignty = True
     worker_observation_view = "raw-v4"
     if active_workers:
@@ -1745,16 +1802,50 @@ def evaluate(
             raise EvalContractError(
                 "Worker callback 缺少有效的 action12 deployment contract:"
                 f"{action12_mode!r}")
+    # R16(C3):解码方式必须与装载时一致(fail-closed),sample 需要逐局定种
+    # 钩子。默认 argmax 下本段只读属性,不触碰任何运行态。
+    if worker_decoding not in ("argmax", "sample"):
+        raise EvalContractError(
+            f"worker_decoding 只允许 argmax/sample: {worker_decoding!r}")
+    declared_decoding = (
+        getattr(active_workers[FARM], "diablogym_worker_decoding", "argmax")
+        if active_workers else "argmax")
+    if declared_decoding != worker_decoding:
+        raise EvalContractError(
+            "Worker callback 解码方式与评测请求不一致:"
+            f"callback={declared_decoding!r},evaluate={worker_decoding!r}")
+    episode_reseed = None
+    if worker_decoding == "sample":
+        episode_reseed = getattr(
+            active_workers[FARM], "diablogym_worker_episode_reseed", None)
+        if not callable(episode_reseed):
+            raise EvalContractError(
+                "sample 解码的 Worker callback 缺少逐局定种钩子")
+        import torch
+        # 单线程前向:消除多线程归约顺序对 logits 末位的扰动,使采样流
+        # 在同 seed 下跨进程逐位可复现。
+        torch.set_num_threads(1)
     # The frozen M29 manager was trained on the complete protocol-v3 base and
     # legacy clock extras.  OptionsEnv defaults to raw-v4 for newly trained
     # managers, so deployment must bind the old view explicitly.
-    env = env_class(
+    env_kwargs = dict(
         max_steps=PROTOCOL_MAX_STEPS,
         workers=active_workers,
         drink_sovereignty=drink_sovereignty,
         worker_observation_view=worker_observation_view,
         manager_observation_view=manager_policy_observation_view,
+        reward_economy=reward_economy,
     )
+    if worker_window_registration == "farm-dive-v1":
+        # 旗关路径连关键字都不出现,构造调用与旧法逐位同构
+        env_kwargs["dive_live_sovereignty"] = True
+    if r16_environment:
+        # R16 新法锚:只把非默认开关直通构造器(farm_scene_cap /
+        # reset_layer_clock_on_window 由 OptionsEnv 具名消费,其余经
+        # **env_kwargs 到 DiabloGymEnv);全默认时 env_kwargs 一个键都不多。
+        # validate_r16_environment 同时排除显式默认值与未知键(fail-closed)。
+        env_kwargs.update(validate_r16_environment(dict(r16_environment)))
+    env = env_class(**env_kwargs)
     engage = None
     if active_workers:
         # 参与度取证(2026-07-10 法证会审的后续):调用数/动作直方/与脚本分歧率,
@@ -1792,8 +1883,12 @@ def evaluate(
                 engage["action14_requests"] += 1
             script_mask, nearest = env.env.controller_action_context()
             script_mask = np.asarray(script_mask, dtype=bool)
+            # R13:分歧参照系按当前窗口模式取正典脚本(farm-only 注册下
+            # instrumented 只会在 FARM 窗被调用,mode 恒为 farm,旧口径
+            # 逐位不变)。
+            _win = getattr(env, "_win", None) or {}
             s = dispatch(
-                "farm",
+                ("farm", "dive", "resupply")[int(_win.get("opt", FARM))],
                 env.env._raw,
                 bool(script_mask[14]),
                 action_mask=script_mask,
@@ -1812,11 +1907,20 @@ def evaluate(
                 "diablogym_worker_action12_mode"):
             if hasattr(inner, attribute):
                 setattr(instrumented, attribute, getattr(inner, attribute))
-        active_workers[FARM] = instrumented   # env 持同一 dict 引用,替换副本生效
+        # R13:凡指向同一 inner 的注册键(FARM,或 farm-dive-v1 下的 DIVE)
+        # 统一替换为同一 instrumented——engage 计数器共享,action14 原生
+        # 回执对账(receipt_requests==requests)在双注册下自然闭合。
+        # farm-only 注册下本循环恰替换 FARM 一键,旧口径逐位不变。
+        for _key in [k for k, v in active_workers.items() if v is inner]:
+            active_workers[_key] = instrumented   # env 持同一 dict 引用,替换副本生效
     rows = []
     try:
         for seed in seeds:
             obs, _ = env.reset(seed=seed)
+            if episode_reseed is not None:
+                # 局开始时以该局 seed 确定性播种工人采样 RNG(FARM/DIVE 双
+                # 注册指向同一 callback,共享同一条流)。
+                episode_reseed(seed)
             done = trunc = False
             R = 0.0
             farm = Counter()
@@ -1997,7 +2101,97 @@ def main():
         help="发车前冻结的 publication expectations JSON；与"
              "--require-published-worker 必须同时给定")
     ap.add_argument("--tag", type=safe_tag, default=None)
+    ap.add_argument("--reward-economy", default="v1",
+                    choices=("v1", "v2", "v3", "v3b", "v4"),
+                    help="R10 奖励经济法案(v1=历史逐位不变;v2=深度经济;"
+                         "v4=R16 v2 同源 + idle_counts_micro_beats + "
+                         "idle_reset_on_kill)。只改回报记账,不改动作/掩码/"
+                         "观测协议")
+    # R16 新法锚:环境侧/教室侧开关。全部默认 = 旧法逐位不变(连 env_kwargs
+    # 关键字都不出现);任一非默认时进入 meta.protocol.r16_environment。
+    ap.add_argument("--explore-global-hunt", action="store_true",
+                    help="DiabloGymEnv explore_global_hunt(R16 主力:窗内"
+                         "无可见怪时全图 BFS 朝最近存活怪推进)")
+    ap.add_argument("--explore-global-fallback", action="store_true",
+                    help="DiabloGymEnv explore_global_fallback(C5)")
+    ap.add_argument("--progress-far-tiles", type=int,
+                    default=R16_ENVIRONMENT_DEFAULTS["progress_far_tiles"],
+                    help="DiabloGymEnv progress_far_tiles(C6;默认 0 = 旧法)")
+    ap.add_argument("--farm-scene-cap", type=int,
+                    default=R16_ENVIRONMENT_DEFAULTS["farm_scene_cap"],
+                    help="OptionsEnv farm_scene_cap(默认 1800 = "
+                         "options_env.FARM_SCENE_CAP 旧法)")
+    ap.add_argument("--reset-layer-clock-on-window", action="store_true",
+                    help="OptionsEnv reset_layer_clock_on_window(FARM 开窗"
+                         "清零无进展钟)")
+    ap.add_argument("--resource-protocol", default="off",
+                    choices=("off", "l2-town-v1"))
+    ap.add_argument("--resource-purchase-mode", default="full",
+                    choices=("none", "heal", "potions", "armor", "full"))
+    ap.add_argument("--resource-service-policy", default="legacy-v1",
+                    choices=("legacy-v1", "sustain-v2", "sustain-v3", "sustain-v4", "sustain-v5", "sustain-v6"),
+                    help="Explicit service identity; sustain-v2/v3/v4 require l2-town-v1/full")
+    ap.add_argument("--resource-readiness-law", default="veto-v1",
+                    choices=("veto-v1", "coach-v03"),
+                    help="R17.1 ruling 3 readiness law; coach-v03 (six native "
+                         "conditions, health excluded) requires l2-town-v1")
+    ap.add_argument("--dive-blocker-recovery", default="off", choices=("off", "adjacent-v1"),
+                    help="Explicit bounded a11 blocker combat; requires resource protocol")
+    ap.add_argument("--worker-window-registration", default="farm-only",
+                    choices=("farm-only", "farm-dive-v1"),
+                    help="R13 考试新法(默认 farm-only 逐位复现旧卷):"
+                         "farm-dive-v1 把工人回调同挂 DIVE 窗并激活窗内"
+                         "主权移交——工人首次在考卷上亲自开 DIVE 车")
+    ap.add_argument("--worker-decoding", default="argmax",
+                    choices=("argmax", "sample"),
+                    help="R16(C3)工人解码(默认 argmax 逐位复现旧卷):"
+                         "sample = SB3 工人 predict(deterministic=False),"
+                         "每局以该局 seed 播种 torch/numpy RNG、torch 单线程;"
+                         "写入 meta.protocol.worker_decoding")
     args = ap.parse_args()
+    if (args.worker_window_registration == "farm-dive-v1"
+            and args.worker == "script"):
+        ap.error("--worker-window-registration farm-dive-v1 "
+                 "不适用于 script 工人(无 callback 可挂)")
+    if args.worker_decoding == "sample":
+        if (args.worker in {"script", "bc"}
+                or pathlib.Path(args.worker).suffix.lower() == ".npz"):
+            ap.error("--worker-decoding sample 只适用于 SB3 checkpoint 工人")
+        if args.board:
+            ap.error("--board 金评协议为 argmax,拒绝 sample 解码上榜")
+    if args.progress_far_tiles < 0:
+        ap.error("--progress-far-tiles 必须是非负整数(0 = 旧法)")
+    if args.farm_scene_cap <= 0:
+        ap.error("--farm-scene-cap 必须是正整数(1800 = 旧法)")
+    try:
+        validate_resource_service_config(args.resource_protocol,
+                                         args.resource_purchase_mode,
+                                         args.resource_service_policy)
+        validate_dive_blocker_recovery(args.resource_protocol, args.dive_blocker_recovery)
+    except ValueError as exc:
+        ap.error(str(exc))
+    if (args.resource_readiness_law != "veto-v1"
+            and args.resource_protocol != "l2-town-v1"):
+        ap.error("--resource-readiness-law coach-v03 requires "
+                 "--resource-protocol l2-town-v1")
+    requested_r16 = {
+        "explore_global_hunt": bool(args.explore_global_hunt),
+        "explore_global_fallback": bool(args.explore_global_fallback),
+        "progress_far_tiles": int(args.progress_far_tiles),
+        "farm_scene_cap": int(args.farm_scene_cap),
+        "reset_layer_clock_on_window": bool(args.reset_layer_clock_on_window),
+        "resource_protocol": args.resource_protocol,
+        "resource_purchase_mode": args.resource_purchase_mode,
+        "resource_service_policy": args.resource_service_policy,
+        "resource_readiness_law": args.resource_readiness_law,
+        "dive_blocker_recovery": args.dive_blocker_recovery,
+    }
+    # 身份只记非默认键;全默认 ⇒ 空字典 ⇒ env_kwargs/meta 逐字节不变。
+    r16_environment = {
+        key: value for key, value in requested_r16.items()
+        if value != R16_ENVIRONMENT_DEFAULTS[key]}
+    if r16_environment and args.board:
+        ap.error("--board 金评协议为旧法环境,拒绝 R16 环境开关上榜")
     if bool(args.require_published_worker) != bool(
             args.publication_expectations):
         ap.error("--require-published-worker 与 --publication-expectations "
@@ -2021,7 +2215,10 @@ def main():
     seeds = args.seeds
     seed_label = f"{seeds[0]}-{seeds[-1]}"
     label = worker_label(args.worker)
-    tag = args.tag or safe_tag(f"{label}-{seed_label}")
+    auto_tag = f"{label}-{seed_label}"
+    if args.worker_decoding != "argmax":
+        auto_tag += f"-{args.worker_decoding}"
+    tag = args.tag or safe_tag(auto_tag)
     OUTDIR.mkdir(parents=True, exist_ok=True)
     out_path = OUTDIR / f"{tag}.json"
     if args.board and seeds != list(range(9000, 9032)):
@@ -2064,9 +2261,15 @@ def main():
                 expected_manager_sha256=manager_id["sha256"],
                 expected_implementation_sha256=(
                     training_implementation_sha256),
-                expected_provenance=expected_provenance)
+                expected_provenance=expected_provenance,
+                worker_decoding=args.worker_decoding)
             if loaded_label != label:
                 raise EvalContractError("worker 标签推导与加载结果不一致")
+            if args.worker_decoding != "argmax":
+                print(f"  工人解码:{args.worker_decoding}"
+                      "(逐局 set_random_seed(seed),torch 单线程)")
+            if r16_environment:
+                print(f"  R16 环境开关(非默认):{r16_environment}")
 
             # 使用身份清单中已经 resolve 的同一文件，避免自定义 symlink 在
             # 哈希与实际 NumpyManager.load 之间改指向。
@@ -2074,7 +2277,12 @@ def main():
                 workers, seeds, manager_npz=str(manager_path),
                 manager_sha256=manager_id["sha256"],
                 manager_policy_observation_view=(
-                    manager_policy_observation_view))
+                    manager_policy_observation_view),
+                reward_economy=args.reward_economy,
+                worker_window_registration=(
+                    args.worker_window_registration),
+                worker_decoding=args.worker_decoding,
+                r16_environment=r16_environment or None)
             agg = digest(rows)
             if engage:
                 agg["worker_calls"] = engage["calls"]
@@ -2143,13 +2351,22 @@ def main():
             document = {
                 "schema_version": SCHEMA_VERSION,
                 "meta": make_meta(tag=tag, seeds=seeds, worker=worker_id,
-                                  manager=manager_id, runtime=runtime),
+                                  manager=manager_id, runtime=runtime,
+                                  worker_decoding=args.worker_decoding,
+                                  r16_environment=r16_environment or None),
                 "agg": agg,
                 "rows": rows,
             }
             expected = expected_eval_identity(
                 {"worker": worker_id, "manager": manager_id, "runtime": runtime},
                 tag=tag, seeds=seeds)
+            if args.worker_decoding != "argmax":
+                # 默认 argmax 下 expected 字典逐键不变;sample 档案读后复验
+                # 必须核对 meta.protocol.worker_decoding 声明。
+                expected["expected_worker_decoding"] = args.worker_decoding
+            if r16_environment:
+                # 同理:R16 新法锚读后复验必须核对 r16_environment 声明。
+                expected["expected_r16_environment"] = dict(r16_environment)
             validate_eval_archive(document, **expected)
             payload = json.dumps(document, ensure_ascii=False, indent=1, allow_nan=False)
 

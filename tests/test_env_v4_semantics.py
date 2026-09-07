@@ -3214,8 +3214,11 @@ class TerminalDeathRewardSourceTests(unittest.TestCase):
                 return_value=-37.0) as shared:
             reward = env._reward(before, after, requested_action=0)
 
+        # R10 经济法案:委托调用显式携带经济规格(裸构造走类级 v1 默认,
+        # 数值语义与旧契约逐位一致)。
         shared.assert_called_once_with(
-            dead=True, dungeon_level=1, death_ladder=True)
+            dead=True, dungeon_level=1, death_ladder=True,
+            economy=env_module.REWARD_ECONOMY_V1)
         # The unrelated stationary-action component remains separate.
         self.assertAlmostEqual(reward, -37.002)
 

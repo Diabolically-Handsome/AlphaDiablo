@@ -53,6 +53,9 @@ RUNTIME_PACKAGE_VERSIONS = {
 
 PROTOCOL_SOURCE_FILES = (
     "train/eval_assembled.py",
+    "train/migrate_resource_candidate.py",
+    "train/migrate_completion_candidate.py",
+    "train/prefix_worker.py",
     "train/eval_contract.py",
     "train/leashed_ppo.py",
     "python/diablogym/__init__.py",
@@ -61,6 +64,16 @@ PROTOCOL_SOURCE_FILES = (
     "python/diablogym/nav.py",
     "python/diablogym/options_env.py",
     "python/diablogym/worker_env.py",
+    "python/diablogym/completion_clock.py",
+    "python/diablogym/resource_protocol.py",
+    "python/diablogym/resource_navigation.py",
+    "python/diablogym/resource_sustain.py",
+    "python/diablogym/resource_gold_memory.py",
+    "python/diablogym/resource_sustain_gold.py",
+    "python/diablogym/resource_sustain_armor.py",
+    "python/diablogym/resource_sustain_completion.py",
+    "python/diablogym/resource_sustain_combinations.py",
+    "python/diablogym/resource_sustain_combat.py",
 )
 
 _SHA256_RE = re.compile(r"[0-9a-f]{64}")
@@ -108,6 +121,181 @@ _TERMINAL_KINDS = {
     "death", "victory", "game_over",
     "time_limit_idle", "time_limit_unsettled",
 }
+# R16 新法环境/教室开关的旧法默认值(= OptionsEnv/DiabloGymEnv 构造器默认;
+# eval_assembled._native_runtime 对 FARM_SCENE_CAP 做漂移守卫)。档案身份只记
+# 非默认取值:全默认时 meta.protocol 无 r16_environment 键(旧档案/默认旗档案
+# 逐字节不变);显式写默认值属身份不规范,validator 拒绝。
+R16_ENVIRONMENT_DEFAULTS = {
+    "explore_global_hunt": False,
+    "explore_global_fallback": False,
+    "progress_far_tiles": 0,
+    "farm_scene_cap": 1800,
+    "reset_layer_clock_on_window": False,
+    "resource_protocol": "off",
+    "resource_purchase_mode": "full",
+    "resource_service_policy": "legacy-v1",
+    "resource_readiness_law": "veto-v1",
+    "dive_blocker_recovery": "off",
+}
+
+
+RESOURCE_SERVICE_RECIPE_VERSION = "l2-town-paid-repair-v2"
+_RESOURCE_SERVICE_STAGES = {
+    "none": ("collect_gold",),
+    "heal": ("collect_gold", "town_trip", "native_heal", "return_l1"),
+    "potions": ("collect_gold", "town_trip", "native_heal", "potions_to_capacity", "return_l1"),
+    "armor": ("collect_gold", "town_trip", "armor_if_needed", "native_heal", "return_l1"),
+    "full": ("collect_gold", "town_trip", "armor_if_needed", "normal_paid_repair",
+             "native_heal", "potions_to_capacity", "return_l1"),
+}
+
+
+WORKER_PREFIX_R16_SHA256 = "7e31dc5402caed733443abb9fef383c877d93b3623b199ba4b5c6293092592f0"
+EARNED_DIVE_SUFFIX_SCOPE = "earned-dive-suffix-v1"
+
+
+def worker_prefix_recipe(scope, model_sha256=None, max_attempts=None, max_microsteps=None):
+    """Pure identity for excluded fixed-policy prefixes; no model or engine load."""
+    if scope != EARNED_DIVE_SUFFIX_SCOPE:
+        if scope not in (None, "farm-only", "farm-dive-v1"):
+            raise ValueError("Unknown worker learning window scope")
+        if any(value is not None for value in (model_sha256, max_attempts, max_microsteps)):
+            raise ValueError("Prefix parameters require earned-dive-suffix-v1")
+        return None
+    if model_sha256 != WORKER_PREFIX_R16_SHA256:
+        raise ValueError("earned-dive-suffix-v1 requires the exact registered R16 prefix")
+    for name, value in (("max_attempts", max_attempts), ("max_microsteps", max_microsteps)):
+        if type(value) is not int or value <= 0:
+            raise ValueError(f"Prefix {name} must be an explicit positive integer")
+    return {"version": "earned-dive-suffix-prefix-v1", "source_sha256": model_sha256,
+        "observation_view": "dual-v4-asymmetric-v3", "action12_mode": "environment-mask",
+        "sampling": "original-sampled-predict",
+        "rng_isolation": "persistent-private-python-numpy-torch-cpu-v1",
+        "episode_reseed": "actual-episode-seed", "max_attempts": max_attempts,
+        "max_microsteps": max_microsteps, "budget_scope": "per-env-lifetime-across-resets",
+        "physical_clock_start": "normal-reset-return-main-l1-formal-beat0",
+        "initial_town_navigation": "excluded-from-formal-microsteps-inherited-reset-boundary",
+        "wall_clock_scope": "complete-reset-and-prefix",
+        "handoff": "first-main-l1-live-dive-ready-idle-after-normal-drain",
+        "prefix_training": "excluded", "on_beat": None}
+
+
+def validate_resource_service_config(protocol="off", mode="full",
+                                     service_policy="legacy-v1"):
+    """Validate the versioned service without importing or starting the engine."""
+    if protocol not in ("off", "l2-town-v1") or mode not in _RESOURCE_SERVICE_STAGES:
+        raise ValueError("Invalid resource protocol/arm for service recipe")
+    if protocol == "off" and mode != "full":
+        raise ValueError("resource_purchase_mode requires resource_protocol l2-town-v1")
+    if service_policy not in ("legacy-v1", "sustain-v2", "sustain-v3", "sustain-v4", "sustain-v5", "sustain-v6"):
+        raise ValueError(f"Invalid resource_service_policy: {service_policy!r}")
+    if service_policy in ("sustain-v2", "sustain-v3", "sustain-v4", "sustain-v5", "sustain-v6") and (protocol != "l2-town-v1" or mode != "full"):
+        raise ValueError(f"{service_policy} requires resource_protocol l2-town-v1 and full purchase mode")
+
+
+def validate_dive_blocker_recovery(protocol="off", recovery="off"):
+    if recovery not in ("off", "adjacent-v1"):
+        raise ValueError(f"Invalid dive_blocker_recovery: {recovery!r}")
+    if recovery != "off" and protocol != "l2-town-v1":
+        raise ValueError("dive_blocker_recovery requires resource_protocol l2-town-v1")
+
+
+def dive_blocker_recovery_recipe(recovery="off"):
+    if recovery == "off":
+        return None
+    if recovery != "adjacent-v1":
+        raise ValueError(f"Invalid dive_blocker_recovery: {recovery!r}")
+    return {"version": "adjacent-v1", "scope": "a11-main-dungeon-descent-only",
+            "trigger": "visible-adjacent-live-monster-current-or-reserved-next-path-tile",
+            "action": "native-controller-radius1-attack",
+            "core_macro_microstep_cap": 12,
+            "core_budget": "shared-a11-remaining",
+            "settle": "normal-idle-settle-charged-each-native-microstep",
+            "deadline": "live-episode-and-followup-cutoff",
+            "continuation": "replan-from-current-native-state"}
+
+
+def resource_service_recipe(protocol="off", mode="full",
+                            service_policy="legacy-v1"):
+    validate_resource_service_config(protocol, mode, service_policy)
+    if protocol == "off":
+        return None
+    if service_policy in ("sustain-v2", "sustain-v3", "sustain-v4", "sustain-v5", "sustain-v6"):
+        recipe = {
+            "version": "l2-town-joint-" + service_policy,
+            "service_policy": service_policy,
+            "mode": mode,
+            "stages": ["collect_gold", "town_trip", "observe_smith",
+                       "observe_healer_and_native_heal",
+                       "joint_minimum_readiness_budget",
+                       "normal_unequip_repair_or_replace",
+                       "potions_to_readiness", "return_l1"],
+            "planning_scope": "retain_or_one_armor_change_plus_repairs_live_replan",
+            "service_microstep_cap": 1500,
+            "potion_target": 4,
+            "potion_target_source": "native_readiness.required_belt_heals",
+            "navigation_recovery": "bounded-combat-heal-v1",
+        }
+        if service_policy in ("sustain-v3", "sustain-v4", "sustain-v5", "sustain-v6"):
+            recipe["stages"][0] = "collect_observed_l1_gold"
+            recipe.update(
+                gold_memory={
+                    "version": "observed-l1-gold-memory-v1",
+                    "source": "existing-native-main-l1-observations",
+                    "identity_fields": ["seed_hi", "seed_lo", "create_info", "base_id"],
+                    "pickup": "normal-revisit-current-active-id-revalidation",
+                    "remembered_value_is_wallet": False,
+                },
+                collect_microstep_cap=300,
+                collect_budget_scope="movement-combat-and-pickup-actual-microsteps",
+                collect_budget_exhausted="continue_outbound",
+            )
+            if service_policy in ("sustain-v4", "sustain-v5", "sustain-v6"):
+                # A command-admission window, not a promise that existing
+                # native animation has physically settled by microstep 450.
+                del recipe["collect_microstep_cap"]
+                recipe.update(
+                    collect_command_window_microsteps=450,
+                    collect_budget_scope="new-collect-commands-within-actual-microstep-window",
+                    collect_tail="finish-existing-animation-in-outbound-charged-to-service-budget",
+                    collect_cutoff="record-current-native-state-at-command-window-cutoff",
+                )
+        if service_policy in ("sustain-v5", "sustain-v6"):
+            recipe.update(
+                planning_scope="observed_single_ordinary_armor_retained_repairs_minimum_medicine",
+                native_ordinary_armor_scope=True,
+                ordinary_armor_catalog={
+                    "version": "ordinary-armor-v1",
+                    "items": ["normal_helmet", "normal_shield", "normal_chest"],
+                    "projection": "native_full_readiness_actual_replaced_slots",
+                    "projection_refresh": "known_smith_identities_live_player_before_each_joint_plan",
+                    "projection_refresh_native_microsteps": 0,
+                    "selection": "effective_blocking_if_complete_affordable_then_lowest_total",
+                    "blocking_is_native_readiness_gate": False,
+                    "missing_block_projection": "unknown",
+                    "partial_free_equip_fallback": False,
+                    "missing_quote_or_projection": "unresolved_not_physical_impossibility",
+                },
+            )
+        if service_policy == "sustain-v6":
+            recipe.update(
+                native_preserve_equipment_readiness=True,
+                equipment_readiness_preservation={
+                    "version": "equipment-readiness-preservation-v1",
+                    "scope": "native-a14-eligibility-plan-and-commit",
+                    "equipment_failures": ["armor", "damage", "weapon", "durability"],
+                    "trigger": "current-equipment-subset-ready",
+                    "requirement": "next-equipment-subset-ready",
+                    "independent_failures": ["level", "health", "potions"],
+                    "unready_equipment": "legacy-upgrade-rule",
+                },
+            )
+        return recipe
+    # Preserve the exact historical legacy recipe, including omitted policy.
+    return {"version": RESOURCE_SERVICE_RECIPE_VERSION, "mode": mode,
+            "stages": list(_RESOURCE_SERVICE_STAGES[mode]),
+            "service_microstep_cap": 600,
+            "potion_target": 8 if mode in ("potions", "full") else None}
 
 
 class EvalContractError(ValueError):
@@ -632,8 +820,57 @@ def verify_file_identity(identity: Mapping[str, Any]) -> None:
                  f"{actual_report} != {expected_report!r}")
 
 
-def make_protocol(seeds: Iterable[int]) -> dict[str, Any]:
-    return {
+def validate_r16_environment(value: Any) -> dict[str, Any]:
+    """R16 环境开关身份子字典:非空、只含已知键、每键必须是非默认的合法值。"""
+    _require(isinstance(value, dict) and bool(value),
+             "meta.protocol.r16_environment 必须是非空对象")
+    unknown = set(value) - set(R16_ENVIRONMENT_DEFAULTS)
+    _require(not unknown,
+             f"meta.protocol.r16_environment 含未知键: {sorted(unknown)}")
+    for key, item in value.items():
+        default = R16_ENVIRONMENT_DEFAULTS[key]
+        if key == "resource_protocol":
+            _require(item == "l2-town-v1",
+                     "resource_protocol must be l2-town-v1 (off is omitted)")
+        elif key == "resource_purchase_mode":
+            _require(item in ("none", "heal", "potions", "armor"),
+                     "resource_purchase_mode must be none/heal/potions/armor "
+                     "(full is omitted)")
+            _require(value.get("resource_protocol") == "l2-town-v1",
+                     "resource_purchase_mode requires resource_protocol")
+        elif key == "resource_service_policy":
+            _require(item in ("sustain-v2", "sustain-v3", "sustain-v4", "sustain-v5", "sustain-v6"),
+                     "resource_service_policy must be sustain-v2/sustain-v3/sustain-v4/sustain-v5/sustain-v6 (legacy-v1 is omitted)")
+            _require(value.get("resource_protocol") == "l2-town-v1"
+                     and value.get("resource_purchase_mode", "full") == "full",
+                     "sustain service requires resource_protocol l2-town-v1 and full purchase mode")
+        elif key == "resource_readiness_law":
+            _require(item == "coach-v03",
+                     "resource_readiness_law must be coach-v03 (veto-v1 is omitted)")
+            _require(value.get("resource_protocol") == "l2-town-v1",
+                     "resource_readiness_law coach-v03 requires resource_protocol l2-town-v1")
+        elif key == "dive_blocker_recovery":
+            _require(item == "adjacent-v1", "dive_blocker_recovery must be adjacent-v1 (off is omitted)")
+            _require(value.get("resource_protocol") == "l2-town-v1",
+                     "dive_blocker_recovery requires resource_protocol l2-town-v1")
+        elif isinstance(default, bool):
+            _require(item is True,
+                     f"meta.protocol.r16_environment.{key} 只允许 true"
+                     "(默认 false 以缺省表示)")
+        else:
+            _require(_is_int(item) and item > 0,
+                     f"meta.protocol.r16_environment.{key} 必须是正整数")
+            _require(item != default,
+                     f"meta.protocol.r16_environment.{key} 显式写默认值 "
+                     f"{default} 属身份不规范,应缺省")
+    return {key: value[key] for key in R16_ENVIRONMENT_DEFAULTS if key in value}
+
+
+def make_protocol(seeds: Iterable[int], *,
+                  worker_decoding: str = "argmax",
+                  r16_environment: Mapping[str, Any] | None = None
+                  ) -> dict[str, Any]:
+    protocol = {
         "name": PROTOCOL_NAME,
         "version": PROTOCOL_VERSION,
         "environment": "OptionsEnv",
@@ -644,14 +881,37 @@ def make_protocol(seeds: Iterable[int]) -> dict[str, Any]:
         "deterministic": True,
         "seeds": list(seeds),
     }
+    # R16(C3):工人解码方式进入档案身份。argmax 是历史唯一口径,以缺省
+    # 表示(旧档案/默认旗档案逐字节不变);sample = 工人按训练分布逐局定种
+    # 采样(torch.manual_seed(seed)、单线程),仍可逐位复现,故 deterministic
+    # 保持 True。action_selection 描述经理侧 numpy argmax,不变。
+    if worker_decoding != "argmax":
+        _require(worker_decoding == "sample",
+                 f"worker_decoding 只允许 argmax/sample: {worker_decoding!r}")
+        protocol["worker_decoding"] = worker_decoding
+    # R16 新法锚:环境/教室开关任一非默认时才写入子字典(只列非默认键)。
+    if r16_environment:
+        protocol["r16_environment"] = validate_r16_environment(
+            dict(r16_environment))
+        if r16_environment.get("resource_protocol") == "l2-town-v1":
+            protocol["resource_service_recipe"] = resource_service_recipe(
+                "l2-town-v1", r16_environment.get("resource_purchase_mode", "full"),
+                r16_environment.get("resource_service_policy", "legacy-v1"))
+        if r16_environment.get("dive_blocker_recovery") == "adjacent-v1":
+            protocol["dive_blocker_recovery_recipe"] = dive_blocker_recovery_recipe("adjacent-v1")
+    return protocol
 
 
 def make_meta(*, tag: str, seeds: Iterable[int], worker: Mapping[str, Any],
-              manager: Mapping[str, Any], runtime: Mapping[str, Any]) -> dict[str, Any]:
+              manager: Mapping[str, Any], runtime: Mapping[str, Any],
+              worker_decoding: str = "argmax",
+              r16_environment: Mapping[str, Any] | None = None
+              ) -> dict[str, Any]:
     return {
         "tag": tag,
         "created_at_utc": dt.datetime.now(dt.timezone.utc).isoformat(),
-        "protocol": make_protocol(seeds),
+        "protocol": make_protocol(seeds, worker_decoding=worker_decoding,
+                                  r16_environment=r16_environment),
         "worker": dict(worker),
         "manager": dict(manager),
         "runtime": dict(runtime),
@@ -1104,7 +1364,9 @@ def validate_eval_archive(document: Any, *, expected_tag: str | None = None,
                           expected_assets_sha256: str | None = None,
                           expected_assets_file_count: int | None = None,
                           expected_runtime_versions: Mapping[str, Any] | None = None,
-                          expected_protocol_bundle_sha256: str | None = None
+                          expected_protocol_bundle_sha256: str | None = None,
+                          expected_worker_decoding: str | None = None,
+                          expected_r16_environment: Mapping[str, Any] | None = None
                           ) -> dict[str, Any]:
     """严格校验一个 schema v5 档案；legacy 永远不会从这里静默放行。"""
     _require(isinstance(document, dict), "评测档案必须是 JSON 对象")
@@ -1134,10 +1396,47 @@ def validate_eval_archive(document: Any, *, expected_tag: str | None = None,
 
     protocol = meta["protocol"]
     _require(isinstance(protocol, dict), "meta.protocol 必须是对象")
-    _require(set(protocol) == {
+    protocol_keys = {
         "name", "version", "environment", "max_steps", "action_selection",
-        "manager_forward", "reward", "deterministic", "seeds"},
-        "meta.protocol 字段异常")
+        "manager_forward", "reward", "deterministic", "seeds"}
+    # R16(C3):worker_decoding 为可选键;缺省 = argmax(全部历史档案),
+    # 出现时只允许 sample——同一口径禁止两种拼法,身份保持规范唯一。
+    # R16 新法锚:r16_environment 为可选键(只列非默认开关),可与
+    # worker_decoding 同时出现。
+    optional_keys = {"worker_decoding", "r16_environment", "resource_service_recipe",
+                     "dive_blocker_recovery_recipe"}
+    _require(protocol_keys <= set(protocol)
+             and set(protocol) - protocol_keys <= optional_keys,
+             "meta.protocol 字段异常")
+    _require("worker_decoding" not in protocol
+             or protocol["worker_decoding"] == "sample",
+             "meta.protocol.worker_decoding 只允许缺省(argmax)或 sample")
+    worker_decoding = protocol.get("worker_decoding", "argmax")
+    if expected_worker_decoding is not None:
+        _require(worker_decoding == expected_worker_decoding,
+                 "worker 解码方式与调用契约不一致: "
+                 f"{worker_decoding!r} != {expected_worker_decoding!r}")
+    r16_environment: dict[str, Any] = {}
+    if "r16_environment" in protocol:
+        r16_environment = validate_r16_environment(protocol["r16_environment"])
+    if r16_environment.get("resource_protocol") == "l2-town-v1":
+        _require(protocol.get("resource_service_recipe") == resource_service_recipe(
+            "l2-town-v1", r16_environment.get("resource_purchase_mode", "full"),
+            r16_environment.get("resource_service_policy", "legacy-v1")),
+            "Resource service recipe missing or inconsistent with the current implementation")
+    else:
+        _require("resource_service_recipe" not in protocol,
+                 "Disabled resource protocol must omit the service recipe")
+    if r16_environment.get("dive_blocker_recovery") == "adjacent-v1":
+        _require(protocol.get("dive_blocker_recovery_recipe") == dive_blocker_recovery_recipe("adjacent-v1"),
+                 "DIVE blocker recovery recipe missing or inconsistent")
+    else:
+        _require("dive_blocker_recovery_recipe" not in protocol,
+                 "Disabled DIVE blocker recovery must omit its recipe")
+    if expected_r16_environment is not None:
+        _require(r16_environment == dict(expected_r16_environment),
+                 "R16 环境开关身份与调用契约不一致: "
+                 f"{r16_environment!r} != {dict(expected_r16_environment)!r}")
     _require(protocol["name"] == PROTOCOL_NAME
              and protocol["version"] == PROTOCOL_VERSION,
              "评测协议名称/版本不匹配")

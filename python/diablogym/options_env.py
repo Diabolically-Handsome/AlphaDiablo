@@ -53,6 +53,7 @@ from . import bridge
 from .controller_wire import *  # noqa: F403 - re-export canonical wire schema
 from .env import (
     DESCEND_UNIT,
+    REWARD_ECONOMY_V1,
     DiabloGymEnv,
     _scene_identity,
     gear_combat_utility_value,
@@ -86,11 +87,16 @@ WORKER_OBSERVATION_VIEW_RAW_V4 = "raw-v4"
 WORKER_OBSERVATION_VIEW_LEGACY_V3 = "legacy-v3"
 WORKER_OBSERVATION_VIEW_A12_OVERLAY = "legacy-v3-a12-overlay"
 WORKER_OBSERVATION_VIEW_DUAL_V4_ASYMMETRIC = "dual-v4-asymmetric-v3"
+# R13 教室改革:v5 = 完整 v4 向量逐位前缀 + 12 维窗口模式追加块。
+# 旧 v4 布局与 sha 一字不动;v5 仅由 R13 预注册配方点名,默认路径不可达。
+WORKER_OBSERVATION_VIEW_DUAL_V5_WINDOW_MODE = "dual-v5-window-mode-v1"
+DUAL_WORKER_V5_APPENDIX_DIM = 12
 WORKER_OBSERVATION_VIEWS = frozenset({
     WORKER_OBSERVATION_VIEW_RAW_V4,
     WORKER_OBSERVATION_VIEW_LEGACY_V3,
     WORKER_OBSERVATION_VIEW_A12_OVERLAY,
     WORKER_OBSERVATION_VIEW_DUAL_V4_ASYMMETRIC,
+    WORKER_OBSERVATION_VIEW_DUAL_V5_WINDOW_MODE,
 })
 WORKER_ACTION12_PERMANENTLY_MASKED = "permanently-masked"
 WORKER_ACTION12_ENVIRONMENT_MASK = "environment-mask"
@@ -235,6 +241,13 @@ def _validated_action_effect_audit(
         info: dict, requested_action: int) -> dict:
     """Validate the base environment's causal effect/stall receipt."""
     audit = info.get("action_effect_audit")
+    resource = info.get("resource_action_audit")
+    is_resource = isinstance(resource, dict) and resource.get("source") == "resupply-script"
+    if is_resource and (requested_action != 0
+            or not isinstance(resource.get("accepted"), bool)
+            or type(resource.get("micro_steps")) is not int
+            or resource["micro_steps"] < 0):
+        raise RuntimeError("Invalid script-owned resource receipt")
     if (
         not isinstance(audit, dict)
         or set(audit) != _ACTION_EFFECT_AUDIT_KEYS
@@ -262,16 +275,15 @@ def _validated_action_effect_audit(
         or bool(audit["effect_reasons"]) != audit["material_effect"]
         or audit["request_executed"]
         != (
-            int(requested_action) == 0
-            or audit["native_accepts"] > 0
+            bool(resource["accepted"]) if is_resource else
+            (int(requested_action) == 0 or audit["native_accepts"] > 0)
         )
         or audit["stall_cost_applied"]
         != (
-            audit["same_scene"]
-            and (
-                int(requested_action) == 0
-                or not audit["request_executed"]
-            )
+            (audit["same_scene"] and not audit["request_executed"]
+             and resource["micro_steps"] > 0) if is_resource else
+            (audit["same_scene"] and (int(requested_action) == 0
+                or not audit["request_executed"]))
         )
     ):
         raise RuntimeError("基础动作缺失/损坏因果效果回执")
@@ -416,9 +428,90 @@ class OptionsEnv(gym.Env):
                  worker_observation_view: str = WORKER_OBSERVATION_VIEW_RAW_V4,
                  manager_observation_view: str = (
                      MANAGER_OBSERVATION_VIEW_RAW_V4),
+                 dive_live_sovereignty: bool = False,
+                 worker_descend_bonus_fraction: float = 0.0,
+                 farm_scene_cap: int = FARM_SCENE_CAP,
+                 reset_layer_clock_on_window: bool = False,
+                 resource_protocol: str = "off",
+                 resource_purchase_mode: str = "full",
+                 resource_service_policy: str = "legacy-v1",
+                 resource_calibration=None,
+                 resource_readiness_law: str = "veto-v1",
+                 worker_time_protocol: str = "legacy",
                  **env_kwargs):
         super().__init__()
+        from .resource_protocol import (
+            validate_resource_config, validate_resource_calibration, RESOURCE_FARM_CAP,
+            validate_readiness_law)
+        self.resource_protocol, self.resource_purchase_mode = validate_resource_config(
+            resource_protocol, resource_purchase_mode)
+        from .resource_sustain import validate_service_policy
+        self.resource_service_policy = validate_service_policy(
+            self.resource_protocol, self.resource_purchase_mode, resource_service_policy)
+        self.resource_calibration = validate_resource_calibration(
+            self.resource_protocol, resource_calibration)
+        # R17.1 ruling 3: readiness law; default veto-v1 keeps env kwargs byte-identical.
+        self.resource_readiness_law = validate_readiness_law(
+            self.resource_protocol, resource_readiness_law)
+        if self.resource_readiness_law != "veto-v1":
+            env_kwargs["resource_readiness_law"] = self.resource_readiness_law
+        if worker_time_protocol not in ("legacy", "completion-l2-v1"):
+            raise ValueError("Unknown worker_time_protocol")
+        self.worker_time_protocol = worker_time_protocol
+        if worker_time_protocol == "completion-l2-v1":
+            from .completion_clock import COMPLETION_L2_V1
+            if (type(max_steps) is not int
+                    or max_steps != COMPLETION_L2_V1.actor_denominator
+                    or self.resource_protocol != "l2-town-v1"
+                    or self.resource_purchase_mode != "full"
+                    or self.resource_service_policy != "sustain-v6"
+                    or self.resource_calibration is not None):
+                raise ValueError("completion-l2-v1 requires legacy observation denominator and l2-town-v1/full/sustain-v6 without calibration")
+        env_kwargs["resource_protocol"] = self.resource_protocol
+        env_kwargs["resource_purchase_mode"] = self.resource_purchase_mode
+        ordinary_scope = self.resource_service_policy in ("sustain-v5", "sustain-v6")
+        requested_scope = env_kwargs.pop("resource_ordinary_armor_scope", ordinary_scope)
+        if requested_scope is not ordinary_scope:
+            raise ValueError("resource_ordinary_armor_scope must match resource_service_policy")
+        if ordinary_scope:
+            env_kwargs["resource_ordinary_armor_scope"] = True
+        preserve_equipment = self.resource_service_policy == "sustain-v6"
+        requested_preservation = env_kwargs.pop(
+            "resource_preserve_equipment_readiness", preserve_equipment)
+        if requested_preservation is not preserve_equipment:
+            raise ValueError("resource_preserve_equipment_readiness must match resource_service_policy")
+        if preserve_equipment:
+            env_kwargs["resource_preserve_equipment_readiness"] = True
+        if self.resource_protocol != "off":
+            farm_scene_cap = (RESOURCE_FARM_CAP if self.resource_calibration is None
+                              else self.resource_calibration.farm_scene_microstep_cap)
         self._workers = workers or {}
+        # R16 修宪(审计簇 C6/C3):出生层场景预算改为可配置(默认 1800 逐位
+        # 旧法);FARM 开窗时可选清零无进展钟——argmax 体制下 DIVE stall 后
+        # layer_clock 被继承,下一 FARM 窗一个决策即再榨干(时钟继承)。
+        _cap = int(farm_scene_cap)
+        if _cap <= 0:
+            raise ValueError(
+                f"farm_scene_cap 必须为正整数,收到 {farm_scene_cap!r}")
+        self.farm_scene_cap = _cap
+        self.reset_layer_clock_on_window = bool(reset_layer_clock_on_window)
+        # R13 主权移交(默认 False = 旧法逐位不变):仅在 live DIVE 窗内
+        # 解禁 a11 与 1-8 踏 trigger 格;a10 剧情掩码与 FARM/RESUPPLY 窗
+        # 掩码在任何取值下一字不动。
+        self.dive_live_sovereignty = bool(dive_live_sovereignty)
+        # R14 乙案:live DIVE 窗内工人保留的下楼奖金比例(默认 0 = 全额
+        # 剥薪旧法);仅与主权移交同时生效,记账见 _win_beat。
+        _f = float(worker_descend_bonus_fraction)
+        if not np.isfinite(_f) or not 0.0 <= _f <= 1.0:
+            raise ValueError(
+                "worker_descend_bonus_fraction 必须在 [0,1] 内,"
+                f"收到 {worker_descend_bonus_fraction!r}")
+        if _f > 0.0 and not self.dive_live_sovereignty:
+            raise ValueError(
+                "worker_descend_bonus_fraction 仅与 dive_live_sovereignty "
+                "同时生效(非 live-DIVE 法域无下楼可酬)")
+        self.worker_descend_bonus_fraction = _f
+        self.descend_bonus_kept_total = 0.0
         # v32 喝药主权(④丙):默认 True = 新协议常态,工人可主动按 12;
         # 0.5 反射(_drain/dispatch 内嵌)一字不动,永为兜底。False 系
         # 对照腿/旧协议复现专用旋钮。带部署合约的 Worker 可在 None
@@ -457,16 +550,20 @@ class OptionsEnv(gym.Env):
                 "OptionsEnv 要求 descend_ladder=True；Worker 工资会从基础"
                 "奖励中扣除同一深度奖金，关闭它会凭空制造负工资")
         required_controller_snapshot = (
-            worker_observation_view
-            == WORKER_OBSERVATION_VIEW_DUAL_V4_ASYMMETRIC
+            worker_observation_view in (
+                WORKER_OBSERVATION_VIEW_DUAL_V4_ASYMMETRIC,
+                WORKER_OBSERVATION_VIEW_DUAL_V5_WINDOW_MODE,
+            )
         )
         requested_controller_snapshot = env_kwargs.setdefault(
             "controller_snapshot_enabled", required_controller_snapshot)
         if bool(requested_controller_snapshot) != required_controller_snapshot:
             raise ValueError(
                 "controller_snapshot_enabled 必须与 worker_observation_view "
-                "一致；只有 dual-v4-asymmetric-v3 可启用固定 controller wire")
+                "一致；只有 dual 家族视图可启用固定 controller wire")
         self.env = DiabloGymEnv(max_steps=max_steps, **env_kwargs)
+        if self.resource_calibration is not None:
+            self.env._resource_calibration = self.resource_calibration
         self.max_steps = max_steps
         self.action_space = gym.spaces.Discrete(3)
         base = self.env.observation_space.shape[0]
@@ -478,6 +575,45 @@ class OptionsEnv(gym.Env):
 
     # ---- wrapper 状态(跨选项持续)----
     def _reset_wrapper_state(self):
+        from .resource_protocol import ResourceService
+        service_type = ResourceService
+        if getattr(self, "resource_service_policy", "legacy-v1") == "sustain-v2":
+            from .resource_sustain import SustainResourceService
+            service_type = SustainResourceService
+        elif getattr(self, "resource_service_policy", "legacy-v1") == "sustain-v3":
+            from .resource_sustain_gold import SustainGoldMemoryService
+            service_type = SustainGoldMemoryService
+        elif getattr(self, "resource_service_policy", "legacy-v1") == "sustain-v4":
+            from .resource_sustain_gold import SustainGoldExtendedService
+            service_type = SustainGoldExtendedService
+        elif getattr(self, "resource_service_policy", "legacy-v1") == "sustain-v5":
+            from .resource_sustain_armor import SustainOrdinaryArmorService
+            service_type = SustainOrdinaryArmorService
+        elif getattr(self, "resource_service_policy", "legacy-v1") == "sustain-v6":
+            from .resource_sustain_armor import SustainEquipmentReadinessService
+            service_type = SustainEquipmentReadinessService
+        if getattr(self, "worker_time_protocol", "legacy") == "completion-l2-v1":
+            from .resource_sustain_completion import SustainCompletionService
+            from .completion_clock import CompletionClock
+            service_type = SustainCompletionService
+            self._completion_clock = CompletionClock()
+            self.env.max_steps = self._completion_clock.state.physical_deadline
+            self.env._completion_prefix_active = False
+            self.env._completion_time_failure = None
+            self._completion_previous_scene = self._completion_scene(
+                getattr(self.env, "_raw", None))
+            self.env.resource_time_callback = self._completion_time_tick
+            self.env.resource_time_info_callback = self.completion_time_telemetry
+        self.resource_service = service_type(
+            getattr(self, "resource_purchase_mode", "full"),
+            calibration=getattr(self, "resource_calibration", None))
+        if getattr(self, "resource_service_policy", "legacy-v1") in ("sustain-v3", "sustain-v4", "sustain-v5", "sustain-v6"):
+            memory = self.resource_service.gold_memory
+            self.env.resource_observation_callback = lambda inner, raw, steps: memory.observe(raw, steps)
+            if getattr(self.env, "_raw", None) is not None:
+                memory.observe(self.env._raw, int(self.env._steps))
+        self._resource_farm_ledgers = {}
+        self._resource_command = None
         # 冻结的 V28 worker 与 M29 manager 都在 db7d26c 的 protocol-v3
         # 状态上训练。新协议可以改变收窗动力学，却不能把同宽度列静默换义；
         # 因此旧无新杀钟/榨干旗/本层起点独立维护，只供冻结网络观测。
@@ -500,6 +636,59 @@ class OptionsEnv(gym.Env):
         self._decisions = 0
         self.mode_seq = []
         self._win = None
+
+    @staticmethod
+    def _completion_scene(raw):
+        if raw is None:
+            return None
+        return {key: raw[key] for key in ("engine_level", "is_set_level")}
+
+    def completion_time_telemetry(self):
+        """Detached clock facts only; no native query, reset, reward or outcome."""
+        if getattr(self, "worker_time_protocol", "legacy") == "legacy":
+            return None
+        from dataclasses import asdict
+        from .completion_clock import COMPLETION_L2_V1
+        clock = self._completion_clock
+        return {"protocol": self.worker_time_protocol,
+                "recipe": COMPLETION_L2_V1.as_dict(),
+                "clock": asdict(clock.state),
+                "effective_physical_limit": int(self.env.max_steps),
+                "observation_denominator": int(self.max_steps),
+                "prefix_budget_active": bool(getattr(self.env, "_completion_prefix_active", False))}
+
+    def _completion_time_tick(self, inner, raw, micro_step):
+        clock = self._completion_clock
+        target = self._completion_scene(raw)
+        prefix_active = bool(getattr(inner, "_completion_prefix_active", False))
+        expected = (getattr(inner, "_completion_prefix_deadline", None) if prefix_active
+                    else clock.state.physical_deadline)
+        if expected is None or int(inner.max_steps) != expected:
+            raise RuntimeError("completion physical limit changed outside its owner")
+        entering = (clock.state.first_arrival_micro_step is None
+                    and target["engine_level"] == 2 and not target["is_set_level"])
+        if entering:
+            if prefix_active:
+                # The engine already completed this tick; it is an engineering
+                # stop, not a settled/credited prefix or permission to extend it.
+                inner._completion_time_failure = {
+                    "reason": "L2_before_learner_handoff",
+                    "actual_native_microstep": int(micro_step),
+                    "source_scene": self._completion_previous_scene,
+                    "observed_scene": target,
+                    "window_incomplete": True,
+                    "physical_deadline_unchanged": int(inner.max_steps),
+                }
+                raise RuntimeError("completion L2 arrival before learner handoff")
+            transition = raw.get("resource_state", {}).get("transition", {})
+            if (not transition.get("accepted") or not transition.get("pretransition_ready")
+                    or transition.get("source_depth") != 1 or transition.get("target_depth") != 2
+                    or transition.get("source_is_set") or transition.get("target_is_set")):
+                raise RuntimeError("completion L2 arrival lacks the live native readiness receipt")
+        clock.observe_native_tick(micro_step, self._completion_previous_scene, target)
+        self._completion_previous_scene = target
+        if entering:
+            inner.max_steps = clock.state.physical_deadline
 
     def _mark_exhausted(self) -> None:
         """原子发布当前协议的榨干态。
@@ -618,7 +807,8 @@ class OptionsEnv(gym.Env):
             self._layer_steps0 = self.env._steps
         elif self.env._ep_kills > kills_before or positive_progress:
             # 累计预算是独立的交权闸，不能被一块新地板或下一刀重新打开。
-            if getattr(self, "farm_scene_steps", 0) < FARM_SCENE_CAP:
+            if (getattr(self, "farm_scene_steps", 0)
+                    < getattr(self, "farm_scene_cap", FARM_SCENE_CAP)):
                 self.layer_clock = 0
                 self._clear_exhausted()
             else:
@@ -628,21 +818,34 @@ class OptionsEnv(gym.Env):
             # cap 可能恰在一个没有正进展的宏内命中；在 _win_term 之前就
             # 原子发布，保证任何调试/worker 观测都不会看见“钟未满但旗已满”
             # 的中间态。
-            if getattr(self, "farm_scene_steps", 0) >= FARM_SCENE_CAP:
+            if (getattr(self, "farm_scene_steps", 0)
+                    >= getattr(self, "farm_scene_cap", FARM_SCENE_CAP)):
                 self._mark_exhausted()
 
     def _sync_farm_scene(self, scene) -> None:
         """scene identity 变化时原子清空累计 FARM 预算（主层/任务图均适用）。"""
         scene = tuple(scene)
         if getattr(self, "_farm_scene", None) != scene:
-            self._farm_scene = scene
-            self.farm_scene_steps = 0
+            if getattr(self, "resource_protocol", "off") != "off":
+                previous = getattr(self, "_farm_scene", None)
+                if previous is not None:
+                    self._resource_farm_ledgers[previous] = int(self.farm_scene_steps)
+                self._farm_scene = scene
+                self.farm_scene_steps = int(self._resource_farm_ledgers.get(scene, 0))
+            else:
+                self._farm_scene = scene
+                self.farm_scene_steps = 0
 
     # ---- gym 接口 ----
     def reset(self, *, seed=None, options=None):
         # OptionsEnv 自身也是 Gym Env，必须建立它自己的 np_random；
         # 只给内层 env 传 seed 会被 env_checker 判为不符合 Gymnasium 契约。
         super().reset(seed=seed)
+        if getattr(self, "worker_time_protocol", "legacy") == "completion-l2-v1":
+            self._completion_clock.reset()
+            self.env.max_steps = self._completion_clock.state.physical_deadline
+        if getattr(self, "resource_service_policy", "legacy-v1") in ("sustain-v3", "sustain-v4", "sustain-v5", "sustain-v6"):
+            self.env.resource_observation_callback = None
         obs, info = self.env.reset(seed=seed, options=options)
         self._reset_wrapper_state()
         self._last_base_obs = obs
@@ -699,7 +902,60 @@ class OptionsEnv(gym.Env):
         forced_dive = _farm_handoff(
             raw, nearest) or (self.exhausted and bool(m[DIVE]))
         m[FARM] = not forced_dive
+        if getattr(self, "resource_protocol", "off") != "off":
+            from .resource_protocol import progression_allowed, native_readiness, RESOURCE_FARM_CAP
+            law = getattr(self, "resource_readiness_law", "veto-v1")
+            # veto-v1 masks DIVE on the native verdict; coach-v03 leaves the frozen
+            # DIVE legality untouched (progression_allowed returns True under it).
+            m[DIVE] = bool(m[DIVE] and progression_allowed(raw, law))
+            service = self.resource_service
+            if (not service.attempted and int(raw["dungeon_level"]) == 1
+                    and not raw.get("is_set_level") and not native_readiness(raw)["ready"]):
+                alive = sum(1 for monster in raw.get("monsters", [])
+                            if int(monster.get("hp", 0)) > 0 and int(monster.get("type", -1)) != 109)
+                cleared = alive == 0 and int(raw.get("monster_kill_total", 0)) > 0
+                calibration = getattr(self, "resource_calibration", None)
+                farm_trigger = (RESOURCE_FARM_CAP if calibration is None
+                                else calibration.farm_scene_microstep_cap)
+                if cleared or self.farm_scene_steps >= farm_trigger:
+                    service.start(raw, self.env._steps, "cleared" if cleared else "farm_cap",
+                                  farm_scene_steps=self.farm_scene_steps)
+            if service.active:
+                m[:] = False
+                m[RESUPPLY] = True
+            elif law == "coach-v03":
+                # R17.1 ruling 3: the frozen forced-descent law stands (escape hatch
+                # kept); forced-unready descents are recorded by the engine receipt
+                # and paid no escrow (worker_env settlement reads pretransition_ready_law).
+                m[FARM] = not forced_dive
+                m[RESUPPLY] = bool(controller_mask[13])
+            else:
+                # veto-v1: no exhausted/cleared bypass of the native admission verdict.
+                m[FARM] = not (forced_dive and m[DIVE])
+                m[RESUPPLY] = bool(controller_mask[13])
+            self.env._resource_dive_authority = bool(
+                self.dive_live_sovereignty and (self._win or {}).get("opt") == DIVE
+                and m[DIVE])
         return m
+
+    def resource_option_choice(self, mask=None):
+        if getattr(self, "resource_protocol", "off") == "off":
+            raise RuntimeError("Resource manager requires l2-town-v1")
+        from .resource_protocol import law_ready
+        mask = self.action_masks() if mask is None else mask
+        if self.resource_service.active:
+            return RESUPPLY
+        raw = self.env._raw
+        # veto-v1: native seven-condition verdict; coach-v03: six-condition law
+        # (health excluded). The town-trip trigger above keeps the full native
+        # verdict so low HP still sends the manager to Pepin (ruling 3).
+        if mask[DIVE] and (raw.get("is_set_level") or raw.get("progression_targets")
+                           or law_ready(raw, getattr(self, "resource_readiness_law", "veto-v1"))):
+            return DIVE
+        for option in (FARM, RESUPPLY, DIVE):
+            if mask[option]:
+                return option
+        raise RuntimeError("Resource manager has no legal option")
 
     # ---- 共享窗口核(v23:OptionsEnv 与 WorkerWindowEnv 唯一实现)----
     def _dive_target_distance(self, raw) -> int | None:
@@ -724,9 +980,16 @@ class OptionsEnv(gym.Env):
         if not self.action_space.contains(option):
             raise ValueError(f"选项必须是 {self.action_space}中的整数，收到 {option!r}")
         option = int(option)
+        if getattr(self, "resource_protocol", "off") != "off":
+            self.env._resource_dive_authority = False
         if not self.action_masks()[option]:
             raise ValueError(f"选项 {option} 被掩码却被选择")
         raw = self.env._raw
+        if (option == FARM
+                and getattr(self, "reset_layer_clock_on_window", False)):
+            # R16(C3 时钟继承):新 FARM 窗从零计无进展,不承接上一
+            # DIVE stall 的余额;榨干旗与 legacy 钟不动(冻结观测语义)。
+            self.layer_clock = 0
         self._win = {
             # _decisions 只在 _win_end 增一，因此同一底层局内这是稳定、
             # 单调且在窗口开始时即可对外报告的标识。
@@ -772,6 +1035,8 @@ class OptionsEnv(gym.Env):
             "fuse_requested_action": None,
             "done": False, "trunc": False, "last_info": {},
         }
+        if getattr(self, "resource_protocol", "off") != "off":
+            self._win["resource_depth0"] = int(self.env._resource_max_main_depth)
 
     def _beat(self, a: int, *, worker_authority: bool = False):
         """一拍:保险丝 → env.step → 观测缓存 → 停滞钟。
@@ -782,7 +1047,9 @@ class OptionsEnv(gym.Env):
         """
         raw = self.env._raw
         requested = int(a)
-        sig = self._sig(a, raw)
+        sig = (("resource", tuple(self._resource_command), int(self.env._steps))
+               if getattr(self, "_resource_command", None) is not None
+               else self._sig(a, raw))
         if sig == self._fuse_sig:
             self._fuse += 1
             if self._fuse >= 25:
@@ -829,7 +1096,9 @@ class OptionsEnv(gym.Env):
             raw, "options_before")
         gold_b = int(raw.get("gold", 0))
         combat_floor_b = dict(getattr(self.env, "_combat_hp_floor", {}))
-        if worker_authority:
+        if getattr(self, "_resource_command", None) is not None:
+            obs, r, done, trunc, info = self.env.step_resource(self._resource_command)
+        elif worker_authority:
             obs, r, done, trunc, info = self.env.step(
                 a, worker_authority=True)
         else:
@@ -935,6 +1204,11 @@ class OptionsEnv(gym.Env):
         if done or trunc:
             return "death" if raw.get("dead") else "end"
         if _scene_identity(raw) != w["scene0"]:
+            # Resource service returns town -> visited L1. Only a newly reached
+            # main depth is descent; a scene return must not inflate statistics.
+            if getattr(self, "resource_protocol", "off") != "off":
+                return ("descend" if int(self.env._resource_max_main_depth)
+                        > w["resource_depth0"] else "scene")
             # 进入/离开任务副本同样必须归还控制权，但只有主线深度增加
             # 才叫 descend、才可领取下潜奖金。
             return ("descend" if raw["dungeon_level"] > w["dlvl0"]
@@ -976,7 +1250,8 @@ class OptionsEnv(gym.Env):
             self._legacy_exhausted = True
         if (opt == FARM
                 and (self.layer_clock >= KILL_PATIENCE
-                     or self.farm_scene_steps >= FARM_SCENE_CAP)):
+                     or self.farm_scene_steps
+                     >= getattr(self, "farm_scene_cap", FARM_SCENE_CAP))):
             self._mark_exhausted()
             return "exhausted"
         if opt == DIVE:
@@ -987,6 +1262,10 @@ class OptionsEnv(gym.Env):
                     return "stall"
             elif tau >= KILL_PATIENCE:
                 return "stall"
+        if opt == RESUPPLY and getattr(self, "resource_protocol", "off") != "off" and self.resource_service.attempted:
+            if self.resource_service.active:
+                return None
+            return "resource_complete"
         if opt == RESUPPLY:
             belt_free = DiabloGymEnv._belt_free_slots(raw)
             if belt_free >= belt_free_b:
@@ -1063,7 +1342,28 @@ class OptionsEnv(gym.Env):
             w["executed_requests"] += 1
         w["R"] += r
         cur_lvl = self.env._raw["dungeon_level"]
-        bonus = DESCEND_UNIT * sum(range(lvl_b, cur_lvl)) if cur_lvl > lvl_b else 0.0
+        # 剥薪单价跟随经济规格(v1 时 == DESCEND_UNIT,数值逐位同旧;
+        # R10 v2 换单价后恒等式 Σw ≡ 窗口R − unit×ΣΔdlvl⁺ 继续成立,
+        # 防"临战下楼避罚"套利语义不变)。测试替身/旧包装无该属性时
+        # 回退 v1——与历史行为逐位一致。
+        descend_unit = getattr(
+            self.env, "reward_economy", REWARD_ECONOMY_V1).descend_unit
+        bonus = descend_unit * sum(range(lvl_b, cur_lvl)) if cur_lvl > lvl_b else 0.0
+        if getattr(self, "resource_protocol", "off") != "off":
+            bonus = float(info["resource_protocol"]["new_main_depth_bonus"])
+        # R14 乙案(主席批「先做乙 我想看看在乙的条件下 是否仍会出发
+        # 裸奔哥的情况」):live DIVE 窗内工人保留 fraction 的下楼奖金。
+        # w["bonus"] 语义=实际剥除额,恒等式 R≡W+bonus 逐位继续成立;
+        # fraction=0(默认)或非 live-DIVE 窗时本路径逐位同旧法。
+        if (bonus > 0.0
+                and getattr(
+                    self, "worker_descend_bonus_fraction", 0.0) > 0.0
+                and getattr(self, "dive_live_sovereignty", False)
+                and w.get("opt") == DIVE):
+            _kept = bonus * self.worker_descend_bonus_fraction
+            bonus -= _kept
+            self.descend_bonus_kept_total = float(getattr(
+                self, "descend_bonus_kept_total", 0.0)) + _kept
         w["bonus"] += bonus
         w["W"] += r - bonus
         w["done"], w["trunc"], w["last_info"] = done, trunc, info
@@ -1100,6 +1400,10 @@ class OptionsEnv(gym.Env):
         if (
             1 <= a <= 8
             and a in DiabloGymEnv._protected_walk_actions(self.env._raw)
+            and not (
+                getattr(self, "dive_live_sovereignty", False)
+                and (self._win or {}).get("opt") == DIVE
+            )   # R13:live DIVE 窗内踏格即职权,与掩码放行同条件
         ):
             raise ValueError(
                 f"工人动作 {a} 试图踏入 DIVE 专属 trigger/剧情格")
@@ -1376,6 +1680,62 @@ class OptionsEnv(gym.Env):
         ], dtype=np.float32)
         return np.concatenate([np.asarray(self._last_base_obs, dtype=np.float32), extra])
 
+    def _worker_v5_window_appendix(self, w, tau, raw) -> np.ndarray:
+        """R13 v5 追加块(12 维):窗口模式感知 + DIVE 进展/价值分解特征。
+
+        仅 dual-v5-window-mode-v1 视图构造本块;v4 前缀在调用方逐位拼装,
+        本函数零 RNG 消耗、零状态写入。零填充迁移的 actor/critic 对本块
+        初始权重为零,故行为自 v4 起点连续(D0 门的实现前提)。
+        """
+        mode = (w or {}).get("mode")
+        best_d = (w or {}).get("dive_best_d")
+        stall = 0.0
+        if w is not None and w.get("opt") == DIVE:
+            stall = min(1.0, max(0.0, (
+                float(tau) - float(w.get("dive_last_progress_tau", 0))
+            ) / max(1, KILL_PATIENCE)))
+        window_kills = 0.0
+        worker_wage_frac = 0.0
+        drinks_frac = 0.0
+        if w is not None:
+            window_kills = min(1.0, max(0.0, (
+                float(self.env._ep_kills) - float(w.get("kills0", 0))
+            ) / 50.0))
+            worker_wage_frac = min(1.0, max(
+                -1.0, float(w.get("worker_wage", 0.0)) / 50.0))
+            drinks_frac = min(1.0, max(0.0, (
+                float(w.get("drains", 0))
+                + float(w.get("voluntary_drinks", 0))
+            ) / 5.0))
+        dlvl = float(raw.get("dungeon_level", 0))
+        clvl = float(raw.get("char_level", 0))
+        hp_frac = min(1.0, max(0.0, (
+            float(raw.get("hp", 0)) / max(1.0, float(raw.get("max_hp", 0))))))
+        appendix = np.asarray([
+            1.0 if mode == "farm" else 0.0,       # [0] 模式 one-hot
+            1.0 if mode == "dive" else 0.0,       # [1]
+            1.0 if mode == "resupply" else 0.0,   # [2]
+            (min(1.0, max(0.0, float(best_d) / 50.0))
+             if best_d is not None else 0.0),     # [3] 主线目标最近距
+            stall,                                # [4] DIVE 停滞钟
+            min(1.0, max(0.0, float(tau) / max(1, TAU_CAP))),  # [5] 窗龄
+            min(1.0, max(0.0, dlvl / 15.0)),      # [6] 地牢层
+            min(1.0, max(-1.0, (clvl - dlvl) / 10.0)),  # [7] 等级余量
+            window_kills,                         # [8] 窗内击杀
+            hp_frac,                              # [9] 血量分数
+            worker_wage_frac,                     # [10] 窗内工人工资
+            drinks_frac,                          # [11] 窗内饮药
+        ], dtype=np.float32)
+        if (
+            appendix.shape != (DUAL_WORKER_V5_APPENDIX_DIM,)
+            or not np.isfinite(appendix).all()
+        ):
+            raise RuntimeError(
+                "dual Worker v5 追加块形状/有限性漂移:"
+                f"shape={appendix.shape},"
+                f"finite={np.isfinite(appendix).all()}")
+        return appendix
+
     def _worker_policy_observation(
             self,
             view: str,
@@ -1423,7 +1783,10 @@ class OptionsEnv(gym.Env):
             raise RuntimeError(
                 "Worker legacy 观测形状漂移:"
                 f"{legacy_result.shape} != (298,)")
-        if view == WORKER_OBSERVATION_VIEW_DUAL_V4_ASYMMETRIC:
+        if view in (
+            WORKER_OBSERVATION_VIEW_DUAL_V4_ASYMMETRIC,
+            WORKER_OBSERVATION_VIEW_DUAL_V5_WINDOW_MODE,
+        ):
             try:
                 p_skip = float(skip_dry_probability)
             except (TypeError, ValueError, OverflowError) as exc:
@@ -1491,6 +1854,10 @@ class OptionsEnv(gym.Env):
                     ),
                 )
 
+            calibration = getattr(self, "resource_calibration", None)
+            farm_scene_denominator = (
+                calibration.worker_farm_scene_denominator if calibration is not None
+                else getattr(self, "farm_scene_cap", FARM_SCENE_CAP))
             context = np.asarray([
                 min(1.0, max(0.0, self.layer_clock / KILL_PATIENCE)),
                 1.0 if self.exhausted else 0.0,
@@ -1498,7 +1865,7 @@ class OptionsEnv(gym.Env):
                     1.0,
                     max(
                         0.0,
-                        self.farm_scene_steps / max(1, FARM_SCENE_CAP),
+                        self.farm_scene_steps / max(1, farm_scene_denominator),
                     ),
                 ),
                 min(
@@ -1573,8 +1940,16 @@ class OptionsEnv(gym.Env):
                 manager_mask.astype(np.float32),
                 controller_snapshot,
             ]).astype(np.float32, copy=False)
+            expected_dim = DUAL_WORKER_OBSERVATION_DIM
+            if view == WORKER_OBSERVATION_VIEW_DUAL_V5_WINDOW_MODE:
+                # R13:v4 前缀已在上方完整拼装(逐位同 v4),此处仅追加。
+                result = np.concatenate([
+                    result,
+                    self._worker_v5_window_appendix(w, tau, raw),
+                ]).astype(np.float32, copy=False)
+                expected_dim += DUAL_WORKER_V5_APPENDIX_DIM
             if (
-                result.shape != (DUAL_WORKER_OBSERVATION_DIM,)
+                result.shape != (expected_dim,)
                 or not np.isfinite(result).all()
             ):
                 raise RuntimeError(
@@ -1605,14 +1980,28 @@ class OptionsEnv(gym.Env):
     def _worker_masks_and_distance(
         self,
     ) -> tuple[np.ndarray, int | None]:
+        if getattr(self, "resource_protocol", "off") != "off":
+            from .resource_protocol import progression_allowed
+            self.env._resource_dive_authority = bool(
+                self.dive_live_sovereignty and (self._win or {}).get("opt") == DIVE
+                and progression_allowed(self.env._raw))
         m, nearest = self._controller_action_context()
         m = np.array(m, dtype=bool)
         raw = self.env._raw
-        m[11] = False   # 主线推进归经理(DIVE 职权)
-        # 1..8 也能直接踏上相邻 trigger/剧情站位。仅剥掉换层奖金无法
-        # 封权：临战下楼可规避巨额死亡成本，Worker 会因此学会逃跑。
-        for action in DiabloGymEnv._protected_walk_actions(raw):
-            m[action] = False
+        # R13 主权移交:live DIVE 窗内工人获得 a11 与踏格职权(默认关,
+        # 旧法逐位不变)。FARM/RESUPPLY 窗以及旗关路径维持恒掩——
+        # 临战下楼规避死亡成本的逃跑漏洞只在「下楼本就是本窗任务」的
+        # DIVE 窗内不成立。
+        _dive_live_window = (
+            getattr(self, "dive_live_sovereignty", False)
+            and (self._win or {}).get("opt") == DIVE
+        )
+        if not _dive_live_window:
+            m[11] = False   # 主线推进归经理(DIVE 职权)
+            # 1..8 也能直接踏上相邻 trigger/剧情站位。仅剥掉换层奖金无法
+            # 封权：临战下楼可规避巨额死亡成本，Worker 会因此学会逃跑。
+            for action in DiabloGymEnv._protected_walk_actions(raw):
+                m[action] = False
         # action10 会优先处理剧情白名单；只要目标存在就必须掩掉，哪怕
         # 近敌尚需 FARM 清理，也不能让学习工人越过 manager DIVE。
         m[10] = m[10] and not bool(
@@ -1696,6 +2085,27 @@ class OptionsEnv(gym.Env):
         mode = self._win["mode"]
         worker = self._workers.get(int(option))
         ending = self._consume_fuse_recovery()
+        if (getattr(self, "resource_protocol", "off") != "off"
+                and int(option) == RESUPPLY and self.resource_service.active):
+            while ending is None or ending.reason is None:
+                command = self.resource_service.command(self.env, bridge)
+                self.env._resource_service_deadline = (
+                    self.resource_service.start_steps + self.resource_service.service_microstep_cap)
+                if getattr(self, "resource_service_policy", "legacy-v1") in ("sustain-v3", "sustain-v4", "sustain-v5", "sustain-v6"):
+                    self.env._resource_service_deadline = self.resource_service.command_microstep_deadline
+                self._resource_command = command
+                try:
+                    ending = self._win_beat(0)
+                finally:
+                    self._resource_command = None
+                receipt = self._win.get("last_info", {}).get("resource_action_audit", {})
+                self.resource_service.receipt(command, receipt)
+                self.resource_service.record_steps(self.env._steps, self.resource_service.phase)
+            extra, base_info, done, trunc = self._win_end(ending.reason)
+            extra["resource"] = self.resource_service.telemetry()
+            info = dict(base_info)
+            info["option_extra"] = extra
+            return self._mgr_obs(self._last_base_obs), extra["R"], done, trunc, info
         if worker is not None:
             if ending is None or ending.reason is None:
                 ending = self._drain()  # 工人首个观测必须是无反射态
@@ -1752,6 +2162,8 @@ class OptionsEnv(gym.Env):
                     self._win["gear_grace_decisions"] -= 1
         extra, base_info, done, trunc = self._win_end(ending.reason)
         info = dict(base_info)
+        if getattr(self, "resource_protocol", "off") != "off":
+            extra["resource"] = self.resource_service.telemetry()
         info["option_extra"] = extra
         return self._mgr_obs(self._last_base_obs), extra["R"], done, trunc, info
 

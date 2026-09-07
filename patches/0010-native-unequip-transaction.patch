@@ -1,0 +1,29 @@
+--- a/Source/inv.h
++++ b/Source/inv.h
+@@ -117,8 +117,9 @@
+  * @param player The player from which equipment will be removed.
+  * @param bodyLocation The location from which equipment will be removed.
+  * @param hiPri Priority of the network message to sync player equipment.
+- */
+-void RemoveEquipment(Player &player, inv_body_loc bodyLocation, bool hiPri);
++ * @param sendNetworkMessage Whether to publish the equipment deletion immediately.
++ */
++void RemoveEquipment(Player &player, inv_body_loc bodyLocation, bool hiPri, bool sendNetworkMessage = true);
+ 
+ /**
+  * @brief Checks whether or not auto-equipping behavior is enabled for the given player and item.
+--- a/Source/inv.cpp
++++ b/Source/inv.cpp
+@@ -1316,9 +1316,9 @@
+ 	}
+ }
+ 
+-void RemoveEquipment(Player &player, inv_body_loc bodyLocation, bool hiPri)
+-{
+-	if (&player == MyPlayer) {
++void RemoveEquipment(Player &player, inv_body_loc bodyLocation, bool hiPri, bool sendNetworkMessage)
++{
++	if (sendNetworkMessage && &player == MyPlayer) {
+ 		NetSendCmdDelItem(hiPri, bodyLocation);
+ 	}
+ 

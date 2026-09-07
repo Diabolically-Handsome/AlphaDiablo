@@ -2,6 +2,10 @@
 # DiabloGym 一键构建:引擎(共享库+资产)+ pybind11 桥
 set -euo pipefail
 cd "$(dirname "$0")"
+# A candidate can be built without replacing the installed runtime in build/.
+BUILD_DIR="${ALPHADIABLO_BUILD_DIR:-build}"
+mkdir -p "$BUILD_DIR"
+BUILD_DIR="$(cd "$BUILD_DIR" && pwd -P)"
 [ "$(uname -s)" = "Darwin" ] && export PATH="/opt/homebrew/bin:$PATH" || true
 
 # Python 解释器解析顺序:$PYTHON 环境变量 > ./.venv > ../.venv
@@ -34,8 +38,12 @@ ACTUAL_REF="$(git -C "$DEVX" rev-parse HEAD)"
 for patch in patches/*.patch; do
   if git -C "$DEVX" apply --ignore-space-change --reverse --check "$PWD/$patch" 2>/dev/null; then
     echo "补丁已在位: $patch"
-  else
+  elif git -C "$DEVX" apply --ignore-space-change --check "$PWD/$patch" 2>/dev/null; then
     git -C "$DEVX" apply --ignore-space-change "$PWD/$patch" && echo "已应用补丁: $patch"
+  else
+    # A later registered patch can change an earlier patch's context. The
+    # complete expected-index comparison below is authoritative in that case.
+    echo "补丁上下文重叠，交由完整补丁栈校验: $patch"
   fi
 done
 
@@ -88,7 +96,7 @@ if [ "$(uname -s)" = "Darwin" ]; then
   )
 fi
 
-cmake -S . -B build \
+cmake -S . -B "$BUILD_DIR" \
   -DCMAKE_BUILD_TYPE=Release \
   -DDEVILUTIONX_SRC="$DEVX" \
   -Dpybind11_DIR="$PYBIND11_DIR" \
@@ -98,7 +106,7 @@ cmake -S . -B build \
   -DALPHADIABLO_EXPECTED_PYTHON_INCLUDE_DIR="$PYTHON_INCLUDE_DIR" \
   "${OSX_CMAKE_ARGS[@]}"
 
-BUILD_IDENTITY="build/alphadiablo-python-build.txt"
+BUILD_IDENTITY="$BUILD_DIR/alphadiablo-python-build.txt"
 [ -f "$BUILD_IDENTITY" ] || { echo "CMake 未产出 Python 构建身份:$BUILD_IDENTITY"; exit 1; }
 "$VENV_PY" - "$BUILD_IDENTITY" "$VENV_PY" "$PYTHON_EXT_SUFFIX" \
   "$PYTHON_INCLUDE_DIR" "$OSX_DEPLOYMENT_TARGET" "$DEPLOYMENT_SOURCE" <<'PY'
@@ -131,34 +139,34 @@ if sys.argv[5]:
 PY
 
 # 注意:分目标构建,不用 all(macOS 上引擎测试资源目标必失败)
-cmake --build build -j "$JOBS" --target devilutionx   # 出 .app → 运行时资产
-cmake --build build -j "$JOBS" --target _diablogym    # pybind11 桥
+cmake --build "$BUILD_DIR" -j "$JOBS" --target devilutionx   # 出 .app → 运行时资产
+cmake --build "$BUILD_DIR" -j "$JOBS" --target _diablogym    # pybind11 桥
 
-BRIDGE="build/_diablogym${PYTHON_EXT_SUFFIX}"
+BRIDGE="$BUILD_DIR/_diablogym${PYTHON_EXT_SUFFIX}"
 [ -f "$BRIDGE" ] || {
   echo "构建未产出当前 Python ABI 对应模块:$BRIDGE"
-  find build -maxdepth 1 -type f -name '_diablogym*.so' -print
+  find "$BUILD_DIR" -maxdepth 1 -type f -name '_diablogym*.so' -print
   exit 1
 }
 
 if [ "$(uname -s)" = "Darwin" ]; then
-  ENGINE_DYLIB="build/engine/liblibdevilutionx_so.dylib"
-  GAME_BINARY="build/engine/devilutionx.app/Contents/MacOS/devilutionx"
+  ENGINE_DYLIB="$BUILD_DIR/engine/liblibdevilutionx_so.dylib"
+  GAME_BINARY="$BUILD_DIR/engine/devilutionx.app/Contents/MacOS/devilutionx"
   [ -f "$ENGINE_DYLIB" ] || { echo "找不到嵌入引擎 dylib:$ENGINE_DYLIB"; exit 1; }
   [ -f "$GAME_BINARY" ] || { echo "找不到资源宿主程序:$GAME_BINARY"; exit 1; }
   "$VENV_PY" cmake/audit_macos_minos.py \
     --deployment-target "$OSX_DEPLOYMENT_TARGET" \
-    --search-root build \
+    --search-root "$BUILD_DIR" \
     "$BRIDGE" "$ENGINE_DYLIB" "$GAME_BINARY"
 else
-  ENGINE_SO="build/engine/liblibdevilutionx_so.so"
+  ENGINE_SO="$BUILD_DIR/engine/liblibdevilutionx_so.so"
   [ -f "$ENGINE_SO" ] || { echo "找不到嵌入引擎 so:$ENGINE_SO"; exit 1; }
   # 评测协议(eval_contract/env.py)钉死资产路径为 devilutionx.app/Contents/Resources;
   # Linux 上引擎资产落在 build/engine/assets,这里以真实拷贝(禁符号链接)摆出同一布局
-  RES="build/engine/devilutionx.app/Contents/Resources"
-  [ -d "build/engine/assets" ] || { echo "找不到引擎资产目录 build/engine/assets"; exit 1; }
+  RES="$BUILD_DIR/engine/devilutionx.app/Contents/Resources"
+  [ -d "$BUILD_DIR/engine/assets" ] || { echo "找不到引擎资产目录 $BUILD_DIR/engine/assets"; exit 1; }
   rm -rf "$RES" && mkdir -p "$RES"
-  cp -a build/engine/assets/. "$RES/"
+  cp -a "$BUILD_DIR/engine/assets/." "$RES/"
   echo "资产已布局: $RES ($(find "$RES" -type f | wc -l) files)"
 fi
 

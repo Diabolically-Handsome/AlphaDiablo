@@ -1,0 +1,798 @@
+diff --git a/Source/levels/trigs.cpp b/Source/levels/trigs.cpp
+index 7b95c62..d1b410a 100644
+--- a/Source/levels/trigs.cpp
++++ b/Source/levels/trigs.cpp
+@@ -930,6 +930,8 @@ void CheckTriggers()
+ 		case WM_DIABTWARPUP:
+ 			if (DisableLevelBacktracking)
+ 				break;
++			if (!IsPlayerLevelTransitionAllowed(myPlayer, trigs[i]._tmsg, 0))
++				break;
+ 			TWarpFrom = currlevel;
+ 			StartNewLvl(myPlayer, trigs[i]._tmsg, 0);
+ 			break;
+diff --git a/Source/missiles.cpp b/Source/missiles.cpp
+index a2f6202..3347a11 100644
+--- a/Source/missiles.cpp
++++ b/Source/missiles.cpp
+@@ -3409,6 +3409,10 @@ void ProcessTownPortal(Missile &missile)
+ 
+ 	for (Player &player : Players) {
+ 		if (player.plractive && player.isOnActiveLevel() && !player._pLvlChanging && player._pmode == PM_STAND && player.position.tile == missile.position.tile) {
++			// Deny before the portal clears movement, queues CMD_WARP, or puts
++			// the player in PM_NEWLVL. StartWarpLvl is a second line of defense.
++			if (!IsPlayerLevelTransitionAllowed(player, WM_DIABWARPLVL, -1))
++				continue;
+ 			ClrPlrPath(player);
+ 			if (&player == MyPlayer) {
+ 				NetSendCmdParam1(true, CMD_WARP, missile._misource);
+diff --git a/Source/msg.cpp b/Source/msg.cpp
+index 67b949f..3ab165e 100644
+--- a/Source/msg.cpp
++++ b/Source/msg.cpp
+@@ -2404,6 +2404,8 @@ size_t OnRestartTown(const TCmd &cmd, Player &player)
+ 	if (gbBufferMsgs == 1) {
+ 		BufferMessage(player, &cmd, sizeof(cmd));
+ 	} else {
++		if (!IsPlayerLevelTransitionAllowed(player, WM_DIABRETOWN, 0))
++			return sizeof(cmd);
+ 		if (&player == MyPlayer) {
+ 			MyPlayerIsDead = false;
+ 			gamemenu_off();
+diff --git a/Source/player.cpp b/Source/player.cpp
+index 6be8910..b0e1581 100644
+--- a/Source/player.cpp
++++ b/Source/player.cpp
+@@ -1552,9 +1552,9 @@ bool Player::CanUseItem(const Item &item) const
+ 	    && _pDexterity >= item._iMinDex;
+ }
+ 
+-void Player::RemoveInvItem(int iv, bool calcScrolls)
+-{
+-	if (this == MyPlayer) {
++void Player::RemoveInvItem(int iv, bool calcScrolls, bool sendNetworkMessage)
++{
++	if (this == MyPlayer && sendNetworkMessage) {
+ 		// Locate the first grid index containing this item and notify remote clients
+ 		for (size_t i = 0; i < InventoryGridCells; i++) {
+ 			const int8_t itemIndex = InvGrid[i];
+@@ -2891,13 +2891,22 @@ void RemovePlrMissiles(const Player &player)
+ 	}
+ }
+ 
+-#if defined(__clang__) || defined(__GNUC__)
+-__attribute__((no_sanitize("shift-base")))
+-#endif
+-void
+-StartNewLvl(Player &player, interface_mode fom, int lvl)
+-{
+-	InitLevelChange(player);
++PlayerLevelTransitionGuard LevelTransitionGuard = nullptr;
++
++bool IsPlayerLevelTransitionAllowed(const Player &player, interface_mode mode, int level)
++{
++	return LevelTransitionGuard == nullptr || LevelTransitionGuard(player, mode, level);
++}
++
++#if defined(__clang__) || defined(__GNUC__)
++__attribute__((no_sanitize("shift-base")))
++#endif
++void
++StartNewLvl(Player &player, interface_mode fom, int lvl)
++{
++	if (!IsPlayerLevelTransitionAllowed(player, fom, lvl))
++		return;
++	InitLevelChange(player);
+ 
+ 	switch (fom) {
+ 	case WM_DIABNEXTLVL:
+@@ -2933,9 +2942,11 @@ StartNewLvl(Player &player, interface_mode fom, int lvl)
+ 	}
+ }
+ 
+-void RestartTownLvl(Player &player)
+-{
+-	InitLevelChange(player);
++void RestartTownLvl(Player &player)
++{
++	if (!IsPlayerLevelTransitionAllowed(player, WM_DIABRETOWN, 0))
++		return;
++	InitLevelChange(player);
+ 
+ 	player.setLevel(0);
+ 	player._pInvincible = false;
+@@ -2956,9 +2967,12 @@ void RestartTownLvl(Player &player)
+ 	}
+ }
+ 
+-void StartWarpLvl(Player &player, size_t pidx)
+-{
+-	InitLevelChange(player);
++void StartWarpLvl(Player &player, size_t pidx)
++{
++	// An embedder may forbid portals; check before touching player/portal state.
++	if (!IsPlayerLevelTransitionAllowed(player, WM_DIABWARPLVL, -1))
++		return;
++	InitLevelChange(player);
+ 
+ 	if (gbIsMultiplayer) {
+ 		if (!player.isOnLevel(0)) {
+diff --git a/Source/player.h b/Source/player.h
+index 5cc99ca..bde5322 100644
+--- a/Source/player.h
++++ b/Source/player.h
+@@ -451,7 +451,7 @@ public:
+ 	 * @param iv invList index of item to be removed
+ 	 * @param calcScrolls If true, CalcScrolls() gets called after removing item
+ 	 */
+-	void RemoveInvItem(int iv, bool calcScrolls = true);
++	void RemoveInvItem(int iv, bool calcScrolls = true, bool sendNetworkMessage = true);
+ 
+ 	/**
+ 	 * @brief Returns the network identifier for this player
+@@ -974,7 +974,12 @@ void StartPlayerKill(Player &player, DeathReason deathReason);
+ void StripTopGold(Player &player);
+ void SyncPlrKill(Player &player, DeathReason deathReason);
+ void RemovePlrMissiles(const Player &player);
+-void StartNewLvl(Player &player, interface_mode fom, int lvl);
++// Optional embedder policy. Called before any level-change state is modified.
++// nullptr preserves ordinary DevilutionX behavior.
++using PlayerLevelTransitionGuard = bool (*)(const Player &, interface_mode, int);
++extern PlayerLevelTransitionGuard LevelTransitionGuard;
++bool IsPlayerLevelTransitionAllowed(const Player &player, interface_mode mode, int level);
++void StartNewLvl(Player &player, interface_mode fom, int lvl);
+ void RestartTownLvl(Player &player);
+ void StartWarpLvl(Player &player, size_t pidx);
+ void ProcessPlayers();
+diff --git a/Source/quests.cpp b/Source/quests.cpp
+index 36f1b80..2977637 100644
+--- a/Source/quests.cpp
++++ b/Source/quests.cpp
+@@ -330,8 +330,10 @@ void CheckQuests()
+ 			    && currentQuest._qslvl != 0
+ 			    && currentQuest._qactive != QUEST_NOTAVAIL
+ 			    && MyPlayer->position.tile == currentQuest.position
+-			    && (currentQuest._qidx != Q_BETRAYER || currentQuest._qvar1 >= 3)) {
+-				if (currentQuest._qlvltype != DTYPE_NONE) {
++			    && (currentQuest._qidx != Q_BETRAYER || currentQuest._qvar1 >= 3)) {
++				if (!IsPlayerLevelTransitionAllowed(*MyPlayer, WM_DIABSETLVL, currentQuest._qslvl))
++					continue;
++				if (currentQuest._qlvltype != DTYPE_NONE) {
+ 					setlvltype = currentQuest._qlvltype;
+ 				}
+ 				StartNewLvl(*MyPlayer, WM_DIABSETLVL, currentQuest._qslvl);
+diff --git a/Source/stores.cpp b/Source/stores.cpp
+index 818f73d..994c76f 100644
+--- a/Source/stores.cpp
++++ b/Source/stores.cpp
+@@ -6,6 +6,7 @@
+ #include "stores.h"
+ 
+ #include <algorithm>
++#include <array>
+ #include <cstdint>
+ #include <optional>
+ #include <string>
+@@ -27,6 +28,7 @@
+ #include "game_mode.hpp"
+ #include "lua/lua_event.hpp"
+ #include "minitext.h"
++#include "msg.h"
+ #include "multi.h"
+ #include "options.h"
+ #include "panels/info_box.hpp"
+@@ -1333,13 +1335,15 @@ void SmithEnter()
+  */
+ void SmithBuyItem(Item &item)
+ {
+-	TakePlrsMoney(item._iIvalue);
+-	if (item._iMagical == ITEM_QUALITY_NORMAL)
+-		item._iIdentified = false;
+-	StoreAutoPlace(item, true);
+-	int idx = OldScrollPos + ((OldTextLine - PreviousScrollPos) / 4);
+-	SmithItems.erase(SmithItems.begin() + idx);
+-	CalcPlrInv(*MyPlayer, true);
++	const int idx = OldScrollPos + ((OldTextLine - PreviousScrollPos) / 4);
++	const bool autoEquipSound = *GetOptions().Audio.autoEquipSound
++	    && AutoEquipEnabled(*MyPlayer, item) && AutoEquip(*MyPlayer, item, false, false);
++	const auto result = TryBuyStoreItem(StoreVendor::Smith, idx, item._iSeed,
++	    item._iCreateInfo, static_cast<int>(item.IDidx));
++	// The atomic kernel stages equipment without side effects. Restore the
++	// ordinary GUI feedback only after a successful committed transaction.
++	if (result.status == StoreBuyStatus::Success && autoEquipSound)
++		PlaySFX(ItemInvSnds[ItemCAnimTbl[item._iCurs]]);
+ }
+ 
+ void SmithBuyEnter()
+@@ -1482,27 +1486,14 @@ void SmithSellEnter()
+ void SmithRepairItem(int price)
+ {
+ 	const int idx = OldScrollPos + ((OldTextLine - PreviousScrollPos) / 4);
+-	PlayerItems[idx]._iDurability = PlayerItems[idx]._iMaxDur;
+-
+ 	const int8_t i = PlayerItemIndexes[idx];
+-
+-	Player &myPlayer = *MyPlayer;
+-
+-	if (i < 0) {
+-		if (i == -1)
+-			myPlayer.InvBody[INVLOC_HEAD]._iDurability = myPlayer.InvBody[INVLOC_HEAD]._iMaxDur;
+-		if (i == -2)
+-			myPlayer.InvBody[INVLOC_CHEST]._iDurability = myPlayer.InvBody[INVLOC_CHEST]._iMaxDur;
+-		if (i == -3)
+-			myPlayer.InvBody[INVLOC_HAND_LEFT]._iDurability = myPlayer.InvBody[INVLOC_HAND_LEFT]._iMaxDur;
+-		if (i == -4)
+-			myPlayer.InvBody[INVLOC_HAND_RIGHT]._iDurability = myPlayer.InvBody[INVLOC_HAND_RIGHT]._iMaxDur;
+-		TakePlrsMoney(price);
+-		return;
+-	}
+-
+-	myPlayer.InvList[i]._iDurability = myPlayer.InvList[i]._iMaxDur;
+-	TakePlrsMoney(price);
++	const Item &quote = PlayerItems[idx];
++	constexpr int BodySlots[] = { INVLOC_HEAD, INVLOC_CHEST, INVLOC_HAND_LEFT, INVLOC_HAND_RIGHT };
++	const size_t slot = i < 0 ? BodySlots[-i - 1] : i;
++	const auto result = TryRepairStoreItem(i < 0, slot, quote._iSeed,
++	    quote._iCreateInfo, static_cast<int>(quote.IDidx), quote._iDurability, price);
++	if (result.status == StoreBuyStatus::Success)
++		PlayerItems[idx]._iDurability = PlayerItems[idx]._iMaxDur;
+ }
+ 
+ void SmithRepairEnter()
+@@ -1737,30 +1728,9 @@ void BoyBuyItem(Item &item, int itemPrice)
+  */
+ void HealerBuyItem(Item &item)
+ {
+-	int idx = OldScrollPos + ((OldTextLine - PreviousScrollPos) / 4);
+-	if (!gbIsMultiplayer) {
+-		if (idx < 2)
+-			item._iSeed = AdvanceRndSeed();
+-	} else {
+-		if (idx < 3)
+-			item._iSeed = AdvanceRndSeed();
+-	}
+-
+-	TakePlrsMoney(item._iIvalue);
+-	if (item._iMagical == ITEM_QUALITY_NORMAL)
+-		item._iIdentified = false;
+-	StoreAutoPlace(item, true);
+-
+-	if (!gbIsMultiplayer) {
+-		if (idx < 2)
+-			return;
+-	} else {
+-		if (idx < 3)
+-			return;
+-	}
+-	idx = OldScrollPos + ((OldTextLine - PreviousScrollPos) / 4);
+-	HealerItems.erase(HealerItems.begin() + idx);
+-	CalcPlrInv(*MyPlayer, true);
++	const int idx = OldScrollPos + ((OldTextLine - PreviousScrollPos) / 4);
++	TryBuyStoreItem(StoreVendor::Healer, idx, item._iSeed,
++	    item._iCreateInfo, static_cast<int>(item.IDidx));
+ }
+ 
+ void BoyBuyEnter()
+@@ -2059,7 +2029,7 @@ void DrunkEnter()
+ 	}
+ }
+ 
+-int TakeGold(Player &player, int cost, bool skipMaxPiles)
++int TakeGold(Player &player, int cost, bool skipMaxPiles, bool sendNetworkMessage)
+ {
+ 	for (int i = 0; i < player._pNumInv; i++) {
+ 		auto &item = player.InvList[i];
+@@ -2073,7 +2043,7 @@ int TakeGold(Player &player, int cost, bool skipMaxPiles)
+ 		}
+ 
+ 		cost -= item._ivalue;
+-		player.RemoveInvItem(i);
++		player.RemoveInvItem(i, true, sendNetworkMessage);
+ 		i = -1;
+ 	}
+ 
+@@ -2099,44 +2069,207 @@ void DrawSelector(const Surface &out, const Rectangle &rect, std::string_view te
+ 
+ } // namespace
+ 
+-bool StoreAutoPlace(Item &item, bool persistItem)
++bool StoreAutoPlace(Item &item, bool persistItem, bool sendNetworkMessage)
+ {
+ 	Player &player = *MyPlayer;
+ 
+-	if (AutoEquipEnabled(player, item) && AutoEquip(player, item, persistItem, true)) {
++	if (AutoEquipEnabled(player, item) && AutoEquip(player, item, persistItem, sendNetworkMessage)) {
+ 		return true;
+ 	}
+ 
+-	if (AutoPlaceItemInBelt(player, item, persistItem, true)) {
++	if (AutoPlaceItemInBelt(player, item, persistItem, sendNetworkMessage)) {
+ 		return true;
+ 	}
+ 
+ 	if (persistItem) {
+-		return AutoPlaceItemInInventory(player, item, true);
++		return AutoPlaceItemInInventory(player, item, sendNetworkMessage);
+ 	}
+ 
+ 	return CanFitItemInInventory(player, item);
+ }
+ 
+-void AddStoreHoldRepair(Item *itm, int8_t i)
+-{
+-	Item *item;
+-	int v;
++StoreBuyResult TryBuyStoreItem(StoreVendor vendor, size_t index,
++    uint32_t expectedSeed, uint16_t expectedCreateInfo, int expectedBaseId)
++{
++	Item *stockItem = nullptr;
++	switch (vendor) {
++	case StoreVendor::Smith:
++		if (index < SmithItems.size())
++			stockItem = &SmithItems[index];
++		break;
++	case StoreVendor::Healer:
++		if (index < HealerItems.size())
++			stockItem = &HealerItems[index];
++		break;
++	}
++	if (stockItem == nullptr || stockItem->isEmpty() || stockItem->_iIvalue < 0)
++		return { StoreBuyStatus::InvalidItem };
++	if (stockItem->_iSeed != expectedSeed
++	    || stockItem->_iCreateInfo != expectedCreateInfo
++	    || static_cast<int>(stockItem->IDidx) != expectedBaseId)
++		return { StoreBuyStatus::StaleItem };
++	const int price = stockItem->_iIvalue;
++	if (!PlayerCanAfford(price))
++		return { StoreBuyStatus::NoMoney };
++	Item item = *stockItem;
++	item._iStatFlag = MyPlayer->CanUseItem(item);
++	// Match the UI's capacity check before spending gold. In particular a full
++	// backpack cannot buy an item on the assumption that paying frees a slot.
++	if (!StoreAutoPlace(item, false, false))
++		return { StoreBuyStatus::NoRoom };
+ 
+-	item = &PlayerItems[CurrentItemIndex];
+-	PlayerItems[CurrentItemIndex] = *itm;
++	Player &player = *MyPlayer;
++	std::array<Item, InventoryGridCells> previousInventory;
++	std::copy_n(player.InvList, InventoryGridCells, previousInventory.begin());
++	std::array<int8_t, InventoryGridCells> previousGrid;
++	std::copy_n(player.InvGrid, InventoryGridCells, previousGrid.begin());
++	std::array<bool, NUM_INVLOC> previousBodyEmpty;
++	std::array<bool, MaxBeltItems> previousBeltEmpty;
++	for (int i = 0; i < NUM_INVLOC; ++i)
++		previousBodyEmpty[i] = player.InvBody[i].isEmpty();
++	for (int i = 0; i < MaxBeltItems; ++i)
++		previousBeltEmpty[i] = player.SpdList[i].isEmpty();
++	const int previousCount = player._pNumInv;
++	const int previousGold = player._pGold;
++	const int previousStashGold = Stash.gold;
++	const bool previousStashDirty = Stash.dirty;
++	const auto previousReadiedSpell = player._pRSpell;
++	const auto previousReadiedSpellType = player._pRSplType;
++	const uint32_t previousRng = GetLCGEngineState();
++	const bool infinite = vendor == StoreVendor::Healer
++	    && index < static_cast<size_t>(gbIsMultiplayer ? 3 : 2);
++	if (infinite)
++		item._iSeed = AdvanceRndSeed();
++	if (item._iMagical == ITEM_QUALITY_NORMAL)
++		item._iIdentified = false;
+ 
+-	const int due = item->_iMaxDur - item->_iDurability;
+-	if (item->_iMagical != ITEM_QUALITY_NORMAL && item->_iIdentified) {
+-		v = 30 * item->_iIvalue * due / (item->_iMaxDur * 100 * 2);
+-		if (v == 0)
+-			return;
+-	} else {
+-		v = item->_ivalue * due / (item->_iMaxDur * 2);
+-		v = std::max(v, 1);
++	// Nothing enters the network until placement and the debit both commit.
++	TakePlrsMoney(price, false);
++	if (!StoreAutoPlace(item, true, false)) {
++		// Failed AutoPlace branches do not alter body/belt/HP. Restore the debit
++		// and scroll selection too, so even an unexpected placement failure is
++		// indistinguishable from a rejected preflight.
++		std::copy(previousInventory.begin(), previousInventory.end(), player.InvList);
++		std::copy(previousGrid.begin(), previousGrid.end(), player.InvGrid);
++		player._pNumInv = previousCount;
++		player._pGold = previousGold;
++		Stash.gold = previousStashGold;
++		Stash.dirty = previousStashDirty;
++		player.CalcScrolls();
++		player._pRSpell = previousReadiedSpell;
++		player._pRSplType = previousReadiedSpellType;
++		SetRndSeed(previousRng);
++		return { StoreBuyStatus::NoRoom };
++	}
++	if (vendor == StoreVendor::Smith)
++		SmithItems.erase(SmithItems.begin() + index);
++	else if (!infinite)
++		HealerItems.erase(HealerItems.begin() + index);
++	if (!infinite)
++		CalcPlrInv(player, true);
++
++	// Publish the committed inventory using each item's first (top-left) cell.
++	// Gold removal may compact InvList, so list indices are not stable IDs.
++	std::array<bool, InventoryGridCells> sent {};
++	for (int cell = 0; cell < InventoryGridCells; ++cell) {
++		const int oldIndex = std::abs(previousGrid[cell]) - 1;
++		if (oldIndex >= 0 && !sent[oldIndex]) {
++			NetSendCmdParam1(false, CMD_DELINVITEMS, static_cast<uint16_t>(cell));
++			sent[oldIndex] = true;
++		}
++	}
++	sent.fill(false);
++	for (int cell = 0; cell < InventoryGridCells; ++cell) {
++		const int newIndex = std::abs(player.InvGrid[cell]) - 1;
++		if (newIndex >= 0 && !sent[newIndex]) {
++			NetSendCmdChInvItem(false, cell);
++			sent[newIndex] = true;
++		}
++	}
++	for (int slot = 0; slot < NUM_INVLOC; ++slot) {
++		if (previousBodyEmpty[slot] && !player.InvBody[slot].isEmpty())
++			NetSendCmdChItem(false, static_cast<uint8_t>(slot), true);
++	}
++	for (int slot = 0; slot < MaxBeltItems; ++slot) {
++		if (previousBeltEmpty[slot] && !player.SpdList[slot].isEmpty())
++			NetSendCmdChBeltItem(false, slot);
++	}
++	return { StoreBuyStatus::Success, price };
++}
++
++std::optional<int> GetStoreRepairPrice(const Item &item)
++{
++	if (item.isEmpty() || item._itype == ItemType::Misc || item._itype == ItemType::Gold
++	    || item._iMaxDur <= 0 || item._iMaxDur == DUR_INDESTRUCTIBLE
++	    || item._iDurability >= item._iMaxDur)
++		return std::nullopt;
++	const int due = item._iMaxDur - item._iDurability;
++	if (item._iMagical != ITEM_QUALITY_NORMAL && item._iIdentified) {
++		const int price = 30 * item._iIvalue * due / (item._iMaxDur * 100 * 2);
++		if (price <= 0)
++			return std::nullopt;
++		return price;
++	}
++	return std::max(item._ivalue * due / (item._iMaxDur * 2), 1);
++}
++
++StoreBuyResult TryRepairStoreItem(bool equipped, size_t index,
++    uint32_t expectedSeed, uint16_t expectedCreateInfo, int expectedBaseId,
++    int expectedDurability, int expectedPrice)
++{
++	Player &player = *MyPlayer;
++	if (equipped ? index >= NUM_INVLOC : index >= static_cast<size_t>(player._pNumInv))
++		return { StoreBuyStatus::InvalidItem };
++	Item &item = equipped ? player.InvBody[index] : player.InvList[index];
++	if (item.isEmpty())
++		return { StoreBuyStatus::InvalidItem };
++	if (item._iSeed != expectedSeed || item._iCreateInfo != expectedCreateInfo
++	    || static_cast<int>(item.IDidx) != expectedBaseId || item._iDurability != expectedDurability)
++		return { StoreBuyStatus::StaleItem };
++	const auto price = GetStoreRepairPrice(item);
++	if (!price)
++		return { StoreBuyStatus::InvalidItem };
++	if (*price != expectedPrice)
++		return { StoreBuyStatus::StaleItem };
++	if (!PlayerCanAfford(*price))
++		return { StoreBuyStatus::NoMoney };
++
++	// After validation the normal repair has no fallible placement or RNG work.
++	// Repair before taking gold: removing a gold stack can compact InvList.
++	std::array<int8_t, InventoryGridCells> previousGrid;
++	std::copy_n(player.InvGrid, InventoryGridCells, previousGrid.begin());
++	item._iDurability = item._iMaxDur;
++	TakePlrsMoney(*price, false);
++	std::array<bool, InventoryGridCells> sent {};
++	for (int cell = 0; cell < InventoryGridCells; ++cell) {
++		const int oldIndex = std::abs(previousGrid[cell]) - 1;
++		if (oldIndex >= 0 && !sent[oldIndex]) {
++			NetSendCmdParam1(false, CMD_DELINVITEMS, static_cast<uint16_t>(cell));
++			sent[oldIndex] = true;
++		}
++	}
++	sent.fill(false);
++	for (int cell = 0; cell < InventoryGridCells; ++cell) {
++		const int newIndex = std::abs(player.InvGrid[cell]) - 1;
++		if (newIndex >= 0 && !sent[newIndex]) {
++			NetSendCmdChInvItem(false, cell);
++			sent[newIndex] = true;
++		}
+ 	}
+-	item->_iIvalue = v;
+-	item->_ivalue = v;
++	if (equipped)
++		NetSendCmdChItem(false, static_cast<uint8_t>(index), true);
++	return { StoreBuyStatus::Success, *price };
++}
++
++void AddStoreHoldRepair(Item *itm, int8_t i)
++{
++	const auto price = GetStoreRepairPrice(*itm);
++	if (!price)
++		return;
++	Item *item = &PlayerItems[CurrentItemIndex];
++	*item = *itm;
++	item->_iIvalue = *price;
++	item->_ivalue = *price;
+ 	PlayerItemIndexes[CurrentItemIndex] = i;
+ 	CurrentItemIndex++;
+ }
+@@ -2655,15 +2788,15 @@ void StoreNext()
+ 	}
+ }
+ 
+-void TakePlrsMoney(int cost)
++void TakePlrsMoney(int cost, bool sendNetworkMessage)
+ {
+ 	Player &myPlayer = *MyPlayer;
+ 
+ 	myPlayer._pGold -= std::min(cost, myPlayer._pGold);
+ 
+-	cost = TakeGold(myPlayer, cost, true);
++	cost = TakeGold(myPlayer, cost, true, sendNetworkMessage);
+ 	if (cost != 0) {
+-		cost = TakeGold(myPlayer, cost, false);
++		cost = TakeGold(myPlayer, cost, false, sendNetworkMessage);
+ 	}
+ 
+ 	Stash.gold -= cost;
+diff --git a/Source/stores.h b/Source/stores.h
+index 26549fb..7e20907 100644
+--- a/Source/stores.h
++++ b/Source/stores.h
+@@ -177,7 +177,7 @@ void StoreUp();
+ void StoreDown();
+ void StorePrior();
+ void StoreNext();
+-void TakePlrsMoney(int cost);
++void TakePlrsMoney(int cost, bool sendNetworkMessage = true);
+ void StoreEnter();
+ void CheckStoreBtn();
+ void ReleaseStoreBtn();
+@@ -189,9 +189,34 @@ bool IsPlayerInStore();
+  * @param persistItem If true, actually place the item. If false, just check if it can be placed.
+  * @return true if the item can be/was placed.
+  */
+-bool StoreAutoPlace(Item &item, bool persistItem);
++bool StoreAutoPlace(Item &item, bool persistItem, bool sendNetworkMessage = true);
+ bool PlayerCanAfford(int price);
+ 
++enum class StoreVendor { Smith, Healer };
++enum class StoreBuyStatus { Success, InvalidItem, StaleItem, NoMoney, NoRoom };
++struct StoreBuyResult {
++	StoreBuyStatus status;
++	int paid = 0;
++};
++
++/** Shared transaction kernel. Callers establish the normal vendor interaction;
++ * this function validates the quoted item and commits money/items atomically.
++ * No UI scroll state is required. Failed requests do not advance the RNG.
++ */
++StoreBuyResult TryBuyStoreItem(StoreVendor vendor, size_t index,
++    uint32_t expectedSeed, uint16_t expectedCreateInfo, int expectedBaseId);
++
++/** Read-only normal Griswold repair quote; no offer for unrepairable items. */
++std::optional<int> GetStoreRepairPrice(const Item &item);
++
++/** Shared GUI/Gym repair transaction. A stale identity, durability or price
++ * rejects without changing inventory, money, RNG or network queues.
++ * Equipped indices use InvBody; other indices use InvList.
++ */
++StoreBuyResult TryRepairStoreItem(bool equipped, size_t index,
++    uint32_t expectedSeed, uint16_t expectedCreateInfo, int expectedBaseId,
++    int expectedDurability, int expectedPrice);
++
+ /**
+  * @brief Check if Griswold will buy this item.
+  * @param item The item to check.
+diff --git a/test/store_transaction_test.cpp b/test/store_transaction_test.cpp
+index d1e22b8..a7866bd 100644
+--- a/test/store_transaction_test.cpp
++++ b/test/store_transaction_test.cpp
+@@ -290,6 +290,89 @@ TEST_F(StoreTransactionTest, WitchWillBuy_RejectsSword)
+ }
+ 
+ // ===========================================================================
++// Direct requests share the UI kernel and never depend on menu scroll state.
++TEST_F(StoreTransactionTest, DirectBuy_StaleQuoteDoesNotSpendOrAdvanceRng)
++{
++	PopulateVendors();
++	const Item quote = SmithItems[0];
++	const auto rng = GetLCGEngineState();
++	const int gold = MyPlayer->_pGold;
++	const auto count = SmithItems.size();
++	const auto result = TryBuyStoreItem(StoreVendor::Smith, 0,
++	    quote._iSeed ^ 1U, quote._iCreateInfo, static_cast<int>(quote.IDidx));
++	EXPECT_EQ(result.status, StoreBuyStatus::StaleItem);
++	EXPECT_EQ(result.paid, 0);
++	EXPECT_EQ(MyPlayer->_pGold, gold);
++	EXPECT_EQ(SmithItems.size(), count);
++	EXPECT_EQ(GetLCGEngineState(), rng);
++}
++
++TEST_F(StoreTransactionTest, DirectBuy_InsufficientFundsDoesNotGeneratePotion)
++{
++	PopulateVendors();
++	StripPlayer();
++	SetPlayerGold(0);
++	Stash.gold = 0;
++	const Item quote = HealerItems[0];
++	const auto rng = GetLCGEngineState();
++	const auto count = HealerItems.size();
++	const auto result = TryBuyStoreItem(StoreVendor::Healer, 0,
++	    quote._iSeed, quote._iCreateInfo, static_cast<int>(quote.IDidx));
++	EXPECT_EQ(result.status, StoreBuyStatus::NoMoney);
++	EXPECT_EQ(result.paid, 0);
++	EXPECT_EQ(MyPlayer->_pGold, 0);
++	EXPECT_EQ(HealerItems.size(), count);
++	EXPECT_EQ(GetLCGEngineState(), rng);
++	for (const auto &item : MyPlayer->SpdList)
++		EXPECT_TRUE(item.isEmpty());
++}
++
++TEST_F(StoreTransactionTest, DirectBuy_ExactFundsAndInfinitePotionIdentity)
++{
++	PopulateVendors();
++	StripPlayer();
++	const Item quote = HealerItems[0];
++	const auto count = HealerItems.size();
++	SetPlayerGold(quote._iIvalue * 2);
++	Stash.gold = 0;
++	for (int i = 0; i < 2; ++i) {
++		const auto result = TryBuyStoreItem(StoreVendor::Healer, 0,
++		    quote._iSeed, quote._iCreateInfo, static_cast<int>(quote.IDidx));
++		ASSERT_EQ(result.status, StoreBuyStatus::Success);
++		EXPECT_EQ(result.paid, quote._iIvalue);
++		EXPECT_EQ(HealerItems.size(), count);
++	}
++	EXPECT_EQ(MyPlayer->_pGold, 0);
++	ASSERT_FALSE(MyPlayer->SpdList[0].isEmpty());
++	ASSERT_FALSE(MyPlayer->SpdList[1].isEmpty());
++	EXPECT_NE(MyPlayer->SpdList[0]._iSeed, MyPlayer->SpdList[1]._iSeed);
++	EXPECT_EQ(HealerItems[0]._iSeed, quote._iSeed);
++}
++
++TEST_F(StoreTransactionTest, DirectBuy_NoRoomPreservesMoneyAndRng)
++{
++	PopulateVendors();
++	SetPlayerGold(100000);
++	for (int i = 0; i < InventoryGridCells; ++i) {
++		MyPlayer->InvList[i]._itype = ItemType::Misc;
++		MyPlayer->InvGrid[i] = static_cast<int8_t>(i + 1);
++	}
++	MyPlayer->_pNumInv = InventoryGridCells;
++	for (auto &item : MyPlayer->SpdList)
++		item._itype = ItemType::Misc;
++	const Item quote = HealerItems[0];
++	const auto rng = GetLCGEngineState();
++	const int gold = MyPlayer->_pGold;
++	const int stashGold = Stash.gold;
++	const auto result = TryBuyStoreItem(StoreVendor::Healer, 0,
++	    quote._iSeed, quote._iCreateInfo, static_cast<int>(quote.IDidx));
++	EXPECT_EQ(result.status, StoreBuyStatus::NoRoom);
++	EXPECT_EQ(MyPlayer->_pGold, gold);
++	EXPECT_EQ(Stash.gold, stashGold);
++	EXPECT_EQ(MyPlayer->_pNumInv, InventoryGridCells);
++	EXPECT_EQ(GetLCGEngineState(), rng);
++}
++
+ // Level B: End-to-end store flows through the state machine
+ // ===========================================================================
+ 
+@@ -773,6 +856,107 @@ TEST_F(StoreTransactionTest, RepairCost_NormalItem_MinimumOneGold)
+ 	    << "Repair cost should be at least 1 gold for normal items";
+ }
+ 
++TEST_F(StoreTransactionTest, SharedRepair_UsesNormalQuoteAndExactGold)
++{
++	StripPlayer();
++	Item item = MakeDamagedSword();
++	item._ivalue = 15;
++	item._iMaxDur = 15;
++	item._iDurability = 4;
++	MyPlayer->InvBody[INVLOC_HAND_LEFT] = item;
++	ASSERT_EQ(GetStoreRepairPrice(item), 5);
++	SetPlayerGold(5);
++	Stash.gold = 0;
++	const auto rngBefore = GetLCGEngineState();
++	const auto result = TryRepairStoreItem(true, INVLOC_HAND_LEFT,
++	    item._iSeed, item._iCreateInfo, static_cast<int>(item.IDidx), 4, 5);
++	EXPECT_EQ(result.status, StoreBuyStatus::Success);
++	EXPECT_EQ(result.paid, 5);
++	EXPECT_EQ(MyPlayer->_pGold, 0);
++	EXPECT_EQ(Stash.gold, 0);
++	EXPECT_EQ(MyPlayer->InvBody[INVLOC_HAND_LEFT]._iDurability, 15);
++	EXPECT_EQ(GetLCGEngineState(), rngBefore);
++}
++
++TEST_F(StoreTransactionTest, SharedRepair_RejectsStaleAndUnaffordableQuotesAtomically)
++{
++	StripPlayer();
++	const Item item = MakeDamagedSword();
++	MyPlayer->InvBody[INVLOC_HAND_LEFT] = item;
++	const int price = *GetStoreRepairPrice(item);
++	SetPlayerGold(price - 1);
++	Stash.gold = 0;
++	Stash.dirty = false;
++	const auto rngBefore = GetLCGEngineState();
++	const auto repair = [&](uint32_t seed, int dur, int quotedPrice) {
++		return TryRepairStoreItem(true, INVLOC_HAND_LEFT, seed,
++		    item._iCreateInfo, static_cast<int>(item.IDidx), dur, quotedPrice);
++	};
++	EXPECT_EQ(repair(item._iSeed + 1, item._iDurability, price).status, StoreBuyStatus::StaleItem);
++	EXPECT_EQ(repair(item._iSeed, item._iDurability - 1, price).status, StoreBuyStatus::StaleItem);
++	EXPECT_EQ(repair(item._iSeed, item._iDurability, price - 1).status, StoreBuyStatus::StaleItem);
++	EXPECT_EQ(repair(item._iSeed, item._iDurability, price).status, StoreBuyStatus::NoMoney);
++	EXPECT_EQ(MyPlayer->_pGold, price - 1);
++	EXPECT_EQ(MyPlayer->InvBody[INVLOC_HAND_LEFT]._iDurability, item._iDurability);
++	EXPECT_EQ(Stash.gold, 0);
++	EXPECT_FALSE(Stash.dirty);
++	EXPECT_EQ(GetLCGEngineState(), rngBefore);
++}
++
++TEST_F(StoreTransactionTest, SharedRepair_UnrepairableItemsHaveNoOffer)
++{
++	Item item {};
++	EXPECT_FALSE(GetStoreRepairPrice(item));
++	item = MakeDamagedSword();
++	item._iMaxDur = item._iDurability;
++	EXPECT_FALSE(GetStoreRepairPrice(item));
++	item._iMaxDur = DUR_INDESTRUCTIBLE;
++	EXPECT_FALSE(GetStoreRepairPrice(item));
++	item._iMaxDur = 0;
++	EXPECT_FALSE(GetStoreRepairPrice(item));
++	item = MakeDamagedSword();
++	item._iMagical = ITEM_QUALITY_MAGIC;
++	item._iIdentified = true;
++	item._iIvalue = 1;
++	EXPECT_FALSE(GetStoreRepairPrice(item));
++}
++
++TEST_F(StoreTransactionTest, SharedRepair_InventoryCompactionPreservesRepairedItem)
++{
++	StripPlayer();
++	const Item item = MakeDamagedSword();
++	const int price = *GetStoreRepairPrice(item);
++	SetPlayerGold(price);
++	Stash.gold = 0;
++	ASSERT_TRUE(AutoPlaceItemInInventory(*MyPlayer, item, true));
++	const int index = MyPlayer->_pNumInv - 1;
++	ASSERT_GT(index, 0);
++	const auto result = TryRepairStoreItem(false, index,
++	    item._iSeed, item._iCreateInfo, static_cast<int>(item.IDidx), item._iDurability, price);
++	EXPECT_EQ(result.status, StoreBuyStatus::Success);
++	ASSERT_EQ(MyPlayer->_pNumInv, 1);
++	EXPECT_EQ(MyPlayer->InvList[0].IDidx, item.IDidx);
++	EXPECT_EQ(MyPlayer->InvList[0]._iDurability, item._iMaxDur);
++}
++
++TEST_F(StoreTransactionTest, SmithRepair_GUIUsesSharedNormalPrice)
++{
++	StripPlayer();
++	const Item item = MakeDamagedSword();
++	MyPlayer->InvBody[INVLOC_HAND_LEFT] = item;
++	const int price = *GetStoreRepairPrice(item);
++	SetPlayerGold(price);
++	Stash.gold = 0;
++	OpenVendor(TalkID::SmithRepair);
++	ASSERT_EQ(CurrentItemIndex, 1);
++	EXPECT_EQ(PlayerItems[0]._iIvalue, price);
++	SelectItemAtIndex(0);
++	ASSERT_EQ(ActiveStore, TalkID::Confirm);
++	ConfirmYes();
++	EXPECT_EQ(MyPlayer->_pGold, 0);
++	EXPECT_EQ(MyPlayer->InvBody[INVLOC_HAND_LEFT]._iDurability, item._iMaxDur);
++}
++
+ // ---- Gold from stash used in transactions ---------------------------------
+ 
+ TEST_F(StoreTransactionTest, BuyUsingStashGold)
+@@ -929,4 +1113,4 @@ TEST_F(StoreTransactionTest, SmithPremiumBuy_ReplacesSlot)
+ }
+ 
+ } // namespace
+-} // namespace devilution
+\ No newline at end of file
++} // namespace devilution

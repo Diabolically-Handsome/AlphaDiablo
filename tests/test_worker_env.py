@@ -247,10 +247,13 @@ finally:
     worker_env_module.terminal_death_reward_component = (
         original_death_component)
 assert rebuilt == -123.0
+# R12 经济法案:委托调用显式携带经济规格(替身走 v1 默认,数值不变)。
+from diablogym.env import REWARD_ECONOMY_V1 as _ECON_V1
 assert shared_calls == [{
     "dead": True,
     "dungeon_level": 2,
     "death_ladder": True,
+    "economy": _ECON_V1,
 }]
 print("G0'.d3 PASS: DIVE 奖励及其后续死亡在同一快进结果中完整返回")
 

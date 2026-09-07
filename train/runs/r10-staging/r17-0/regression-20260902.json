@@ -1,0 +1,16 @@
+{
+ "archive": "/home/laure/AlphaDiablo/diablogym/train/runs/r10-staging/r16-deploy-arm.json",
+ "archive_probe": "r15-deployment-v3",
+ "archive_rows_sha_v3": "33023de128cf54e60dc6add49ea47d173802b9afae02bcba18336f593485e59b",
+ "probe_out": "/home/laure/AlphaDiablo/diablogym/train/runs/r10-staging/r17-0/regress-arm-readiness-v3-16.json",
+ "probe_rows_sha_v3": "33023de128cf54e60dc6add49ea47d173802b9afae02bcba18336f593485e59b",
+ "rows_sha_equal": true,
+ "n_rows": [
+  16,
+  16
+ ],
+ "diff_seeds": [],
+ "agg_v3_equal": true,
+ "elapsed_s": 104.1,
+ "source_changed_during_run": []
+}

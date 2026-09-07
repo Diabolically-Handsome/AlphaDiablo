@@ -1001,7 +1001,7 @@ def _main():
                "--run-name", name] + extra
         log({"event": "arm_start", "arm": name, "cmd_extra": extra})
         t0 = time.time()
-        rc = run(cmd, f"train-{name}.log", timeout=14_400)   # 4h 挂死护栏
+        rc = run(cmd, f"train-{name}.log", timeout=216_000)   # 60h 防挂死底线(2026-08-24 主席令「直接启动 这次没有时间限制」;实测需求~30h/臂,此丝仅拦真死锁)
         sp = RUNS / name / "status.json"
         try:
             steps = json.loads(sp.read_text())["total_steps"] if sp.exists() else 0

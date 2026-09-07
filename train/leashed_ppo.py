@@ -87,6 +87,14 @@ _WORKER_COMBAT_EFFECT_REASONS = frozenset({
     "target_removed",
     "kill",
 })
+# R17.0 修正案一(合议庭更正二.2):WorkerWindowEnv 终局 policy_reward 的
+# 三个新法分量回执键(缺省 0.0;求和顺序 = worker_env 组装点顺序:
+# wage + timeout + shaping + vest + hp_econ)。
+_WORKER_POLICY_REWARD_COMPONENT_FIELDS = (
+    "worker_depth_shaping_reward",
+    "worker_descend_escrow_vest",
+    "worker_hp_economy_reward",
+)
 _WORKER_ACTION_EFFECT_AUDIT_KEYS = frozenset({
     "requested_action",
     "native_attempts",
@@ -1124,9 +1132,12 @@ def validate_worker_onpolicy_pg_receipt(
             )
             if timeout_samples == 0
             else (
-                timeout_base_sum < 0.0
+                # R16 修宪(C8)零罚金法域:超时样本可携 (0,0,0) 分账,
+                # 汇总只要求非正;旧法逐行严格负性由 _update_info_buffer
+                # 的 death-equivalent 分支继续执法(法域随 info 下传)。
+                timeout_base_sum <= 0.0
                 and timeout_additional_sum <= 0.0
-                and timeout_total_sum < 0.0
+                and timeout_total_sum <= 0.0
             )
         )
         and 0 <= receipt["gae_advantage_nonzero_samples"] <= samples
@@ -2320,7 +2331,9 @@ class AsymmetricWorkerMaskableActorCriticPolicy(
     """Protocol-v3-root actor with full protocol-v4 critic/context input."""
 
     def __init__(
-            self, *args, action14_logit_bonus: float = 0.0, **kwargs):
+            self, *args, action14_logit_bonus: float = 0.0,
+            action11_logit_bonus: float = 0.0,
+            action13_logit_bonus: float = 0.0, **kwargs):
         if (
             not isinstance(action14_logit_bonus, (int, float))
             or isinstance(action14_logit_bonus, bool)
@@ -2330,6 +2343,32 @@ class AsymmetricWorkerMaskableActorCriticPolicy(
             raise ValueError(
                 "action14_logit_bonus 必须是 [0,10] 内有限数")
         self.action14_logit_bonus = float(action14_logit_bonus)
+        # R13 主权移交冷启动引导:a11 在工人掩码下历史恒掩、logit 从未
+        # 受训;live DIVE 窗放开后按 a14 先例挂 on-policy prior(合法行
+        # 才加,梯度照流,rollout 与评测同分布)。a11 在 FARM/RESUPPLY 窗
+        # 恒被掩,先验在旧法域自动惰性,默认 0.0 逐位复现旧 forward。
+        if (
+            not isinstance(action11_logit_bonus, (int, float))
+            or isinstance(action11_logit_bonus, bool)
+            or not np.isfinite(float(action11_logit_bonus))
+            or not 0.0 <= float(action11_logit_bonus) <= 10.0
+        ):
+            raise ValueError(
+                "action11_logit_bonus 必须是 [0,10] 内有限数")
+        self.action11_logit_bonus = float(action11_logit_bonus)
+        # R16 拾药冷启动引导:a13(拾药)按 a11/a14 先例挂 on-policy
+        # logit prior——仅在环境掩码判 a13 合法(腰带有空位 ∧ 地上有药)
+        # 的行上加,梯度照流,rollout 与评测同分布;掩码恒掩的旧法域
+        # 先验自动惰性,默认 0.0 逐位复现旧 forward。
+        if (
+            not isinstance(action13_logit_bonus, (int, float))
+            or isinstance(action13_logit_bonus, bool)
+            or not np.isfinite(float(action13_logit_bonus))
+            or not 0.0 <= float(action13_logit_bonus) <= 10.0
+        ):
+            raise ValueError(
+                "action13_logit_bonus 必须是 [0,10] 内有限数")
+        self.action13_logit_bonus = float(action13_logit_bonus)
         super().__init__(*args, **kwargs)
         if int(getattr(self.action_space, "n", 0)) != 15:
             raise ValueError(
@@ -2378,6 +2417,36 @@ class AsymmetricWorkerMaskableActorCriticPolicy(
                     adjusted_logits[:, 14]
                     + legal_a14.to(raw_logits.dtype)
                     * self.action14_logit_bonus
+                )
+        if (getattr(self, "action11_logit_bonus", 0.0) > 0.0
+                and action_masks is not None):
+            # R13:同 a14 先例。a11 仅在 live DIVE 窗合法,旧法域惰性。
+            masks11 = th.as_tensor(
+                action_masks, dtype=th.bool, device=raw_logits.device,
+            ).reshape(raw_logits.shape)
+            legal_a11 = masks11[:, 11]
+            if bool(legal_a11.any().item()):
+                if adjusted_logits is raw_logits:
+                    adjusted_logits = raw_logits.clone()
+                adjusted_logits[:, 11] = (
+                    adjusted_logits[:, 11]
+                    + legal_a11.to(raw_logits.dtype)
+                    * self.action11_logit_bonus
+                )
+        if (getattr(self, "action13_logit_bonus", 0.0) > 0.0
+                and action_masks is not None):
+            # R16:同 a11/a14 先例。a13 仅在掩码合法行加先验,恒掩域惰性。
+            masks13 = th.as_tensor(
+                action_masks, dtype=th.bool, device=raw_logits.device,
+            ).reshape(raw_logits.shape)
+            legal_a13 = masks13[:, 13]
+            if bool(legal_a13.any().item()):
+                if adjusted_logits is raw_logits:
+                    adjusted_logits = raw_logits.clone()
+                adjusted_logits[:, 13] = (
+                    adjusted_logits[:, 13]
+                    + legal_a13.to(raw_logits.dtype)
+                    * self.action13_logit_bonus
                 )
         distribution = self.action_dist.proba_distribution(
             action_logits=adjusted_logits)
@@ -3336,7 +3405,20 @@ class LeashedMaskablePPO(MaskablePPO):
             self.policy, optimizer=self.policy.optimizer)
         start = self._critic_warmup_start_timesteps
         until = self._critic_warmup_until_timesteps
-        if start is None:
+        inherited_resource = getattr(self, "_resource_warm_start_receipt", None)
+        if inherited_resource is not None:
+            # This is an explicitly certified weights-only initialization.
+            # Historical warmup lives in lineage; this world's counters are
+            # zero while the real on-policy audit remains active.
+            from migrate_resource_candidate import validate_inherited_runtime
+            fields = (start, until, self._critic_warmup_expected_rollouts,
+                      self._critic_warmup_rollouts_completed,
+                      self._critic_warmup_optimizer_steps_completed,
+                      self._critic_warmup_completed, self._critic_warmup_actor_sha256)
+            if fields != (None, None, 0, 0, 0, False, None):
+                raise RuntimeError("resource warm-start contains current-world warmup history")
+            validate_inherited_runtime(self)
+        elif start is None:
             fields = (
                 until,
                 self._critic_warmup_expected_rollouts,
@@ -3359,36 +3441,37 @@ class LeashedMaskablePPO(MaskablePPO):
                 raise RuntimeError(
                     "未配置 critic migration 却携 formal PG audit 状态")
             return partition
-        if mode not in {
-                GRADIENT_CLIP_SEPARATE_ACTOR_CRITIC_V1,
-                GRADIENT_CLIP_ROOT_CONTEXT_CRITIC_V2,
-        }:
-            raise RuntimeError("critic migration 的分组裁剪模式漂移")
-        if (not isinstance(start, int) or not isinstance(until, int)
-                or until <= start):
-            raise RuntimeError("critic warmup 绝对步边界非法")
-        quantum = int(self.n_steps) * int(self.n_envs)
-        expected = (until - start) // quantum
-        integer_fields = (
-            self._critic_warmup_expected_rollouts,
-            self._critic_warmup_rollouts_completed,
-            self._critic_warmup_optimizer_steps_completed,
-            self._actor_optimizer_steps_completed,
-        )
-        if ((until - start) % quantum != 0
-                or any(not isinstance(value, int)
-                       or isinstance(value, bool)
-                       for value in integer_fields)
-                or self._critic_warmup_expected_rollouts != expected
-                or not 0 <= self._critic_warmup_rollouts_completed <= expected
-                or self._critic_warmup_optimizer_steps_completed < 0
-                or self._actor_optimizer_steps_completed < 0
-                or not isinstance(self._critic_warmup_completed, bool)
-                or not isinstance(self._critic_warmup_actor_sha256, str)
-                or len(self._critic_warmup_actor_sha256) != 64
-                or any(character not in "0123456789abcdef"
-                       for character in self._critic_warmup_actor_sha256)):
-            raise RuntimeError("critic warmup 持久状态非法")
+        else:
+            if mode not in {
+                    GRADIENT_CLIP_SEPARATE_ACTOR_CRITIC_V1,
+                    GRADIENT_CLIP_ROOT_CONTEXT_CRITIC_V2,
+            }:
+                raise RuntimeError("critic migration 的分组裁剪模式漂移")
+            if (not isinstance(start, int) or not isinstance(until, int)
+                    or until <= start):
+                raise RuntimeError("critic warmup 绝对步边界非法")
+            quantum = int(self.n_steps) * int(self.n_envs)
+            expected = (until - start) // quantum
+            integer_fields = (
+                self._critic_warmup_expected_rollouts,
+                self._critic_warmup_rollouts_completed,
+                self._critic_warmup_optimizer_steps_completed,
+                self._actor_optimizer_steps_completed,
+            )
+            if ((until - start) % quantum != 0
+                    or any(not isinstance(value, int)
+                           or isinstance(value, bool)
+                           for value in integer_fields)
+                    or self._critic_warmup_expected_rollouts != expected
+                    or not 0 <= self._critic_warmup_rollouts_completed <= expected
+                    or self._critic_warmup_optimizer_steps_completed < 0
+                    or self._actor_optimizer_steps_completed < 0
+                    or not isinstance(self._critic_warmup_completed, bool)
+                    or not isinstance(self._critic_warmup_actor_sha256, str)
+                    or len(self._critic_warmup_actor_sha256) != 64
+                    or any(character not in "0123456789abcdef"
+                           for character in self._critic_warmup_actor_sha256)):
+                raise RuntimeError("critic warmup 持久状态非法")
         receipts = self._worker_onpolicy_pg_rollout_receipts
         joint_rollouts = self._worker_onpolicy_pg_joint_rollouts
         qualifying_rollouts = self._worker_onpolicy_pg_qualifying_rollouts
@@ -3577,6 +3660,44 @@ class LeashedMaskablePPO(MaskablePPO):
             "return_max_abs_delta": return_max,
         }
 
+    def _worker_pg_collection_log_probs(self, actions: th.Tensor) -> np.ndarray:
+        """Audit with the original per-time-step VecEnv forward batch.
+
+        GAE closure requires the unflattened [time, env, ...] buffer. Receipts
+        here are time-major (t * n_envs + e); SB3's later env-major ``get``
+        permutation is deliberately not involved. Replaying one giant batch
+        can change float32 GEMM rounding even with the exact collection actor.
+        """
+        buffer = self.rollout_buffer
+        observations = th.as_tensor(buffer.observations, device=self.device)
+        masks = th.as_tensor(buffer.action_masks, device=self.device).bool()
+        expected = (int(self.n_steps), int(self.n_envs))
+        if (
+            buffer.generator_ready
+            or observations.ndim != 3
+            or tuple(observations.shape[:2]) != expected
+            or masks.ndim != 3
+            or tuple(masks.shape[:2]) != expected
+            or tuple(actions.shape) != (expected[0] * expected[1],)
+        ):
+            raise RuntimeError(
+                "formal PG collection log-prob 要求原始 time/env batch")
+        actions_by_time = actions.reshape(expected)
+        with th.no_grad():
+            batches = []
+            for step in range(expected[0]):
+                log_probs = self.policy.get_distribution(
+                    observations[step], action_masks=masks[step],
+                ).log_prob(actions_by_time[step])
+                if tuple(log_probs.shape) != (expected[1],):
+                    raise RuntimeError(
+                        "formal PG collection log-prob 单时刻 batch 形状异常")
+                batches.append(log_probs)
+            return (
+                th.stack(batches).reshape(-1).detach().cpu().numpy()
+                .astype(np.float64, copy=False)
+            )
+
     def _begin_worker_onpolicy_pg_rollout(
             self, *, actor_frozen: bool) -> dict | None:
         """Consume exact Worker receipts and prime one joint-rollout audit."""
@@ -3698,34 +3819,11 @@ class LeashedMaskablePPO(MaskablePPO):
                 f"{float(expected_buffer_rewards[mismatch])!r},raw="
                 f"{float(rewards_np[mismatch])!r},bootstrap="
                 f"{receipts[mismatch]['time_limit_bootstrap_delta']!r}")
-        observations_for_log_prob = th.as_tensor(
-            self.rollout_buffer.observations,
-            device=self.device,
-        )
-        masks_for_log_prob = th.as_tensor(
-            self.rollout_buffer.action_masks,
-            device=self.device,
-        ).bool()
-        observations_for_log_prob = observations_for_log_prob.reshape(
-            -1, observations_for_log_prob.shape[-1])
-        masks_for_log_prob = masks_for_log_prob.reshape(
-            -1, masks_for_log_prob.shape[-1])
         sealed_log_probs = np.asarray(
             self.rollout_buffer._formal_gae_snapshot["log_probs"],
             dtype=np.float64,
         ).reshape(-1)
-        with th.no_grad():
-            recomputed_log_probs = (
-                self.policy.get_distribution(
-                    observations_for_log_prob,
-                    action_masks=masks_for_log_prob,
-                )
-                .log_prob(actions)
-                .detach()
-                .cpu()
-                .numpy()
-                .astype(np.float64, copy=False)
-            )
+        recomputed_log_probs = self._worker_pg_collection_log_probs(actions)
         if (
             recomputed_log_probs.shape != sealed_log_probs.shape
             or not np.isfinite(recomputed_log_probs).all()
@@ -4652,6 +4750,66 @@ class LeashedMaskablePPO(MaskablePPO):
                 worker_wage = float(worker_wage)
                 timeout_base, timeout_additional, timeout_total = (
                     float(value) for value in timeout_components)
+                # R17.0 修正案一(合议庭更正二.2,收据地雷):worker_env 终局
+                # policy_reward 另含深度塑形/托管 vest/血量经济三分量
+                # (worker_env.step 两处组装点),旧守门员只对照
+                # wage(+timeout),首笔真实 vest 与超时同窗即误炸。三键
+                # 缺省 0.0(旧夹具/旧法逐位不变),各须有限普通数;求和
+                # 顺序与 worker_env 组装点一致:wage + timeout + shaping
+                # + vest + hp_econ(死亡三账在两分支内仍须恒 0)。
+                policy_components = []
+                # R17.1(W/P 复核 M1):worker_env 自 R17.1 起为每笔 info 打
+                # schema 标记 worker_policy_reward_receipt="v1";带标记者三键
+                # 必在(缺键即炸),无标记者(旧夹具)保留缺省 0.0 的旧法路径。
+                receipt_schema = info.get("worker_policy_reward_receipt")
+                for field in _WORKER_POLICY_REWARD_COMPONENT_FIELDS:
+                    if receipt_schema == "v1" and field not in info:
+                        raise RuntimeError(
+                            "formal PG policy_reward 分量回执缺键"
+                            f"({field}):带 v1 标记的回执不得缺省")
+                    value = info.get(field, 0.0)
+                    if (
+                        not isinstance(
+                            value,
+                            (int, float, np.integer, np.floating),
+                        )
+                        or isinstance(value, (bool, np.bool_))
+                        or not math.isfinite(float(value))
+                    ):
+                        raise RuntimeError(
+                            "formal PG policy_reward 分量回执"
+                            f"({field})非有限普通数")
+                    policy_components.append(float(value))
+                depth_shaping, escrow_vest, hp_econ = policy_components
+                expected_timeout_reward = (
+                    worker_wage + timeout_total
+                    + depth_shaping + escrow_vest + hp_econ)
+                if receipt_schema == "v1":
+                    # R17.1(W/P 复核 H3):真正的六项恒等式,对每一笔
+                    # transition 生效(不再只在超时支路);求和顺序与
+                    # worker_env 两处组装点逐位一致:
+                    # wage + death + timeout + shaping + vest + hp_econ。
+                    credited_death = info.get(
+                        "worker_credited_terminal_death_reward")
+                    if (
+                        credited_death is None
+                        or not isinstance(
+                            credited_death,
+                            (int, float, np.integer, np.floating),
+                        )
+                        or isinstance(credited_death, (bool, np.bool_))
+                        or not math.isfinite(float(credited_death))
+                    ):
+                        raise RuntimeError(
+                            "formal PG 死亡分量回执缺失或非有限普通数")
+                    expected_policy_reward = (
+                        worker_wage + float(credited_death) + timeout_total
+                        + depth_shaping + escrow_vest + hp_econ)
+                    if float(reward) != expected_policy_reward:
+                        raise RuntimeError(
+                            "formal PG reward 六项恒等式不闭合:"
+                            f"reward={float(reward)!r} "
+                            f"expected={expected_policy_reward!r}")
                 if not timeout:
                     if (
                         timeout_base,
@@ -4660,6 +4818,48 @@ class LeashedMaskablePPO(MaskablePPO):
                     ) != (0.0, 0.0, 0.0):
                         raise RuntimeError(
                             "formal PG 非 timeout transition 携失败成本")
+                elif (
+                    # R16 修宪(C8)零罚金法域:worker_env 以
+                    # no_progress_timeout_credit=="zero" 声明,超时仍终止
+                    # 窗、分账恒 (0,0,0)、reward == wage;死亡三账仍须为 0。
+                    # 旧法(death-equivalent / 键缺省)分毫不动,走下一分支。
+                    info.get("no_progress_timeout_credit",
+                             "death-equivalent") == "zero"
+                ):
+                    if (
+                        not bool(dones_array[index])
+                        or info.get("TimeLimit.truncated", False)
+                        is not False
+                        or info.get("time_limit_bootstrap_safe")
+                        is not False
+                        or info.get("unsettled_budget_terminal")
+                        not in (False, True)
+                        or (
+                            info.get("unsettled_budget_terminal") is True
+                            and info.get("budget_exhausted") is not True
+                        )
+                        or (timeout_base, timeout_additional, timeout_total)
+                        != (0.0, 0.0, 0.0)
+                        # R17.0 修正案一:wage + 0 + shaping + vest + hp_econ
+                        or float(reward) != expected_timeout_reward
+                        or any(
+                            field not in info
+                            or not isinstance(
+                                info[field],
+                                (int, float, np.integer, np.floating),
+                            )
+                            or isinstance(info[field], (bool, np.bool_))
+                            or float(info[field]) != 0.0
+                            for field in (
+                                "existing_terminal_death_reward",
+                                "additional_terminal_death_reward",
+                                "total_terminal_death_reward",
+                            )
+                        )
+                    ):
+                        raise RuntimeError(
+                            "formal PG no-progress timeout(R16 零罚金法域)"
+                            "终止/零罚/死亡互斥账不闭合")
                 elif (
                     not bool(dones_array[index])
                     or info.get("TimeLimit.truncated", False) is not False
@@ -4680,7 +4880,8 @@ class LeashedMaskablePPO(MaskablePPO):
                     or timeout_total
                     != timeout_base + timeout_additional
                     or timeout_total >= 0.0
-                    or float(reward) != worker_wage + timeout_total
+                    # R17.0 修正案一:wage + timeout + shaping + vest + hp_econ
+                    or float(reward) != expected_timeout_reward
                     or any(
                         field not in info
                         or not isinstance(

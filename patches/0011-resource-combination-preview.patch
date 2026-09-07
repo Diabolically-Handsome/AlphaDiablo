@@ -1,0 +1,79 @@
+diff --git a/Source/stores.cpp b/Source/stores.cpp
+index 994c76f..b4a3cf9 100644
+--- a/Source/stores.cpp
++++ b/Source/stores.cpp
+@@ -2069,10 +2069,8 @@ void DrawSelector(const Surface &out, const Rectangle &rect, std::string_view te
+ 
+ } // namespace
+ 
+-bool StoreAutoPlace(Item &item, bool persistItem, bool sendNetworkMessage)
++bool StoreAutoPlaceForPlayer(Player &player, Item &item, bool persistItem, bool sendNetworkMessage)
+ {
+-	Player &player = *MyPlayer;
+-
+ 	if (AutoEquipEnabled(player, item) && AutoEquip(player, item, persistItem, sendNetworkMessage)) {
+ 		return true;
+ 	}
+@@ -2088,6 +2086,11 @@ bool StoreAutoPlace(Item &item, bool persistItem, bool sendNetworkMessage)
+ 	return CanFitItemInInventory(player, item);
+ }
+ 
++bool StoreAutoPlace(Item &item, bool persistItem, bool sendNetworkMessage)
++{
++	return StoreAutoPlaceForPlayer(*MyPlayer, item, persistItem, sendNetworkMessage);
++}
++
+ StoreBuyResult TryBuyStoreItem(StoreVendor vendor, size_t index,
+     uint32_t expectedSeed, uint16_t expectedCreateInfo, int expectedBaseId)
+ {
+@@ -2788,17 +2791,18 @@ void StoreNext()
+ 	}
+ }
+ 
+-void TakePlrsMoney(int cost, bool sendNetworkMessage)
++int TakePlayerGold(Player &player, int cost, bool sendNetworkMessage)
+ {
+-	Player &myPlayer = *MyPlayer;
+-
+-	myPlayer._pGold -= std::min(cost, myPlayer._pGold);
+-
+-	cost = TakeGold(myPlayer, cost, true, sendNetworkMessage);
+-	if (cost != 0) {
+-		cost = TakeGold(myPlayer, cost, false, sendNetworkMessage);
+-	}
++	player._pGold -= std::min(cost, player._pGold);
++	cost = TakeGold(player, cost, true, sendNetworkMessage);
++	if (cost != 0)
++		cost = TakeGold(player, cost, false, sendNetworkMessage);
++	return cost;
++}
+ 
++void TakePlrsMoney(int cost, bool sendNetworkMessage)
++{
++	cost = TakePlayerGold(*MyPlayer, cost, sendNetworkMessage);
+ 	Stash.gold -= cost;
+ 	Stash.dirty = true;
+ }
+diff --git a/Source/stores.h b/Source/stores.h
+index 7e20907..5d0de6b 100644
+--- a/Source/stores.h
++++ b/Source/stores.h
+@@ -190,6 +190,18 @@ bool IsPlayerInStore();
+  * @return true if the item can be/was placed.
+  */
+ bool StoreAutoPlace(Item &item, bool persistItem, bool sendNetworkMessage = true);
++
++/** Explicit-player placement kernel shared with read-only detached previews.
++ * No global player substitution. Use sendNetworkMessage=false on detached,
++ * inactive players; normal StoreAutoPlace remains the MyPlayer wrapper.
++ */
++bool StoreAutoPlaceForPlayer(Player &player, Item &item, bool persistItem, bool sendNetworkMessage = false);
++
++/** Debit personal inventory gold in the normal small-piles-first order.
++ * Returns any unpaid remainder without accessing or dirtying the stash.
++ * The caller validates affordability before invoking this mutating helper.
++ */
++int TakePlayerGold(Player &player, int cost, bool sendNetworkMessage = false);
+ bool PlayerCanAfford(int price);
+ 
+ enum class StoreVendor { Smith, Healer };

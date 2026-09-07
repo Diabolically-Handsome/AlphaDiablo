@@ -11,7 +11,8 @@ def _scene_identity(obs):
             int(obs.get("set_level_id", 0)) if is_set else 0)
 
 
-def walk_to(bridge, tx, ty, max_ticks=6000, hop=8, ticks_per_hop=16, jitter_seed=7):
+def walk_to(bridge, tx, ty, max_ticks=6000, hop=8, ticks_per_hop=16, jitter_seed=7,
+            *, raw_validator=None):
     """分段走向目标格;中途换层立即返回。返回 (最终观测, 用掉 tick 数)。"""
     for name, value in (("max_ticks", max_ticks), ("hop", hop),
                         ("ticks_per_hop", ticks_per_hop)):
@@ -21,6 +22,8 @@ def walk_to(bridge, tx, ty, max_ticks=6000, hop=8, ticks_per_hop=16, jitter_seed
     max_ticks, hop, ticks_per_hop = int(max_ticks), int(hop), int(ticks_per_hop)
     rng = np.random.default_rng(jitter_seed)
     obs = bridge.observe()
+    if raw_validator is not None:
+        raw_validator(obs)
     start_scene = _scene_identity(obs)
     used = 0
     last_pos = (obs["player_x"], obs["player_y"])
@@ -38,6 +41,8 @@ def walk_to(bridge, tx, ty, max_ticks=6000, hop=8, ticks_per_hop=16, jitter_seed
                     break
                 ticks = min(8, max_ticks - used)
                 obs = bridge.step(ticks=ticks)
+                if raw_validator is not None:
+                    raw_validator(obs)
                 used += ticks
                 if _scene_identity(obs) != start_scene:
                     break
@@ -46,6 +51,8 @@ def walk_to(bridge, tx, ty, max_ticks=6000, hop=8, ticks_per_hop=16, jitter_seed
         bridge.act_walk(px + round(dx * frac), py + round(dy * frac))
         ticks = min(ticks_per_hop, max_ticks - used)
         obs = bridge.step(ticks=ticks)
+        if raw_validator is not None:
+            raw_validator(obs)
         used += ticks
         if (_scene_identity(obs) != start_scene
                 or obs.get("dead") or obs.get("game_over")):
@@ -59,6 +66,8 @@ def walk_to(bridge, tx, ty, max_ticks=6000, hop=8, ticks_per_hop=16, jitter_seed
             bridge.act_walk(px + jx, py + jy)
             ticks = min(ticks_per_hop, max_ticks - used)
             obs = bridge.step(ticks=ticks)
+            if raw_validator is not None:
+                raw_validator(obs)
             used += ticks
             jitter_pos = (obs["player_x"], obs["player_y"])
             if jitter_pos != pos:
@@ -74,18 +83,23 @@ def walk_to(bridge, tx, ty, max_ticks=6000, hop=8, ticks_per_hop=16, jitter_seed
     return obs, used
 
 
-def descend_to_dungeon(bridge):
+def descend_to_dungeon(bridge, *, raw_validator=None):
     """从城镇出生点走到教堂楼梯并进入地牢 1 层。返回 L1 首帧观测。
 
     城镇布局固定(楼梯恒在 (25,29)),对任意种子都适用。
     """
     obs = bridge.observe()
+    if raw_validator is not None:
+        raw_validator(obs)
     if obs["dungeon_level"] != 0:
         raise ValueError("descend_to_dungeon 需要从城镇出发")
     stairs = [t for t in obs["triggers"] if t["msg"] == bridge.WM_DIABNEXTLVL]
     if not stairs:
         raise RuntimeError(f"城镇观测里没有下行楼梯: {obs['triggers']}")
-    obs, used = walk_to(bridge, stairs[0]["x"], stairs[0]["y"])
+    if raw_validator is None:
+        obs, used = walk_to(bridge, stairs[0]["x"], stairs[0]["y"])
+    else:
+        obs, used = walk_to(bridge, stairs[0]["x"], stairs[0]["y"], raw_validator=raw_validator)
     if obs["dungeon_level"] != 1:
         raise RuntimeError(
             f"脚本化下地牢失败:{used} tick 后仍在层 {obs['dungeon_level']},"

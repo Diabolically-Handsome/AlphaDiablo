@@ -16,3 +16,23 @@ __pycache__/
 # 游戏数据永不入库(版权:Diablo © Blizzard Entertainment)
 *.mpq
 *.exe
+
+# 2026-09-06: receipts that ARE the science get tracked; bulk run artefacts stay out
+!train/runs/
+train/runs/*
+!train/runs/*.md
+!train/runs/r10-staging/
+train/runs/r10-staging/*
+!train/runs/r10-staging/*.py
+!train/runs/r10-staging/*.sh
+!train/runs/r10-staging/*.md
+!train/runs/r10-staging/*.jsonl
+!train/runs/r10-staging/r16-deploy-arm.json
+!train/runs/r10-staging/r17-0/
+!train/runs/eval-assembled/
+train/runs/eval-assembled/*
+!train/runs/eval-assembled/r10-cand-*.json
+!train/runs/eval-assembled/r10-anchor-*.json
+!train/runs/eval-assembled/r16-anchor-*.json
+# native libraries and engine binaries never enter the repo
+*.so

@@ -9,8 +9,12 @@ smashing barrels, looting potions and fighting its way down through the
 dungeon* — fourteen documented runs, one diagnosed failure mode eliminated
 (or one hypothesis falsified) per run.
 
-- 🚀 **~13,000× realtime**: full game logic, headless — 254k engine ticks/s raw,
-  ~7,500 `env.step()`/s with full observations (M-series MacBook, measured)
+- 🚀 **~13,000× realtime engine tick rate**: full game logic, headless — ~254k raw
+  engine ticks/s (M-series MacBook, July 2026; ~270k/s marginal on a Threadripper
+  7970X, 2026-09-06 receipt). Per-step cost is dominated by Python-side observation
+  extraction: the current research configuration (`include_raw=True`, full monster
+  and item rosters) runs ~300–500 `env.step()`/s per process; the July figure of
+  ~7,500 steps/s predates the R10–R17 raw-state exports and no longer reproduces
 - 🎲 **Deterministic**: `reset(seed)` owns the dungeon seeds *and* the global RNG
   stream; evaluations are bit-reproducible across processes (verified per-seed,
   see protocol notes in [train/evaluate.py](train/evaluate.py)); engine source
@@ -638,7 +642,8 @@ adapter for the otherwise impossible Cain round trip.
 ## 中文速览
 
 基于 DevilutionX 的暗黑破坏神 I 强化学习环境:无头引擎裸跑 ~13,000 倍实时
-(含观测的 env.step 约 7,500 步/秒,~1,500 倍实时)、种子级确定性(评估跨进程
+(引擎 tick 约 254k/秒;含完整观测的 env.step 在当前研究配置下约 300–500 步/秒/进程,
+瓶颈在 Python 侧观测抽取,2026-09-06 回执)、种子级确定性(评估跨进程
 位级可复现)、Gymnasium 接口、宏动作(交战/探索/主线推进/喝药/捡药)、零依赖训练
 监控面板。十四轮迭代把 PPO 从"面壁思过"练到"开门、砸桶、捡药续命、一路下杀"
 (32 种子金标准均击杀 **35.2**,较上代冠军近乎翻倍;实喝纪律 0.5%→93.4%),

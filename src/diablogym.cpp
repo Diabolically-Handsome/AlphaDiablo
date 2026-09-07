@@ -85,10 +85,12 @@
 #include "panels/info_box.hpp"
 #include "portal.h"
 #include "qol/chatlog.h"
+#include "qol/stash.h"
 #include "quests.h"
 #include "tables/monstdat.h"
 #include "tables/playerdat.hpp"
 #include "stores.h"
+#include "towners.h"
 #include "utils/display.h"
 #include "utils/paths.h"
 
@@ -114,6 +116,12 @@ bool gLuaInitialized = false;
 bool gExitCleanupRegistered = false;
 int64_t gEnginePid = -1;
 bool gMonotonicQuestTurnInUsed = false;
+bool gResourceProtocol = false;
+bool EquipmentReadyForPreservation(const Player &player);
+py::dict ObserveResourceState();
+void ResetResourceEpisode(uint32_t episodeSeed);
+void SaveLevelForTransition();
+void ResourceAfterLoad();
 
 void EndGame();
 void EngineShutdownAtExit() noexcept;
@@ -421,6 +429,8 @@ uint32_t ItemCombatUtility(const Item &item)
 
 struct GearCombatProfile {
 	uint32_t utility = 0;
+	// Internal protocol guard only; never part of the actor input or utility.
+	bool nativeEquipmentReady = false;
 	uint32_t effectFlags = 0;
 	uint8_t damAcFlags = 0;
 	int attackSpeedTier = 0;
@@ -719,6 +729,7 @@ uint32_t ScoreGearCombatProfile(
 GearCombatProfile GearCombatProfileFromPlayer(const Player &player)
 {
 	GearCombatProfile profile;
+	profile.nativeEquipmentReady = EquipmentReadyForPreservation(player);
 	profile.effectFlags = static_cast<uint32_t>(player._pIFlags);
 	profile.damAcFlags = static_cast<uint8_t>(player.pDamAcFlags);
 	profile.attackSpeedTier = FourLevelEffectTier(
@@ -884,6 +895,12 @@ GearCombatProfile LoadoutGearCombatProfile(const Player &player)
 bool IsConservativeGearUpgrade(
     const GearCombatProfile &previous, const GearCombatProfile &next)
 {
+	// The opt-in native predicate is computed from the full recalculated player
+	// for both candidate exposure and live commit. Missing health, potions or
+	// level must not waive equipment readiness that this loadout already has.
+	if (previous.nativeEquipmentReady && !next.nativeEquipmentReady)
+		return false;
+
 	// CalcPlrLifeMana can reduce current life when an equipped +HP/+VIT item
 	// is replaced.  The stat-only simulation deliberately preserves HPBase,
 	// so this is the exact life the live atomic commit would produce.  Diablo
@@ -1122,7 +1139,7 @@ void SyncLoad(interface_mode uMsg)
 		loadResult = LoadGameLevel(true, ENTRY_MAIN);
 		break;
 	case WM_DIABNEXTLVL:
-		pfile_save_level();
+		SaveLevelForTransition();
 		FreeGameMem();
 		setlevel = false;
 		currlevel = myPlayer.plrlevel;
@@ -1130,14 +1147,14 @@ void SyncLoad(interface_mode uMsg)
 		loadResult = LoadGameLevel(false, ENTRY_MAIN);
 		break;
 	case WM_DIABPREVLVL:
-		pfile_save_level();
+		SaveLevelForTransition();
 		FreeGameMem();
 		currlevel--;
 		leveltype = GetLevelType(currlevel);
 		loadResult = LoadGameLevel(false, ENTRY_PREV);
 		break;
 	case WM_DIABSETLVL:
-		pfile_save_level();
+		SaveLevelForTransition();
 		setlevel = true;
 		leveltype = setlvltype;
 		currlevel = static_cast<uint8_t>(setlvlnum);
@@ -1145,7 +1162,7 @@ void SyncLoad(interface_mode uMsg)
 		loadResult = LoadGameLevel(false, ENTRY_SETLVL);
 		break;
 	case WM_DIABRTNLVL:
-		pfile_save_level();
+		SaveLevelForTransition();
 		setlevel = false;
 		FreeGameMem();
 		currlevel = GetMapReturnLevel();
@@ -1153,13 +1170,13 @@ void SyncLoad(interface_mode uMsg)
 		loadResult = LoadGameLevel(false, ENTRY_RTNLVL);
 		break;
 	case WM_DIABWARPLVL:
-		pfile_save_level();
+		SaveLevelForTransition();
 		FreeGameMem();
 		GetPortalLevel();
 		loadResult = LoadGameLevel(false, ENTRY_WARPLVL);
 		break;
 	case WM_DIABTOWNWARP:
-		pfile_save_level();
+		SaveLevelForTransition();
 		FreeGameMem();
 		setlevel = false;
 		currlevel = myPlayer.plrlevel;
@@ -1167,14 +1184,14 @@ void SyncLoad(interface_mode uMsg)
 		loadResult = LoadGameLevel(false, ENTRY_TWARPDN);
 		break;
 	case WM_DIABTWARPUP:
-		pfile_save_level();
+		SaveLevelForTransition();
 		FreeGameMem();
 		currlevel = myPlayer.plrlevel;
 		leveltype = GetLevelType(currlevel);
 		loadResult = LoadGameLevel(false, ENTRY_TWARPUP);
 		break;
 	case WM_DIABRETOWN:
-		pfile_save_level();
+		SaveLevelForTransition();
 		FreeGameMem();
 		setlevel = false;
 		currlevel = myPlayer.plrlevel;
@@ -1203,6 +1220,7 @@ void SyncLoad(interface_mode uMsg)
 	// 每次换层都重申,把这个隐性不变量钉死(v13 审查发现)
 	NewCursor(CURSOR_HAND);
 	gStartupTick = true;
+	ResourceAfterLoad();
 }
 
 // 复刻 GameEventHandler 的自定义事件分支(关卡切换等),改走同步加载
@@ -1691,6 +1709,8 @@ py::dict Observe()
 		triggers.append(t);
 	}
 	obs["triggers"] = triggers;
+	if (gResourceProtocol)
+		obs["resource_state"] = ObserveResourceState();
 
 	return obs;
 }
@@ -1978,6 +1998,7 @@ py::dict Reset(uint32_t seed)
 	ClearEpisodePersistentGameplayState();
 	gStallPrints = 0;
 	gMonotonicQuestTurnInUsed = false;
+	ResetResourceEpisode(seed);
 
 	CreateFreshHeroSave();
 	gbLoadGame = false;
@@ -2553,6 +2574,7 @@ struct GearUpgradePlan {
 	uint32_t nextUtility = 0;
 	int nextCurrentHitPoints = 0;
 	int nextMaxHitPoints = 0;
+	int nextArmorClass = 0;
 };
 
 struct PlayerResourceState {
@@ -2658,6 +2680,7 @@ void ConsiderGearUpgradePlan(
 	best.nextUtility = nextProfile.utility;
 	best.nextCurrentHitPoints = nextProfile.currentHitPoints;
 	best.nextMaxHitPoints = nextProfile.maxHitPoints;
+	best.nextArmorClass = nextProfile.armor;
 }
 
 GearUpgradePlan PlanGearUpgrade(const Player &player, const Item &item)
@@ -2914,6 +2937,9 @@ int ActPickupProgression(int x, int y)
 	return 0;
 }
 
+#include "resource_protocol.hpp"
+#include "resource_combinations.hpp"
+
 } // namespace
 
 PYBIND11_MODULE(_diablogym, m)
@@ -2931,6 +2957,265 @@ PYBIND11_MODULE(_diablogym, m)
 	m.def("reset", &Reset, py::arg("seed"), "新开一局(全新 1 级英雄,确定性地牢种子),返回观测");
 	m.def("step", &Step, py::arg("ticks") = 1, "推进游戏逻辑 N 个 tick(20 tick = 游戏内 1 秒),返回观测");
 	m.def("observe", &Observe, "只读当前观测");
+	m.def("configure_resource_protocol", &ConfigureResourceProtocol, py::arg("enabled"), py::arg("ordinary_armor_scope") = false,
+	    py::arg("preserve_equipment_readiness") = false, py::arg("readiness_advisory") = false);
+	m.def("configure_town_service", &ConfigureTownService, py::arg("authorized"));
+	m.def("project_seen_resource_smith_items", &ProjectSeenResourceSmithItems, py::arg("identities"));
+	m.def("preview_resource_equipment_combinations", &PreviewResourceEquipmentCombinations, py::arg("sequences"), py::arg("max_gold_cost"));
+	m.def("act_pickup_gold_at", &ActPickupGoldAt, py::arg("item_id"), py::arg("seed_hi"), py::arg("seed_lo"), py::arg("create_info"), py::arg("base_id"));
+	m.def("act_talk_towner", &ActTalkTowner, py::arg("towner_id"));
+	m.def("act_dismiss_dialog", &ActDismissDialog);
+	m.def("act_buy_store_item", &ActBuyStoreItem, py::arg("vendor"), py::arg("index"), py::arg("seed_hi"), py::arg("seed_lo"), py::arg("create_info"), py::arg("base_id"));
+	m.def("act_repair_equipped_item", &ActRepairEquippedItem, py::arg("slot"), py::arg("seed_hi"), py::arg("seed_lo"), py::arg("create_info"), py::arg("base_id"), py::arg("expected_durability"), py::arg("expected_price"));
+	m.def("act_equip_inventory_item", &ActEquipInventoryItem, py::arg("index"), py::arg("seed_hi"), py::arg("seed_lo"), py::arg("create_info"), py::arg("base_id"));
+	m.def("act_unequip_equipped_item", &ActUnequipEquippedItem, py::arg("slot"), py::arg("seed_hi"), py::arg("seed_lo"), py::arg("create_info"), py::arg("base_id"));
+	m.def("probe_resource_recreate_equipment", [](int slot, int baseId, uint16_t seedHigh, uint16_t seedLow, uint16_t createInfo, int durability, int bonusStrength, int bonusHp) {
+		EnsureInGame("probe_resource_recreate_equipment");
+		if (slot < 0 || slot >= NUM_INVLOC || baseId < 0 || static_cast<size_t>(baseId) >= AllItemsList.size())
+			throw std::invalid_argument("invalid fixture item or slot");
+		Item item = {};
+		RecreateItem(*MyPlayer, item, static_cast<_item_indexes>(baseId), createInfo,
+		    (uint32_t { seedHigh } << 16) | seedLow, 0, 0);
+		if (!item.isEquipment() || durability < 0 || durability > item._iMaxDur)
+			throw std::invalid_argument("invalid fixture equipment durability");
+		item._iIdentified = true;
+		item._iDurability = static_cast<uint8_t>(durability);
+		item._iPLStr += bonusStrength;
+		item._iPLHP += bonusHp;
+		MyPlayer->InvBody[slot] = item;
+		CalcPlrInv(*MyPlayer, true);
+	}, py::arg("slot"), py::arg("base_id"), py::arg("seed_hi"), py::arg("seed_lo"), py::arg("create_info"), py::arg("durability"), py::arg("bonus_strength") = 0, py::arg("bonus_hp_fixed") = 0,
+	    "Engineering fixture only: recreate one real item identity, optionally add a stat-boundary affix; never use for effect evaluation");
+	m.def("probe_resource_armor_plan", [](int inventoryIndex) {
+		EnsureInGame("probe_resource_armor_plan");
+		const Player &player = *MyPlayer;
+		if (inventoryIndex < 0 || inventoryIndex >= player._pNumInv)
+			throw std::invalid_argument("invalid engineering inventory index");
+		auto serialize = [](const GearCombatProfile &profile) {
+		py::dict result;
+		result["utility"] = profile.utility;
+		result["effect_flags"] = profile.effectFlags;
+		result["dam_ac_flags"] = profile.damAcFlags;
+		result["attack_speed_tier"] = profile.attackSpeedTier;
+		result["attack_cycle_frames"] = profile.attackCycleFrames;
+		result["attack_impact_frames"] = profile.attackImpactFrames;
+		result["physical_min"] = profile.physicalMin;
+		result["physical_max"] = profile.physicalMax;
+		result["animal_min"] = profile.animalMin;
+		result["animal_max"] = profile.animalMax;
+		result["undead_min"] = profile.undeadMin;
+		result["undead_max"] = profile.undeadMax;
+		result["demon_min"] = profile.demonMin;
+		result["demon_max"] = profile.demonMax;
+		result["melee_to_hit"] = profile.meleeToHit;
+		result["melee_piercing_to_hit"] = profile.meleePiercingToHit;
+		result["magic_to_hit"] = profile.magicToHit;
+		result["fire_min"] = profile.fireMin;
+		result["fire_max"] = profile.fireMax;
+		result["lightning_min"] = profile.lightningMin;
+		result["lightning_max"] = profile.lightningMax;
+		result["armor"] = profile.armor;
+		result["block_enabled"] = profile.blockEnabled;
+		result["block_chance"] = profile.blockChance;
+		result["magic_resist"] = profile.magicResistance;
+		result["fire_resist"] = profile.fireResistance;
+		result["lightning_resist"] = profile.lightningResistance;
+		result["light_radius"] = profile.lightRadius;
+		result["current_hp_fixed"] = profile.currentHitPoints;
+		result["max_hp_fixed"] = profile.maxHitPoints;
+		result["max_mana_fixed"] = profile.maxMana;
+		result["magic"] = profile.magic;
+		result["get_hit"] = profile.getHit;
+		result["hit_recovery_tier"] = profile.hitRecoveryTier;
+		result["life_steal_tier"] = profile.lifeStealTier;
+		result["mana_steal_tier"] = profile.manaStealTier;
+		result["spell_level_bonus"] = profile.spellLevelBonus;
+		return result;
+		};
+		const auto empty = EmptyGearCombatBaseline(player);
+		auto live = GearCombatProfileFromPlayer(player);
+		MakeGearUtilityRelativeToEmpty(live, empty);
+		std::array<Item, NUM_INVLOC> currentBody;
+		std::copy(std::begin(player.InvBody), std::end(player.InvBody), currentBody.begin());
+		auto simulatedCurrent = SimulateGearCombatProfile(player, currentBody);
+		MakeGearUtilityRelativeToEmpty(simulatedCurrent, empty);
+		const auto upgrade = PlanGearUpgrade(player, player.InvList[inventoryIndex]);
+		const auto legal = PlanResourceArmor(player, player.InvList[inventoryIndex], inventoryIndex);
+		py::dict result;
+		result["live_profile"] = serialize(live);
+		result["simulated_current_profile"] = serialize(simulatedCurrent);
+		result["old_upgrade_valid"] = upgrade.valid;
+		result["old_upgrade_target"] = upgrade.valid ? static_cast<int>(upgrade.target) : -1;
+		result["old_upgrade_next_utility"] = upgrade.nextUtility;
+		py::list cleared;
+		for (int slot = 0; slot < NUM_INVLOC; ++slot)
+			if (upgrade.clearSlots[slot]) cleared.append(slot);
+		result["old_upgrade_clear_slots"] = cleared;
+		if (legal.gear.valid) {
+			for (int slot = 0; slot < NUM_INVLOC; ++slot)
+				if (legal.gear.clearSlots[slot]) currentBody[slot].clear();
+			currentBody[legal.gear.target] = legal.gear.candidate;
+			auto next = SimulateGearCombatProfile(player, currentBody);
+			MakeGearUtilityRelativeToEmpty(next, empty);
+			result["simulated_candidate_profile"] = serialize(next);
+		}
+		return result;
+	}, py::arg("inventory_index"), "Read-only engineering audit: old utility plan versus live and detached profiles; never an action");
+	m.def("probe_resource_armor_item", [](const std::string &destination, int baseId, uint16_t seedHigh, uint16_t seedLow, uint16_t createInfo, int durability, int quality, int armorClass) {
+		EnsureInGame("probe_resource_armor_item");
+		if (baseId < 0 || static_cast<size_t>(baseId) >= AllItemsList.size()
+		    || (destination != "smith" && destination != "inventory")
+		    || quality < ITEM_QUALITY_NORMAL || quality > ITEM_QUALITY_UNIQUE)
+			throw std::invalid_argument("invalid engineering item fixture");
+		Item item = {};
+		RecreateItem(*MyPlayer, item, static_cast<_item_indexes>(baseId), createInfo,
+		    (uint32_t { seedHigh } << 16) | seedLow, 0, 0);
+		if (!item.isEquipment() || durability < 0 || durability > item._iMaxDur)
+			throw std::invalid_argument("invalid fixture durability or equipment");
+		item._iDurability = static_cast<uint8_t>(durability);
+		item._iMagical = static_cast<item_quality>(quality);
+		if (armorClass != -1) {
+			if (armorClass < AllItemsList[baseId].iMinAC || armorClass > AllItemsList[baseId].iMaxAC)
+				throw std::invalid_argument("fixture AC outside real base-item range");
+			item._iAC = armorClass;
+		}
+		item._iIdentified = true;
+		item._iStatFlag = MyPlayer->CanUseItem(item);
+		if (destination == "smith") {
+			const int index = static_cast<int>(SmithItems.size());
+			SmithItems.push_back(item);
+			return index;
+		}
+		const int index = MyPlayer->_pNumInv;
+		if (!AutoPlaceItemInInventory(*MyPlayer, item, false))
+			throw std::runtime_error("engineering inventory fixture has no room");
+		return index;
+	}, py::arg("destination"), py::arg("base_id"), py::arg("seed_hi"), py::arg("seed_lo"), py::arg("create_info"), py::arg("durability"), py::arg("quality") = 0, py::arg("armor_class") = -1,
+	    "Engineering fixture only: recreate a real item (optional AC within its native range) into Smith stock or inventory; never policy-effect evidence");
+	m.def("probe_resource_fill_inventory", []() {
+		EnsureInGame("probe_resource_fill_inventory");
+		for (int index = 0; index < InventoryGridCells; ++index) {
+			Item item = {};
+			GetItemAttrs(item, IDI_HEAL, 1);
+			item._iSeed = 0xF1110000U + index;
+			if (!AutoPlaceItemInInventory(*MyPlayer, item, false)) break;
+		}
+	}, "Engineering fixture only: fill remaining inventory slots with ordinary potions");
+	m.def("probe_resource_inventory_snapshot", []() {
+		EnsureInGame("probe_resource_inventory_snapshot");
+		py::dict snapshot;
+		py::list items, grid;
+		for (int index = 0; index < MyPlayer->_pNumInv; ++index) {
+			py::dict item;
+			AppendItemCombatState(item, MyPlayer->InvList[index], 0);
+			item["value"] = MyPlayer->InvList[index]._ivalue;
+			item["identified_value"] = MyPlayer->InvList[index]._iIvalue;
+			items.append(item);
+		}
+		for (const auto value : MyPlayer->InvGrid) grid.append(value);
+		snapshot["items"] = items;
+		snapshot["grid"] = grid;
+		snapshot["gold"] = MyPlayer->_pGold;
+		snapshot["held_empty"] = MyPlayer->HoldItem.isEmpty();
+		return snapshot;
+	}, "Engineering observation only: actual inventory placement and item fields for atomicity checks");
+	m.def("probe_resource_set_belt_heals", [](int count) {
+		EnsureInGame("probe_resource_set_belt_heals");
+		if (count < 0 || count > MaxBeltItems) throw std::invalid_argument("count outside belt capacity");
+		for (int index = 0; index < MaxBeltItems; ++index) {
+			MyPlayer->SpdList[index].clear();
+			if (index < count) {
+				GetItemAttrs(MyPlayer->SpdList[index], IDI_HEAL, 1);
+				MyPlayer->SpdList[index]._iSeed = 0xB3170000U + index;
+			}
+		}
+		MyPlayer->CalcScrolls();
+	}, py::arg("count"), "Test fixture only: replace belt with a specified number of ordinary healing potions");
+	m.def("probe_resource_set_durability", [](int durability) {
+		EnsureInGame("probe_resource_set_durability");
+		if (durability < 0 || durability > 255) throw std::invalid_argument("durability outside uint8");
+		for (const inv_body_loc slot : { INVLOC_HEAD, INVLOC_HAND_LEFT, INVLOC_HAND_RIGHT, INVLOC_CHEST }) {
+			Item &item = MyPlayer->InvBody[slot];
+			if (!item.isEmpty()) item._iDurability = static_cast<uint8_t>(durability);
+		}
+	}, py::arg("durability"), "Test fixture only: set equipped durability for readiness boundary checks");
+	m.def("probe_resource_set_hp_fixed", [](int hitPoints) {
+		EnsureInGame("probe_resource_set_hp_fixed");
+		if (hitPoints <= 0 || hitPoints > MyPlayer->_pMaxHP) throw std::invalid_argument("HP outside alive/max range");
+		SetPlayerHitPoints(*MyPlayer, hitPoints);
+	}, py::arg("hit_points"), "Test fixture only: set exact fixed-point HP for the 80 percent boundary");
+	m.def("probe_resource_add_gold", [](int amount) {
+		EnsureInGame("probe_resource_add_gold");
+		if (amount <= 0 || amount > MaxGold) throw std::invalid_argument("one gold stack must be in [1,MaxGold]");
+		Item gold = {};
+		MakeGoldStack(gold, amount);
+		if (!AutoPlaceItemInInventory(*MyPlayer, gold, false)) throw std::runtime_error("fixture gold does not fit");
+		MyPlayer->_pGold = CalculateGold(*MyPlayer);
+	}, py::arg("amount"), "Test fixture only: add a real inventory gold stack, never for policy evaluation");
+	m.def("probe_resource_transition", [](int mode, int target) {
+		EnsureInGame("probe_resource_transition");
+		const auto request = static_cast<interface_mode>(mode);
+		if (request == WM_DIABWARPLVL) StartWarpLvl(*MyPlayer, 0);
+		else if (request == WM_DIABRETOWN) RestartTownLvl(*MyPlayer);
+		else if (IsAnyOf(request, WM_DIABNEXTLVL, WM_DIABPREVLVL, WM_DIABTOWNWARP, WM_DIABTWARPUP, WM_DIABRTNLVL)) StartNewLvl(*MyPlayer, request, target);
+		else throw std::invalid_argument("unsupported transition probe message");
+	}, py::arg("mode"), py::arg("target"), "Test fixture only: request an engine transition without advancing a tick");
+	m.def("probe_resource_town_portal_fixture", []() {
+		EnsureInGame("probe_resource_town_portal_fixture");
+		if (setlevel || currlevel != 0 || MyPlayer->_pmode != PM_STAND)
+			throw std::runtime_error("portal fixture requires standing in town");
+		Missile *portal = AddMissile(MyPlayer->position.tile, MyPlayer->position.tile,
+		    Direction::South, MissileID::TownPortal, TARGET_MONSTERS, *MyPlayer, 0, 0);
+		if (portal == nullptr) throw std::runtime_error("portal fixture could not allocate a missile");
+		MyPlayer->walkpath[0] = 1; // Non-empty queued path makes ClrPlrPath observable.
+	}, "Test fixture only: create an actual portal under the town player with a pending path");
+	m.def("probe_resource_process_town_portal", []() {
+		EnsureInGame("probe_resource_process_town_portal");
+		for (Missile &missile : Missiles) {
+			if (missile._mitype == MissileID::TownPortal && missile.position.tile == MyPlayer->position.tile) {
+				ProcessTownPortal(missile);
+				return;
+			}
+		}
+		throw std::runtime_error("portal fixture is not under player");
+	}, "Test fixture only: execute the actual portal collision handler without a game tick");
+	m.def("probe_resource_set_death_ui_flag", [](bool dead) {
+		EnsureInGame("probe_resource_set_death_ui_flag");
+		MyPlayerIsDead = dead;
+	}, py::arg("dead"), "Test fixture only: set the death UI flag to check restart rejection atomicity");
+	m.def("probe_resource_queue_restart_town", []() {
+		EnsureInGame("probe_resource_queue_restart_town");
+		NetSendCmd(true, CMD_RETOWN);
+	}, "Test fixture only: queue the normal restart-town network message");
+	m.def("probe_resource_process_game_packets", []() {
+		EnsureInGame("probe_resource_process_game_packets");
+		ProcessGameMessagePackets();
+	}, "Test fixture only: drain normal game packets to expose a forbidden queued warp");
+	m.def("probe_resource_transition_snapshot", []() {
+		EnsureInGame("probe_resource_transition_snapshot");
+		py::dict result;
+		const Player &player = *MyPlayer;
+		result["player_level"] = player.plrlevel;
+		result["level"] = currlevel;
+		result["set_level"] = setlevel;
+		result["set_level_type"] = static_cast<int>(setlvltype);
+		result["mode"] = static_cast<int>(player._pmode);
+		result["changing"] = player._pLvlChanging;
+		result["invincible"] = player._pInvincible;
+		result["mana_shield"] = player.pManaShield;
+		result["my_player_dead"] = MyPlayerIsDead;
+		result["hp_fixed"] = player._pHitPoints;
+		result["mana_fixed"] = player._pMana;
+		result["rng"] = GetLCGEngineState();
+		result["town_warp_from"] = TWarpFrom;
+		result["missiles"] = Missiles.size();
+		py::list path, occupancy;
+		for (const auto value : player.walkpath) path.append(value);
+		for (const auto &row : dPlayer) for (const auto value : row) occupancy.append(value);
+		result["walkpath"] = path;
+		result["player_occupancy"] = occupancy;
+		return result;
+	}, "Test fixture only: gameplay state touched by InitLevelChange");
 	m.def("act_wait", &ActWait,
 	    "取消遗留寻路/目标动作并原地等待；攻击立即中止，已提交的单格移动可自然收尾，返回 0/1");
 	m.def("act_walk", &ActWalk, py::arg("x"), py::arg("y"), "寻路走向目标格(网络命令层注入)");
@@ -3193,8 +3478,8 @@ PYBIND11_MODULE(_diablogym, m)
 			}
 			item._iPLFR = static_cast<int16_t>(fireResistance);
 			item._iPLLR = static_cast<int16_t>(lightningResistance);
-				item._iPLMR = static_cast<int16_t>(magicResistance);
-				item._iPLToHit = static_cast<int16_t>(toHitBonus);
+			item._iPLMR = static_cast<int16_t>(magicResistance);
+			item._iPLToHit = static_cast<int16_t>(toHitBonus);
 			item._iPLGetHit = static_cast<int16_t>(getHitPenalty);
 			item._iPLHP = static_cast<int16_t>(
 			    lifeBonusPoints * 64);
@@ -3212,18 +3497,18 @@ PYBIND11_MODULE(_diablogym, m)
 		    ItemSpaceOk, MyPlayer->position.tile, 1, 2);
 		if (!position.has_value())
 			throw std::runtime_error("probe_spawn_test_gear 玩家两格内无地面空位");
-			const int activeItemId = PlaceItemInWorld(
-			    std::move(item), *position);
-			const Item &placed = Items[activeItemId];
-			py::dict result;
-			result["active_id"] = activeItemId;
-			result["x"] = static_cast<int>(position->x);
-			result["y"] = static_cast<int>(position->y);
-			result["seed_hi"] = HighWord(placed._iSeed);
-			result["seed_lo"] = LowWord(placed._iSeed);
-			result["create_info"] = placed._iCreateInfo;
-			result["base_id"] = static_cast<int>(placed.IDidx);
-			return result;
+		const int activeItemId = PlaceItemInWorld(
+		    std::move(item), *position);
+		const Item &placed = Items[activeItemId];
+		py::dict result;
+		result["active_id"] = activeItemId;
+		result["x"] = static_cast<int>(position->x);
+		result["y"] = static_cast<int>(position->y);
+		result["seed_hi"] = HighWord(placed._iSeed);
+		result["seed_lo"] = LowWord(placed._iSeed);
+		result["create_info"] = placed._iCreateInfo;
+		result["base_id"] = static_cast<int>(placed.IDidx);
+		return result;
 	}, py::arg("base_id"), py::arg("min_damage"),
 	    py::arg("max_damage"), py::arg("armor_class") = 0,
 	    py::arg("magic_damage_bonus") = 0,
@@ -3364,22 +3649,26 @@ PYBIND11_MODULE(_diablogym, m)
 		if (setlevel)
 			throw std::runtime_error("探针进入 set-level 前必须位于主地牢");
 		const auto setLevel = static_cast<_setlevels>(level);
+		dungeon_type requestedType;
 		switch (setLevel) {
 		case SL_SKELKING:
-			setlvltype = Quests[Q_SKELKING]._qlvltype;
+			requestedType = Quests[Q_SKELKING]._qlvltype;
 			break;
 		case SL_BONECHAMB:
-			setlvltype = Quests[Q_SCHAMB]._qlvltype;
+			requestedType = Quests[Q_SCHAMB]._qlvltype;
 			break;
 		case SL_POISONWATER:
-			setlvltype = Quests[Q_PWATER]._qlvltype;
+			requestedType = Quests[Q_PWATER]._qlvltype;
 			break;
 		case SL_VILEBETRAYER:
-			setlvltype = Quests[Q_BETRAYER]._qlvltype;
+			requestedType = Quests[Q_BETRAYER]._qlvltype;
 			break;
 		default:
 			throw std::invalid_argument("探针只支持四个正式任务 set-level");
 		}
+		if (!IsPlayerLevelTransitionAllowed(*MyPlayer, WM_DIABSETLVL, level))
+			return;
+		setlvltype = requestedType;
 		StartNewLvl(*MyPlayer, WM_DIABSETLVL, level);
 	}, py::arg("level"), "探针:排队进入正式任务 set-level(1/2/4/5)");
 	m.def("probe_return_set_level", []() {
@@ -3391,6 +3680,8 @@ PYBIND11_MODULE(_diablogym, m)
 
 	// 触发点消息类型常量(观测 triggers[].msg 的取值)
 	m.attr("WM_DIABNEXTLVL") = static_cast<int>(WM_DIABNEXTLVL);
+	m.attr("WM_DIABWARPLVL") = static_cast<int>(WM_DIABWARPLVL);
+	m.attr("WM_DIABRETOWN") = static_cast<int>(WM_DIABRETOWN);
 	m.attr("WM_DIABPREVLVL") = static_cast<int>(WM_DIABPREVLVL);
 	m.attr("WM_DIABSETLVL") = static_cast<int>(WM_DIABSETLVL);
 	m.attr("WM_DIABRTNLVL") = static_cast<int>(WM_DIABRTNLVL);
