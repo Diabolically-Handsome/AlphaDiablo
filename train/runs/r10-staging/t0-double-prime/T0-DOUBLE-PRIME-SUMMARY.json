@@ -1,0 +1,91 @@
+{
+ "table": {
+  "t0pp-loot-retreat": {
+   "alive": 31,
+   "died": 17,
+   "l2_reach": 37,
+   "l2_deaths": 10,
+   "l2_beats_total": 19894,
+   "l2_hazard_per_1k": 0.5027,
+   "clvl_mean": 2.96,
+   "kills_mean": 105.1,
+   "death_dlvl_hist": {
+    "1": 7,
+    "2": 10
+   },
+   "fd_plus_1800_observed_n": 40
+  },
+  "t0pp-loot-noretreat": {
+   "alive": 13,
+   "died": 35,
+   "l2_reach": 37,
+   "l2_deaths": 27,
+   "l2_beats_total": 35724,
+   "l2_hazard_per_1k": 0.7558,
+   "clvl_mean": 3.25,
+   "kills_mean": 113.3,
+   "death_dlvl_hist": {
+    "1": 7,
+    "2": 27,
+    "3": 1
+   },
+   "fd_plus_1800_observed_n": 40
+  },
+  "t0p-full-loot (T0′)": {
+   "alive": 13,
+   "died": 35,
+   "l2_reach": 37,
+   "l2_deaths": 27,
+   "l2_beats_total": 35724,
+   "l2_hazard_per_1k": 0.7558,
+   "clvl_mean": 3.25,
+   "kills_mean": 113.3,
+   "death_dlvl_hist": {
+    "1": 7,
+    "2": 27,
+    "3": 1
+   },
+   "fd_plus_1800_observed_n": 40
+  }
+ },
+ "paired_retreat_vs_control": {
+  "n": 48,
+  "saved": 19,
+  "lost": 1,
+  "net": 18,
+  "death_rate_diff": -0.375,
+  "ucb95_one_sided": -0.2489
+ },
+ "retreat_mechanism": {
+  "attempts": 36,
+  "ascended": 25,
+  "failed": 0,
+  "died_during_retreat": 0,
+  "ascended_share": 0.694,
+  "died_share": 0.0,
+  "reasons": {
+   "None": 11,
+   "retreat_ascended": 25
+  },
+  "triggers": {
+   "low_hp": 36
+  },
+  "hp0_frac_mean": 0.458,
+  "duration_beats_median": 75,
+  "episodes_with_retreat": 35,
+  "episodes_with_2plus_ascents": 1
+ },
+ "criteria": {
+  "1_retreat_minus_control_alive_net_ge_6_and_ucb_lt_0": true,
+  "2_l2_deaths_le_0.7_control": true,
+  "3_mechanism_ascended_ge_0.6_and_died_le_0.25_report_only": true,
+  "4_control_rows_identical_to_t0_prime": true
+ },
+ "verdict": "T0_DOUBLE_PRIME_PASS",
+ "seeds": "2133000-2133047",
+ "clock": "completion-l2-v1",
+ "control_rows_sha": "7e306fa11abddbe83471c92a2f7e1a6ae72a11080624586fa8662a85ba5fd7da",
+ "t0_prime_rows_sha": "7e306fa11abddbe83471c92a2f7e1a6ae72a11080624586fa8662a85ba5fd7da",
+ "elapsed_s": 929.0,
+ "bridge": "/home/laure/r17_work/r17-1/build-res"
+}

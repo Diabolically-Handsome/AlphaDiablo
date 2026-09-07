@@ -1,0 +1,97 @@
+{
+ "table": {
+  "a0-cert-v3": {
+   "alive": 35,
+   "died": 13,
+   "l2_reach": 3,
+   "l2_hazard_per_1k": 2.849,
+   "clvl_mean": 2.62,
+   "kills_mean": 87.5,
+   "fd_plus_1800_observed_n": 2,
+   "mask_forced_descent_share": 0.0,
+   "resource": null
+  },
+  "a0-arm-v3": {
+   "alive": 26,
+   "died": 22,
+   "l2_reach": 24,
+   "l2_hazard_per_1k": 0.8902,
+   "clvl_mean": 3.02,
+   "kills_mean": 107.2,
+   "fd_plus_1800_observed_n": 16,
+   "mask_forced_descent_share": 0.5833,
+   "resource": null
+  },
+  "t0-none": {
+   "alive": 20,
+   "died": 28,
+   "l2_reach": 24,
+   "l2_hazard_per_1k": 1.3091,
+   "clvl_mean": 3.02,
+   "kills_mean": 105.5,
+   "fd_plus_1800_observed_n": 22,
+   "mask_forced_descent_share": 0.0,
+   "resource": {
+    "descent_receipts": 24,
+    "forced_unready": 24,
+    "forced_unready_share": 1.0,
+    "episodes_with_service": 41,
+    "gold_final_mean": 85.8
+   }
+  },
+  "t0-full": {
+   "alive": 34,
+   "died": 14,
+   "l2_reach": 20,
+   "l2_hazard_per_1k": 0.7598,
+   "clvl_mean": 2.9,
+   "kills_mean": 99.9,
+   "fd_plus_1800_observed_n": 8,
+   "mask_forced_descent_share": 0.0,
+   "resource": {
+    "descent_receipts": 20,
+    "forced_unready": 10,
+    "forced_unready_share": 0.5,
+    "episodes_with_service": 41,
+    "gold_final_mean": 81.3
+   }
+  }
+ },
+ "paired_full_vs_a0_arm": {
+  "n": 48,
+  "saved": 12,
+  "lost": 4,
+  "net": 8,
+  "death_rate_diff": -0.1667,
+  "ucb95_one_sided": -0.034
+ },
+ "paired_full_vs_none": {
+  "n": 48,
+  "saved": 15,
+  "lost": 1,
+  "net": 14,
+  "death_rate_diff": -0.2917,
+  "ucb95_one_sided": -0.1721
+ },
+ "criteria": {
+  "1_full_vs_a0_net_ge_6_and_ucb_lt_0": true,
+  "2_l2_reach_ge_0.8_a0": true,
+  "3_l2_hazard_le_0.7_a0": false,
+  "4_full_minus_none_alive_ge_4": true,
+  "5_forced_unready_share_le_0.25": false
+ },
+ "verdict": "T0_FAIL",
+ "seeds": "2133000-2133047",
+ "max_steps": 6000,
+ "decoding": "sample",
+ "form": {
+  "explore_global_hunt": true,
+  "farm_scene_cap": 3600,
+  "reset_layer_clock_on_window": true,
+  "reward_economy": "v4",
+  "drink_sovereignty": true
+ },
+ "prereg": "train/runs/r17-PREREG-FROZEN-20260906.md sha256 96f5ba391e379c823b343804bca1bcca479ff8b72aaa27193af85e6ebcfd79ae",
+ "bridge": "/home/laure/r17_work/r17-1/build-res",
+ "elapsed_s": 523.1
+}

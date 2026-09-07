@@ -2971,7 +2971,7 @@ def _validate_worker_prefix_resume_identity(saved: dict | None, current: dict) -
 def _validate_resource_resume_identity(saved: dict | None, current: dict) -> None:
     """Native armor/preservation versions cannot bypass exact resume identity."""
     saved_policy = saved.get("resource_service_policy") if isinstance(saved, dict) else None
-    protected_policies = ("sustain-v5", "sustain-v6")
+    protected_policies = ("sustain-v5", "sustain-v6", "sustain-loot-v1")
     if not any(policy in protected_policies
                for policy in (saved_policy, current.get("resource_service_policy"))):
         return

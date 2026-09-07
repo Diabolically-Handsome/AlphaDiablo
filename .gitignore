@@ -36,3 +36,13 @@ train/runs/eval-assembled/*
 !train/runs/eval-assembled/r16-anchor-*.json
 # native libraries and engine binaries never enter the repo
 *.so
+# 2026-09-06 late: gate summaries are receipts, not bulk artefacts
+!train/runs/r10-staging/t0/
+train/runs/r10-staging/t0/*
+!train/runs/r10-staging/t0/T0-SUMMARY.json
+!train/runs/r10-staging/t0-prime/
+train/runs/r10-staging/t0-prime/*
+!train/runs/r10-staging/t0-prime/T0-PRIME-SUMMARY.json
+!train/runs/r10-staging/t0-double-prime/
+train/runs/r10-staging/t0-double-prime/*
+!train/runs/r10-staging/t0-double-prime/T0-DOUBLE-PRIME-SUMMARY.json

@@ -813,6 +813,7 @@ class WorkerWindowEnv(gym.Env):
                  resource_service_policy: str = "legacy-v1",
                  resource_readiness_law: str = "veto-v1",
                  worker_time_protocol: str = "legacy",
+                 resource_retreat: str = "off",
                  prefix_worker=None,
                  prefix_worker_sha256: str | None = None,
                  prefix_max_attempts: int | None = None,
@@ -837,6 +838,11 @@ class WorkerWindowEnv(gym.Env):
             self.resource_protocol, resource_readiness_law)
         if self.resource_readiness_law != "veto-v1":
             env_kwargs["resource_readiness_law"] = self.resource_readiness_law
+        # R18-A retreat-v1 is a deployment/probe interface first; the training
+        # window (escrow, receipts) is wired only after the T0-double-prime probe.
+        if resource_retreat != "off":
+            raise ValueError("retreat-v1 is not yet wired into WorkerWindowEnv (R18-A probe scope)")
+        self.resource_retreat = "off"
         # R13 教室改革主旗:默认 farm-only 逐位复现旧法(非 FARM 窗脚本
         # 快进);farm-dive-v1 使 DIVE 窗成为一等 live 学习窗并向
         # OptionsEnv 移交窗内主权(a11/踏格)。

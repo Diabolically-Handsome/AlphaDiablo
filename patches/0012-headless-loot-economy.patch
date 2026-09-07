@@ -1,0 +1,320 @@
+diff --git a/Source/player.cpp b/Source/player.cpp
+index b0e1581..0052ca1 100644
+--- a/Source/player.cpp
++++ b/Source/player.cpp
+@@ -2232,11 +2232,18 @@ void NewPlrAnim(Player &player, player_graphic graphic, Direction dir, Animation
+ 
+ void SetPlrAnims(Player &player)
+ {
++	SetPlrAnims(player, false);
++}
++
++void SetPlrAnims(Player &player, bool dungeonCombat)
++{
++	// Explicit combat context for detached stat projections; never change the live scene.
++	const bool isTown = leveltype == DTYPE_TOWN && !dungeonCombat;
+ 	const HeroClass pc = player._pClass;
+ 	const PlayerAnimData &plrAtkAnimData = GetPlayerAnimDataForClass(pc);
+ 	auto gn = static_cast<PlayerWeaponGraphic>(player._pgfxnum & 0xFU);
+ 
+-	if (leveltype == DTYPE_TOWN) {
++	if (isTown) {
+ 		player._pNFrames = plrAtkAnimData.townIdleFrames;
+ 		player._pWFrames = plrAtkAnimData.townWalkingFrames;
+ 	} else {
+@@ -2289,7 +2296,7 @@ void SetPlrAnims(Player &player)
+ 	player._pSFNum = plrAtkAnimData.castingActionFrame;
+ 	const int armorGraphicIndex = player._pgfxnum & ~0xFU;
+ 	if (IsAnyOf(pc, HeroClass::Warrior, HeroClass::Barbarian)) {
+-		if (gn == PlayerWeaponGraphic::Bow && leveltype != DTYPE_TOWN)
++		if (gn == PlayerWeaponGraphic::Bow && !isTown)
+ 			player._pNFrames = 8;
+ 		if (armorGraphicIndex > 0)
+ 			player._pDFrames = 15;
+diff --git a/Source/player.h b/Source/player.h
+index bde5322..f216bda 100644
+--- a/Source/player.h
++++ b/Source/player.h
+@@ -950,6 +950,8 @@ void ResetPlayerGFX(Player &player);
+  */
+ void NewPlrAnim(Player &player, player_graphic graphic, Direction dir, AnimationDistributionFlags flags = AnimationDistributionFlags::None, int8_t numSkippedFrames = 0, int8_t distributeFramesBeforeFrame = 0);
+ void SetPlrAnims(Player &player);
++// Explicit dungeon combat frames for detached projections; the legacy overload is unchanged.
++void SetPlrAnims(Player &player, bool dungeonCombat);
+ void CreatePlayer(Player &player, HeroClass c);
+ int CalcStatDiff(Player &player);
+ #ifdef _DEBUG
+diff --git a/Source/stores.cpp b/Source/stores.cpp
+index b4a3cf9..5099dc4 100644
+--- a/Source/stores.cpp
++++ b/Source/stores.cpp
+@@ -524,6 +524,13 @@ bool StartSmithPremiumBuy()
+ 	return true;
+ }
+ 
++int NormalStoreSellPrice(const Item &item)
++{
++	const int value = item._iMagical != ITEM_QUALITY_NORMAL && item._iIdentified
++	    ? item._iIvalue : item._ivalue;
++	return std::max(value / 4, 1);
++}
++
+ bool SmithSellOk(int i)
+ {
+ 	const Item *pI;
+@@ -561,10 +568,7 @@ void StartSmithSell()
+ 			sellOk = true;
+ 			PlayerItems[CurrentItemIndex] = myPlayer.InvList[i];
+ 
+-			if (PlayerItems[CurrentItemIndex]._iMagical != ITEM_QUALITY_NORMAL && PlayerItems[CurrentItemIndex]._iIdentified)
+-				PlayerItems[CurrentItemIndex]._ivalue = PlayerItems[CurrentItemIndex]._iIvalue;
+-
+-			PlayerItems[CurrentItemIndex]._ivalue = std::max(PlayerItems[CurrentItemIndex]._ivalue / 4, 1);
++			PlayerItems[CurrentItemIndex]._ivalue = NormalStoreSellPrice(PlayerItems[CurrentItemIndex]);
+ 			PlayerItems[CurrentItemIndex]._iIvalue = PlayerItems[CurrentItemIndex]._ivalue;
+ 			PlayerItemIndexes[CurrentItemIndex] = i;
+ 			CurrentItemIndex++;
+@@ -578,10 +582,7 @@ void StartSmithSell()
+ 			sellOk = true;
+ 			PlayerItems[CurrentItemIndex] = myPlayer.SpdList[i];
+ 
+-			if (PlayerItems[CurrentItemIndex]._iMagical != ITEM_QUALITY_NORMAL && PlayerItems[CurrentItemIndex]._iIdentified)
+-				PlayerItems[CurrentItemIndex]._ivalue = PlayerItems[CurrentItemIndex]._iIvalue;
+-
+-			PlayerItems[CurrentItemIndex]._ivalue = std::max(PlayerItems[CurrentItemIndex]._ivalue / 4, 1);
++			PlayerItems[CurrentItemIndex]._ivalue = NormalStoreSellPrice(PlayerItems[CurrentItemIndex]);
+ 			PlayerItems[CurrentItemIndex]._iIvalue = PlayerItems[CurrentItemIndex]._ivalue;
+ 			PlayerItemIndexes[CurrentItemIndex] = -(i + 1);
+ 			CurrentItemIndex++;
+@@ -786,10 +787,7 @@ void StartWitchSell()
+ 			sellok = true;
+ 			PlayerItems[CurrentItemIndex] = myPlayer.InvList[i];
+ 
+-			if (PlayerItems[CurrentItemIndex]._iMagical != ITEM_QUALITY_NORMAL && PlayerItems[CurrentItemIndex]._iIdentified)
+-				PlayerItems[CurrentItemIndex]._ivalue = PlayerItems[CurrentItemIndex]._iIvalue;
+-
+-			PlayerItems[CurrentItemIndex]._ivalue = std::max(PlayerItems[CurrentItemIndex]._ivalue / 4, 1);
++			PlayerItems[CurrentItemIndex]._ivalue = NormalStoreSellPrice(PlayerItems[CurrentItemIndex]);
+ 			PlayerItems[CurrentItemIndex]._iIvalue = PlayerItems[CurrentItemIndex]._ivalue;
+ 			PlayerItemIndexes[CurrentItemIndex] = i;
+ 			CurrentItemIndex++;
+@@ -803,10 +801,7 @@ void StartWitchSell()
+ 			sellok = true;
+ 			PlayerItems[CurrentItemIndex] = myPlayer.SpdList[i];
+ 
+-			if (PlayerItems[CurrentItemIndex]._iMagical != ITEM_QUALITY_NORMAL && PlayerItems[CurrentItemIndex]._iIdentified)
+-				PlayerItems[CurrentItemIndex]._ivalue = PlayerItems[CurrentItemIndex]._iIvalue;
+-
+-			PlayerItems[CurrentItemIndex]._ivalue = std::max(PlayerItems[CurrentItemIndex]._ivalue / 4, 1);
++			PlayerItems[CurrentItemIndex]._ivalue = NormalStoreSellPrice(PlayerItems[CurrentItemIndex]);
+ 			PlayerItems[CurrentItemIndex]._iIvalue = PlayerItems[CurrentItemIndex]._ivalue;
+ 			PlayerItemIndexes[CurrentItemIndex] = -(i + 1);
+ 			CurrentItemIndex++;
+@@ -1415,34 +1410,84 @@ void SmithPremiumBuyEnter()
+ 	StartStore(TalkID::Confirm);
+ }
+ 
+-bool StoreGoldFit(Item &item)
+-{
+-	const int cost = item._iIvalue;
+-
+-	const Size itemSize = GetInventorySize(item);
+-	const int itemRoomForGold = itemSize.width * itemSize.height * MaxGold;
+-
+-	if (cost <= itemRoomForGold) {
+-		return true;
++bool StoreGoldFitsAfterSale(bool belt, size_t index, int price)
++{
++	// Count cells actually released by removal, not cursor dimensions. A belt
++	// item releases no inventory cell. RoomForGold already counts current free
++	// cells and room in existing piles; this is read-only and consumes no RNG.
++	int64_t capacity = RoomForGold();
++	if (!belt) {
++		const Player &player = *MyPlayer;
++		if (index >= static_cast<size_t>(player._pNumInv))
++			return false;
++		int releasedCells = 0;
++		for (const int8_t cell : player.InvGrid) {
++			if (cell == static_cast<int>(index) + 1 || cell == -static_cast<int>(index) - 1)
++				++releasedCells;
++		}
++		if (releasedCells == 0)
++			return false;
++		capacity += int64_t { releasedCells } * MaxGold;
+ 	}
++	return price > 0 && price <= capacity;
++}
+ 
+-	return cost <= itemRoomForGold + RoomForGold();
++StoreSellResult TrySellPlayerItem(bool smith, bool belt, size_t index,
++    uint32_t expectedSeed, uint16_t expectedCreateInfo, int expectedBaseId,
++    int expectedPrice)
++{
++	Player &player = *MyPlayer;
++	if (belt ? index >= MaxBeltItems : index >= static_cast<size_t>(player._pNumInv))
++		return { StoreSellStatus::InvalidItem };
++	const Item &item = belt ? player.SpdList[index] : player.InvList[index];
++	if (item.isEmpty() || !(smith ? SmithWillBuy(item) : WitchWillBuy(item)))
++		return { StoreSellStatus::InvalidItem };
++	if (item._iSeed != expectedSeed || item._iCreateInfo != expectedCreateInfo
++	    || static_cast<int>(item.IDidx) != expectedBaseId)
++		return { StoreSellStatus::StaleItem };
++	const int price = NormalStoreSellPrice(item);
++	if (price != expectedPrice)
++		return { StoreSellStatus::StaleItem };
++	if (!StoreGoldFitsAfterSale(belt, index, price))
++		return { StoreSellStatus::NoRoom };
++
++	// No fallible capacity check remains. Preserve the normal removal, gold
++	// pile order, RNG advances for new piles, and network notifications.
++	if (belt)
++		player.RemoveSpdBarItem(static_cast<int>(index));
++	else
++		player.RemoveInvItem(static_cast<int>(index));
++	const int unplaced = AddGoldToInventory(player, price);
++	if (unplaced != 0)
++		app_fatal("Prevalidated store sale could not place all gold");
++	player._pGold = CalculateGold(player);
++	return { StoreSellStatus::Success, price };
+ }
+ 
+-/**
+- * @brief Sells an item from the player's inventory or belt.
+- */
+-void StoreSellItem()
++bool StoreGoldFit(const Item &quote, int playerItemIndex)
+ {
+-	Player &myPlayer = *MyPlayer;
++	const bool belt = playerItemIndex < 0;
++	const size_t index = belt ? -(playerItemIndex + 1) : playerItemIndex;
++	return StoreGoldFitsAfterSale(belt, index, quote._iIvalue);
++}
+ 
++/** Sells the selected inventory/belt item through the shared normal kernel. */
++StoreSellResult StoreSellItem()
++{
+ 	int idx = OldScrollPos + ((OldTextLine - PreviousScrollPos) / 4);
+-	if (PlayerItemIndexes[idx] >= 0)
+-		myPlayer.RemoveInvItem(PlayerItemIndexes[idx]);
+-	else
+-		myPlayer.RemoveSpdBarItem(-(PlayerItemIndexes[idx] + 1));
++	const int playerIndex = PlayerItemIndexes[idx];
++	const bool belt = playerIndex < 0;
++	const size_t index = belt ? -(playerIndex + 1) : playerIndex;
++	const Item &quote = PlayerItems[idx];
++	const bool smith = OldActiveStore == TalkID::SmithSell;
++	const StoreSellResult result = smith && !belt
++	    ? TrySellStoreItem(StoreVendor::Smith, index, quote._iSeed,
++	          quote._iCreateInfo, static_cast<int>(quote.IDidx), quote._iIvalue)
++	    : TrySellPlayerItem(smith, belt, index, quote._iSeed,
++	          quote._iCreateInfo, static_cast<int>(quote.IDidx), quote._iIvalue);
++	if (result.status != StoreSellStatus::Success)
++		return result;
+ 
+-	const int cost = PlayerItems[idx]._iIvalue;
+ 	CurrentItemIndex--;
+ 	if (idx != CurrentItemIndex) {
+ 		while (idx < CurrentItemIndex) {
+@@ -1451,10 +1496,7 @@ void StoreSellItem()
+ 			idx++;
+ 		}
+ 	}
+-
+-	AddGoldToInventory(myPlayer, cost);
+-
+-	myPlayer._pGold += cost;
++	return result;
+ }
+ 
+ void SmithSellEnter()
+@@ -1471,7 +1513,7 @@ void SmithSellEnter()
+ 
+ 	const int idx = ScrollPos + ((CurrentTextLine - PreviousScrollPos) / 4);
+ 
+-	if (!StoreGoldFit(PlayerItems[idx])) {
++	if (!StoreGoldFit(PlayerItems[idx], PlayerItemIndexes[idx])) {
+ 		StartStore(TalkID::NoRoom);
+ 		return;
+ 	}
+@@ -1627,7 +1669,7 @@ void WitchSellEnter()
+ 
+ 	const int idx = ScrollPos + ((CurrentTextLine - PreviousScrollPos) / 4);
+ 
+-	if (!StoreGoldFit(PlayerItems[idx])) {
++	if (!StoreGoldFit(PlayerItems[idx], PlayerItemIndexes[idx])) {
+ 		StartStore(TalkID::NoRoom);
+ 		return;
+ 	}
+@@ -1800,9 +1842,14 @@ void ConfirmEnter(Item &item)
+ 			SmithBuyItem(item);
+ 			break;
+ 		case TalkID::SmithSell:
+-		case TalkID::WitchSell:
+-			StoreSellItem();
++		case TalkID::WitchSell: {
++			const StoreSellResult result = StoreSellItem();
++			if (result.status == StoreSellStatus::NoRoom) {
++				StartStore(TalkID::NoRoom);
++				return;
++			}
+ 			break;
++		}
+ 		case TalkID::SmithRepair:
+ 			SmithRepairItem(item._iIvalue);
+ 			break;
+@@ -2200,6 +2247,23 @@ StoreBuyResult TryBuyStoreItem(StoreVendor vendor, size_t index,
+ 	return { StoreBuyStatus::Success, price };
+ }
+ 
++std::optional<int> GetStoreSellPrice(StoreVendor vendor, const Item &item)
++{
++	if (vendor != StoreVendor::Smith || !SmithWillBuy(item))
++		return std::nullopt;
++	return NormalStoreSellPrice(item);
++}
++
++StoreSellResult TrySellStoreItem(StoreVendor vendor, size_t inventoryIndex,
++    uint32_t expectedSeed, uint16_t expectedCreateInfo, int expectedBaseId,
++    int expectedPrice)
++{
++	if (vendor != StoreVendor::Smith)
++		return { StoreSellStatus::InvalidItem };
++	return TrySellPlayerItem(true, false, inventoryIndex, expectedSeed,
++	    expectedCreateInfo, expectedBaseId, expectedPrice);
++}
++
+ std::optional<int> GetStoreRepairPrice(const Item &item)
+ {
+ 	if (item.isEmpty() || item._itype == ItemType::Misc || item._itype == ItemType::Gold
+diff --git a/Source/stores.h b/Source/stores.h
+index 5d0de6b..8bd07ac 100644
+--- a/Source/stores.h
++++ b/Source/stores.h
+@@ -218,6 +218,27 @@ struct StoreBuyResult {
+ StoreBuyResult TryBuyStoreItem(StoreVendor vendor, size_t index,
+     uint32_t expectedSeed, uint16_t expectedCreateInfo, int expectedBaseId);
+ 
++enum class StoreSellStatus { Success, InvalidItem, StaleItem, NoRoom };
++struct StoreSellResult {
++	StoreSellStatus status;
++	int received = 0;
++};
++
++/** Normal sale quote for an owned item. Only Smith is exposed to Gym;
++ * unsupported vendors and items have no quote. No repair or identification.
++ */
++std::optional<int> GetStoreSellPrice(StoreVendor vendor, const Item &item);
++
++/** Shared GUI/Gym inventory sale. Callers establish the normal Smith visit.
++ * Identity, current price and actual post-removal gold capacity are checked
++ * before any inventory, gold, RNG or network changes. Success uses ordinary
++ * removal and gold placement; all proceeds stay in the personal inventory.
++ * Equipment must first be normally unequipped; this index is InvList only.
++ */
++StoreSellResult TrySellStoreItem(StoreVendor vendor, size_t inventoryIndex,
++    uint32_t expectedSeed, uint16_t expectedCreateInfo, int expectedBaseId,
++    int expectedPrice);
++
+ /** Read-only normal Griswold repair quote; no offer for unrepairable items. */
+ std::optional<int> GetStoreRepairPrice(const Item &item);
+ 

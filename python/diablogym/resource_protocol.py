@@ -10,6 +10,7 @@ RESOURCE_PURCHASE_MODES = ("none", "heal", "potions", "armor", "full")
 # (HP excluded); the engine guard only records; the frozen forced-descent mask law
 # stands; forced-unready descents are accounted and paid no escrow.
 RESOURCE_READINESS_LAWS = ("veto-v1", "coach-v03")
+RESOURCE_RETREAT_PROTOCOLS = ("off", "retreat-v1")
 RESOURCE_FARM_CAP = 3600
 RESOURCE_SERVICE_CAP = 600
 
@@ -150,6 +151,27 @@ def progression_allowed(raw, law="veto-v1"):
         return True
     depth = int(raw["dungeon_level"])
     return depth == 0 or (depth == 1 and native_readiness(raw)["ready"])
+
+
+def validate_retreat_protocol(protocol, law, retreat):
+    """R18-A retreat-v1: the return-to-town interface; default off is byte-identical."""
+    if retreat not in RESOURCE_RETREAT_PROTOCOLS:
+        raise ValueError(f"Unknown resource_retreat {retreat!r}; expected one of {RESOURCE_RETREAT_PROTOCOLS}")
+    if retreat != "off" and (protocol != "l2-town-v1" or law != "coach-v03"):
+        raise ValueError("retreat-v1 requires l2-town-v1 under coach-v03")
+    return retreat
+
+
+def validate_native_retreat(raw, expected="off"):
+    """Fail closed: the native retreat flag must match the Python contract."""
+    state = raw.get("resource_state", {}) if isinstance(raw, dict) else {}
+    if not isinstance(state, dict) or not state:
+        if expected != "off":
+            raise RuntimeError("Native retreat identity mismatch; isolated rebuild required")
+        return
+    observed = state.get("retreat_enabled", False)
+    if type(observed) is not bool or observed != (expected != "off"):
+        raise RuntimeError("Native retreat identity mismatch; isolated rebuild required")
 
 
 @dataclass

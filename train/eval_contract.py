@@ -73,7 +73,7 @@ PROTOCOL_SOURCE_FILES = (
     "python/diablogym/resource_sustain_armor.py",
     "python/diablogym/resource_sustain_completion.py",
     "python/diablogym/resource_sustain_combinations.py",
-    "python/diablogym/resource_sustain_combat.py",
+    "python/diablogym/resource_sustain_loot.py",
 )
 
 _SHA256_RE = re.compile(r"[0-9a-f]{64}")
@@ -187,9 +187,9 @@ def validate_resource_service_config(protocol="off", mode="full",
         raise ValueError("Invalid resource protocol/arm for service recipe")
     if protocol == "off" and mode != "full":
         raise ValueError("resource_purchase_mode requires resource_protocol l2-town-v1")
-    if service_policy not in ("legacy-v1", "sustain-v2", "sustain-v3", "sustain-v4", "sustain-v5", "sustain-v6"):
+    if service_policy not in ("legacy-v1", "sustain-v2", "sustain-v3", "sustain-v4", "sustain-v5", "sustain-v6", "sustain-loot-v1"):
         raise ValueError(f"Invalid resource_service_policy: {service_policy!r}")
-    if service_policy in ("sustain-v2", "sustain-v3", "sustain-v4", "sustain-v5", "sustain-v6") and (protocol != "l2-town-v1" or mode != "full"):
+    if service_policy in ("sustain-v2", "sustain-v3", "sustain-v4", "sustain-v5", "sustain-v6", "sustain-loot-v1") and (protocol != "l2-town-v1" or mode != "full"):
         raise ValueError(f"{service_policy} requires resource_protocol l2-town-v1 and full purchase mode")
 
 
@@ -220,7 +220,23 @@ def resource_service_recipe(protocol="off", mode="full",
     validate_resource_service_config(protocol, mode, service_policy)
     if protocol == "off":
         return None
-    if service_policy in ("sustain-v2", "sustain-v3", "sustain-v4", "sustain-v5", "sustain-v6"):
+    if service_policy == "sustain-loot-v1":
+        recipe = resource_service_recipe(protocol, mode, "sustain-v6")
+        recipe.update(version="l1-two-trip-loot-economy-v1", service_policy=service_policy,
+            time_protocol="completion-l2-v1", service_microstep_cap=3000,
+            collect_command_window_microsteps=900, max_town_trips=2,
+            native_loot_economy=True,
+            second_trip_trigger="native-deficit-and-real-resource-or-growth-change-after-return",
+            loot_collection="observed-non-upgrade-smith-equipment-normal-inventory",
+            sale="on-site-identity-and-price-bound-native-smith-inventory-sale",
+            sale_income="actual-personal-inventory-gold-receipt-only",
+            gear_replacement="retain-replaced-items-or-reject-no-room",
+            stages=["collect_observed_gold_and_loot", "town_trip", "sell_idle_smith_equipment",
+                    "observe_smith", "observe_healer_and_native_heal",
+                    "joint_minimum_readiness_budget", "normal_unequip_repair_or_replace",
+                    "potions_to_readiness", "return_original_l1"])
+        return recipe
+    if service_policy in ("sustain-v2", "sustain-v3", "sustain-v4", "sustain-v5", "sustain-v6", "sustain-loot-v1"):
         recipe = {
             "version": "l2-town-joint-" + service_policy,
             "service_policy": service_policy,
@@ -839,7 +855,7 @@ def validate_r16_environment(value: Any) -> dict[str, Any]:
             _require(value.get("resource_protocol") == "l2-town-v1",
                      "resource_purchase_mode requires resource_protocol")
         elif key == "resource_service_policy":
-            _require(item in ("sustain-v2", "sustain-v3", "sustain-v4", "sustain-v5", "sustain-v6"),
+            _require(item in ("sustain-v2", "sustain-v3", "sustain-v4", "sustain-v5", "sustain-v6", "sustain-loot-v1"),
                      "resource_service_policy must be sustain-v2/sustain-v3/sustain-v4/sustain-v5/sustain-v6 (legacy-v1 is omitted)")
             _require(value.get("resource_protocol") == "l2-town-v1"
                      and value.get("resource_purchase_mode", "full") == "full",

@@ -80,11 +80,19 @@ from diablogym.worker_env import (  # noqa: E402
 
 _R16_ENV_KEYS = ("explore_global_hunt", "explore_global_fallback",
                  "progress_far_tiles", "farm_scene_cap",
-                 "reset_layer_clock_on_window", "reward_economy")
+                 "reset_layer_clock_on_window", "reward_economy",
+                 # R17 T0(2026-09-06):资源通道臂的环境旗直通 OptionsEnv;
+                 # 不在 v3 行/agg 键内,readiness-v3 逐位路径不受影响。
+                 "resource_protocol", "resource_purchase_mode",
+                 "resource_service_policy", "resource_readiness_law",
+                 # R17 T0′:sustain-loot-v1 要求显式 completion-l2-v1 时钟
+                 "worker_time_protocol", "resource_retreat")
 _R17_MANAGERS = ("readiness-v1", "readiness-v3", "readiness-v3-strict",
-                 "const-FARM", "const-DIVE")
+                 "const-FARM", "const-DIVE",
+                 # R17 T0:协议开启时的脚本经理 = OptionsEnv.resource_option_choice
+                 "resource")
 
-PROBE_VERSION = "r17-deployment-v3-review-fixes"
+PROBE_VERSION = "r17-deployment-v3-r18a-retreat"
 V3_PROBE_VERSION = "r15-deployment-v3"
 # probe_r15 v3 的每行字段(逐位回归口径);R17 行是其超集。
 V3_ROW_KEYS = (
@@ -513,8 +521,18 @@ def run_episode(env, cb, seed, stochastic, manager="readiness-v1"):
         while not (done or trunc):
             raw = env.env._raw
             mask = np.asarray(env.action_masks(), dtype=bool)
-            want, ready, cleared, coach_reason, ratio = coach_decide(
-                manager, raw, floor_state)
+            if manager == "resource":
+                # R17 T0:遥测用的 ready/cleared/ratio 沿用 v3-strict 口径,
+                # want 由资源协议的脚本经理决定(coach-v03 下按六条法)。
+                _w, ready, cleared, _r, ratio = coach_decide(
+                    "readiness-v3-strict", raw, floor_state)
+                want = int(env.resource_option_choice(mask))
+                coach_reason = (("ready" if ready else
+                                 ("cleared" if cleared else "const"))
+                                if want == DIVE else "farm")
+            else:
+                want, ready, cleared, coach_reason, ratio = coach_decide(
+                    manager, raw, floor_state)
             chosen = want
             fell_back = False
             if not mask[want]:
@@ -625,8 +643,42 @@ def run_episode(env, cb, seed, stochastic, manager="readiness-v1"):
     alive_at_fd, censored = followup_status(
         first_descent_beat, micro_steps, died)
     died_on_l2 = bool(died and death["dlvl"] == 2)
+    # ---- R17 T0:资源通道遥测(协议关时为 None;不进 v3 行键) ----
+    resource = None
+    if getattr(env, "resource_protocol", "off") != "off":
+        receipts = list(getattr(env.env, "_resource_transition_receipts", []))
+        reasons = {}
+        for rec in receipts:
+            key = str(rec.get("reason"))
+            reasons[key] = reasons.get(key, 0) + 1
+        service = getattr(env, "resource_service", None)
+        state = raw.get("resource_state") or {}
+        resource = {
+            "protocol": getattr(env, "resource_protocol", None),
+            "purchase_mode": getattr(env, "resource_purchase_mode", None),
+            "service_policy": getattr(env, "resource_service_policy", None),
+            "readiness_law": getattr(env, "resource_readiness_law", None),
+            "receipts": len(receipts),
+            "receipt_reasons": reasons,
+            "descents_ready_law": sum(
+                1 for rec in receipts if rec.get("pretransition_ready_law")),
+            "descents_forced_unready": sum(
+                1 for rec in receipts
+                if rec.get("accepted") and not rec.get("pretransition_ready_law")),
+            "service_attempted": getattr(service, "attempted", None),
+            "service_active_at_end": getattr(service, "active", None),
+            "service_trigger": getattr(service, "trigger", None),
+            "gold_final": int(raw.get("gold", 0)),
+            "service_trip": state.get("service_trip"),
+            "max_main_depth_reached": state.get("max_main_depth_reached"),
+            # R18-A retreat-v1 (None when the flag is off; row keys unchanged otherwise)
+            "retreats_started": state.get("retreats_started"),
+            "retreat": (env.retreat_service.telemetry()
+                        if getattr(env, "retreat_service", None) is not None else None),
+        }
     return {
         "seed": seed, "depth": max_depth,
+        "resource": resource,
         "died": died,
         "victory": bool(raw.get("victory")),
         "micro_steps": micro_steps,

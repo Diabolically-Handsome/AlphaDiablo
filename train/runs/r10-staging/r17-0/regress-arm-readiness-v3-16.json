@@ -1,5 +1,5 @@
 {
- "probe": "r17-deployment-v3-review-fixes",
+ "probe": "r17-deployment-v3-r18a-retreat",
  "v3_compat": {
   "probe": "r15-deployment-v3",
   "row_keys": [
@@ -24,16 +24,16 @@
   "rows_sha_v3": "33023de128cf54e60dc6add49ea47d173802b9afae02bcba18336f593485e59b"
  },
  "source_identity": {
-  "train/eval_contract.py": "f113acfc8c4f78e53a82c81567ef3c5ee860f4b9ecc4044b257f532a5ff80d4e",
+  "train/eval_contract.py": "b01cacd90cb7821678bcde97b160046696a4e841a495c935bce6a97236ae1906",
   "train/leashed_ppo.py": "4a9c3dcaf8a84550c0397b7c80327d438e434982ef6d7a44923ba0b484857cfe",
   "python/diablogym/__init__.py": "5c18d997980f5310b5de1b40975047fd7d50afd28f54e7df20e0d2db47b27768",
   "python/diablogym/controller_wire.py": "7ff86ea8ff7547e5a7e219bbd7d1ca716918904ca3b1d2b515c1446dae166095",
-  "python/diablogym/env.py": "e56db9af70095f1f5f842720c2aa2b484d5ac5d337d600f2b2760e45f7b3544a",
+  "python/diablogym/env.py": "8caea5f8d7b71b7770b5f02f2a06b4d2541a732b356002e9212f3bd90976e672",
   "python/diablogym/nav.py": "15d79605a958c5239a171c1d06e3a0c8967dc73603d75d3c61c24db2c0648b86",
-  "python/diablogym/options_env.py": "c5df9829017c6fa3ca0a67b8617074805a0620ef626c007be71a95ab727a2b9e",
-  "python/diablogym/worker_env.py": "8c23a5e4b25d4fd3abc88840aee9fce75c4adbd65fb15f8e025a71dfca598caa",
+  "python/diablogym/options_env.py": "e9685975766014965096255a5cc147678fd889b5d24dd01cfcf1181c3f85b6f7",
+  "python/diablogym/worker_env.py": "e1677255de592655a7e00082f80ea84e515a6b8313820d3906d345a2b5c4efbd",
   "train/runs/r10-staging/probe_r15_deployment.py": "d7994cdde2db739c288fee69717e66dc329d128db09ef01211d64f687febc8fd",
-  "train/runs/r10-staging/probe_r17_deployment.py": "16b5fb7022e333e362a2c35361ba7b1efd919c55f1b2cae3ce22d895fb50e6a5",
+  "train/runs/r10-staging/probe_r17_deployment.py": "7d4ed83e79033476fe92cf0d696474158d50f4078d951b94ad9411cd3f15a160",
   "worker_zip": "7e31dc5402caed733443abb9fef383c877d93b3623b199ba4b5c6293092592f0"
  },
  "source_changed_during_run": [],
@@ -183,6 +183,7 @@
   {
    "seed": 2114000,
    "depth": 2,
+   "resource": null,
    "died": true,
    "victory": false,
    "micro_steps": 5208,
@@ -348,6 +349,7 @@
   {
    "seed": 2114001,
    "depth": 1,
+   "resource": null,
    "died": false,
    "victory": false,
    "micro_steps": 6000,
@@ -455,6 +457,7 @@
   {
    "seed": 2114002,
    "depth": 1,
+   "resource": null,
    "died": false,
    "victory": false,
    "micro_steps": 6000,
@@ -562,6 +565,7 @@
   {
    "seed": 2114003,
    "depth": 1,
+   "resource": null,
    "died": true,
    "victory": false,
    "micro_steps": 1859,
@@ -639,6 +643,7 @@
   {
    "seed": 2114004,
    "depth": 2,
+   "resource": null,
    "died": true,
    "victory": false,
    "micro_steps": 3869,
@@ -804,6 +809,7 @@
   {
    "seed": 2114005,
    "depth": 2,
+   "resource": null,
    "died": false,
    "victory": false,
    "micro_steps": 6000,
@@ -946,6 +952,7 @@
   {
    "seed": 2114006,
    "depth": 2,
+   "resource": null,
    "died": true,
    "victory": false,
    "micro_steps": 5854,
@@ -1137,6 +1144,7 @@
   {
    "seed": 2114007,
    "depth": 1,
+   "resource": null,
    "died": false,
    "victory": false,
    "micro_steps": 6000,
@@ -1309,6 +1317,7 @@
   {
    "seed": 2114008,
    "depth": 1,
+   "resource": null,
    "died": true,
    "victory": false,
    "micro_steps": 1368,
@@ -1386,6 +1395,7 @@
   {
    "seed": 2114009,
    "depth": 2,
+   "resource": null,
    "died": true,
    "victory": false,
    "micro_steps": 5597,
@@ -1538,6 +1548,7 @@
   {
    "seed": 2114010,
    "depth": 1,
+   "resource": null,
    "died": true,
    "victory": false,
    "micro_steps": 1061,
@@ -1615,6 +1626,7 @@
   {
    "seed": 2114011,
    "depth": 2,
+   "resource": null,
    "died": false,
    "victory": false,
    "micro_steps": 6000,
@@ -1783,6 +1795,7 @@
   {
    "seed": 2114012,
    "depth": 2,
+   "resource": null,
    "died": true,
    "victory": false,
    "micro_steps": 3885,
@@ -1909,6 +1922,7 @@
   {
    "seed": 2114013,
    "depth": 2,
+   "resource": null,
    "died": true,
    "victory": false,
    "micro_steps": 4098,
@@ -2048,6 +2062,7 @@
   {
    "seed": 2114014,
    "depth": 2,
+   "resource": null,
    "died": true,
    "victory": false,
    "micro_steps": 3768,
@@ -2174,6 +2189,7 @@
   {
    "seed": 2114015,
    "depth": 2,
+   "resource": null,
    "died": true,
    "victory": false,
    "micro_steps": 5489,

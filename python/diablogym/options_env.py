@@ -438,6 +438,7 @@ class OptionsEnv(gym.Env):
                  resource_calibration=None,
                  resource_readiness_law: str = "veto-v1",
                  worker_time_protocol: str = "legacy",
+                 resource_retreat: str = "off",
                  **env_kwargs):
         super().__init__()
         from .resource_protocol import (
@@ -455,6 +456,12 @@ class OptionsEnv(gym.Env):
             self.resource_protocol, resource_readiness_law)
         if self.resource_readiness_law != "veto-v1":
             env_kwargs["resource_readiness_law"] = self.resource_readiness_law
+        # R18-A retreat-v1: return-to-town interface (default off = byte-identical kwargs).
+        from .resource_protocol import validate_retreat_protocol
+        self.resource_retreat = validate_retreat_protocol(
+            self.resource_protocol, self.resource_readiness_law, resource_retreat)
+        if self.resource_retreat != "off":
+            env_kwargs["resource_retreat"] = self.resource_retreat
         if worker_time_protocol not in ("legacy", "completion-l2-v1"):
             raise ValueError("Unknown worker_time_protocol")
         self.worker_time_protocol = worker_time_protocol
@@ -464,24 +471,32 @@ class OptionsEnv(gym.Env):
                     or max_steps != COMPLETION_L2_V1.actor_denominator
                     or self.resource_protocol != "l2-town-v1"
                     or self.resource_purchase_mode != "full"
-                    or self.resource_service_policy != "sustain-v6"
+                    or self.resource_service_policy not in ("sustain-v6", "sustain-loot-v1")
                     or self.resource_calibration is not None):
-                raise ValueError("completion-l2-v1 requires legacy observation denominator and l2-town-v1/full/sustain-v6 without calibration")
+                raise ValueError("completion-l2-v1 requires legacy observation denominator and l2-town-v1/full with sustain-v6 or sustain-loot-v1 without calibration")
+        if self.resource_service_policy == "sustain-loot-v1" and self.worker_time_protocol != "completion-l2-v1":
+            raise ValueError("sustain-loot-v1 requires the explicit completion-l2-v1 time protocol")
         env_kwargs["resource_protocol"] = self.resource_protocol
         env_kwargs["resource_purchase_mode"] = self.resource_purchase_mode
-        ordinary_scope = self.resource_service_policy in ("sustain-v5", "sustain-v6")
+        ordinary_scope = self.resource_service_policy in ("sustain-v5", "sustain-v6", "sustain-loot-v1")
         requested_scope = env_kwargs.pop("resource_ordinary_armor_scope", ordinary_scope)
         if requested_scope is not ordinary_scope:
             raise ValueError("resource_ordinary_armor_scope must match resource_service_policy")
         if ordinary_scope:
             env_kwargs["resource_ordinary_armor_scope"] = True
-        preserve_equipment = self.resource_service_policy == "sustain-v6"
+        preserve_equipment = self.resource_service_policy in ("sustain-v6", "sustain-loot-v1")
         requested_preservation = env_kwargs.pop(
             "resource_preserve_equipment_readiness", preserve_equipment)
         if requested_preservation is not preserve_equipment:
             raise ValueError("resource_preserve_equipment_readiness must match resource_service_policy")
         if preserve_equipment:
             env_kwargs["resource_preserve_equipment_readiness"] = True
+        loot_economy = self.resource_service_policy == "sustain-loot-v1"
+        requested_loot = env_kwargs.pop("resource_loot_economy", loot_economy)
+        if requested_loot is not loot_economy:
+            raise ValueError("resource_loot_economy must match resource_service_policy")
+        if loot_economy:
+            env_kwargs["resource_loot_economy"] = True
         if self.resource_protocol != "off":
             farm_scene_cap = (RESOURCE_FARM_CAP if self.resource_calibration is None
                               else self.resource_calibration.farm_scene_microstep_cap)
@@ -604,16 +619,30 @@ class OptionsEnv(gym.Env):
                 getattr(self.env, "_raw", None))
             self.env.resource_time_callback = self._completion_time_tick
             self.env.resource_time_info_callback = self.completion_time_telemetry
+        if getattr(self, "resource_service_policy", "legacy-v1") == "sustain-loot-v1":
+            from .resource_sustain_loot import SustainLootService
+            service_type = SustainLootService
         self.resource_service = service_type(
             getattr(self, "resource_purchase_mode", "full"),
             calibration=getattr(self, "resource_calibration", None))
-        if getattr(self, "resource_service_policy", "legacy-v1") in ("sustain-v3", "sustain-v4", "sustain-v5", "sustain-v6"):
+        if getattr(self, "resource_service_policy", "legacy-v1") == "sustain-loot-v1":
+            service = self.resource_service
+            self.env.resource_observation_callback = lambda inner, raw, steps: service.observe(raw, steps)
+            if getattr(self.env, "_raw", None) is not None:
+                service.observe(self.env._raw, int(self.env._steps))
+        elif getattr(self, "resource_service_policy", "legacy-v1") in ("sustain-v3", "sustain-v4", "sustain-v5", "sustain-v6"):
             memory = self.resource_service.gold_memory
             self.env.resource_observation_callback = lambda inner, raw, steps: memory.observe(raw, steps)
             if getattr(self.env, "_raw", None) is not None:
                 memory.observe(self.env._raw, int(self.env._steps))
         self._resource_farm_ledgers = {}
         self._resource_command = None
+        # R18-A retreat-v1: a fresh scripted retreat service per episode; None when off.
+        if getattr(self, "resource_retreat", "off") != "off":
+            from .resource_retreat import RetreatService
+            self.retreat_service = RetreatService()
+        else:
+            self.retreat_service = None
         # 冻结的 V28 worker 与 M29 manager 都在 db7d26c 的 protocol-v3
         # 状态上训练。新协议可以改变收窗动力学，却不能把同宽度列静默换义；
         # 因此旧无新杀钟/榨干旗/本层起点独立维护，只供冻结网络观测。
@@ -681,7 +710,12 @@ class OptionsEnv(gym.Env):
                 }
                 raise RuntimeError("completion L2 arrival before learner handoff")
             transition = raw.get("resource_state", {}).get("transition", {})
-            if (not transition.get("accepted") or not transition.get("pretransition_ready")
+            # R17.1 ruling 3: under coach-v03 a forced-unready arrival is legal
+            # (accepted, pretransition_ready False, accounted, no escrow); only
+            # the receipt's existence/acceptance and the 1->2 geometry are law.
+            ready_required = getattr(self, "resource_readiness_law", "veto-v1") != "coach-v03"
+            if (not transition.get("accepted")
+                    or (ready_required and not transition.get("pretransition_ready"))
                     or transition.get("source_depth") != 1 or transition.get("target_depth") != 2
                     or transition.get("source_is_set") or transition.get("target_is_set")):
                 raise RuntimeError("completion L2 arrival lacks the live native readiness receipt")
@@ -844,7 +878,7 @@ class OptionsEnv(gym.Env):
         if getattr(self, "worker_time_protocol", "legacy") == "completion-l2-v1":
             self._completion_clock.reset()
             self.env.max_steps = self._completion_clock.state.physical_deadline
-        if getattr(self, "resource_service_policy", "legacy-v1") in ("sustain-v3", "sustain-v4", "sustain-v5", "sustain-v6"):
+        if getattr(self, "resource_service_policy", "legacy-v1") in ("sustain-v3", "sustain-v4", "sustain-v5", "sustain-v6", "sustain-loot-v1"):
             self.env.resource_observation_callback = None
         obs, info = self.env.reset(seed=seed, options=options)
         self._reset_wrapper_state()
@@ -909,7 +943,13 @@ class OptionsEnv(gym.Env):
             # DIVE legality untouched (progression_allowed returns True under it).
             m[DIVE] = bool(m[DIVE] and progression_allowed(raw, law))
             service = self.resource_service
-            if (not service.attempted and int(raw["dungeon_level"]) == 1
+            if getattr(self, "resource_service_policy", "legacy-v1") == "sustain-loot-v1":
+                alive = sum(1 for monster in raw.get("monsters", [])
+                            if int(monster.get("hp", 0)) > 0 and int(monster.get("type", -1)) != 109)
+                service.maybe_start(raw, self.env._steps,
+                    farm_scene_steps=self.farm_scene_steps,
+                    cleared=alive == 0 and int(raw.get("monster_kill_total", 0)) > 0)
+            elif (not service.attempted and int(raw["dungeon_level"]) == 1
                     and not raw.get("is_set_level") and not native_readiness(raw)["ready"]):
                 alive = sum(1 for monster in raw.get("monsters", [])
                             if int(monster.get("hp", 0)) > 0 and int(monster.get("type", -1)) != 109)
@@ -920,7 +960,17 @@ class OptionsEnv(gym.Env):
                 if cleared or self.farm_scene_steps >= farm_trigger:
                     service.start(raw, self.env._steps, "cleared" if cleared else "farm_cap",
                                   farm_scene_steps=self.farm_scene_steps)
-            if service.active:
+            retreat = getattr(self, "retreat_service", None)
+            if retreat is not None and not retreat.active and not service.active:
+                # R18-A retreat-v1: the manager-side law fires here, exactly where the
+                # town trip starts; the mask then collapses to RESUPPLY (= retreat).
+                trigger = retreat.trigger_reason(raw, int(self.env._steps))
+                if trigger is not None:
+                    retreat.start(raw, int(self.env._steps), bridge, trigger)
+            if retreat is not None and retreat.active:
+                m[:] = False
+                m[RESUPPLY] = True
+            elif service.active:
                 m[:] = False
                 m[RESUPPLY] = True
             elif law == "coach-v03":
@@ -943,6 +993,9 @@ class OptionsEnv(gym.Env):
             raise RuntimeError("Resource manager requires l2-town-v1")
         from .resource_protocol import law_ready
         mask = self.action_masks() if mask is None else mask
+        retreat = getattr(self, "retreat_service", None)
+        if retreat is not None and retreat.active:
+            return RESUPPLY
         if self.resource_service.active:
             return RESUPPLY
         raw = self.env._raw
@@ -1037,6 +1090,9 @@ class OptionsEnv(gym.Env):
         }
         if getattr(self, "resource_protocol", "off") != "off":
             self._win["resource_depth0"] = int(self.env._resource_max_main_depth)
+            retreat = getattr(self, "retreat_service", None)
+            self._win["retreat_window"] = bool(
+                retreat is not None and retreat.active and option == RESUPPLY)
 
     def _beat(self, a: int, *, worker_authority: bool = False):
         """一拍:保险丝 → env.step → 观测缓存 → 停滞钟。
@@ -1214,6 +1270,16 @@ class OptionsEnv(gym.Env):
             return ("descend" if raw["dungeon_level"] > w["dlvl0"]
                     else "scene")
         opt = w["opt"]
+        retreat = getattr(self, "retreat_service", None)
+        if retreat is not None:
+            # R18-A retreat-v1 (constructed only when the flag is on): a retreat
+            # window closes when the script hands back; any other window closes
+            # the beat the retreat law fires so the mask can take the word.
+            if w.get("retreat_window"):
+                return None if retreat.active else "retreat_complete"
+            if (opt != RESUPPLY and not retreat.active
+                    and retreat.trigger_reason(raw, self.env._steps) is not None):
+                return "retreat_trigger"
         # FARM 的最后一只近敌被清掉后，剧情目标可能在同一拍成为当前
         # 状态；必须先于复访地板/停滞钟收窗，不能让 action10 越权操作。
         if opt == FARM:
@@ -2085,13 +2151,37 @@ class OptionsEnv(gym.Env):
         mode = self._win["mode"]
         worker = self._workers.get(int(option))
         ending = self._consume_fuse_recovery()
+        retreat = getattr(self, "retreat_service", None)
+        service = (retreat if retreat is not None and retreat.active
+                   else self.resource_service)
         if (getattr(self, "resource_protocol", "off") != "off"
-                and int(option) == RESUPPLY and self.resource_service.active):
+                and int(option) == RESUPPLY and service.active):
             while ending is None or ending.reason is None:
-                command = self.resource_service.command(self.env, bridge)
+                if getattr(self, "resource_readiness_law", "veto-v1") == "coach-v03":
+                    # R17.1 ruling 3 (T0′ crash, seed 2133003): a deadline-truncated
+                    # service walk can leave the player mid-tile; the service's next
+                    # decision — and, at completion, the worker's first decision —
+                    # must start from a decision-idle player (frozen worker law).
+                    # Settle through the audited script-owned wait command
+                    # (bounded).  Inert under veto-v1, so R18–R23 receipts stand.
+                    settle = 0
+                    while (not self.env._decision_idle(self.env._raw)
+                           and not self.env._raw.get("dead") and settle < 40
+                           and (ending is None or ending.reason is None)):
+                        self._resource_command = ("wait",)
+                        try:
+                            ending = self._win_beat(0)
+                        finally:
+                            self._resource_command = None
+                        service.record_steps(
+                            self.env._steps, service.phase)
+                        settle += 1
+                    if ending is not None and ending.reason is not None:
+                        break
+                command = service.command(self.env, bridge)
                 self.env._resource_service_deadline = (
-                    self.resource_service.start_steps + self.resource_service.service_microstep_cap)
-                if getattr(self, "resource_service_policy", "legacy-v1") in ("sustain-v3", "sustain-v4", "sustain-v5", "sustain-v6"):
+                    service.start_steps + service.service_microstep_cap)
+                if service is self.resource_service and getattr(self, "resource_service_policy", "legacy-v1") in ("sustain-v3", "sustain-v4", "sustain-v5", "sustain-v6", "sustain-loot-v1"):
                     self.env._resource_service_deadline = self.resource_service.command_microstep_deadline
                 self._resource_command = command
                 try:
@@ -2099,10 +2189,13 @@ class OptionsEnv(gym.Env):
                 finally:
                     self._resource_command = None
                 receipt = self._win.get("last_info", {}).get("resource_action_audit", {})
-                self.resource_service.receipt(command, receipt)
-                self.resource_service.record_steps(self.env._steps, self.resource_service.phase)
+                service.receipt(command, receipt)
+                service.record_steps(self.env._steps, service.phase)
             extra, base_info, done, trunc = self._win_end(ending.reason)
+            self._finish_loot_episode(done, trunc, base_info)
             extra["resource"] = self.resource_service.telemetry()
+            if retreat is not None:
+                extra["retreat"] = retreat.telemetry()
             info = dict(base_info)
             info["option_extra"] = extra
             return self._mgr_obs(self._last_base_obs), extra["R"], done, trunc, info
@@ -2161,11 +2254,23 @@ class OptionsEnv(gym.Env):
                     self._win["gear_grace_consumed"] = False
                     self._win["gear_grace_decisions"] -= 1
         extra, base_info, done, trunc = self._win_end(ending.reason)
+        self._finish_loot_episode(done, trunc, base_info)
         info = dict(base_info)
         if getattr(self, "resource_protocol", "off") != "off":
             extra["resource"] = self.resource_service.telemetry()
         info["option_extra"] = extra
         return self._mgr_obs(self._last_base_obs), extra["R"], done, trunc, info
+
+    def _finish_loot_episode(self, done, trunc, base_info):
+        if (getattr(self, "resource_service_policy", "legacy-v1") != "sustain-loot-v1"
+                or not (done or trunc)):
+            return
+        raw = self.env._raw
+        reason = (getattr(self.env, "_resource_terminal_reason", None)
+                  or base_info.get("terminal_reason")
+                  or ("death" if raw.get("dead") or int(raw.get("hp", 0)) <= 0
+                      else "episode_terminated" if done else "episode_truncated"))
+        self.resource_service.finish_episode(raw, int(self.env._steps), str(reason))
 
     def _mgr_obs(self, base_obs) -> np.ndarray:
         view = getattr(

@@ -21,6 +21,18 @@ ResourceItemIdentity ResourceIdentity(const Item &item)
 
 bool gTownServiceAuthorized = false;
 bool gTownServiceTrip = false;
+int gResourceServiceTripsStarted = 0;
+constexpr int MaxLootServiceTrips = 2;
+// R18-A retreat-v1 (2026-09-06): a Python-authorized one-floor ascent from
+// main L2+ (the return-to-town interface). Each completed retreat earns one
+// extra loot-economy town trip. Off = every frozen verdict byte for byte.
+bool gResourceRetreatEnabled = false;
+bool gRetreatAuthorized = false;
+int gResourceRetreatsStarted = 0;
+constexpr int MaxResourceRetreats = 3;
+std::vector<ResourceItemIdentity> gResourceRetainedGear;
+std::vector<ResourceItemIdentity> gResourceLastRetainedGear;
+int gResourceLastRetentionGold = 0;
 bool gResourceVisitedL1 = false;
 int gResourceMaxDepth = 0;
 // A separate stream retains normal town restocking without consuming gameplay RNG.
@@ -130,14 +142,20 @@ bool ResourceTransitionGuard(const Player &player, interface_mode mode, int targ
 	} else if (mode == WM_DIABRTNLVL && setlevel) {
 		accepted = target == GetMapReturnLevel() && target > 0 && target <= 2;
 		reason = accepted ? "quest_return" : "curriculum_boundary";
+	} else if (!setlevel && mode == WM_DIABPREVLVL && source >= 2 && target == source - 1) {
+		// R18-A retreat-v1: a Python-authorized one-floor ascent. With the
+		// feature off this stays the old default verdict (unauthorized_transition).
+		accepted = gResourceRetreatEnabled && gRetreatAuthorized;
+		reason = accepted ? "retreat_ascent"
+		                  : (gResourceRetreatEnabled ? "retreat_not_authorized" : "unauthorized_transition");
 	} else if (target > 2) {
 		// coach-v03: deeper floors are governed by the Python per-floor tables;
 		// the engine only records the transition.
 		accepted = gResourceReadinessAdvisory;
 		reason = accepted ? "deeper_advisory" : "curriculum_boundary";
 	} else if (!setlevel && mode == WM_DIABPREVLVL && source == 1 && target == 0) {
-		accepted = gTownServiceAuthorized;
-		reason = accepted ? "town_service_departure" : "town_service_not_authorized";
+		accepted = gTownServiceAuthorized && (!gResourceLootEconomy || gResourceServiceTripsStarted < MaxLootServiceTrips + gResourceRetreatsStarted);
+		reason = accepted ? "town_service_departure" : (gResourceLootEconomy && gResourceServiceTripsStarted >= MaxLootServiceTrips + gResourceRetreatsStarted ? "town_service_trip_limit" : "town_service_not_authorized");
 	} else if (!setlevel && mode == WM_DIABNEXTLVL && source == 0 && target == 1) {
 		accepted = !gResourceVisitedL1 || gTownServiceTrip;
 		reason = accepted ? (gResourceVisitedL1 ? "town_service_return" : "initial_dungeon_entry") : "town_service_not_authorized";
@@ -166,24 +184,33 @@ bool ResourceTransitionGuard(const Player &player, interface_mode mode, int targ
 }
 
 void ConfigureResourceProtocol(bool enabled, bool ordinaryArmorScope = false,
-    bool preserveEquipmentReadiness = false, bool readinessAdvisory = false)
+    bool preserveEquipmentReadiness = false, bool lootEconomy = false,
+    bool readinessAdvisory = false, bool retreat = false)
 {
 	EnsureEngineProcess("configure_resource_protocol");
 	if (ordinaryArmorScope && !enabled)
 		throw std::invalid_argument("ordinary armor scope requires l2-town-v1");
 	if (preserveEquipmentReadiness && !enabled)
 		throw std::invalid_argument("equipment readiness preservation requires l2-town-v1");
+	if (lootEconomy && (!enabled || !ordinaryArmorScope))
+		throw std::invalid_argument("loot economy requires resource protocol and ordinary armor scope");
 	if (readinessAdvisory && !enabled)
 		throw std::invalid_argument("readiness advisory (coach-v03) requires l2-town-v1");
+	if (retreat && (!enabled || !readinessAdvisory))
+		throw std::invalid_argument("retreat-v1 requires l2-town-v1 under coach-v03");
 	if (gInGame && (enabled != gResourceProtocol || ordinaryArmorScope != gResourceOrdinaryArmorScope
 	                  || preserveEquipmentReadiness != gResourcePreserveEquipmentReadiness
-	                  || readinessAdvisory != gResourceReadinessAdvisory))
+	                  || lootEconomy != gResourceLootEconomy
+	                  || readinessAdvisory != gResourceReadinessAdvisory
+	                  || retreat != gResourceRetreatEnabled))
 		throw std::runtime_error("resource protocol may change only between episodes");
 	if (gResourceOrdinaryArmorScope && !ordinaryArmorScope) gResourceSeenSmithItems.clear();
 	gResourceProtocol = enabled;
 	gResourceOrdinaryArmorScope = ordinaryArmorScope;
 	gResourcePreserveEquipmentReadiness = preserveEquipmentReadiness;
+	gResourceLootEconomy = lootEconomy;
 	gResourceReadinessAdvisory = readinessAdvisory;
+	gResourceRetreatEnabled = retreat;
 	LevelTransitionGuard = enabled ? ResourceTransitionGuard : nullptr;
 	DisableLevelBacktracking = !enabled;
 }
@@ -195,6 +222,12 @@ void ResetResourceEpisode(uint32_t episodeSeed)
 	gTownRestockSequence = 0;
 	gTownServiceAuthorized = false;
 	gTownServiceTrip = false;
+	gResourceServiceTripsStarted = 0;
+	gRetreatAuthorized = false;
+	gResourceRetreatsStarted = 0;
+	gResourceRetainedGear.clear();
+	gResourceLastRetainedGear.clear();
+	gResourceLastRetentionGold = 0;
 	gResourceVisitedL1 = false;
 	gResourceMaxDepth = 0;
 	gResourceTransition = {};
@@ -232,8 +265,15 @@ void ResourceAfterLoad()
 	if (!setlevel) {
 		const int depth = static_cast<int>(currlevel);
 		gResourceMaxDepth = std::max(gResourceMaxDepth, depth);
-		if (depth == 0 && gResourceTransition.accepted && gResourceTransition.reason == "town_service_departure")
+		if (gRetreatAuthorized && gResourceTransition.accepted
+		    && gResourceTransition.reason == "retreat_ascent" && depth == gResourceTransition.target) {
+			gRetreatAuthorized = false;
+			++gResourceRetreatsStarted;
+		}
+		if (depth == 0 && !gTownServiceTrip && gResourceTransition.accepted && gResourceTransition.reason == "town_service_departure") {
 			gTownServiceTrip = true;
+			if (gResourceLootEconomy) ++gResourceServiceTripsStarted;
+		}
 		if (depth == 1) {
 			gResourceVisitedL1 = true;
 			if (gTownServiceTrip) {
@@ -251,8 +291,22 @@ void ConfigureTownService(bool authorized)
 		throw std::runtime_error("town service requires l2-town-v1");
 	if (authorized && !gTownServiceTrip && (setlevel || currlevel != 1))
 		throw std::runtime_error("town service can depart only from main L1");
+	if (gResourceLootEconomy && authorized && !gTownServiceTrip && gResourceServiceTripsStarted >= MaxLootServiceTrips + gResourceRetreatsStarted)
+		throw std::runtime_error("loot economy allows at most two town service trips per episode");
 	if (gResourceOrdinaryArmorScope && authorized && !gTownServiceTrip) gResourceSeenSmithItems.clear();
 	gTownServiceAuthorized = authorized;
+}
+
+void ConfigureRetreat(bool authorized)
+{
+	EnsureInGame("configure_retreat");
+	if (!gResourceProtocol || !gResourceRetreatEnabled)
+		throw std::runtime_error("retreat requires l2-town-v1 with retreat-v1 enabled");
+	if (authorized && (setlevel || currlevel < 2))
+		throw std::runtime_error("retreat can depart only from main L2 or deeper");
+	if (authorized && gResourceRetreatsStarted >= MaxResourceRetreats)
+		throw std::runtime_error("retreat-v1 allows at most three retreats per episode");
+	gRetreatAuthorized = authorized;
 }
 
 const char *ResourceVendorName(TalkID store)
@@ -579,6 +633,9 @@ py::list ObserveUnequipCandidates()
 	return candidates;
 }
 
+// New loot APIs remain absent from legacy raw observations.
+#include "resource_loot.hpp"
+
 py::dict ObserveResourceState()
 {
 	py::dict ready = ResourceReadinessState(*MyPlayer);
@@ -688,6 +745,12 @@ py::dict ObserveResourceState()
 	if (gResourceReadinessAdvisory) result["readiness_advisory"] = true;
 	result["service_authorized"] = gTownServiceAuthorized;
 	result["service_trip"] = gTownServiceTrip;
+	result["retreat_enabled"] = gResourceRetreatEnabled;
+	if (gResourceRetreatEnabled) {
+		result["retreat_authorized"] = gRetreatAuthorized;
+		result["retreats_started"] = gResourceRetreatsStarted;
+		result["max_retreats"] = MaxResourceRetreats;
+	}
 	result["max_main_depth_reached"] = gResourceMaxDepth;
 	// coach-v03 lifts the native curriculum wall (Python per-floor tables govern L3+).
 	result["curriculum_max_depth"] = gResourceReadinessAdvisory ? 16 : 2;
@@ -700,6 +763,7 @@ py::dict ObserveResourceState()
 	result["inventory_items"] = inventory;
 	result["unequip_candidates"] = ObserveUnequipCandidates();
 	result["inventory_equipment"] = inventoryEquipment;
+	if (gResourceLootEconomy) AppendResourceLootState(result, town);
 	return result;
 }
 

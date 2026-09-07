@@ -117,6 +117,10 @@ bool gExitCleanupRegistered = false;
 int64_t gEnginePid = -1;
 bool gMonotonicQuestTurnInUsed = false;
 bool gResourceProtocol = false;
+bool gResourceLootEconomy = false;
+Player ResourceUnequipSimulation(const Player &source);
+void RecordLootGearRetention(const Player &, const std::array<Item, NUM_INVLOC> &,
+    const std::array<bool, NUM_INVLOC> &, int);
 bool EquipmentReadyForPreservation(const Player &player);
 py::dict ObserveResourceState();
 void ResetResourceEpisode(uint32_t episodeSeed);
@@ -825,7 +829,8 @@ GearCombatProfile GearCombatProfileFromPlayer(const Player &player)
 }
 
 GearCombatProfile SimulateGearCombatProfile(
-    const Player &source, std::array<Item, NUM_INVLOC> &body)
+    const Player &source, std::array<Item, NUM_INVLOC> &body,
+    bool dungeonCombat = false)
 {
 	// Player owns animation resources and is intentionally move-only.  Build a
 	// stat-only inactive-level instance instead of touching the live player;
@@ -855,7 +860,7 @@ GearCombatProfile SimulateGearCombatProfile(
 	for (int slot = 0; slot < NUM_INVLOC; slot++)
 		simulated.InvBody[slot] = body[slot];
 	CalcPlrInv(simulated, false);
-	SetPlrAnims(simulated);
+	SetPlrAnims(simulated, dungeonCombat);
 	for (int slot = 0; slot < NUM_INVLOC; slot++) {
 		body[slot]._iStatFlag = simulated.InvBody[slot]._iStatFlag;
 	}
@@ -877,10 +882,10 @@ void MakeGearUtilityRelativeToEmpty(
 	    relative, 0, std::numeric_limits<uint32_t>::max()));
 }
 
-GearCombatProfile EmptyGearCombatBaseline(const Player &source)
+GearCombatProfile EmptyGearCombatBaseline(const Player &source, bool dungeonCombat = false)
 {
 	std::array<Item, NUM_INVLOC> emptyBody {};
-	return SimulateGearCombatProfile(source, emptyBody);
+	return SimulateGearCombatProfile(source, emptyBody, dungeonCombat);
 }
 
 GearCombatProfile LoadoutGearCombatProfile(const Player &player)
@@ -2649,12 +2654,30 @@ bool CanPairOneHanded(
 	    && IsAnyOf(other._itype, ItemType::Sword, ItemType::Mace);
 }
 
+// Loot mode stages every displaced object using the engine's real packing rule.
+// No live inventory, scroll state, RNG or network queue is touched by this copy.
+bool StageLootReplacedInventory(const Player &player,
+    const std::array<bool, NUM_INVLOC> &clearSlots, Player &staged)
+{
+	for (int slot = 0; slot < NUM_INVLOC; ++slot) {
+		if (clearSlots[slot] && !player.InvBody[slot].isEmpty()
+		    && !AutoPlaceItemInInventory(staged, player.InvBody[slot], false))
+			return false;
+	}
+	return true;
+}
+
 void ConsiderGearUpgradePlan(
     const Player &player, const Item &candidate,
     inv_body_loc target, std::array<bool, NUM_INVLOC> clearSlots,
     const GearCombatProfile &emptyBaseline,
-    const GearCombatProfile &previousProfile, GearUpgradePlan &best)
+    const GearCombatProfile &previousProfile, GearUpgradePlan &best,
+    bool requireRetentionCapacity, bool dungeonCombat)
 {
+	if (gResourceLootEconomy && requireRetentionCapacity) {
+		Player staged = ResourceUnequipSimulation(player);
+		if (!StageLootReplacedInventory(player, clearSlots, staged)) return;
+	}
 	std::array<Item, NUM_INVLOC> body;
 	for (int slot = 0; slot < NUM_INVLOC; slot++)
 		body[slot] = player.InvBody[slot];
@@ -2664,7 +2687,7 @@ void ConsiderGearUpgradePlan(
 	}
 	body[target] = candidate;
 	GearCombatProfile nextProfile
-	    = SimulateGearCombatProfile(player, body);
+	    = SimulateGearCombatProfile(player, body, dungeonCombat);
 	MakeGearUtilityRelativeToEmpty(nextProfile, emptyBaseline);
 	if (!body[target]._iStatFlag
 	    || !IsConservativeGearUpgrade(previousProfile, nextProfile))
@@ -2683,7 +2706,8 @@ void ConsiderGearUpgradePlan(
 	best.nextArmorClass = nextProfile.armor;
 }
 
-GearUpgradePlan PlanGearUpgrade(const Player &player, const Item &item)
+GearUpgradePlan PlanGearUpgrade(const Player &player, const Item &item,
+    bool requireRetentionCapacity = true, bool dungeonCombat = false)
 {
 	GearUpgradePlan best;
 	if (item.isEmpty() || !item.isEquipment()
@@ -2693,9 +2717,18 @@ GearUpgradePlan PlanGearUpgrade(const Player &player, const Item &item)
 	if (!candidate._iStatFlag)
 		return best;
 	const GearCombatProfile emptyBaseline
-	    = EmptyGearCombatBaseline(player);
-	GearCombatProfile previousProfile
-	    = GearCombatProfileFromPlayer(player);
+	    = EmptyGearCombatBaseline(player, dungeonCombat);
+	GearCombatProfile previousProfile;
+	if (dungeonCombat) {
+		// A town player retains cached attack frames from the previous dungeon,
+		// while a fresh town copy has none. Normalize all three loadouts through
+		// the same native dungeon-animation table without touching the live player.
+		std::array<Item, NUM_INVLOC> currentBody;
+		std::copy(std::begin(player.InvBody), std::end(player.InvBody), currentBody.begin());
+		previousProfile = SimulateGearCombatProfile(player, currentBody, true);
+	} else {
+		previousProfile = GearCombatProfileFromPlayer(player);
+	}
 	MakeGearUtilityRelativeToEmpty(previousProfile, emptyBaseline);
 
 	auto singleSlot = [&](inv_body_loc slot) {
@@ -2703,7 +2736,7 @@ GearUpgradePlan PlanGearUpgrade(const Player &player, const Item &item)
 		clearSlots[slot] = true;
 		ConsiderGearUpgradePlan(
 		    player, candidate, slot, clearSlots, emptyBaseline,
-		    previousProfile, best);
+		    previousProfile, best, requireRetentionCapacity, dungeonCombat);
 	};
 	switch (candidate._iLoc) {
 	case ILOC_ARMOR:
@@ -2728,7 +2761,7 @@ GearUpgradePlan PlanGearUpgrade(const Player &player, const Item &item)
 			clearSlots[INVLOC_HAND_RIGHT] = true;
 			ConsiderGearUpgradePlan(
 			    player, candidate, INVLOC_HAND_LEFT, clearSlots,
-			    emptyBaseline, previousProfile, best);
+			    emptyBaseline, previousProfile, best, requireRetentionCapacity, dungeonCombat);
 			break;
 		}
 		if (location != ILOC_ONEHAND
@@ -2755,7 +2788,7 @@ GearUpgradePlan PlanGearUpgrade(const Player &player, const Item &item)
 			    : INVLOC_HAND_LEFT;
 			ConsiderGearUpgradePlan(
 			    player, candidate, target, clearSlots,
-			    emptyBaseline, previousProfile, best);
+			    emptyBaseline, previousProfile, best, requireRetentionCapacity, dungeonCombat);
 			break;
 		}
 
@@ -2839,12 +2872,21 @@ int ActPickupGearAt(
 	// tile, never use adjacency as a final unobserved teleport/re-path.
 	if (start != item.position)
 		return 0;
+	if (gResourceLootEconomy && (!IsTileLit(item.position) || player._pmode != PM_STAND || player.hasNoLife() || !player.HoldItem.isEmpty())) return 0;
 	const GearUpgradePlan plan = PlanGearUpgrade(player, item);
 	if (!plan.valid)
 		return 0;
 
+	std::optional<Player> retainedInventory;
+	const int goldBefore = player._pGold;
+	if (gResourceLootEconomy) {
+		retainedInventory.emplace(ResourceUnequipSimulation(player));
+		if (!StageLootReplacedInventory(player, plan.clearSlots, *retainedInventory)) return 0;
+	}
+
 	// 不走 AutoGetItem 的 “AutoEquip 失败→腰带→隐藏背包”回退链。
-	// 复制全套身体槽后原子替换；旧装备按训练协议明确销毁，不进背包、
+	// 复制全套身体槽后原子替换；legacy 旧装备明确销毁，loot 模式已预检保留。
+	// legacy 旧件不进背包、
 	// 不落到可能被下一次宏误捞的地面。CalcPlrInv 是最终权威校验；
 	// 任一属性依赖级联使 aggregate utility 不再严格增长就完整回滚。
 	const Point position = item.position;
@@ -2894,6 +2936,14 @@ int ActPickupGearAt(
 		return 0;
 	}
 
+	const int previousInventoryCount = player._pNumInv;
+	if (retainedInventory) {
+		player._pNumInv = retainedInventory->_pNumInv;
+		std::copy(std::begin(retainedInventory->InvList), std::end(retainedInventory->InvList), std::begin(player.InvList));
+		std::copy(std::begin(retainedInventory->InvGrid), std::end(retainedInventory->InvGrid), std::begin(player.InvGrid));
+		player.CalcScrolls();
+	}
+
 	// Publish the floor-item removal before the equipment delta, matching the
 	// engine's normal OnRequestGetItem ordering.  The looped-back CMD_GETITEM
 	// cannot equip the item a second time: bMaster is the local player, so
@@ -2914,6 +2964,11 @@ int ActPickupGearAt(
 			NetSendCmdDelItem(false, static_cast<uint8_t>(slot));
 	}
 	NetSendCmdChItem(false, static_cast<uint8_t>(plan.target), true);
+	if (retainedInventory) {
+		for (int cell = 0; cell < InventoryGridCells; ++cell)
+			if (player.InvGrid[cell] > previousInventoryCount) NetSendCmdChInvItem(false, cell);
+		RecordLootGearRetention(player, previousBody, plan.clearSlots, goldBefore);
+	}
 	return 1;
 }
 
@@ -2958,10 +3013,15 @@ PYBIND11_MODULE(_diablogym, m)
 	m.def("step", &Step, py::arg("ticks") = 1, "推进游戏逻辑 N 个 tick(20 tick = 游戏内 1 秒),返回观测");
 	m.def("observe", &Observe, "只读当前观测");
 	m.def("configure_resource_protocol", &ConfigureResourceProtocol, py::arg("enabled"), py::arg("ordinary_armor_scope") = false,
-	    py::arg("preserve_equipment_readiness") = false, py::arg("readiness_advisory") = false);
+	    py::arg("preserve_equipment_readiness") = false, py::arg("loot_economy") = false,
+	    py::arg("readiness_advisory") = false, py::arg("retreat") = false);
 	m.def("configure_town_service", &ConfigureTownService, py::arg("authorized"));
+	m.def("configure_retreat", &ConfigureRetreat, py::arg("authorized"),
+	    "R18-A retreat-v1: authorize (or revoke) one one-floor ascent from main L2+");
 	m.def("project_seen_resource_smith_items", &ProjectSeenResourceSmithItems, py::arg("identities"));
 	m.def("preview_resource_equipment_combinations", &PreviewResourceEquipmentCombinations, py::arg("sequences"), py::arg("max_gold_cost"));
+	m.def("act_pickup_loot_at", &ActPickupLootAt, py::arg("item_id"), py::arg("x"), py::arg("y"), py::arg("seed_hi"), py::arg("seed_lo"), py::arg("create_info"), py::arg("base_id"));
+	m.def("act_sell_inventory_item", &ActSellInventoryItem, py::arg("vendor"), py::arg("index"), py::arg("seed_hi"), py::arg("seed_lo"), py::arg("create_info"), py::arg("base_id"), py::arg("expected_price"));
 	m.def("act_pickup_gold_at", &ActPickupGoldAt, py::arg("item_id"), py::arg("seed_hi"), py::arg("seed_lo"), py::arg("create_info"), py::arg("base_id"));
 	m.def("act_talk_towner", &ActTalkTowner, py::arg("towner_id"));
 	m.def("act_dismiss_dialog", &ActDismissDialog);
@@ -3092,6 +3152,33 @@ PYBIND11_MODULE(_diablogym, m)
 		return index;
 	}, py::arg("destination"), py::arg("base_id"), py::arg("seed_hi"), py::arg("seed_lo"), py::arg("create_info"), py::arg("durability"), py::arg("quality") = 0, py::arg("armor_class") = -1,
 	    "Engineering fixture only: recreate a real item (optional AC within its native range) into Smith stock or inventory; never policy-effect evidence");
+	m.def("probe_loot_carry_floor_item", [](int activeId) {
+		EnsureInGame("probe_loot_carry_floor_item");
+		bool active = false;
+		for (int i = 0; i < ActiveItemCount; ++i) active = active || ActiveItems[i] == activeId;
+		if (!gResourceLootEconomy || !active || activeId < 0 || activeId >= MAXITEMS || !Items[activeId].isEquipment())
+			throw std::invalid_argument("invalid loot floor fixture");
+		const Item item = Items[activeId];
+		const int index = MyPlayer->_pNumInv;
+		if (!AutoPlaceItemInInventory(*MyPlayer, item, false)) throw std::runtime_error("fixture inventory full");
+		SyncGetItem(item.position, item._iSeed, item.IDidx, item._iCreateInfo);
+		return index;
+	}, py::arg("active_id"), "Engineering fixture only: carry an engineered floor item to test inventory upgrade protection; never a policy action");
+	m.def("probe_loot_inventory_value", [](int index, int value) {
+		EnsureInGame("probe_loot_inventory_value");
+		if (!gResourceLootEconomy || index < 0 || index >= MyPlayer->_pNumInv || value < 1 || value > 1000000)
+			throw std::invalid_argument("invalid loot value fixture");
+		Item &item = MyPlayer->InvList[index];
+		if (item._itype == ItemType::Gold && value > MaxGold)
+			throw std::invalid_argument("fixture gold stack exceeds native maximum");
+		item._ivalue = value;
+		item._iIvalue = value;
+		if (item._itype == ItemType::Gold) {
+			SetPlrHandGoldCurs(item);
+			MyPlayer->_pGold = CalculateGold(*MyPlayer);
+		}
+	}, py::arg("index"), py::arg("value"),
+	    "Engineering fixture only: set one real inventory item's value for sale-capacity or low-cash boundaries; never used by resource actions");
 	m.def("probe_resource_fill_inventory", []() {
 		EnsureInGame("probe_resource_fill_inventory");
 		for (int index = 0; index < InventoryGridCells; ++index) {

@@ -1,0 +1,93 @@
+{
+ "table": {
+  "t0p-full-noloot": {
+   "alive": 15,
+   "died": 33,
+   "l2_reach": 38,
+   "l2_hazard_per_1k": 0.6233,
+   "clvl_mean": 3.27,
+   "kills_mean": 115.2,
+   "micro_steps_mean": 7190.8,
+   "fd_plus_1800_observed_n": 41,
+   "resource": {
+    "descent_receipts": 39,
+    "forced_unready": 14,
+    "forced_unready_share": 0.359,
+    "episodes_with_service": 41,
+    "gold_final_mean": 94.8
+   }
+  },
+  "t0p-full-loot": {
+   "alive": 13,
+   "died": 35,
+   "l2_reach": 37,
+   "l2_hazard_per_1k": 0.7558,
+   "clvl_mean": 3.25,
+   "kills_mean": 113.3,
+   "micro_steps_mean": 7373.9,
+   "fd_plus_1800_observed_n": 40,
+   "resource": {
+    "descent_receipts": 38,
+    "forced_unready": 7,
+    "forced_unready_share": 0.184,
+    "episodes_with_service": 41,
+    "gold_final_mean": 124.9
+   }
+  },
+  "a0-arm-v3": {
+   "alive": 26,
+   "died": 22,
+   "l2_reach": 24,
+   "l2_hazard_per_1k": 0.8902,
+   "clvl_mean": 3.02,
+   "kills_mean": 107.2,
+   "micro_steps_mean": 4962.1,
+   "fd_plus_1800_observed_n": 16,
+   "resource": null
+  },
+  "t0-full": {
+   "alive": 34,
+   "died": 14,
+   "l2_reach": 20,
+   "l2_hazard_per_1k": 0.7598,
+   "clvl_mean": 2.9,
+   "kills_mean": 99.9,
+   "micro_steps_mean": 5259.2,
+   "fd_plus_1800_observed_n": 8,
+   "resource": {
+    "descent_receipts": 20,
+    "forced_unready": 10,
+    "forced_unready_share": 0.5,
+    "episodes_with_service": 41,
+    "gold_final_mean": 81.3
+   }
+  }
+ },
+ "paired_loot_vs_noloot": {
+  "n": 48,
+  "saved": 1,
+  "lost": 3,
+  "net": -2,
+  "death_rate_diff": 0.0417,
+  "ucb95_one_sided": 0.1102
+ },
+ "paired_loot_vs_a0_arm_crossclock": {
+  "n": 48,
+  "saved": 2,
+  "lost": 15,
+  "net": -13,
+  "death_rate_diff": 0.2708,
+  "ucb95_one_sided": 0.398
+ },
+ "criteria": {
+  "1_loot_minus_noloot_alive_net_ge_4": false,
+  "2_loot_hazard_le_noloot": false,
+  "3_loot_hazard_le_0.7_a0_crossclock_info": false,
+  "4_loot_forced_unready_share_le_0.25": true
+ },
+ "verdict": "T0_PRIME_FAIL",
+ "seeds": "2133000-2133047",
+ "clock": "completion-l2-v1",
+ "elapsed_s": 1060.9,
+ "bridge": "/home/laure/r17_work/r17-1/build-res"
+}

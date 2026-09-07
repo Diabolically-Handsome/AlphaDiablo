@@ -650,7 +650,9 @@ class DiabloGymEnv(gym.Env):
         dive_blocker_recovery: str = "off",
         resource_ordinary_armor_scope: bool = False,
         resource_preserve_equipment_readiness: bool = False,
+        resource_loot_economy: bool = False,
         resource_readiness_law: str = "veto-v1",
+        resource_retreat: str = "off",
     ):
         super().__init__()
         from .resource_protocol import validate_resource_config, validate_ordinary_armor_scope
@@ -661,11 +663,23 @@ class DiabloGymEnv(gym.Env):
         from .resource_protocol import validate_equipment_readiness_preservation
         self._resource_preserve_equipment_readiness = validate_equipment_readiness_preservation(
             self.resource_protocol, resource_preserve_equipment_readiness)
+        if type(resource_loot_economy) is not bool:
+            raise ValueError("resource_loot_economy must be bool")
+        if resource_loot_economy and (
+                self.resource_protocol != "l2-town-v1" or self.resource_purchase_mode != "full"
+                or not self.resource_ordinary_armor_scope
+                or not self._resource_preserve_equipment_readiness):
+            raise ValueError("loot economy requires l2-town-v1/full with ordinary armor and equipment preservation")
+        self._resource_loot_economy = resource_loot_economy
         # R17.1 ruling 3: readiness law (veto-v1 = R18-R23 native veto, bit-identical;
         # coach-v03 = six-condition coach + accounted forced descents).
         from .resource_protocol import validate_readiness_law
         self.resource_readiness_law = validate_readiness_law(
             self.resource_protocol, resource_readiness_law)
+        # R18-A retreat-v1: return-to-town interface (default off = byte-identical).
+        from .resource_protocol import validate_retreat_protocol
+        self.resource_retreat = validate_retreat_protocol(
+            self.resource_protocol, self.resource_readiness_law, resource_retreat)
         if dive_blocker_recovery not in ("off", "adjacent-v1"):
             raise ValueError("dive_blocker_recovery must be off or adjacent-v1")
         if dive_blocker_recovery != "off" and self.resource_protocol == "off":
@@ -883,14 +897,24 @@ class DiabloGymEnv(gym.Env):
         """Constructor-only protocol identity; reset reapplies the same native flag."""
         return getattr(self, "_resource_preserve_equipment_readiness", False)
 
+    @property
+    def resource_loot_economy(self):
+        return getattr(self, "_resource_loot_economy", False)
+
     def _validate_native_resource_flags(self, raw):
         from .resource_protocol import (
             validate_native_armor_scope, validate_native_equipment_readiness_preservation)
         validate_native_armor_scope(raw, getattr(self, "resource_ordinary_armor_scope", False))
         validate_native_equipment_readiness_preservation(
             raw, getattr(self, "resource_preserve_equipment_readiness", False))
+        expected_loot = getattr(self, "resource_loot_economy", False)
+        observed_loot = raw.get("resource_state", {}).get("loot_economy", False)
+        if type(observed_loot) is not bool or observed_loot != expected_loot:
+            raise RuntimeError("Native loot economy identity mismatch; isolated rebuild required")
         from .resource_protocol import validate_native_readiness_law
         validate_native_readiness_law(raw, getattr(self, "resource_readiness_law", "veto-v1"))
+        from .resource_protocol import validate_native_retreat
+        validate_native_retreat(raw, getattr(self, "resource_retreat", "off"))
 
     # ---------- gymnasium API ----------
 
@@ -2142,13 +2166,23 @@ class DiabloGymEnv(gym.Env):
         enabled = getattr(self, "resource_protocol", "off") != "off"
         if hasattr(bridge, "configure_resource_protocol"):
             bridge.end_game()
-            if getattr(self, "resource_readiness_law", "veto-v1") == "coach-v03":
-                # New keyword: only reachable with a bridge built after R17.1 ruling 3.
+            advisory = getattr(self, "resource_readiness_law", "veto-v1") == "coach-v03"
+            loot = bool(getattr(self, "resource_loot_economy", False))
+            if loot and not advisory:
+                # R17.1-D loot economy, exact R21 ABI (no advisory keyword).
+                bridge.configure_resource_protocol(enabled, ordinary_armor_scope=True,
+                    preserve_equipment_readiness=True, loot_economy=True)
+            elif advisory:
+                # R17.1 ruling-3 advisory law (optionally with the loot economy):
+                # explicit full-keyword call, needs a bridge built after both.
                 bridge.configure_resource_protocol(enabled,
-                    ordinary_armor_scope=getattr(self, "resource_ordinary_armor_scope", False),
-                    preserve_equipment_readiness=getattr(
-                        self, "resource_preserve_equipment_readiness", False),
-                    readiness_advisory=True)
+                    ordinary_armor_scope=(True if loot else getattr(
+                        self, "resource_ordinary_armor_scope", False)),
+                    preserve_equipment_readiness=(True if loot else getattr(
+                        self, "resource_preserve_equipment_readiness", False)),
+                    loot_economy=loot,
+                    readiness_advisory=True,
+                    **({"retreat": True} if getattr(self, "resource_retreat", "off") != "off" else {}))
             elif getattr(self, "resource_preserve_equipment_readiness", False):
                 bridge.configure_resource_protocol(enabled,
                     ordinary_armor_scope=getattr(self, "resource_ordinary_armor_scope", False),
@@ -2201,6 +2235,31 @@ class DiabloGymEnv(gym.Env):
             if kind == "finish":
                 self._resource_terminal_reason = str(args[0])
             return self._raw, 0, receipt
+        if kind in ("loot", "sell"):
+            if not getattr(self, "resource_loot_economy", False):
+                raise ValueError("Loot pickup and sale require the explicit loot economy protocol")
+            # A refused pre-dispatch request still carries its real wallet and
+            # requested identity so the service can seal an honest zero-action
+            # ledger. It is explicitly not a native transaction receipt.
+            receipt.update(received=0, native_executed=False,
+                           source="environment-precheck", gold_before=int(self._raw.get("gold", 0)),
+                           gold_after=int(self._raw.get("gold", 0)))
+            if len(args) == 7:
+                identity = args[2:6] if kind == "sell" else args[3:7]
+                receipt.update(zip(("seed_hi", "seed_lo", "create_info", "base_id"), identity))
+                if kind == "sell":
+                    receipt.update(vendor=args[0], index=args[1], quoted_price=args[6])
+                else:
+                    receipt.update(active_id=args[0], index=-1)
+            deadline = min(self.max_steps, int(getattr(
+                self, "_resource_service_deadline", self.max_steps)))
+            if self._resource_actual_microsteps >= deadline:
+                receipt["reason"] = "resource_command_deadline"
+                return self._raw, 0, receipt
+            if (self._raw.get("dead") or self._raw.get("game_over") or self._raw.get("victory")
+                    or int(self._raw.get("hp", 0)) <= 0):
+                receipt["reason"] = "resource_command_terminal"
+                return self._raw, 0, receipt
         if kind in ("attack_monster", "drink", "unequip"):
             # New script-only commands. Keep the legacy service dispatch below
             # untouched; every mutation here is bounded by actual native clocks.
@@ -2320,6 +2379,13 @@ class DiabloGymEnv(gym.Env):
             result = bridge.act_controller_operate(*args, px, py, self._DESCEND_RADIUS)
         elif kind == "gold":
             result = bridge.act_pickup_gold_at(*args)
+        elif kind in ("loot", "sell"):
+            if not getattr(self, "resource_loot_economy", False):
+                raise ValueError("Loot pickup and sale require the explicit loot economy protocol")
+            operation = bridge.act_pickup_loot_at if kind == "loot" else bridge.act_sell_inventory_item
+            result = operation(*args)
+            if not isinstance(result, dict):
+                raise RuntimeError("Loot economy operation requires a real native receipt")
         elif kind == "talk":
             result = bridge.act_talk_towner(*args)
         elif kind == "dismiss":
@@ -2525,6 +2591,14 @@ class DiabloGymEnv(gym.Env):
             and int(prev["dungeon_level"]) == 1
             and int(self._raw["dungeon_level"]) == 0
             and bool(self._raw.get("resource_state", {}).get("service_trip")))
+        if (not authorized_retreat and getattr(self, "resource_retreat", "off") != "off"
+                and int(prev["dungeon_level"]) >= 2
+                and int(self._raw["dungeon_level"]) == int(prev["dungeon_level"]) - 1):
+            # R18-A retreat-v1: a one-floor ascent is legal only with an accepted
+            # engine receipt; anything else stays the fail-closed invariant below.
+            receipt = self._raw.get("resource_state", {}).get("transition", {})
+            authorized_retreat = bool(receipt.get("accepted")
+                                      and receipt.get("reason") == "retreat_ascent")
         if (self.start_in_dungeon and not authorized_retreat
                 and self._raw["dungeon_level"] < prev["dungeon_level"]):
             # 未来若出现新的回城/向上传送路径，宁可终止训练也
@@ -2940,6 +3014,10 @@ class DiabloGymEnv(gym.Env):
             validate_native_armor_scope(
                 refreshed, raw["resource_state"].get("ordinary_armor_scope", False))
             validate_native_equipment_readiness_preservation(refreshed, True)
+        expected_loot = raw.get("resource_state", {}).get("loot_economy", False)
+        observed_loot = refreshed.get("resource_state", {}).get("loot_economy", False)
+        if type(observed_loot) is not bool or observed_loot != expected_loot:
+            raise RuntimeError("Native loot economy identity mismatch at macro boundary")
         if (int(refreshed.get("dest_action", bridge.ACTION_NONE)) != bridge.ACTION_NONE
                 or int(refreshed.get("walkpath0", bridge.WALK_NONE)) != bridge.WALK_NONE):
             raise RuntimeError(

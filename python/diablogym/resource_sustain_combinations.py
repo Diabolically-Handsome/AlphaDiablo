@@ -277,17 +277,12 @@ class SustainCombinationService(SustainCompletionService):
         response = self._preview(raw, sequences, baseline["medicine_cost"])
         plan = plan_combination_basket(raw, refreshed, repair_quotes, healer_stock,
                                       sequences, response, failed)
-        plan = self._select_initial_plan(raw, refreshed, repair_quotes, healer_stock, failed, plan)
         chosen = plan["chosen"]
         if chosen and chosen["kind"] == "equipment_combination" and chosen["commands"]:
             self._remaining = list(chosen["sequence"])
             self._invested = False
             self._combination_history.append({"event": "selected", "sequence": deepcopy(self._remaining),
                 "source_sha256": chosen["native_source_sha256"], "total_cost": chosen["total_cost"]})
-        return plan
-
-    def _select_initial_plan(self, raw, smith_stock, repair_quotes, healer_stock, failed, plan):
-        """Optional initial selection hook; committed remainders never use it."""
         return plan
 
     def _reserve_command(self, env):

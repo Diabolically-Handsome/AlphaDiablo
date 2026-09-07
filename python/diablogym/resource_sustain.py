@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 from .resource_navigation import ResourceNavigationRecovery
 from .resource_protocol import ResourceService, native_readiness
 
-RESOURCE_SERVICE_POLICIES = ("legacy-v1", "sustain-v2", "sustain-v3", "sustain-v4", "sustain-v5", "sustain-v6")
+RESOURCE_SERVICE_POLICIES = ("legacy-v1", "sustain-v2", "sustain-v3", "sustain-v4", "sustain-v5", "sustain-v6", "sustain-loot-v1")
 SUSTAIN_SERVICE_CAP = 1500
 IDENTITY_FIELDS = ("seed_hi", "seed_lo", "create_info", "base_id")
 GATED_SLOTS = (0, 4, 5, 6)
@@ -20,7 +20,7 @@ GATED_SLOTS = (0, 4, 5, 6)
 def validate_service_policy(protocol, mode, policy):
     if policy not in RESOURCE_SERVICE_POLICIES:
         raise ValueError(f"Unknown resource_service_policy: {policy!r}")
-    if policy in ("sustain-v2", "sustain-v3", "sustain-v4", "sustain-v5", "sustain-v6") and (protocol != "l2-town-v1" or mode != "full"):
+    if policy in ("sustain-v2", "sustain-v3", "sustain-v4", "sustain-v5", "sustain-v6", "sustain-loot-v1") and (protocol != "l2-town-v1" or mode != "full"):
         raise ValueError(f"{policy} requires l2-town-v1 and full purchase mode")
     return policy
 
