@@ -2056,12 +2056,37 @@ class WorkerWindowEnv(gym.Env):
         while ending is None:
             if observation is None:
                 observation = self.oe._worker_policy_observation(self.policy_observation_view)
-            action = self._prefix_policy(observation, self.oe._worker_masks())
+            # R18-B7 prefix guard (2026-09-07): a DIVE window whose opening verdict was
+            # not eligible is played by the frozen parent; the parent must never descend
+            # under the prefix (the completion clock fails closed with "L2 arrival before
+            # learner handoff" - the R18-B arm crashed on it at 23:25). Under coach-v03 the
+            # manager opens DIVE on the six-condition law while the handoff needs the
+            # seven-condition native verdict (HP >= 80%), so the parent legitimately plays
+            # DIVE windows on L1 while wounded. Inside such a window the descend macro and
+            # the trigger-tile steps are withheld from the parent; it farms until the window
+            # closes and the next opening is judged again.
+            masks = self._prefix_guard_masks(self.oe.env._raw, self.oe._worker_masks())
+            action = self._prefix_policy(observation, masks)
             outcome = self.oe._win_step_worker(action)
             if outcome.reason is not None:
                 ending = outcome
             observation = None
         return None, self.oe._win_end(ending.reason)
+
+    @staticmethod
+    def _prefix_guard_masks(raw, masks):
+        """R18-B7: withhold a11 and trigger-tile steps from the parent inside a prefix
+        DIVE window (main L1 only); a0 stays legal so the parent can always act."""
+        from .env import DiabloGymEnv
+        guarded = np.array(masks, dtype=bool, copy=True)
+        if int(raw.get("dungeon_level", 0)) != 1 or raw.get("is_set_level"):
+            return guarded
+        guarded[11] = False
+        for action in DiabloGymEnv._protected_walk_actions(raw):
+            guarded[action] = False
+        if not guarded.any():
+            guarded[0] = True
+        return guarded
 
     def _advance_earned_prefix(self) -> _AdvanceOutcome:
         if not self._alive or self._prefix_attempt is None:
