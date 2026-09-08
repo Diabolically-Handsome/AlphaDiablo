@@ -74,6 +74,23 @@ PROTOCOL_SOURCE_FILES = (
     "python/diablogym/resource_sustain_completion.py",
     "python/diablogym/resource_sustain_combinations.py",
     "python/diablogym/resource_sustain_loot.py",
+    # R18-B6 (2026-09-07): every law module that exists in the tree is bound.
+    # R18-B5 flagged the gap: retreat/portal/aggro/engagement/sweep/identify/
+    # weapon-upgrade all decide what the EVALUATED world does, so an archive
+    # whose python_protocol digest omits them cannot testify to the world it
+    # was minted in.  resource_sustain_combat.py / resource_sustain_protection.py
+    # were missing from both lists for the same reason.  boss_avoidance.py is
+    # deliberately absent: R18-J is not merged and the file does not exist,
+    # and a missing path is a fail-closed EvalContractError here.
+    "python/diablogym/resource_sustain_combat.py",
+    "python/diablogym/resource_sustain_protection.py",
+    "python/diablogym/resource_retreat.py",
+    "python/diablogym/resource_portal.py",
+    "python/diablogym/resource_sweep.py",
+    "python/diablogym/resource_identify.py",
+    "python/diablogym/resource_weapon_upgrade.py",
+    "python/diablogym/aggro_cap.py",
+    "python/diablogym/engagement.py",
 )
 
 _SHA256_RE = re.compile(r"[0-9a-f]{64}")
@@ -127,6 +144,8 @@ _TERMINAL_KINDS = {
 # 逐字节不变);显式写默认值属身份不规范,validator 拒绝。
 R16_ENVIRONMENT_DEFAULTS = {
     "explore_global_hunt": False,
+    # R18-B5 (2026-09-07):a10 全局猎怪的作用域(all = 冻结行为,缺省表示)。
+    "hunt_scope": "all",
     "explore_global_fallback": False,
     "progress_far_tiles": 0,
     "farm_scene_cap": 1800,
@@ -136,6 +155,13 @@ R16_ENVIRONMENT_DEFAULTS = {
     "resource_service_policy": "legacy-v1",
     "resource_readiness_law": "veto-v1",
     "resource_retreat": "off",
+    # R18-B5 (2026-09-07):传送卷轴载具(off = 冻结行为,缺省表示)。
+    "resource_portal": "off",
+    # R18-B6 (2026-09-07):扫箱/鉴定/武器升级三条 loot 行程法
+    # (off = 冻结行为,缺省表示;缺省即旧档案逐字节不变)。
+    "resource_sweep": "off",
+    "resource_identify": "off",
+    "resource_weapon_upgrade": "off",
     "dive_blocker_recovery": "off",
 }
 
@@ -216,15 +242,49 @@ def dive_blocker_recovery_recipe(recovery="off"):
             "continuation": "replan-from-current-native-state"}
 
 
+# R18-B3 (2026-09-07):战利品经济进入工人训练后,配方必须写明它究竟在哪一部
+# 完成时钟下跑——completion-l2-v1(followup 1800)与 completion-l2-r18c
+# (followup 9000)下的「两趟城镇 + 卖装备」不是同一件事。每部时钟一个注册版本
+# 号;未注册的时钟 fail closed。键集合刻意与 diablogym.completion_clock.
+# COMPLETION_PROTOCOLS 完全相同(由 tests/test_r18b3_loot_training_contract.py
+# 逐字节盯住),本模块因此仍然不 import 引擎(档案法证在无原生扩展的机器上也要能跑)。
+LOOT_SERVICE_RECIPE_VERSIONS = {
+    "completion-l2-v1": "l1-two-trip-loot-economy-v1",
+    "completion-l2-r18c": "l1-two-trip-loot-economy-v1-r18c",
+}
+LOOT_SERVICE_DEFAULT_TIME_PROTOCOL = "completion-l2-v1"
+
+
 def resource_service_recipe(protocol="off", mode="full",
-                            service_policy="legacy-v1"):
+                            service_policy="legacy-v1",
+                            time_protocol=None):
+    """R18-B3:``time_protocol`` 只对 sustain-loot-v1 有意义,缺省逐字节保持旧配方。
+
+    R18-B3 复审 (2026-09-07):哨兵由「缺省时钟值」改为 ``None``(= 调用者没有
+    传时钟)。从前拿真实缺省值当哨兵,``resource_service_recipe(...,"sustain-v6",
+    time_protocol="completion-l2-v1")`` 会被静默接受并忽略,而同样写法配
+    completion-l2-r18c 却报错——统一把运行时钟穿进配方的调用者因此一半静默、
+    一半炸。现在**任何**显式 time_protocol 落在非 loot 服务法上一律 fail closed;
+    缺省输出(含键序)逐字节不变。
+    """
     validate_resource_service_config(protocol, mode, service_policy)
+    if service_policy == "sustain-loot-v1":
+        if time_protocol is None:
+            time_protocol = LOOT_SERVICE_DEFAULT_TIME_PROTOCOL
+        if time_protocol not in LOOT_SERVICE_RECIPE_VERSIONS:
+            raise ValueError(
+                "sustain-loot-v1 requires a registered completion-l2 time protocol "
+                f"({sorted(LOOT_SERVICE_RECIPE_VERSIONS)}): {time_protocol!r}")
+    elif time_protocol is not None:
+        raise ValueError(
+            f"time_protocol only applies to sustain-loot-v1, not {service_policy!r}")
     if protocol == "off":
         return None
     if service_policy == "sustain-loot-v1":
         recipe = resource_service_recipe(protocol, mode, "sustain-v6")
-        recipe.update(version="l1-two-trip-loot-economy-v1", service_policy=service_policy,
-            time_protocol="completion-l2-v1", service_microstep_cap=3000,
+        recipe.update(version=LOOT_SERVICE_RECIPE_VERSIONS[time_protocol],
+            service_policy=service_policy,
+            time_protocol=time_protocol, service_microstep_cap=3000,
             collect_command_window_microsteps=900, max_town_trips=2,
             native_loot_economy=True,
             second_trip_trigger="native-deficit-and-real-resource-or-growth-change-after-return",
@@ -858,6 +918,18 @@ def validate_r16_environment(value: Any) -> dict[str, Any]:
         elif key == "resource_service_policy":
             _require(item in ("sustain-v2", "sustain-v3", "sustain-v4", "sustain-v5", "sustain-v6", "sustain-loot-v1"),
                      "resource_service_policy must be sustain-v2/sustain-v3/sustain-v4/sustain-v5/sustain-v6 (legacy-v1 is omitted)")
+            # R18-B3 复审 (2026-09-07):loot 配方自本版起随完成时钟分版
+            # (LOOT_SERVICE_RECIPE_VERSIONS),而档案身份词汇表
+            # (R16_ENVIRONMENT_DEFAULTS)里根本没有时钟键——档案说不出自己
+            # 究竟在哪部时钟下跑。若照旧用缺省 completion-l2-v1 造配方,
+            # 一份 completion-l2-r18c 训练出来的工人的档案就会写下一句关于
+            # 时钟与经济版本号的假话,而诚实的 -r18c 配方反而被 validator 拒。
+            # 在档案 schema 长出时钟键之前一律 fail closed:宁可评不了,
+            # 不可让缺省值替被测世界作证。
+            _require(item != "sustain-loot-v1",
+                     "sustain-loot-v1 archives require the completion-l2 clock in the "
+                     "archive identity, which this schema version does not carry yet "
+                     "(R18-B3); no loot eval archive may be minted under the default clock")
             _require(value.get("resource_protocol") == "l2-town-v1"
                      and value.get("resource_purchase_mode", "full") == "full",
                      "sustain service requires resource_protocol l2-town-v1 and full purchase mode")
@@ -873,6 +945,59 @@ def validate_r16_environment(value: Any) -> dict[str, Any]:
                      and value.get("resource_readiness_law") == "coach-v03",
                      "resource_retreat retreat-v1 requires resource_protocol "
                      "l2-town-v1 and resource_readiness_law coach-v03")
+        elif key == "resource_portal":
+            # R18-B5 (2026-09-07):传送是撤退的载具,档案身份必须同时写下
+            # 那部撤退法,否则一份「有传送、没撤退」的档案说不清窗是怎么关的。
+            _require(item == "portal-v1",
+                     "resource_portal must be portal-v1 (off is omitted)")
+            _require(value.get("resource_protocol") == "l2-town-v1"
+                     and value.get("resource_readiness_law") == "coach-v03"
+                     and value.get("resource_retreat") == "retreat-v1",
+                     "resource_portal portal-v1 requires resource_protocol "
+                     "l2-town-v1, resource_readiness_law coach-v03 and "
+                     "resource_retreat retreat-v1")
+        elif key in ("resource_sweep", "resource_identify",
+                     "resource_weapon_upgrade"):
+            # R18-B6 (2026-09-07):三条法都只活在 loot 经济的进城行程里
+            # (部署侧 validate_sweep_protocol / validate_identify_protocol /
+            # validate_weapon_upgrade 同款),故档案身份必须同时写下
+            # l2-town-v1 与 sustain-loot-v1;smith-v1 另需 full 采购模式。
+            # 注意这条链当前一定 fail closed:上面的 resource_service_policy
+            # 分支拒绝一切 sustain-loot-v1 档案(R18-B3——档案 schema 还没有
+            # 时钟键)。这是刻意的:在档案能说出自己在哪部时钟下跑之前,
+            # 一份"有扫箱、说不出时钟"的档案不许被铸出来。
+            # 复核修正(同日):这张表对 resource_weapon_upgrade 而言比部署侧
+            # 词汇表窄一个值——RESOURCE_WEAPON_UPGRADES 还有 dry-v1,这里不
+            # 收。这是刻意的,与训练侧 (_validate_args / make_env) 同一条理由:
+            # dry-v1 不发命令、不走微步、不做 native 调用,行数据与 control 臂
+            # 逐位相同,故一份写着 dry-v1 的档案身份是在为一个与缺省世界逐位
+            # 相同的环境作伪证(hunt_scope l1-only 复核修正同款裁定)。所以
+            # B6 的窄化不止在训练环,也**明确**落在档案身份环与 eval_assembled
+            # 的 CLI 环上;dry-v1 反事实臂若要考核,需先有自己的身份裁定
+            # (B6-REPORT.md 开放问题 2),而不是在这里放行。
+            expected = {"resource_sweep": "sweep-v1",
+                        "resource_identify": "cain-v1",
+                        "resource_weapon_upgrade": "smith-v1"}[key]
+            _require(item == expected,
+                     f"{key} must be {expected} (off is omitted)")
+            _require(value.get("resource_protocol") == "l2-town-v1"
+                     and value.get("resource_service_policy") == "sustain-loot-v1",
+                     f"{key} {expected} requires resource_protocol l2-town-v1 "
+                     "and resource_service_policy sustain-loot-v1")
+            if key == "resource_weapon_upgrade":
+                _require(value.get("resource_purchase_mode", "full") == "full",
+                         "resource_weapon_upgrade smith-v1 requires the full "
+                         "purchase mode")
+        elif key == "hunt_scope":
+            # R18-B5 (2026-09-07):DiabloGymEnv 级开关,不需要资源协议。
+            _require(item == "l1-only",
+                     "hunt_scope must be l1-only (all is omitted)")
+            # 复核修正(同日):l1-only 的唯一消费者是 a10 全图寻怪的闸,
+            # 寻怪关着时它是保证的空操作。一份声明了这条法却没开寻怪的档案
+            # 会为一个与缺省世界逐位相同的环境铸出另一个身份——身份必须只
+            # 为真的跑过的法作证(R18-B3 裁定同款),故 fail closed。
+            _require(value.get("explore_global_hunt") is True,
+                     "hunt_scope l1-only requires explore_global_hunt")
         elif key == "dive_blocker_recovery":
             _require(item == "adjacent-v1", "dive_blocker_recovery must be adjacent-v1 (off is omitted)")
             _require(value.get("resource_protocol") == "l2-town-v1",

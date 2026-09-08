@@ -1256,6 +1256,9 @@ void PumpSdlEvents()
 	}
 }
 
+// R18-H (2026-09-07) sweep-v1: chest/barrel observation channel (default off).
+#include "resource_sweep.hpp"
+
 py::dict Observe()
 {
 	EnsureInGame("observe");
@@ -1715,6 +1718,10 @@ py::dict Observe()
 		triggers.append(t);
 	}
 	obs["triggers"] = triggers;
+	// R18-H (2026-09-07) sweep-v1: the chest/barrel channel. Absent unless the
+	// new default-false flag is on, so the frozen observation dict is byte-identical.
+	if (gObjectObservation)
+		obs["objects"] = ObserveSweepObjects();
 	if (gResourceProtocol)
 		obs["resource_state"] = ObserveResourceState();
 
@@ -3015,12 +3022,18 @@ PYBIND11_MODULE(_diablogym, m)
 	m.def("observe", &Observe, "只读当前观测");
 	m.def("configure_resource_protocol", &ConfigureResourceProtocol, py::arg("enabled"), py::arg("ordinary_armor_scope") = false,
 	    py::arg("preserve_equipment_readiness") = false, py::arg("loot_economy") = false,
-	    py::arg("readiness_advisory") = false, py::arg("retreat") = false, py::arg("portal") = false);
+	    py::arg("readiness_advisory") = false, py::arg("retreat") = false, py::arg("portal") = false,
+	    py::arg("identify") = false);
 	m.def("configure_town_service", &ConfigureTownService, py::arg("authorized"));
 	m.def("configure_retreat", &ConfigureRetreat, py::arg("authorized"),
 	    "R18-A retreat-v1: authorize (or revoke) one one-floor ascent from main L2+");
 	m.def("configure_resource_portal", &ConfigureResourcePortal, py::arg("authorized"),
 	    "R18-F portal-v1: authorize (or revoke) one town-portal transit (main L2+ -> town, or town -> the open portal's floor)");
+	m.def("configure_object_observation", &ConfigureObjectObservation, py::arg("enabled"),
+	    "R18-H sweep-v1: enable (or disable) the raw \"objects\" chest/barrel channel; "
+	    "off by default and off = byte-identical observation dict");
+	m.def("configure_resource_weapon_purchase", &ConfigureResourceWeaponPurchase, py::arg("enabled"),
+	    "R18-K2b weapon-purchase-v1: let Griswold sell, and the town equip path wear, an ordinary ONE-HANDED weapon (default off; between episodes only)");
 	m.def("project_seen_resource_smith_items", &ProjectSeenResourceSmithItems, py::arg("identities"));
 	m.def("preview_resource_equipment_combinations", &PreviewResourceEquipmentCombinations, py::arg("sequences"), py::arg("max_gold_cost"));
 	m.def("act_pickup_loot_at", &ActPickupLootAt, py::arg("item_id"), py::arg("x"), py::arg("y"), py::arg("seed_hi"), py::arg("seed_lo"), py::arg("create_info"), py::arg("base_id"));
@@ -3031,6 +3044,8 @@ PYBIND11_MODULE(_diablogym, m)
 	m.def("act_buy_store_item", &ActBuyStoreItem, py::arg("vendor"), py::arg("index"), py::arg("seed_hi"), py::arg("seed_lo"), py::arg("create_info"), py::arg("base_id"));
 	m.def("act_cast_town_portal", &ActCastTownPortal, py::arg("spell_from"),
 	    "R18-F portal-v1: read a carried Scroll of Town Portal via CMD_SPELLXY (never UseInvItem, which would strand the cursor in CURSOR_TELEPORT)");
+	m.def("act_identify", &ActIdentifyItem, py::arg("equipped"), py::arg("index"), py::arg("seed_hi"), py::arg("seed_lo"), py::arg("create_info"), py::arg("base_id"), py::arg("expected_price"),
+	    "R18-H identify-v1: pay Cain his fixed fee to identify one carried or worn magic item (town, inside an authorized resource town trip, standing next to the storyteller)");
 	m.def("act_repair_equipped_item", &ActRepairEquippedItem, py::arg("slot"), py::arg("seed_hi"), py::arg("seed_lo"), py::arg("create_info"), py::arg("base_id"), py::arg("expected_durability"), py::arg("expected_price"));
 	m.def("act_equip_inventory_item", &ActEquipInventoryItem, py::arg("index"), py::arg("seed_hi"), py::arg("seed_lo"), py::arg("create_info"), py::arg("base_id"));
 	m.def("act_unequip_equipped_item", &ActUnequipEquippedItem, py::arg("slot"), py::arg("seed_hi"), py::arg("seed_lo"), py::arg("create_info"), py::arg("base_id"));
@@ -3157,6 +3172,34 @@ PYBIND11_MODULE(_diablogym, m)
 		return index;
 	}, py::arg("destination"), py::arg("base_id"), py::arg("seed_hi"), py::arg("seed_lo"), py::arg("create_info"), py::arg("durability"), py::arg("quality") = 0, py::arg("armor_class") = -1,
 	    "Engineering fixture only: recreate a real item (optional AC within its native range) into Smith stock or inventory; never policy-effect evidence");
+	m.def("probe_resource_identify_fixture", [](const std::string &destination, int baseId, uint16_t seedHigh, uint16_t seedLow, int level, int slot) {
+		EnsureInGame("probe_resource_identify_fixture");
+		if (baseId < 0 || static_cast<size_t>(baseId) >= AllItemsList.size()
+		    || (destination != "inventory" && destination != "body")
+		    || level < 1 || level > 30)
+			throw std::invalid_argument("invalid identify fixture");
+		// R18-H identify-v1 fixture: build the item through the ENGINE's own drop
+		// path (SetupAllItems with onlygood/uper15), so the affixes, values and the
+		// unidentified flag are the real ones a floor drop would carry. It is
+		// refused unless the seed actually produced an unidentified magic item.
+		Item item = {};
+		SetupAllItems(*MyPlayer, item, static_cast<_item_indexes>(baseId),
+		    (uint32_t { seedHigh } << 16) | seedLow, level, 15, true, false);
+		if (item.isEmpty() || item._iMagical == ITEM_QUALITY_NORMAL || item._iIdentified)
+			throw std::runtime_error("identify fixture seed produced no unidentified magic item");
+		item._iStatFlag = MyPlayer->CanUseItem(item);
+		if (destination == "body") {
+			if (slot < 0 || slot >= NUM_INVLOC) throw std::invalid_argument("invalid fixture body slot");
+			MyPlayer->InvBody[slot] = item;
+			CalcPlrInv(*MyPlayer, true);
+			return slot;
+		}
+		const int index = MyPlayer->_pNumInv;
+		if (!AutoPlaceItemInInventory(*MyPlayer, item, false))
+			throw std::runtime_error("identify fixture has no inventory room");
+		return index;
+	}, py::arg("destination"), py::arg("base_id"), py::arg("seed_hi"), py::arg("seed_lo"), py::arg("level") = 10, py::arg("slot") = -1,
+	    "Engineering fixture only: generate a REAL unidentified magic item with the engine drop path into inventory or a body slot; never policy-effect evidence");
 	m.def("probe_loot_carry_floor_item", [](int activeId) {
 		EnsureInGame("probe_loot_carry_floor_item");
 		bool active = false;
@@ -3184,15 +3227,24 @@ PYBIND11_MODULE(_diablogym, m)
 		}
 	}, py::arg("index"), py::arg("value"),
 	    "Engineering fixture only: set one real inventory item's value for sale-capacity or low-cash boundaries; never used by resource actions");
-	m.def("probe_resource_fill_inventory", []() {
+	m.def("probe_resource_fill_inventory", [](int leaveFree) {
 		EnsureInGame("probe_resource_fill_inventory");
-		for (int index = 0; index < InventoryGridCells; ++index) {
+		// R18-K2b review round (2026-09-07): leave_free lets a test build a
+		// TIGHT pack (the regime where the counter and the equip path can
+		// disagree about capacity) instead of only a full one. An ordinary
+		// potion occupies exactly one cell, so the count is exact, and
+		// leave_free = 0 -- the only value every existing caller passes -- is
+		// the frozen fixture: fill every remaining cell.
+		if (leaveFree < 0) throw std::invalid_argument("leave_free must not be negative");
+		int freeCells = 0;
+		for (const auto cell : MyPlayer->InvGrid) freeCells += cell == 0;
+		for (int index = 0; index < freeCells - leaveFree; ++index) {
 			Item item = {};
 			GetItemAttrs(item, IDI_HEAL, 1);
 			item._iSeed = 0xF1110000U + index;
 			if (!AutoPlaceItemInInventory(*MyPlayer, item, false)) break;
 		}
-	}, "Engineering fixture only: fill remaining inventory slots with ordinary potions");
+	}, py::arg("leave_free") = 0, "Engineering fixture only: fill remaining inventory slots with ordinary potions, keeping leave_free cells empty");
 	m.def("probe_resource_inventory_snapshot", []() {
 		EnsureInGame("probe_resource_inventory_snapshot");
 		py::dict snapshot;

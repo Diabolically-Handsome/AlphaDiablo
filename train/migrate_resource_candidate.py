@@ -19,12 +19,22 @@ PARENT_SHA256 = "7e31dc5402caed733443abb9fef383c877d93b3623b199ba4b5c6293092592f
 PARENT_CONTRACT_SHA256 = "6a2fb5e652ee46c48ec9a604353525a4e98e81fc7bb6fb071d21524e30993b7f"
 PARENT_STEPS = 4089856
 SCHEMA = "diablogym-resource-warm-start/1"
+# R18-B3b (2026-09-07): the loot warm-start schema lives in
+# migrate_loot_candidate.py; its name is declared here so this module can
+# accept it without importing that module at import time (it imports this one).
+SCHEMA_V2 = "diablogym-resource-warm-start/2"
 OPERATION = "r16-to-sustain-v2-weights-only-v1"
 OPERATIONS = {"sustain-v2": OPERATION,
               "sustain-v3": "r16-to-sustain-v3-weights-only-v1",
               "sustain-v4": "r16-to-sustain-v4-weights-only-v1",
               "sustain-v5": "r16-to-sustain-v5-weights-only-v1",
-              "sustain-v6": "r16-to-sustain-v6-weights-only-v1"}
+              "sustain-v6": "r16-to-sustain-v6-weights-only-v1",
+              # R18-B3 (2026-09-07): a new versioned operation; the sustain-v6
+              # names above are frozen and are never renamed or reused.
+              # R18-B3 review round: the name is RESERVED, not yet mintable --
+              # operation_for refuses sustain-loot-v1 until the migration schema
+              # carries worker_time_protocol (see the require there).
+              "sustain-loot-v1": "r16-to-sustain-loot-v1-weights-only-v1"}
 RESOURCE_KEYS = frozenset({"resource_protocol", "resource_purchase_mode",
     "resource_service_policy", "resource_service_recipe"})
 BASE_ALLOWED_CONTRACT_KEYS = RESOURCE_KEYS | {"implementation_sha256"}
@@ -83,7 +93,18 @@ def depth_shaping_recipe(unit):
 def operation_for(service_policy, recovery="off", worker_learning_window_scope=None,
                   worker_depth_shaping_unit=None):
     from eval_contract import validate_dive_blocker_recovery, EARNED_DIVE_SUFFIX_SCOPE
-    require(service_policy in OPERATIONS, "Only explicit sustain-v2/v3/v4/v5/v6 targets are eligible")
+    require(service_policy in OPERATIONS,
+            "Only explicit sustain-v2/v3/v4/v5/v6/sustain-loot-v1 targets are eligible")
+    # R18-B3 复审 (2026-09-07):sustain-loot-v1 的操作名已经登记(见 OPERATIONS),
+    # 但迁移契约的词汇表(ALLOWED_CONTRACT_KEYS / target_contract)里没有
+    # worker_time_protocol,而 loot 配方自本版起随完成时钟分版。真放行,就会冻结
+    # 一份 time_protocol=completion-l2-v1 的收据——一句没人核实过的时钟断言;
+    # 而 train_ppo._validate_resource_warm_start_args 又无条件拒绝一切 loot
+    # warm-start,那份收据永远没人能消费。在迁移 schema 升版长出时钟键之前
+    # fail closed。
+    require(service_policy != "sustain-loot-v1",
+            "sustain-loot-v1 migration requires a completion-l2 clock in the migration "
+            "schema (worker_time_protocol is not in ALLOWED_CONTRACT_KEYS yet)")
     validate_dive_blocker_recovery("l2-town-v1", recovery)
     require(worker_learning_window_scope in (None, "farm-dive-v1", EARNED_DIVE_SUFFIX_SCOPE),
             "Resource initialization allows only registered farm-dive or earned-suffix scopes")
@@ -93,9 +114,15 @@ def operation_for(service_policy, recovery="off", worker_learning_window_scope=N
                 "Depth signal requires earned-dive-suffix-v1, sustain-v6 and adjacent-v1")
         return DEPTH_SIGNAL_OPERATION
     if worker_learning_window_scope == EARNED_DIVE_SUFFIX_SCOPE:
-        require(service_policy == "sustain-v6" and recovery == "adjacent-v1",
-                "Earned suffix initialization requires sustain-v6 plus adjacent-v1")
-        return "r16-to-sustain-v6-earned-dive-suffix-v1-dive-adjacent-v1-weights-only-v1"
+        # R18-B3 (2026-09-07): sustain-loot-v1 gets its own operation name from
+        # the same template; the sustain-v6 string it produces is byte-identical
+        # to the frozen one it replaces.  R18-B3 review round: loot is already
+        # refused at the top of this function until the migration schema carries
+        # worker_time_protocol, so the loot arm here is the single definition of
+        # the reserved name, not a reachable branch.
+        require(service_policy in ("sustain-v6", "sustain-loot-v1") and recovery == "adjacent-v1",
+                "Earned suffix initialization requires sustain-v6 or sustain-loot-v1 plus adjacent-v1")
+        return f"r16-to-{service_policy}-earned-dive-suffix-v1-dive-adjacent-v1-weights-only-v1"
     if recovery == "off":
         return OPERATIONS[service_policy]
     return f"r16-to-{service_policy}-dive-adjacent-v1-weights-only-v1"
@@ -227,6 +254,14 @@ def make_receipt(parent_data, target, parameters_sha):
 
 
 def validate_inherited_receipt(receipt, target):
+    # R18-B3b (2026-09-07): schema/2 is the sustain-loot-v1 earned-suffix family;
+    # it carries the completion clock this schema has no key for. The two
+    # conditions are disjoint, and anything else still falls through to the
+    # unchanged schema/1 rules below (where a loot target is refused by
+    # operation_for, so a mislabelled receipt cannot be relabelled into one).
+    if isinstance(receipt, dict) and receipt.get("schema") == SCHEMA_V2:
+        from migrate_loot_candidate import validate_inherited_receipt as validate_loot_receipt
+        return validate_loot_receipt(receipt, target)
     if (isinstance(receipt, dict) and receipt.get("operation") ==
             "earned-depth24-8192-to-completion-l2-v1-weights-only-v1"):
         from migrate_completion_candidate import validate_inherited_receipt as validate_completion_receipt
@@ -353,7 +388,10 @@ def capture_initialization(manifest_path, expected_implementation=None):
     from train_ppo import _validate_checkpoint_bytes
     path = Path(manifest_path).resolve(strict=True)
     manifest = strict_json_loads(path.read_text())
-    require(manifest.get("schema") == SCHEMA and manifest.get("status") == "INITIALIZATION_ONLY_NOT_TRAINED",
+    # R18-B3b (2026-09-07): both registered warm-start schemas; every shape check
+    # below is schema-independent and the receipt is validated by its own schema.
+    require(manifest.get("schema") in (SCHEMA, SCHEMA_V2)
+            and manifest.get("status") == "INITIALIZATION_ONLY_NOT_TRAINED",
             "Not a resource warm-start initialization manifest")
     name = manifest.get("model_file")
     require(name == "model_warm_start.zip", "Unexpected warm-start model filename")
@@ -368,6 +406,11 @@ def capture_initialization(manifest_path, expected_implementation=None):
     validate_inherited_receipt(receipt, target)
     require(manifest.get("parent_sha256") == receipt["parent_checkpoint_sha256"]
         and manifest.get("operation") == receipt["operation"]
+        # R18-B3b (2026-09-07) review round: the manifest may name either
+        # registered schema, but never a different one from the receipt inside
+        # the checkpoint -- before schema/2 the single-value equality above made
+        # a relabelled manifest impossible, and it must stay impossible.
+        and manifest.get("schema") == receipt.get("schema")
         and manifest.get("ordinary_resume_eligible") is False
         and manifest.get("trained_in_target_world") is False
         and manifest.get("policy_sha256") == receipt["policy_sha256"],

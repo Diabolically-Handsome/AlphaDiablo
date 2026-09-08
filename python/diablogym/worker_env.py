@@ -42,7 +42,11 @@ from typing import Mapping
 import gymnasium as gym
 import numpy as np
 
-from .env import REWARD_ECONOMY_V1, terminal_death_reward_component
+from .env import (
+    HUNT_SCOPES,
+    REWARD_ECONOMY_V1,
+    terminal_death_reward_component,
+)
 from .options_env import (
     DIVE,
     DUAL_WORKER_OBSERVATION_DIM,
@@ -814,6 +818,11 @@ class WorkerWindowEnv(gym.Env):
                  resource_readiness_law: str = "veto-v1",
                  worker_time_protocol: str = "legacy",
                  resource_retreat: str = "off",
+                 resource_portal: str = "off",
+                 resource_sweep: str = "off",
+                 resource_identify: str = "off",
+                 resource_weapon_upgrade: str = "off",
+                 hunt_scope: str = "all",
                  prefix_worker=None,
                  prefix_worker_sha256: str | None = None,
                  prefix_max_attempts: int | None = None,
@@ -844,6 +853,53 @@ class WorkerWindowEnv(gym.Env):
             self.resource_protocol, self.resource_readiness_law, resource_retreat)
         if self.resource_retreat != "off":
             env_kwargs["resource_retreat"] = self.resource_retreat
+        # R18-B5 (2026-09-07): portal-v1 直通(默认 off 使 kwargs 逐字节不变)。
+        # 传送卷轴是撤退的载具而非它的邻居,故沿用部署侧同一个校验器——
+        # portal-v1 必须 l2-town-v1 + coach-v03 + retreat-v1,否则 fail closed。
+        from .resource_protocol import validate_portal_protocol
+        self.resource_portal = validate_portal_protocol(
+            self.resource_protocol, self.resource_readiness_law,
+            self.resource_retreat, resource_portal)
+        if self.resource_portal != "off":
+            env_kwargs["resource_portal"] = self.resource_portal
+        # R18-B6 (2026-09-07): sweep-v1 直通(默认 off 使 kwargs 逐字节不变)。
+        # 训练世界必须等于被测世界,故这里逐字沿用部署侧 OptionsEnv 用的
+        # 那一个 validator(options_env.py:477-481)——扫箱只在 l2-town-v1
+        # 的 sustain-loot-v1 战利品经济里成立(它只制造掉落,收拾掉落的是
+        # loot 经济),否则 fail closed。
+        from .resource_protocol import validate_sweep_protocol
+        self.resource_sweep = validate_sweep_protocol(
+            self.resource_protocol, self.resource_service_policy, resource_sweep)
+        if self.resource_sweep != "off":
+            env_kwargs["resource_sweep"] = self.resource_sweep
+        # R18-B6 (2026-09-07): cain-v1 直通(默认 off 使 kwargs 逐字节不变)。
+        # 同样是部署侧那一个 validator(options_env.py:483-487):鉴定腿是
+        # loot 进城行程里的一段,只在 sustain-loot-v1 下成立。
+        from .resource_identify import validate_identify_protocol
+        self.resource_identify = validate_identify_protocol(
+            self.resource_protocol, self.resource_service_policy, resource_identify)
+        if self.resource_identify != "off":
+            env_kwargs["resource_identify"] = self.resource_identify
+        # R18-B6 (2026-09-07): smith-v1 直通(默认 off 使 kwargs 逐字节不变)。
+        # 部署侧同一个 validator(options_env.py:489-494);native 侧的
+        # configure_resource_weapon_purchase 由 DiabloGymEnv 的
+        # _configure_native_resource_protocol 统一写(env.py:2341-2352),
+        # 训练环境经这条 kwargs 直通走的正是部署环境那条 configure 路径。
+        from .resource_weapon_upgrade import validate_weapon_upgrade
+        self.resource_weapon_upgrade = validate_weapon_upgrade(
+            self.resource_protocol, self.resource_service_policy,
+            self.resource_purchase_mode, resource_weapon_upgrade)
+        if self.resource_weapon_upgrade != "off":
+            env_kwargs["resource_weapon_upgrade"] = self.resource_weapon_upgrade
+        # R18-B5 (2026-09-07): hunt_scope 直通(默认 all 使 kwargs 逐字节不变)。
+        # DiabloGymEnv 侧没有独立 validator 函数(法条内联在 env.py 的构造器),
+        # 这里逐字复刻同一句措辞;它是 DiabloGymEnv 级开关,不需要资源协议。
+        # 复核修正:词汇表本身不再抄写,直接引 env.HUNT_SCOPES 这一份。
+        if hunt_scope not in HUNT_SCOPES:
+            raise ValueError(f"Unknown hunt_scope {hunt_scope!r}; expected all or l1-only")
+        self.hunt_scope = hunt_scope
+        if self.hunt_scope != "all":
+            env_kwargs["hunt_scope"] = self.hunt_scope
         # R13 教室改革主旗:默认 farm-only 逐位复现旧法(非 FARM 窗脚本
         # 快进);farm-dive-v1 使 DIVE 窗成为一等 live 学习窗并向
         # OptionsEnv 移交窗内主权(a11/踏格)。
@@ -862,10 +918,19 @@ class WorkerWindowEnv(gym.Env):
         prefix_values = (prefix_worker, prefix_worker_sha256,
                          prefix_max_attempts, prefix_max_microsteps)
         if self.learning_window_scope == "earned-dive-suffix-v1":
+            # R18-B3 (2026-09-07): 主席裁定「进城卖装备是滚雪球计划的核心」,
+            # sustain-loot-v1(L1 两趟战利品经济)与 sustain-v6 同为一等训练
+            # 服务法;两者都要 l2-town-v1/full。loot 只在完成时钟下成立
+            # (旧 legacy 时钟没有 collect 命令窗/服务微步预算),故 loot +
+            # legacy 一律 fail closed——训练世界必须等于被测世界。
             if (self.resource_protocol != "l2-town-v1"
                     or self.resource_purchase_mode != "full"
-                    or self.resource_service_policy != "sustain-v6"):
-                raise ValueError("earned-dive-suffix-v1 requires l2-town-v1/full/sustain-v6")
+                    or self.resource_service_policy not in ("sustain-v6", "sustain-loot-v1")):
+                raise ValueError(
+                    "earned-dive-suffix-v1 requires l2-town-v1/full/sustain-v6 or sustain-loot-v1")
+            if (self.resource_service_policy == "sustain-loot-v1"
+                    and self.worker_time_protocol not in COMPLETION_PROTOCOLS):
+                raise ValueError("sustain-loot-v1 requires an explicit completion-l2 time protocol")
             if (not callable(prefix_worker)
                     or prefix_worker_sha256 != _PREFIX_WORKER_SHA256
                     or getattr(prefix_worker, "source_sha256", None)
@@ -2313,6 +2378,26 @@ class WorkerWindowEnv(gym.Env):
                        else f"sha256={self.mgr.source_sha256}"))
             self._new_episode()           # BC 侧用 stats 断言封死示范池逃逸口)
 
+    def _portal_close_is_death_equivalent(self) -> bool:
+        """R18-B5 (2026-09-07) 复核修正:这次 portal_trigger 收窗是危险收窗吗?
+
+        真:main L2+(非任务定场)且传送服务的三条危险条款之一现在成立——
+        与 retreat_trigger 同法同阈,罚没托管。
+        假:城里的买卷轴/回程跑腿、脚下已有一扇门(portal_standing)、以及
+        任何拿不到服务/状态的情形——照常 vest。宁可少罚,不可罚跑腿。
+        """
+        portal = getattr(getattr(self, "oe", None), "portal_service", None)
+        if portal is None or getattr(portal, "policy", None) is None:
+            return False
+        raw = getattr(getattr(getattr(self, "oe", None), "env", None), "_raw", None)
+        if not isinstance(raw, dict):
+            return False
+        if raw.get("is_set_level"):
+            return False
+        if int(raw.get("dungeon_level", 0) or 0) < 2:
+            return False
+        return portal.danger_reason(raw) is not None
+
     def _descend_escrow_settlement(self, d_before, close_reason) -> float:
         """R14.2 丁案:收窗结算,返回本 transition 应 vest 的金额(旗关恒 0)。
 
@@ -2329,9 +2414,35 @@ class WorkerWindowEnv(gym.Env):
         # 死亡风险处)收窗,与死亡等价罚没;否则等于开一条"带伤潜到半血再
         # 撤退"的套现通道,把可罚没的危险津贴变成现金。旗关(off)时该分支
         # 恒不可达,短路后与旧法逐位同构。
+        # R18-B5 (2026-09-07):危险触发的传送窗同样不发托管——「带伤潜到半血
+        # 再开门回城」正是撤退条款刚刚关掉的那条套现通道,而且还不丢深度。
+        # 复核修正(同日):close_reason 不足以判险。OptionsEnv._win_term 把
+        # PortalService.trigger_reason 的**任何**非 None 结果压成同一个
+        # "portal_trigger",而其中 buy_scroll / portal_return 在城里满血点火、
+        # portal_standing 根本不看血量——那是跑腿,不是死亡等价。故这里向
+        # 传送服务再问一次那三条危险条款(danger_reason,与撤退法同阈),
+        # 只罚没 main L2+ 的危险收窗。旗关(off)时该分支恒不可达,短路后与
+        # 旧法逐位同构。
+        # R18-B6 (2026-09-07):sweep-v1 引入的两个新收窗理由
+        # ("sweep_trigger"/"sweep_complete",options_env.py:1452/1462)**不**
+        # 罚没,而且这是可证的而非可辩的:扫箱法只在 main L1 成立
+        # (resource_sweep.py 的 L1-only 条款,dungeon_level != 1 一律拒绝),
+        # 而现有的两条罚没条款都只在 main L2+ 成立
+        # (RetreatService.trigger_reason 在 dungeon_level < 2 直接返回 None;
+        # _portal_close_is_death_equivalent 亦然)。两个集合按深度构造性不交,
+        # 所以 sweep 收窗既不可能抢走一次危险收窗的罚没,自身也不是死亡等价
+        # ——它在怪物进 3 格或血量掉到阈值以下时主动交还控制权。L1 上
+        # max_after > d_before 不成立,该窗也不新存托管;其效果与既有的
+        # "scene"/"cap" 等普通收窗逐字同构。
+        # cain-v1 / smith-v1 不引入任何新收窗理由:它们是 RESUPPLY 进城行程
+        # 内部的腿(options_env.py:2448-2479 / 2569-2574),窗仍由资源服务
+        # 按旧法关闭,故此处无须、也不得为它们新增分支。
         _forfeit_reason = close_reason == "death" or (
             getattr(self, "resource_retreat", "off") != "off"
-            and close_reason == "retreat_trigger")
+            and close_reason == "retreat_trigger") or (
+            getattr(self, "resource_portal", "off") != "off"
+            and close_reason == "portal_trigger"
+            and self._portal_close_is_death_equivalent())
         if _forfeit_reason:
             if pending:
                 self.stats["descend_escrow_forfeited"] = float(

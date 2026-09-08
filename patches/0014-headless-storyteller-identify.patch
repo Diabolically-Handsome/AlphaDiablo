@@ -1,0 +1,145 @@
+diff --git a/Source/stores.cpp b/Source/stores.cpp
+index 753d0ea..140f07e 100644
+--- a/Source/stores.cpp
++++ b/Source/stores.cpp
+@@ -1078,22 +1078,18 @@ void StartStoryteller()
+ 	AddSLine(5);
+ }
+ 
++// R18-H (2026-09-07) 凯恩鉴定: the list predicate and its 100-gold quote are
++// the shared kernel's, so the GUI and act_identify can never disagree.
+ bool IdItemOk(Item *i)
+ {
+-	if (i->isEmpty()) {
+-		return false;
+-	}
+-	if (i->_iMagical == ITEM_QUALITY_NORMAL) {
+-		return false;
+-	}
+-	return !i->_iIdentified;
++	return GetStoreIdentifyPrice(*i).has_value();
+ }
+ 
+ void AddStoreHoldId(Item itm, int8_t i)
+ {
+ 	PlayerItems[CurrentItemIndex] = itm;
+-	PlayerItems[CurrentItemIndex]._ivalue = 100;
+-	PlayerItems[CurrentItemIndex]._iIvalue = 100;
++	PlayerItems[CurrentItemIndex]._ivalue = StorytellerIdentifyPrice;
++	PlayerItems[CurrentItemIndex]._iIvalue = StorytellerIdentifyPrice;
+ 	PlayerItemIndexes[CurrentItemIndex] = i;
+ 	CurrentItemIndex++;
+ }
+@@ -2337,6 +2333,71 @@ StoreBuyResult TryRepairStoreItem(bool equipped, size_t index,
+ 	return { StoreBuyStatus::Success, *price };
+ }
+ 
++// R18-H (2026-09-07) 凯恩鉴定: Cain identifies one carried or worn magic item
++// for a fixed fee. StartStorytellerIdentify lists exactly IdItemOk items and
++// quotes StorytellerIdentifyPrice; StorytellerIdentifyEnter refuses when the
++// player cannot afford it; StorytellerIdentifyItem then flips _iIdentified on
++// the real item, debits the fee and recalculates. This quote/kernel pair is
++// that transaction with no UI, list or scroll state involved.
++std::optional<int> GetStoreIdentifyPrice(const Item &item)
++{
++	if (item.isEmpty() || item._iMagical == ITEM_QUALITY_NORMAL || item._iIdentified)
++		return std::nullopt;
++	return StorytellerIdentifyPrice;
++}
++
++StoreIdentifyResult TryIdentifyItem(bool equipped, size_t index,
++    uint32_t expectedSeed, uint16_t expectedCreateInfo, int expectedBaseId,
++    int expectedPrice)
++{
++	Player &player = *MyPlayer;
++	const int goldBefore = player._pGold;
++	auto refuse = [goldBefore](StoreIdentifyStatus status) {
++		return StoreIdentifyResult { status, 0, goldBefore, goldBefore };
++	};
++	if (equipped ? index >= NUM_INVLOC : index >= static_cast<size_t>(player._pNumInv))
++		return refuse(StoreIdentifyStatus::InvalidItem);
++	Item &item = equipped ? player.InvBody[index] : player.InvList[index];
++	const auto price = GetStoreIdentifyPrice(item);
++	if (!price)
++		return refuse(StoreIdentifyStatus::InvalidItem);
++	if (item._iSeed != expectedSeed || item._iCreateInfo != expectedCreateInfo
++	    || static_cast<int>(item.IDidx) != expectedBaseId)
++		return refuse(StoreIdentifyStatus::StaleItem);
++	if (*price != expectedPrice)
++		return refuse(StoreIdentifyStatus::StaleItem);
++	if (!PlayerCanAfford(*price))
++		return refuse(StoreIdentifyStatus::NoMoney);
++
++	// After validation nothing here can fail: identification adds no item and
++	// needs no room. Flip the flag before taking gold, exactly like the repair
++	// kernel -- removing a gold stack can compact InvList and invalidate index.
++	std::array<int8_t, InventoryGridCells> previousGrid;
++	std::copy_n(player.InvGrid, InventoryGridCells, previousGrid.begin());
++	item._iIdentified = true;
++	TakePlrsMoney(*price, false);
++	CalcPlrInv(player, true);
++	std::array<bool, InventoryGridCells> sent {};
++	for (int cell = 0; cell < InventoryGridCells; ++cell) {
++		const int oldIndex = std::abs(previousGrid[cell]) - 1;
++		if (oldIndex >= 0 && !sent[oldIndex]) {
++			NetSendCmdParam1(false, CMD_DELINVITEMS, static_cast<uint16_t>(cell));
++			sent[oldIndex] = true;
++		}
++	}
++	sent.fill(false);
++	for (int cell = 0; cell < InventoryGridCells; ++cell) {
++		const int newIndex = std::abs(player.InvGrid[cell]) - 1;
++		if (newIndex >= 0 && !sent[newIndex]) {
++			NetSendCmdChInvItem(false, cell);
++			sent[newIndex] = true;
++		}
++	}
++	if (equipped)
++		NetSendCmdChItem(false, static_cast<uint8_t>(index), true);
++	return { StoreIdentifyStatus::Success, *price, goldBefore, player._pGold };
++}
++
+ void AddStoreHoldRepair(Item *itm, int8_t i)
+ {
+ 	const auto price = GetStoreRepairPrice(*itm);
+diff --git a/Source/stores.h b/Source/stores.h
+index adb8718..0a4f0f1 100644
+--- a/Source/stores.h
++++ b/Source/stores.h
+@@ -250,6 +250,36 @@ StoreBuyResult TryRepairStoreItem(bool equipped, size_t index,
+     uint32_t expectedSeed, uint16_t expectedCreateInfo, int expectedBaseId,
+     int expectedDurability, int expectedPrice);
+ 
++/** R18-H (2026-09-07) 凯恩鉴定: Cain's fixed identify fee. The storyteller UI
++ * quotes it by overwriting the listed copy's value in AddStoreHoldId; naming it
++ * here keeps the GUI list and the shared kernel below on one number.
++ */
++constexpr int StorytellerIdentifyPrice = 100;
++
++enum class StoreIdentifyStatus { Success, InvalidItem, StaleItem, NoMoney };
++struct StoreIdentifyResult {
++	StoreIdentifyStatus status;
++	int price = 0;
++	int goldBefore = 0;
++	int goldAfter = 0;
++};
++
++/** Read-only normal Cain identify quote. No offer for an item the storyteller
++ * list would not show (empty, plain, or already identified) -- the exact
++ * IdItemOk predicate, which now delegates here.
++ */
++std::optional<int> GetStoreIdentifyPrice(const Item &item);
++
++/** Shared GUI/Gym identify transaction. Callers establish the normal Cain
++ * visit; this function performs exactly the UI's StorytellerIdentifyItem work
++ * (affordability, gold debit, _iIdentified, CalcPlrInv) and nothing else.
++ * A stale identity or price rejects without changing inventory, money, RNG or
++ * network queues. Equipped indices use InvBody; other indices use InvList.
++ */
++StoreIdentifyResult TryIdentifyItem(bool equipped, size_t index,
++    uint32_t expectedSeed, uint16_t expectedCreateInfo, int expectedBaseId,
++    int expectedPrice);
++
+ /**
+  * @brief Check if Griswold will buy this item.
+  * @param item The item to check.

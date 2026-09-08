@@ -37,7 +37,10 @@ COMPLETION_L2_V1 = CompletionRecipe()
 class CompletionRecipeR18C(CompletionRecipe):
     """R18-C (2026-09-07): same arrival deadline and observation denominator as v1,
     follow-up widened 1800 -> 9000 so a zero-training probe can watch
-    retreat -> recover -> re-descend loops. Immutable like v1; training rejects it."""
+    retreat -> recover -> re-descend loops. Immutable like v1.
+    R18-B2/R18-B3 (2026-09-07): this is an accepted training clock -- see
+    train_ppo --worker-time-protocol and eval_contract.LOOT_SERVICE_RECIPE_VERSIONS,
+    which registers the sustain-loot-v1 recipe version that belongs to it."""
 
     protocol: str = field(default="completion-l2-r18c", init=False)
     followup_microsteps: int = field(default=9000, init=False)

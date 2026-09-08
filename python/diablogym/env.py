@@ -130,6 +130,12 @@ DESCEND_UNIT = 8.0
 GEAR_COMBAT_UTILITY_REWARD_SCALE = 4096.0
 GEAR_COMBAT_UTILITY_REWARD_CAP = 1.0
 STALL_ACTION_REWARD = -0.002
+# R18-B5 (2026-09-07) 复核修正:a10 全图寻怪的作用域词汇表。原先这个元组只
+# 以字面量活在 env.py 的构造器里,而训练/评测侧各自抄了一份;将来引擎添一个
+# 作用域,训练世界就说不出被测世界能跑的那条法,却没有任何一卷会报警。
+# 部署侧(env.py/worker_env.py)自本版起只认这一份;train/ 侧不引 diablogym
+# (eval_contract 是纯 stdlib 契约模块),由新测试卷逐处比对字面量。
+HUNT_SCOPES = ("all", "l1-only")
 
 
 @dataclass(frozen=True)
@@ -618,6 +624,21 @@ class DiabloGymEnv(gym.Env):
     _temp_save_dir: tempfile.TemporaryDirectory | None = None
     _temp_save_lock = None
     _atfork_registered = False
+    # R18-H sweep-v1 / R18-M (2026-09-07) review round: the raw "objects"
+    # observation channel is a bridge global (src/resource_sweep.hpp:17
+    # gObjectObservation), i.e. the same process-singleton kind of state as
+    # _engine_initialized above, so it is booked HERE and not per instance.
+    # H1 declared exactly this law in its own comment at
+    # _configure_native_resource_protocol ("an env that asked once is also
+    # responsible for turning it back off, so a later sweep-off env in the same
+    # process sees the frozen dict again") but wrote the flag as an instance
+    # attribute, where a fresh env always reads False and therefore never turns
+    # the channel off: after any sweep-v1 env, the next sweep-off or
+    # identify-only env in the same process died at its first reset() with
+    # "Native sweep identity mismatch; the objects channel is on while sweep is
+    # off" (validate_native_sweep, resource_protocol.py:234-236).  Reproduced
+    # against the merged bridge before the fix; see M-REPORT §8.
+    _sweep_object_channel = False
 
     @classmethod
     def _after_fork_child(cls) -> None:
@@ -658,6 +679,9 @@ class DiabloGymEnv(gym.Env):
         resource_readiness_law: str = "veto-v1",
         resource_retreat: str = "off",
         resource_portal: str = "off",
+        resource_sweep: str = "off",
+        resource_identify: str = "off",
+        resource_weapon_upgrade: str = "off",
         aggro_cap: str = "off",
         engagement_priority: str = "off",
         hunt_scope: str = "all",
@@ -695,6 +719,40 @@ class DiabloGymEnv(gym.Env):
         self.resource_portal = validate_portal_protocol(
             self.resource_protocol, self.resource_readiness_law,
             self.resource_retreat, resource_portal)
+        # R18-H (2026-09-07) sweep-v1: the chest/barrel sweep on main L1. The
+        # loot economy is what turns the drops into gold, so the validator
+        # demands it; here that fact is the already-derived loot flag.
+        # Default off = byte-identical (no native call, no new observation key).
+        from .resource_protocol import validate_sweep_protocol
+        self.resource_sweep = validate_sweep_protocol(
+            self.resource_protocol,
+            "sustain-loot-v1" if self._resource_loot_economy else "legacy-v1",
+            resource_sweep)
+        # Process-global native channel: only ever touched by an env that wants
+        # it, plus by an env that must turn OFF what an earlier env turned on.
+        # R18-M (2026-09-07) review round: NOT reset here.  The channel it
+        # tracks is a bridge global that outlives this instance, so the flag
+        # lives on the class (DiabloGymEnv._sweep_object_channel, declared with
+        # the other process-singleton state above); zeroing it per instance is
+        # what made a fresh sweep-off env skip the turn-off call.
+        # R18-H identify-v1 (2026-09-07) 凯恩鉴定: the Cain identify leg of the
+        # loot economy's town trip (default off = byte-identical).
+        from .resource_identify import validate_identify_env
+        self.resource_identify = validate_identify_env(
+            self.resource_protocol, self._resource_loot_economy, resource_identify)
+        # R18-K (2026-09-07) smith-v1: the surplus weapon upgrade leg at Griswold.
+        # Default off passes no new native flag and leaves every path byte-identical.
+        from .resource_weapon_upgrade import RESOURCE_WEAPON_UPGRADES
+        if resource_weapon_upgrade not in RESOURCE_WEAPON_UPGRADES:
+            raise ValueError(
+                f"Unknown resource_weapon_upgrade {resource_weapon_upgrade!r}; "
+                f"expected one of {RESOURCE_WEAPON_UPGRADES}")
+        if resource_weapon_upgrade != "off" and (
+                self.resource_protocol != "l2-town-v1"
+                or self.resource_purchase_mode != "full"
+                or not self._resource_loot_economy):
+            raise ValueError("smith-v1 requires l2-town-v1/full with the loot economy")
+        self.resource_weapon_upgrade = resource_weapon_upgrade
         # R18-D aggro cap / R18-E engagement priority (defaults off = byte-identical).
         from .aggro_cap import validate_aggro_cap, AggroCapPolicy
         self.aggro_cap = validate_aggro_cap(aggro_cap)
@@ -706,7 +764,7 @@ class DiabloGymEnv(gym.Env):
         self._engagement_reordered = 0
         # R18-G (2026-09-07): scope of the a10 global hunt (the pull mechanism).
         # "all" = frozen behaviour; "l1-only" = no global hunt on main L2+.
-        if hunt_scope not in ("all", "l1-only"):
+        if hunt_scope not in HUNT_SCOPES:
             raise ValueError(f"Unknown hunt_scope {hunt_scope!r}; expected all or l1-only")
         self.hunt_scope = hunt_scope
         if dive_blocker_recovery not in ("off", "adjacent-v1"):
@@ -946,6 +1004,25 @@ class DiabloGymEnv(gym.Env):
         validate_native_retreat(raw, getattr(self, "resource_retreat", "off"))
         from .resource_protocol import validate_native_portal
         validate_native_portal(raw, getattr(self, "resource_portal", "off"))
+        from .resource_protocol import validate_native_sweep
+        validate_native_sweep(raw, getattr(self, "resource_sweep", "off"))
+        from .resource_identify import validate_native_identify
+        validate_native_identify(raw, getattr(self, "resource_identify", "off"))
+        # R18-K2b (2026-09-07): the weapon-purchase handshake is checked on
+        # EVERY episode, not only smith-v1 ones. gResourceWeaponPurchase is a
+        # process-wide native flag, so this is what proves a frozen arm never
+        # inherited it from another env in the same worker. A bridge older than
+        # R18-K2b exports no key at all, which reads as the default (off).
+        observed_weapon = raw.get("resource_state", {}).get("weapon_purchase_enabled", False)
+        expected_weapon = getattr(self, "resource_weapon_upgrade", "off") == "smith-v1"
+        if type(observed_weapon) is not bool or observed_weapon != expected_weapon:
+            raise RuntimeError(
+                "Native weapon-purchase scope identity mismatch "
+                f"(observed {observed_weapon!r}, expected {expected_weapon!r}); "
+                "isolated rebuild or a leaked configure_resource_weapon_purchase")
+        if getattr(self, "resource_weapon_upgrade", "off") != "off":
+            from .resource_weapon_upgrade import validate_native_weapon_upgrade
+            validate_native_weapon_upgrade(raw, self.resource_weapon_upgrade)
 
     # ---------- gymnasium API ----------
 
@@ -2212,6 +2289,22 @@ class DiabloGymEnv(gym.Env):
 
     def _configure_native_resource_protocol(self):
         enabled = getattr(self, "resource_protocol", "off") != "off"
+        # R18-H sweep-v1: the raw "objects" channel. An env that never asks for
+        # it makes NO native call here (the off path stays byte-identical); an
+        # env that asked once is also responsible for turning it back off, so a
+        # later sweep-off env in the same process sees the frozen dict again.
+        sweep = getattr(self, "resource_sweep", "off") != "off"
+        if sweep or DiabloGymEnv._sweep_object_channel:
+            if not hasattr(bridge, "configure_object_observation"):
+                raise RuntimeError("Native bridge lacks the object observation channel; rebuild required")
+            bridge.end_game()
+            bridge.configure_object_observation(sweep)
+            # R18-M (2026-09-07) review round: written on the CLASS, so the next
+            # env in this process sees what the bridge is actually doing.  The
+            # off path is untouched (both operands false ⇒ no native call), and
+            # a process that only ever runs sweep-on envs takes exactly the same
+            # branch as before, so H1's tested arms are byte-for-byte unchanged.
+            DiabloGymEnv._sweep_object_channel = sweep
         if hasattr(bridge, "configure_resource_protocol"):
             bridge.end_game()
             advisory = getattr(self, "resource_readiness_law", "veto-v1") == "coach-v03"
@@ -2219,7 +2312,8 @@ class DiabloGymEnv(gym.Env):
             if loot and not advisory:
                 # R17.1-D loot economy, exact R21 ABI (no advisory keyword).
                 bridge.configure_resource_protocol(enabled, ordinary_armor_scope=True,
-                    preserve_equipment_readiness=True, loot_economy=True)
+                    preserve_equipment_readiness=True, loot_economy=True,
+                    **({"identify": True} if getattr(self, "resource_identify", "off") != "off" else {}))
             elif advisory:
                 # R17.1 ruling-3 advisory law (optionally with the loot economy):
                 # explicit full-keyword call, needs a bridge built after both.
@@ -2231,7 +2325,8 @@ class DiabloGymEnv(gym.Env):
                     loot_economy=loot,
                     readiness_advisory=True,
                     **({"retreat": True} if getattr(self, "resource_retreat", "off") != "off" else {}),
-                    **({"portal": True} if getattr(self, "resource_portal", "off") != "off" else {}))
+                    **({"portal": True} if getattr(self, "resource_portal", "off") != "off" else {}),
+                    **({"identify": True} if getattr(self, "resource_identify", "off") != "off" else {}))
             elif getattr(self, "resource_preserve_equipment_readiness", False):
                 bridge.configure_resource_protocol(enabled,
                     ordinary_armor_scope=getattr(self, "resource_ordinary_armor_scope", False),
@@ -2243,6 +2338,18 @@ class DiabloGymEnv(gym.Env):
                 bridge.configure_resource_protocol(enabled)
         elif enabled:
             raise RuntimeError("Native bridge lacks the resource protocol; rebuild required")
+        # R18-K2b weapon-purchase-v1 (2026-09-07): a SEPARATE native switch, so
+        # every frozen configure_resource_protocol ABI above is untouched.
+        # R18-K2b review round: written on EVERY configure, in both directions,
+        # exactly like retreat/portal -- the flag is process-wide and nothing
+        # else clears it, so an off arm constructed after a smith-v1 arm in the
+        # same worker used to inherit the leaked True and hard-fail forever.
+        # A bridge that predates the entry point still runs every off arm;
+        # smith-v1 fails closed there and again at the per-observation
+        # handshake in _validate_native_resource_flags.
+        from .resource_weapon_upgrade import configure_native_weapon_purchase
+        configure_native_weapon_purchase(
+            bridge, getattr(self, "resource_weapon_upgrade", "off"))
 
     def _step_native(self):
         raw = bridge.step(ticks=self.ticks_per_step)
@@ -2456,6 +2563,15 @@ class DiabloGymEnv(gym.Env):
             if self.resource_purchase_mode != "full":
                 raise ValueError("Paid repair is restricted to the full resource arm")
             result = bridge.act_repair_equipped_item(*args)
+        elif kind == "identify":
+            # R18-H identify-v1. Cain's fixed-fee identify transaction; the native
+            # action needs no store page (TryIdentifyItem reads no UI state), only
+            # a real adjacency to the storyteller inside an authorized town trip.
+            if getattr(self, "resource_identify", "off") == "off":
+                raise ValueError("Paying Cain to identify an item requires identify-v1")
+            result = bridge.act_identify(*args)
+            if not isinstance(result, dict):
+                raise RuntimeError("Identification requires a real native receipt")
         elif kind == "hold":
             # R18-F portal-v1: advance the engine without the wait/cancel semantics
             # (act_wait calls player.Stop and StartStand on PM_SPELL, which kills a

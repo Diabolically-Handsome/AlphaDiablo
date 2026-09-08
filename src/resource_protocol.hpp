@@ -40,6 +40,24 @@ bool gResourcePortalEnabled = false;
 bool gPortalAuthorized = false;
 int gResourcePortalsStarted = 0;
 constexpr int MaxResourcePortals = 2;
+// R18-H identify-v1 (2026-09-07) 凯恩鉴定: Cain identifies carried/worn magic
+// items for the engine's fixed StorytellerIdentifyPrice, so the town itinerary
+// can sell them at _iIvalue/4 instead of _ivalue/4 (stores.cpp
+// NormalStoreSellPrice) and the gear plan can read their real affixes. The
+// scripted service owns the whole leg; the worker never learns it. Off = every
+// frozen verdict AND every observation dict byte for byte (nothing below is
+// emitted, no native call is made and no extra beat is spent).
+bool gResourceIdentifyEnabled = false;
+// R18-K2b weapon-purchase-v1 (2026-09-07): Griswold's counter and the town
+// equip path are armor-only. When this flag is on they also accept an ORDINARY
+// ONE-HANDED weapon the warrior can wield, and the hand plan is a14's own
+// PlanGearUpgrade -- target slot, displaced slots and the strict conservative
+// full-set utility increase all come from there. Two-handed weapons stay
+// refused in v1, so the shield slot logic never changes. Off = every frozen
+// verdict byte for byte: the flag is the first term of IsResourceUpgradeWeapon,
+// so no episode that never calls configure_resource_weapon_purchase(True) can
+// execute one line of the new code.
+bool gResourceWeaponPurchase = false;
 std::vector<ResourceItemIdentity> gResourceRetainedGear;
 std::vector<ResourceItemIdentity> gResourceLastRetainedGear;
 int gResourceLastRetentionGold = 0;
@@ -226,7 +244,8 @@ bool ResourceTransitionGuard(const Player &player, interface_mode mode, int targ
 
 void ConfigureResourceProtocol(bool enabled, bool ordinaryArmorScope = false,
     bool preserveEquipmentReadiness = false, bool lootEconomy = false,
-    bool readinessAdvisory = false, bool retreat = false, bool portal = false)
+    bool readinessAdvisory = false, bool retreat = false, bool portal = false,
+    bool identify = false)
 {
 	EnsureEngineProcess("configure_resource_protocol");
 	if (ordinaryArmorScope && !enabled)
@@ -241,12 +260,17 @@ void ConfigureResourceProtocol(bool enabled, bool ordinaryArmorScope = false,
 		throw std::invalid_argument("retreat-v1 requires l2-town-v1 under coach-v03");
 	if (portal && (!enabled || !readinessAdvisory))
 		throw std::invalid_argument("portal-v1 requires l2-town-v1 under coach-v03");
+	// R18-H identify-v1: the leg lives inside the loot economy's town trip and
+	// books its fee in that ledger, so it cannot exist without it.
+	if (identify && (!enabled || !lootEconomy))
+		throw std::invalid_argument("identify-v1 requires l2-town-v1 with the loot economy");
 	if (gInGame && (enabled != gResourceProtocol || ordinaryArmorScope != gResourceOrdinaryArmorScope
 	                  || preserveEquipmentReadiness != gResourcePreserveEquipmentReadiness
 	                  || lootEconomy != gResourceLootEconomy
 	                  || readinessAdvisory != gResourceReadinessAdvisory
 	                  || retreat != gResourceRetreatEnabled
-	                  || portal != gResourcePortalEnabled))
+	                  || portal != gResourcePortalEnabled
+	                  || identify != gResourceIdentifyEnabled))
 		throw std::runtime_error("resource protocol may change only between episodes");
 	if (gResourceOrdinaryArmorScope && !ordinaryArmorScope) gResourceSeenSmithItems.clear();
 	gResourceProtocol = enabled;
@@ -256,6 +280,7 @@ void ConfigureResourceProtocol(bool enabled, bool ordinaryArmorScope = false,
 	gResourceReadinessAdvisory = readinessAdvisory;
 	gResourceRetreatEnabled = retreat;
 	gResourcePortalEnabled = portal;
+	gResourceIdentifyEnabled = identify;
 	LevelTransitionGuard = enabled ? ResourceTransitionGuard : nullptr;
 	DisableLevelBacktracking = !enabled;
 }
@@ -392,6 +417,19 @@ void ConfigureResourcePortal(bool authorized)
 	gPortalAuthorized = authorized;
 }
 
+// R18-K2b weapon-purchase-v1 (2026-09-07): the session switch for the smith
+// weapon leg. Like every other new native branch it defaults to false and may
+// change only between episodes, so no frozen arm can flip it mid-episode.
+void ConfigureResourceWeaponPurchase(bool enabled)
+{
+	EnsureEngineProcess("configure_resource_weapon_purchase");
+	if (enabled && (!gResourceProtocol || !gResourceOrdinaryArmorScope))
+		throw std::invalid_argument("weapon-purchase-v1 requires l2-town-v1 with the ordinary armor scope");
+	if (gInGame && enabled != gResourceWeaponPurchase)
+		throw std::runtime_error("weapon purchase scope may change only between episodes");
+	gResourceWeaponPurchase = enabled;
+}
+
 const char *ResourceVendorName(TalkID store)
 {
 	switch (store) {
@@ -417,6 +455,20 @@ bool IsOrdinaryResourceArmor(const Item &item)
 	return !item.isEmpty() && item._iClass != ICLASS_QUEST
 	    && item._iMagical == ITEM_QUALITY_NORMAL
 	    && (item.isArmor() || item.isHelm() || item.isShield());
+}
+
+// R18-K2b (2026-09-07): the weapon-purchase-v1 item scope. Ordinary quality
+// only (the Python projection models the readiness metric _pIMaxDam +
+// _pDamageMod and refuses to guess at affixes), never a quest item, and ONE
+// HANDED only -- both the raw ILOC and the player's own GetItemLocation, since
+// that is the routine every engine pairing rule consults. A two-hander would
+// displace the shield, which is an armor decision this law must not take.
+bool IsResourceUpgradeWeapon(const Player &player, const Item &item)
+{
+	return gResourceWeaponPurchase && !item.isEmpty() && item._iClass != ICLASS_QUEST
+	    && item._iMagical == ITEM_QUALITY_NORMAL && item.isWeapon()
+	    && item._iLoc == ILOC_ONEHAND
+	    && player.GetItemLocation(item) == ILOC_ONEHAND;
 }
 
 void AppendOrdinaryResourceArmorState(py::dict &entry, const Item &item, int inventoryIndex);
@@ -549,7 +601,11 @@ struct ResourceArmorPlan {
 ResourceArmorPlan PlanResourceArmor(const Player &player, const Item &item, int inventoryIndex)
 {
 	ResourceArmorPlan result;
-	if (!IsOrdinaryResourceArmor(item)) return result;
+	// R18-K2b (2026-09-07): the ordinary one-handed weapon joins the armor
+	// scope. gResourceWeaponPurchase is the first term of the predicate, so
+	// with the flag off this is literally the old armor-only gate.
+	const bool upgradeWeapon = IsResourceUpgradeWeapon(player, item);
+	if (!IsOrdinaryResourceArmor(item) && !upgradeWeapon) return result;
 	Item candidate = item;
 	candidate._iStatFlag = player.CanUseItem(candidate);
 	if (!candidate._iStatFlag) {
@@ -570,6 +626,36 @@ ResourceArmorPlan PlanResourceArmor(const Player &player, const Item &item, int 
 	} else if (item.isArmor()) {
 		clearSlot(INVLOC_CHEST);
 		result.gear.target = INVLOC_CHEST;
+	} else if (upgradeWeapon) {
+		// R18-K2b (2026-09-07): the weapon hand plan is a14's own plan. Target
+		// slot, displaced slots AND the strict conservative full-set utility
+		// increase all come from PlanGearUpgrade -- the same verdict a14 uses
+		// to accept a floor drop, including CanPairOneHanded (so a retained
+		// shield is respected) and the two-hand clear. This planner never
+		// invents a weapon slot rule of its own.
+		// R18-K2b review round (2026-09-07): ask a14 for the plan WITHOUT its
+		// own retention-capacity filter and let StageResourceArmorInventory
+		// below be the single capacity judge. a14 stages the displaced item
+		// into a copy of the LIVE pack, which at equip time already holds the
+		// just-purchased weapon and is never removed for that check, while the
+		// counter runs the same plan with inventoryIndex = -1 before the pack
+		// holds it at all. The counter was therefore strictly looser than the
+		// equip verdict by the new weapon's own footprint: a tight-pack
+		// purchase passed the counter and was then refused at the hand,
+		// losing the gold (reproduced at seed 8001). StageResourceArmorInventory
+		// models the removal in BOTH cases, so with the filter off the two
+		// answers are the same question -- and a genuine capacity refusal now
+		// surfaces as no_room_for_replaced_items instead of not_an_upgrade.
+		// Armor never reaches this branch and the weapon branch is behind the
+		// default-off flag, so no frozen verdict moves.
+		const GearUpgradePlan upgrade = PlanGearUpgrade(player, candidate, false);
+		if (!upgrade.valid || (upgrade.target != INVLOC_HAND_LEFT && upgrade.target != INVLOC_HAND_RIGHT)) {
+			result.reason = "not_an_upgrade";
+			return result;
+		}
+		for (int slot = 0; slot < NUM_INVLOC; ++slot)
+			if (upgrade.clearSlots[slot]) clearSlot(static_cast<inv_body_loc>(slot));
+		result.gear.target = upgrade.target;
 	} else {
 		// Match ordinary hand compatibility and the shift-click preference:
 		// replace a shield, retain a compatible weapon, or clear a two-hand
@@ -614,6 +700,21 @@ ResourceArmorPlan PlanResourceArmor(const Player &player, const Item &item, int 
 	result.readiness["block_chance"] = simulated.GetBlockChance();
 	result.reason = !alive ? "unsafe_life" : (!usable ? "cannot_use_after_swap"
 	    : (!result.canFit ? "no_room_for_replaced_items" : "ready"));
+	// R18-K2b (2026-09-07): fail closed on the one metric the weapon leg
+	// exists to raise. a14's aggregate utility can rise while the readiness
+	// damage (_pIMaxDam + _pDamageMod) does not; such a swap is refused here
+	// instead of being sold to Python as a damage upgrade. Armor never
+	// reaches this branch, so no frozen armor verdict moves.
+	if (upgradeWeapon && result.gear.valid) {
+		const int damageBefore = player._pIMaxDam + player._pDamageMod;
+		const int damageAfter = py::cast<int>(result.readiness["damage"]);
+		if (damageAfter <= damageBefore) {
+			result.gear.valid = false;
+			result.safe = false;
+			result.canFit = false;
+			result.reason = "no_damage_gain";
+		}
+	}
 	return result;
 }
 
@@ -626,6 +727,9 @@ void AppendOrdinaryResourceArmorState(py::dict &entry, const Item &item, int inv
 		for (int slot = 0; slot < NUM_INVLOC; ++slot)
 			if (plan.gear.clearSlots[slot] && !MyPlayer->InvBody[slot].isEmpty()) replaced.append(slot);
 	entry["is_ordinary_armor"] = IsOrdinaryResourceArmor(item);
+	// R18-K2b (2026-09-07): only emitted while weapon-purchase-v1 is on, so
+	// every frozen observation keeps its exact key set.
+	if (gResourceWeaponPurchase) entry["is_upgrade_weapon"] = IsResourceUpgradeWeapon(*MyPlayer, item);
 	entry["target_slot"] = plan.gear.valid ? static_cast<int>(plan.gear.target) : -1;
 	entry["replaced_slots"] = replaced;
 	entry["can_equip"] = plan.gear.valid && plan.safe && plan.canFit;
@@ -748,6 +852,9 @@ py::list ObserveResourcePortalScrolls()
 
 // New loot APIs remain absent from legacy raw observations.
 #include "resource_loot.hpp"
+// R18-H identify-v1 needs the loot helpers above (sale quote, quest guard,
+// inventory state) and, like them, stays absent from every frozen observation.
+#include "resource_identify.hpp"
 
 py::dict ObserveResourceState()
 {
@@ -773,10 +880,14 @@ py::dict ObserveResourceState()
 			// The witch appears only under portal-v1; every frozen arm keeps the
 			// two-vendor town observation byte for byte.
 			const bool witch = gResourcePortalEnabled && npc._ttype == TOWN_WITCH;
-			if (npc._ttype != TOWN_SMITH && npc._ttype != TOWN_HEALER && !witch) continue;
+			// R18-H identify-v1: Cain is exported only under the flag, and only so
+			// the script can walk to him; the bridge never opens his store pages.
+			const bool storyteller = gResourceIdentifyEnabled && npc._ttype == TOWN_STORY;
+			if (npc._ttype != TOWN_SMITH && npc._ttype != TOWN_HEALER && !witch && !storyteller) continue;
 			py::dict entry;
 			entry["id"] = index;
-			entry["type"] = witch ? "witch" : (npc._ttype == TOWN_SMITH ? "smith" : "healer");
+			entry["type"] = storyteller ? "storyteller"
+			    : (witch ? "witch" : (npc._ttype == TOWN_SMITH ? "smith" : "healer"));
 			entry["x"] = npc.position.x;
 			entry["y"] = npc.position.y;
 			npcs.append(entry);
@@ -883,6 +994,9 @@ py::dict ObserveResourceState()
 		result["portal_on_level"] = PortalOnLevel(*MyPlayer);
 		result["portal_scrolls"] = ObserveResourcePortalScrolls();
 	}
+	// R18-K2b weapon-purchase-v1 (2026-09-07): the handshake the Python law
+	// checks on every observation. Written like retreat_enabled/portal_enabled.
+	result["weapon_purchase_enabled"] = gResourceWeaponPurchase;
 	result["max_main_depth_reached"] = gResourceMaxDepth;
 	// coach-v03 lifts the native curriculum wall (Python per-floor tables govern L3+).
 	result["curriculum_max_depth"] = gResourceReadinessAdvisory ? 16 : 2;
@@ -896,6 +1010,12 @@ py::dict ObserveResourceState()
 	result["unequip_candidates"] = ObserveUnequipCandidates();
 	result["inventory_equipment"] = inventoryEquipment;
 	if (gResourceLootEconomy) AppendResourceLootState(result, town);
+	if (gResourceIdentifyEnabled) {
+		result["identify_enabled"] = true;
+		result["identify_price"] = StorytellerIdentifyPrice;
+		result["identify_at_storyteller"] = ResourceIdentifyAtStoryteller();
+		town["identify_quotes"] = ObserveResourceIdentifyQuotes();
+	}
 	return result;
 }
 
@@ -1010,7 +1130,22 @@ py::dict ActBuyStoreItem(const std::string &vendor, int index, uint16_t seedHigh
 	const Item &item = items[index];
 	if (!MatchesItemIdentity(item, seedHigh, seedLow, createInfo, baseId)) return ResourceActionResult(false, "stale_item");
 	if (!MyPlayer->CanUseItem(item)) return ResourceActionResult(false, "cannot_use");
-	if (witch ? item.IDidx != IDI_PORTAL : (healer ? InstantHealKind(item) == 0 : (gResourceOrdinaryArmorScope ? !IsOrdinaryResourceArmor(item) : (!item.isArmor() || item._iMagical != ITEM_QUALITY_NORMAL)))) return ResourceActionResult(false, "unsupported_item");
+	// R18-K2b weapon-purchase-v1 (2026-09-07): Griswold may also sell an
+	// ordinary one-handed weapon. IsResourceUpgradeWeapon starts with the
+	// default-off flag, so with the flag off the condition below reduces to
+	// the frozen armor-only text and answers every weapon unsupported_item.
+	const bool upgradeWeapon = IsResourceUpgradeWeapon(*MyPlayer, item);
+	if (witch ? item.IDidx != IDI_PORTAL : (healer ? InstantHealKind(item) == 0 : (gResourceOrdinaryArmorScope ? !(IsOrdinaryResourceArmor(item) || upgradeWeapon) : (!item.isArmor() || item._iMagical != ITEM_QUALITY_NORMAL)))) return ResourceActionResult(false, "unsupported_item");
+	// Fail closed: surplus gold buys a weapon only when the native plan can
+	// actually wear it at this instant (a14 upgrade verdict, pairing rules,
+	// inventory capacity for the displaced item, life and stat cascades, and
+	// a strictly higher readiness damage). A purchase that cannot be equipped
+	// would be pure gold loss, so it never leaves the counter.
+	if (upgradeWeapon) {
+		const ResourceArmorPlan plan = PlanResourceArmor(*MyPlayer, item, -1);
+		if (!plan.gear.valid || !plan.safe || !plan.canFit)
+			return ResourceActionResult(false, plan.reason);
+	}
 	// StoreAutoPlace prefers the belt and CanBePlacedOnBelt accepts a usable
 	// scroll, so the portal scroll can eat a slot the four-heal readiness law
 	// needs. Sell it only once those four heals are already in the belt.
@@ -1106,6 +1241,12 @@ py::dict ActEquipOrdinaryInventoryArmor(int index, const Item &candidate)
 	ApplyResourceArmorPlan(staged, plan.gear);
 	CalcPlrInv(staged, false);
 	const auto resources = CapturePlayerResourceState(player);
+	// R18-K2b (2026-09-07): the committed weapon swap must reproduce the
+	// planned strict damage increase, or the whole transaction is rolled back
+	// exactly like a failed armor swap. False for every armor candidate, so
+	// the frozen armor commit condition is unchanged.
+	const bool upgradeWeapon = IsResourceUpgradeWeapon(player, candidate);
+	const int damageBefore = player._pIMaxDam + player._pDamageMod;
 	std::array<Item, NUM_INVLOC> previousBody;
 	std::copy(std::begin(player.InvBody), std::end(player.InvBody), previousBody.begin());
 	ApplyResourceArmorPlan(player, plan.gear);
@@ -1113,7 +1254,8 @@ py::dict ActEquipOrdinaryInventoryArmor(int index, const Item &candidate)
 	if ((player._pHitPoints >> 6) <= 0 || !player.InvBody[plan.gear.target]._iStatFlag
 	    || player.GetArmor() != plan.gear.nextArmorClass
 	    || player._pHitPoints != plan.gear.nextCurrentHitPoints
-	    || player._pMaxHP != plan.gear.nextMaxHitPoints) {
+	    || player._pMaxHP != plan.gear.nextMaxHitPoints
+	    || (upgradeWeapon && player._pIMaxDam + player._pDamageMod <= damageBefore)) {
 		RestoreGearUpgradeTransaction(player, previousBody, resources);
 		return ResourceActionResult(false, "equipment_validation_failed");
 	}

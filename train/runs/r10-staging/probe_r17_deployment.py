@@ -58,13 +58,24 @@ l2_hazard_per_1k(L2 死亡数 / ΣL2 停留拍 × 1000)及下楼面板分布。
 """
 import hashlib
 import json
+import os
 import pathlib
 import statistics
 import sys
 
 import numpy as np
 
-ROOT = pathlib.Path.home() / "AlphaDiablo" / "diablogym"
+# R18-M2 (2026-09-07) conflict resolution K2b: k2b.patch authored the SAME
+# override independently (k2b.patch, probe:66-69), so this is no longer a
+# line of behaviour the merge invented -- M-REPORT.md S7.1 is closed by K2b.
+# The M spelling is kept: `get(...) or <default>` also treats an EMPTY
+# DIABLOGYM_ROOT as unset, where K2b's two-argument get() would resolve it
+# to the process cwd.
+# R18-M (2026-09-07): tree override so the merged copy can be probed without
+# touching the main tree. Unset (the deployed default) = the frozen path, so the
+# regression arm is byte-identical to every earlier run.
+ROOT = pathlib.Path(os.environ.get("DIABLOGYM_ROOT")
+                    or (pathlib.Path.home() / "AlphaDiablo" / "diablogym"))
 sys.path.insert(0, str(ROOT / "train"))
 sys.path.insert(0, str(ROOT / "python"))
 
@@ -92,13 +103,43 @@ _R16_ENV_KEYS = ("explore_global_hunt", "explore_global_fallback",
                  # R18-G: global-hunt scope (the pull mechanism)
                  "hunt_scope",
                  # R18-F: Scroll of Town Portal interface
-                 "resource_portal")
+                 "resource_portal",
+                 # R18-H (2026-09-07): chest/barrel sweep on main L1
+                 "resource_sweep",
+                 # R18-M (2026-09-07) conflict resolution H1/H2: both patches
+                 # extended _R16_ENV_KEYS at the same closing paren. The UNION is
+                 # kept, in flag order (sweep leg then identify leg). Order is
+                 # inert: the tuple is only used as a whitelist and to build the
+                 # env kwargs dict at probe_r17_deployment.py env_overrides.
+                 # R18-H: Cain identify leg of the loot economy town trip
+                 "resource_identify",
+                 # R18-M2 (2026-09-07) conflict resolution K2b: the third
+                 # patch extended the same closing paren.  UNION again, in
+                 # trip order (sweep leg, identify leg, weapon leg).
+                 # R18-K: the surplus weapon upgrade leg at Griswold
+                 "resource_weapon_upgrade")
+def _identify_field(env, name, default):
+    """R18-H identify-v1: read one identify counter, or the off-arm default.
+
+    The probe must keep working with the flag absent (no service constructed and
+    an older bridge that never heard of identify-v1)."""
+    service = getattr(env, "identify_service", None)
+    if service is None:
+        return default
+    return getattr(service, name, default)
+
+
 _R17_MANAGERS = ("readiness-v1", "readiness-v3", "readiness-v3-strict",
                  "const-FARM", "const-DIVE",
                  # R17 T0:协议开启时的脚本经理 = OptionsEnv.resource_option_choice
                  "resource")
 
-PROBE_VERSION = "r17-deployment-v3-r18f"
+# R18-M2 (2026-09-07) conflict resolution K2b: k2b.patch stamped
+# "r17-deployment-v3-r18f-r18k" (the town-trip purchase ledger and the
+# smith-v1 telemetry).  The merged probe now carries the sweep, identify
+# AND weapon instrument sets, so the "one version names the merge" rule
+# gives it ONE new string naming this pass.
+PROBE_VERSION = "r17-deployment-v3-r18m2"
 V3_PROBE_VERSION = "r15-deployment-v3"
 # probe_r15 v3 的每行字段(逐位回归口径);R17 行是其超集。
 V3_ROW_KEYS = (
@@ -694,6 +735,47 @@ def run_episode(env, cb, seed, stochastic, manager="readiness-v1"):
             "portals_started": state.get("portals_started"),
             "portal": (env.portal_service.telemetry()
                        if getattr(env, "portal_service", None) is not None else None),
+            # R18-M (2026-09-07) conflict resolution H1/H2: both patches appended
+            # to the same resource telemetry dict. The UNION is kept, sweep leg
+            # first then identify leg; each half still strips itself to None/0
+            # when its own flag is absent, so an off arm is byte-identical.
+            # R18-H sweep-v1 telemetry (None when off; row keys otherwise unchanged)
+            "sweep": (env.sweep_service.telemetry()
+                      if getattr(env, "sweep_service", None) is not None else None),
+            # R18-H identify-v1 telemetry (None/0 when off; row keys unchanged otherwise)
+            "identify": (env.identify_service.telemetry()
+                         if getattr(env, "identify_service", None) is not None else None),
+            "identified_count": _identify_field(env, "identified_count", 0),
+            "identify_gold_spent": _identify_field(env, "identify_gold_spent", 0),
+            "identified_items": _identify_field(env, "identified_items", []),
+            "sale_income_identified": _identify_field(env, "sale_income_identified", 0),
+            # R18-K: the town-trip purchase ledger (needed for the K2 report;
+            # not a v3 row column, so rows_sha_v3 is unaffected).
+            "loot_cumulative": (service.telemetry().get("cumulative")
+                                if service is not None and hasattr(service, "trip_count") else None),
+            "loot_trip_count": getattr(service, "trip_count", None),
+            # R18-K smith-v1 telemetry (None / 0 when the flag is off)
+            "weapon_upgrade_flag": getattr(env, "resource_weapon_upgrade", None),
+            "weapon_upgrade": (env.weapon_upgrade_service.telemetry()
+                               if getattr(env, "weapon_upgrade_service", None) is not None
+                               else None),
+            "weapon_upgrades": (env.weapon_upgrade_service.weapon_upgrades
+                                if getattr(env, "weapon_upgrade_service", None) is not None
+                                else 0),
+            "weapon_gold_spent": (env.weapon_upgrade_service.weapon_gold_spent
+                                  if getattr(env, "weapon_upgrade_service", None) is not None
+                                  else 0),
+            "weapon_damage_before": ([p["weapon_damage_before"] for p in
+                                      env.weapon_upgrade_service.purchases]
+                                     if getattr(env, "weapon_upgrade_service", None) is not None
+                                     else []),
+            "weapon_seams": (env.weapon_upgrade_service.telemetry().get("seams")
+                             if getattr(env, "weapon_upgrade_service", None) is not None
+                             else None),
+            "weapon_damage_after": ([p["weapon_damage_after"] for p in
+                                     env.weapon_upgrade_service.purchases]
+                                    if getattr(env, "weapon_upgrade_service", None) is not None
+                                    else []),
         }
     return {
         "seed": seed, "depth": max_depth,

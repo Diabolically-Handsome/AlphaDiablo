@@ -2139,6 +2139,27 @@ def main():
                     choices=("off", "retreat-v1"),
                     help="R18-B return-to-town law; retreat-v1 requires "
                          "l2-town-v1 under coach-v03")
+    ap.add_argument("--resource-portal", default="off",
+                    choices=("off", "portal-v1"),
+                    help="R18-B5 Scroll of Town Portal vehicle for the retreat; "
+                         "portal-v1 requires l2-town-v1 under coach-v03 and "
+                         "--resource-retreat retreat-v1")
+    ap.add_argument("--resource-sweep", default="off",
+                    choices=("off", "sweep-v1"),
+                    help="R18-B6 chest/barrel sweep on main L1; sweep-v1 requires "
+                         "l2-town-v1 with --resource-service-policy sustain-loot-v1")
+    ap.add_argument("--resource-identify", default="off",
+                    choices=("off", "cain-v1"),
+                    help="R18-B6 Cain identify leg of the loot town trip; cain-v1 "
+                         "requires l2-town-v1 with sustain-loot-v1")
+    ap.add_argument("--resource-weapon-upgrade", default="off",
+                    choices=("off", "smith-v1"),
+                    help="R18-B6 Griswold weapon upgrade leg; smith-v1 requires "
+                         "l2-town-v1/full with sustain-loot-v1")
+    ap.add_argument("--hunt-scope", default="all",
+                    choices=("all", "l1-only"),
+                    help="R18-B5 scope of the a10 global hunt; l1-only masks it "
+                         "on main L2+")
     ap.add_argument("--dive-blocker-recovery", default="off", choices=("off", "adjacent-v1"),
                     help="Explicit bounded a11 blocker combat; requires resource protocol")
     ap.add_argument("--worker-window-registration", default="farm-only",
@@ -2184,8 +2205,52 @@ def main():
         ap.error("--resource-retreat retreat-v1 requires "
                  "--resource-protocol l2-town-v1 and "
                  "--resource-readiness-law coach-v03")
+    # R18-B5 (2026-09-07):传送是撤退的载具,除教室之外还要那部撤退法。
+    if (args.resource_portal != "off"
+            and (args.resource_protocol != "l2-town-v1"
+                 or args.resource_readiness_law != "coach-v03")):
+        ap.error("--resource-portal portal-v1 requires "
+                 "--resource-protocol l2-town-v1 and "
+                 "--resource-readiness-law coach-v03")
+    if args.resource_portal != "off" and args.resource_retreat != "retreat-v1":
+        ap.error("--resource-portal portal-v1 requires "
+                 "--resource-retreat retreat-v1")
+    # R18-B5 复核修正 (2026-09-07):l1-only 只作用于 a10 全图寻怪的闸,
+    # 寻怪不开时它是空操作;不许铸出一份为没跑过的法作证的档案身份。
+    if args.hunt_scope != "all" and not args.explore_global_hunt:
+        ap.error("--hunt-scope l1-only requires --explore-global-hunt")
+    # R18-B6 (2026-09-07):扫箱/鉴定/武器升级三条法都活在 loot 经济的进城
+    # 行程里,这三条 ap.error 复刻 OptionsEnv 构造器的三个 validator 的措辞。
+    # 复核修正(同日):"逐字"只对前两条成立。validate_sweep_protocol /
+    # validate_identify_protocol 的词汇表就是 ("off","sweep-v1") /
+    # ("off","cain-v1"),与上面的 choices= 逐字同款;而
+    # resource_weapon_upgrade.RESOURCE_WEAPON_UPGRADES 是
+    # ("off","dry-v1","smith-v1"),本文件的 choices= 与 eval_contract 的
+    # validate_r16_environment 都**故意**比它窄一个值。理由与训练侧同一条:
+    # dry-v1 不发命令、不走微步、不做 native 调用,其行数据与 control 臂逐位
+    # 相同,给它铸一份档案身份就是为一个与缺省世界逐位相同的环境作伪证
+    # ——正是 hunt_scope l1-only 复核修正关掉的那条口子。故这条窄化是刻意
+    # 带进部署侧的,不是疏漏;要考核 dry-v1 反事实臂需要先给它一条自己的
+    # 身份裁定(B6-REPORT.md 开放问题 2)。
+    # 注意 args.resource_weapon_upgrade 的 choices= 已在上面把 dry-v1 挡在
+    # 解析层,所以下面这三条只会看到 off/法名。
+    for flag, law, value in (("--resource-sweep", "sweep-v1", args.resource_sweep),
+                             ("--resource-identify", "cain-v1", args.resource_identify),
+                             ("--resource-weapon-upgrade", "smith-v1",
+                              args.resource_weapon_upgrade)):
+        if value == "off":
+            continue
+        if args.resource_protocol != "l2-town-v1":
+            ap.error(f"{flag} {law} requires --resource-protocol l2-town-v1")
+        if args.resource_service_policy != "sustain-loot-v1":
+            ap.error(f"{flag} {law} requires --resource-service-policy sustain-loot-v1")
+    if (args.resource_weapon_upgrade != "off"
+            and args.resource_purchase_mode != "full"):
+        ap.error("--resource-weapon-upgrade smith-v1 requires "
+                 "--resource-purchase-mode full")
     requested_r16 = {
         "explore_global_hunt": bool(args.explore_global_hunt),
+        "hunt_scope": args.hunt_scope,
         "explore_global_fallback": bool(args.explore_global_fallback),
         "progress_far_tiles": int(args.progress_far_tiles),
         "farm_scene_cap": int(args.farm_scene_cap),
@@ -2195,6 +2260,12 @@ def main():
         "resource_service_policy": args.resource_service_policy,
         "resource_readiness_law": args.resource_readiness_law,
         "resource_retreat": args.resource_retreat,
+        "resource_portal": args.resource_portal,
+        # R18-B6 (2026-09-07):三条 loot 行程法进档案身份;默认 off 被
+        # 「非默认才记」过滤掉,旧卷逐字节不变。
+        "resource_sweep": args.resource_sweep,
+        "resource_identify": args.resource_identify,
+        "resource_weapon_upgrade": args.resource_weapon_upgrade,
         "dive_blocker_recovery": args.dive_blocker_recovery,
     }
     # 身份只记非默认键;全默认 ⇒ 空字典 ⇒ env_kwargs/meta 逐字节不变。

@@ -440,6 +440,9 @@ class OptionsEnv(gym.Env):
                  worker_time_protocol: str = "legacy",
                  resource_retreat: str = "off",
                  resource_portal: str = "off",
+                 resource_sweep: str = "off",
+                 resource_identify: str = "off",
+                 resource_weapon_upgrade: str = "off",
                  **env_kwargs):
         super().__init__()
         from .resource_protocol import (
@@ -470,6 +473,25 @@ class OptionsEnv(gym.Env):
             self.resource_retreat, resource_portal)
         if self.resource_portal != "off":
             env_kwargs["resource_portal"] = self.resource_portal
+        # R18-H (2026-09-07) sweep-v1 (default off = byte-identical kwargs).
+        from .resource_protocol import validate_sweep_protocol
+        self.resource_sweep = validate_sweep_protocol(
+            self.resource_protocol, self.resource_service_policy, resource_sweep)
+        if self.resource_sweep != "off":
+            env_kwargs["resource_sweep"] = self.resource_sweep
+        # R18-H identify-v1 (default off = byte-identical kwargs).
+        from .resource_identify import validate_identify_protocol
+        self.resource_identify = validate_identify_protocol(
+            self.resource_protocol, self.resource_service_policy, resource_identify)
+        if self.resource_identify != "off":
+            env_kwargs["resource_identify"] = self.resource_identify
+        # R18-K (2026-09-07) smith-v1 (default off = byte-identical kwargs).
+        from .resource_weapon_upgrade import validate_weapon_upgrade
+        self.resource_weapon_upgrade = validate_weapon_upgrade(
+            self.resource_protocol, self.resource_service_policy,
+            self.resource_purchase_mode, resource_weapon_upgrade)
+        if self.resource_weapon_upgrade != "off":
+            env_kwargs["resource_weapon_upgrade"] = self.resource_weapon_upgrade
         from .completion_clock import COMPLETION_PROTOCOLS, COMPLETION_RECIPES
         if worker_time_protocol not in ("legacy", *COMPLETION_PROTOCOLS):
             raise ValueError("Unknown worker_time_protocol")
@@ -658,6 +680,25 @@ class OptionsEnv(gym.Env):
             self.portal_service = PortalService()
         else:
             self.portal_service = None
+        # R18-H sweep-v1: a fresh scripted chest/barrel sweep per episode; None when off.
+        if getattr(self, "resource_sweep", "off") != "off":
+            from .resource_sweep import SweepService
+            self.sweep_service = SweepService()
+        else:
+            self.sweep_service = None
+        # R18-H identify-v1: a fresh scripted Cain identify service per episode; None when off.
+        if getattr(self, "resource_identify", "off") != "off":
+            from .resource_identify import IdentifyService
+            self.identify_service = IdentifyService()
+        else:
+            self.identify_service = None
+        # R18-K smith-v1: a fresh scripted weapon leg per episode; None when off.
+        if getattr(self, "resource_weapon_upgrade", "off") != "off":
+            from .resource_weapon_upgrade import WeaponUpgradeService
+            self.weapon_upgrade_service = WeaponUpgradeService(
+                protocol=self.resource_weapon_upgrade)
+        else:
+            self.weapon_upgrade_service = None
         # 冻结的 V28 worker 与 M29 manager 都在 db7d26c 的 protocol-v3
         # 状态上训练。新协议可以改变收窗动力学，却不能把同宽度列静默换义；
         # 因此旧无新杀钟/榨干旗/本层起点独立维护，只供冻结网络观测。
@@ -960,9 +1001,56 @@ class OptionsEnv(gym.Env):
             if getattr(self, "resource_service_policy", "legacy-v1") == "sustain-loot-v1":
                 alive = sum(1 for monster in raw.get("monsters", [])
                             if int(monster.get("hp", 0)) > 0 and int(monster.get("type", -1)) != 109)
-                service.maybe_start(raw, self.env._steps,
-                    farm_scene_steps=self.farm_scene_steps,
-                    cleared=alive == 0 and int(raw.get("monster_kill_total", 0)) > 0)
+                cleared_now = alive == 0 and int(raw.get("monster_kill_total", 0)) > 0
+                sweep = getattr(self, "sweep_service", None)
+                if sweep is not None:
+                    # R18-H (2026-09-07) review round: observe() also records the
+                    # lit-object memory, so the sweep only ever targets objects
+                    # this episode has actually seen (partial observability).
+                    sweep.observe(raw)
+                    sweep_portal = getattr(self, "portal_service", None)
+                    sweep_retreat = getattr(self, "retreat_service", None)
+                    if (not sweep.active and not service.active
+                            and not getattr(sweep_portal, "active", False)
+                            and not getattr(sweep_retreat, "active", False)):
+                        # R18-H sweep-v1: consulted BEFORE maybe_start, on exactly
+                        # the beat the loot trip would depart (floor cleared / FARM
+                        # cap), so the chest and barrel drops are already on the
+                        # floor when the collect stage runs. maybe_start is not
+                        # called at all while the sweep owns the word.  A live
+                        # portal/retreat window keeps the word: the RESUPPLY loop
+                        # prefers the sweep, so starting one mid-leg would steal
+                        # the body from a script already walking.
+                        from .completion_clock import COMPLETION_L2_V1
+                        calibration = getattr(self, "resource_calibration", None)
+                        # Review round 2026-09-07: the sweep drops loot that only a
+                        # town trip's collect stage turns into gold, so it never
+                        # opens once the trip limit is spent.  The remaining
+                        # maybe_start denials are deliberately NOT copied (see the
+                        # resource_sweep module docstring); the window ledger
+                        # records the facts so the case stays measurable.
+                        sweep_readiness = native_readiness(raw)
+                        sweep_deficit = bool(not sweep_readiness["ready"]
+                                             and sweep_readiness["failures"])
+                        sweep_slots = max(0, int(service.trip_limit(raw))
+                                          - int(service.trip_count))
+                        trigger = sweep.trigger_reason(
+                            raw, int(self.env._steps),
+                            farm_scene_steps=self.farm_scene_steps,
+                            cleared=cleared_now,
+                            farm_trigger=(COMPLETION_L2_V1.farm_microsteps
+                                          if calibration is None
+                                          else calibration.farm_scene_microstep_cap),
+                            town_trip_active=bool(service.active),
+                            loot_trip_slots_left=sweep_slots)
+                        if trigger is not None:
+                            sweep.start(raw, int(self.env._steps), trigger,
+                                        loot_trip_slots_left=sweep_slots,
+                                        readiness_deficit=sweep_deficit)
+                if sweep is None or not sweep.active:
+                    service.maybe_start(raw, self.env._steps,
+                        farm_scene_steps=self.farm_scene_steps,
+                        cleared=cleared_now)
             elif (not service.attempted and int(raw["dungeon_level"]) == 1
                     and not raw.get("is_set_level") and not native_readiness(raw)["ready"]):
                 alive = sum(1 for monster in raw.get("monsters", [])
@@ -1003,6 +1091,18 @@ class OptionsEnv(gym.Env):
                 bridge.configure_town_service(True)
             if (portal is not None and not portal.active and not service.active
                     and (retreat is None or not retreat.active)):
+                # R18-M (2026-09-07) review round — why this guard does NOT
+                # mention the sweep, although a sweep may have started earlier in
+                # this same action_masks() call (options_env.py:998-1032) against
+                # the same immutable `raw`: the depths are disjoint by law.
+                # resource_sweep.py:205-206 refuses any dungeon_level != 1;
+                # resource_portal.py:240-243 handles depth 0 and refuses depth < 2;
+                # resource_retreat.py:138-139 refuses depth < 2. On the only beat a
+                # sweep can start, trigger_reason here always returns None, so no
+                # second service can be started on top of it and the owner chain at
+                # :2341-2344 never has to arbitrate. Widen the sweep's depth (or
+                # copy this block for a new leg) and that stops being true — add
+                # `and not (sweep is not None and sweep.active)` here and below.
                 # R18-F portal-v1: consulted BEFORE the walking retreat. Its
                 # outbound law is the retreat law PLUS "a scroll is carried", so
                 # the coach prefers the portal exactly when the pair has one and
@@ -1013,12 +1113,20 @@ class OptionsEnv(gym.Env):
                     portal.start(raw, int(self.env._steps), bridge, trigger)
             if (retreat is not None and not retreat.active and not service.active
                     and (portal is None or not portal.active)):
+                # R18-M (2026-09-07) review round: same disjoint-depth invariant as
+                # the portal guard above (resource_sweep.py:205 L1-only vs
+                # resource_retreat.py:138 depth >= 2) is what keeps the missing
+                # `sweep.active` term inert here.
                 # R18-A retreat-v1: the manager-side law fires here, exactly where the
                 # town trip starts; the mask then collapses to RESUPPLY (= retreat).
                 trigger = retreat.trigger_reason(raw, int(self.env._steps))
                 if trigger is not None:
                     retreat.start(raw, int(self.env._steps), bridge, trigger)
-            if portal is not None and portal.active:
+            sweep = getattr(self, "sweep_service", None)
+            if sweep is not None and sweep.active:
+                m[:] = False
+                m[RESUPPLY] = True
+            elif portal is not None and portal.active:
                 m[:] = False
                 m[RESUPPLY] = True
             elif retreat is not None and retreat.active:
@@ -1047,6 +1155,9 @@ class OptionsEnv(gym.Env):
             raise RuntimeError("Resource manager requires l2-town-v1")
         from .resource_protocol import law_ready
         mask = self.action_masks() if mask is None else mask
+        sweep = getattr(self, "sweep_service", None)
+        if sweep is not None and sweep.active:
+            return RESUPPLY
         portal = getattr(self, "portal_service", None)
         if portal is not None and portal.active:
             return RESUPPLY
@@ -1153,6 +1264,9 @@ class OptionsEnv(gym.Env):
             portal = getattr(self, "portal_service", None)
             self._win["portal_window"] = bool(
                 portal is not None and portal.active and option == RESUPPLY)
+            sweep = getattr(self, "sweep_service", None)
+            self._win["sweep_window"] = bool(
+                sweep is not None and sweep.active and option == RESUPPLY)
 
     def _beat(self, a: int, *, worker_authority: bool = False):
         """一拍:保险丝 → env.step → 观测缓存 → 停滞钟。
@@ -1330,6 +1444,22 @@ class OptionsEnv(gym.Env):
             return ("descend" if raw["dungeon_level"] > w["dlvl0"]
                     else "scene")
         opt = w["opt"]
+        sweep = getattr(self, "sweep_service", None)
+        if sweep is not None:
+            # R18-H sweep-v1: a sweep window closes exactly when the script hands
+            # back, before the ordinary RESUPPLY belt ladder can close it early.
+            if w.get("sweep_window"):
+                return None if sweep.active else "sweep_complete"
+            if opt != RESUPPLY and sweep.active:
+                # Review round 2026-09-07: action_masks() also runs inside the
+                # frozen worker's dual observation build, so the sweep law can
+                # fire mid FARM/DIVE window.  Close that window at once — its
+                # embedded manager mask is already collapsed to RESUPPLY, and the
+                # sweep must not be charged for a tail it did not own.  (The
+                # service re-baselines its own clocks on its first command; this
+                # rung is what stops the frozen worker acting under a mask that
+                # no longer describes its window.)
+                return "sweep_trigger"
         portal = getattr(self, "portal_service", None)
         if portal is not None:
             # R18-F portal-v1 (constructed only when the flag is on): a portal
@@ -2223,9 +2353,35 @@ class OptionsEnv(gym.Env):
         ending = self._consume_fuse_recovery()
         retreat = getattr(self, "retreat_service", None)
         portal = getattr(self, "portal_service", None)
-        # R18-F portal-v1 extends the two-rung chain to three; the town service
-        # is still the default owner of a RESUPPLY window.
-        service = (portal if portal is not None and portal.active
+        sweep = getattr(self, "sweep_service", None)
+        # R18-H identify-v1 never owns a window on its own: the Cain leg runs
+        # strictly INSIDE an already-open town trip, before anything is sold.
+        identify = getattr(self, "identify_service", None)
+        # R18-M (2026-09-07) review round — the invariant that makes "no rung"
+        # safe, stated where a pass-2 leg will copy the pattern: the leg is only
+        # ever active while self.resource_service.active, and _win_term
+        # (options_env.py:1516-1519) returns None for the whole time that flag
+        # holds, so the ONLY window close reachable while identify.active is the
+        # episode-terminating `done or trunc` path at :1418-1419. An interrupted
+        # leg therefore cannot outlive the episode that stranded it. A future leg
+        # that can be interrupted by a NON-terminating close does not inherit
+        # this and must take a rung (guarded on its own .active) instead, or the
+        # resume clause below (`service is identify`) will never fire for it and
+        # its trip stays in _served_trips (resource_identify.py:367) forever.
+        # R18-M (2026-09-07) conflict resolution H1/H2 (options_env.py, the
+        # RESUPPLY owner chain): both patches rewrote this header. BOTH survive.
+        # H1 (sweep-v1) adds a rung to the ownership chain; H2 (identify-v1) adds
+        # no rung at all -- it only binds the local, because the Cain leg runs
+        # inside a town trip the town service already owns. H1's rung ORDER is
+        # kept byte-for-byte (sweep first): sweep is main-L1 only while
+        # retreat/portal are main-L2+ only, so no two rungs can ever contend for
+        # the same window and the order carries no behaviour.
+        # R18-F portal-v1 extends the two-rung chain to three; R18-H sweep-v1 to
+        # four. The town service is still the default owner of a RESUPPLY window.
+        # The sweep is main-L1 only and the retreat/portal are main-L2+ only, so
+        # the new rung can never contend with them for the same window.
+        service = (sweep if sweep is not None and sweep.active
+                   else portal if portal is not None and portal.active
                    else retreat if retreat is not None and retreat.active
                    else self.resource_service)
         if (getattr(self, "resource_protocol", "off") != "off"
@@ -2235,6 +2391,22 @@ class OptionsEnv(gym.Env):
                         and self.resource_service.active):
                     # R18-F: a witch leg run inside a town trip has completed; the
                     # town service resumes its own (return) phase.
+                    service = self.resource_service
+                if (identify is not None and service is identify and not identify.active
+                        and self.resource_service.active):
+                    # R18-H: the Cain leg run inside a town trip has completed;
+                    # the town service resumes its own itinerary, and only now
+                    # does anything get sold -- at its identified value.
+                    service = self.resource_service
+                # R18-M2 (2026-09-07) conflict resolution K2b: a third leg
+                # hands back at the same seam.  Separate `if`s in trip order
+                # (identify, then weapon); each is a no-op unless it owns the
+                # beat, so the order carries no behaviour.
+                weapon = getattr(self, "weapon_upgrade_service", None)
+                if (weapon is not None and service is weapon and not weapon.active
+                        and self.resource_service.active):
+                    # R18-K: same hand-back for the surplus weapon leg, so its own
+                    # final beat is still charged to the weapon service's phases.
                     service = self.resource_service
                 if (getattr(self, "resource_readiness_law", "veto-v1") == "coach-v03"
                         and not getattr(service, "settle_exempt", False)):
@@ -2273,6 +2445,74 @@ class OptionsEnv(gym.Env):
                     # commands; the town service resumes its return phase afterwards.
                     portal.start(self.env._raw, int(self.env._steps), bridge, "buy_scroll")
                     service = portal
+                identify_trip_budget = None
+                if identify is not None and service is self.resource_service and service.active:
+                    # R18-H review round (2026-09-07): the leg's beats are charged
+                    # to the town trip's own clock, so hand it that clock.
+                    identify_trip_budget = (int(getattr(service, "start_steps", 0))
+                                            + int(service.service_microstep_cap)
+                                            - int(self.env._steps))
+                if (identify is not None and not identify.active
+                        and service is self.resource_service and service.active
+                        and int(self.env._raw["dungeon_level"]) == 0
+                        and not self.env._raw.get("is_set_level")
+                        and getattr(service, "phase", None) == "outbound"
+                        and identify.trigger_reason(
+                            self.env._raw, int(self.env._steps),
+                            int(getattr(service, "trip_count", 0)),
+                            trip_budget_left=identify_trip_budget) == "identify"):
+                    # R18-H identify-v1 (chairman ruling 2026-09-07 14:00): the Cain
+                    # leg runs at the EARLIEST town phase of every town trip -- the
+                    # town service reaches town in "outbound" and turns it into
+                    # "sell_idle" INSIDE its own next command, so this beat is the
+                    # only moment before sell_idle_smith_equipment can sell anything.
+                    # R18-H review round: the gate is exactly "outbound" -- admitting
+                    # "sell_idle" let a leg deferred here (no funds) fire later, after
+                    # the first sale had raised the wallet, i.e. AFTER something was
+                    # sold. A deferral is now recorded instead (identify.deferrals).
+                    # Decided BEFORE the town service is asked for a command (a
+                    # discarded command would leave its pending request without a
+                    # receipt). The identify script owns the next commands; the town
+                    # service resumes its untouched itinerary afterwards.
+                    identify.start(self.env._raw, int(self.env._steps), "identify",
+                                   int(getattr(service, "trip_count", 0)),
+                                   trip_budget_left=identify_trip_budget)
+                    service = identify
+                # R18-M2 (2026-09-07) conflict resolution K2b (leg order inside a
+                # town trip): identify runs at phase "outbound" -- the only beat
+                # before sell_idle_smith_equipment can sell anything -- and the
+                # weapon leg at phase "return", after the readiness basket and the
+                # potion target are already paid and before the walk back.  The two
+                # phase gates plus `service is self.resource_service` already make
+                # them mutually exclusive within one beat (identify owns the beats
+                # it runs, so the town service cannot advance its phase while
+                # identify.active).  The `not identify.active` term above states
+                # that law instead of deriving it: it is inert on every reachable
+                # path and fail-closed if a later change breaks the derivation.
+                if (weapon is not None and not weapon.active
+                        and (identify is None or not identify.active)
+                        and (portal is None or (not portal.active and not portal.awaiting_return))
+                        and service is self.resource_service and service.active
+                        and getattr(service, "phase", None) == "return"
+                        and int(self.env._raw["dungeon_level"]) == 0):
+                    # R18-K (2026-09-07) smith-v1: the surplus weapon leg runs INSIDE the
+                    # town trip, after the readiness basket and the potion target are
+                    # already paid and before the walk back -- the same seam R18-F uses
+                    # for the witch, and for the same reason (the town service never
+                    # hands back while in town).  Decided BEFORE the town service is
+                    # asked for a command, so no generated command loses its receipt.
+                    # The portal keeps priority; one leg per town trip.
+                    trip = int(getattr(service, "trip_count", 0) or 0)
+                    stock = list(getattr(service, "_smith_stock", []) or [])
+                    if weapon.protocol == "dry-v1":
+                        # Observation only: record the counterfactual and issue
+                        # nothing, so this arm stays bit-identical to control.
+                        weapon.observe_seam(self.env._raw, stock, trip, int(self.env._steps))
+                    else:
+                        trigger = weapon.trip_trigger_reason(self.env._raw, stock, trip)
+                        if trigger is not None:
+                            weapon.start(self.env._raw, int(self.env._steps), trigger, trip)
+                            service = weapon
                 synthesized = False
                 if (portal is not None and portal.awaiting_return
                         and service is self.resource_service and service.active
@@ -2311,6 +2551,28 @@ class OptionsEnv(gym.Env):
                     # town service ledger so the trip cash reconciliation stays exact.
                     self.resource_service.purchases += 1
                     self.resource_service.gold_spent += int(receipt.get("price", 0) or 0)
+                if (identify is not None and service is identify and command[0] == "identify"
+                        and receipt.get("accepted") and self.resource_service.active):
+                    # R18-H: the fee was paid inside the town trip. Book it exactly the
+                    # way the scroll was booked so _seal_trip's cash residual stays 0
+                    # and the economy audit raises no "unexplained cash movement".
+                    # It is a paid service, not a purchase: only gold_spent moves.
+                    self.resource_service.gold_spent += int(receipt.get("price", 0) or 0)
+                if (identify is not None and service is self.resource_service
+                        and command[0] == "sell" and receipt.get("accepted")):
+                    # Attribute the Smith's payment to the identify leg when the item
+                    # is one Cain opened for us (the identity never changes).
+                    identify.note_sale(tuple(command[3:7]), int(receipt.get("received", 0) or 0))
+                if weapon is not None:
+                    # R18-K: identical booking for the weapon bought inside the
+                    # trip.  R18-K review round: the body moved into
+                    # resource_weapon_upgrade.book_weapon_purchase so the ledger
+                    # test drives the shipped code instead of a copy of it; the
+                    # guard terms are unchanged and, with the flag off, `weapon`
+                    # is None and this whole branch is the old short circuit.
+                    from .resource_weapon_upgrade import book_weapon_purchase
+                    book_weapon_purchase(self.resource_service, weapon, service,
+                                         command, receipt)
                 service.record_steps(self.env._steps, service.phase)
             extra, base_info, done, trunc = self._win_end(ending.reason)
             self._finish_loot_episode(done, trunc, base_info)
@@ -2319,6 +2581,16 @@ class OptionsEnv(gym.Env):
                 extra["retreat"] = retreat.telemetry()
             if portal is not None:
                 extra["portal"] = portal.telemetry()
+            if sweep is not None:
+                sweep.observe(self.env._raw)
+                extra["sweep"] = sweep.telemetry()
+            if identify is not None:
+                extra["identify"] = identify.telemetry()
+            weapon = getattr(self, "weapon_upgrade_service", None)
+            if weapon is not None:
+                # R18-K: also nested in the per-row resource dict the probe reads.
+                extra["weapon_upgrade"] = weapon.telemetry()
+                extra["resource"]["weapon_upgrade"] = weapon.telemetry()
             info = dict(base_info)
             info["option_extra"] = extra
             return self._mgr_obs(self._last_base_obs), extra["R"], done, trunc, info
@@ -2387,6 +2659,18 @@ class OptionsEnv(gym.Env):
             portal = getattr(self, "portal_service", None)
             if portal is not None:
                 extra["portal"] = portal.telemetry()
+            sweep = getattr(self, "sweep_service", None)
+            if sweep is not None:
+                sweep.observe(self.env._raw)
+                extra["sweep"] = sweep.telemetry()
+            identify = getattr(self, "identify_service", None)
+            if identify is not None:
+                extra["identify"] = identify.telemetry()
+            weapon = getattr(self, "weapon_upgrade_service", None)
+            if weapon is not None:
+                # R18-K: also nested in the per-row resource dict the probe reads.
+                extra["weapon_upgrade"] = weapon.telemetry()
+                extra["resource"]["weapon_upgrade"] = weapon.telemetry()
         info["option_extra"] = extra
         return self._mgr_obs(self._last_base_obs), extra["R"], done, trunc, info
 

@@ -110,8 +110,12 @@ def _validate(model, report, expected_implementation, receipt_validator, before)
     _require(isinstance(contract, dict)
              and contract.get("implementation_sha256") == expected_implementation,
              "training contract implementation mismatch")
+    # R18-B3b (2026-09-07): both registered warm-start schemas count as lineage.
+    # schema/2 (sustain-loot-v1 under an explicit completion-l2 clock) is
+    # validated by migrate_loot_candidate; nothing below reads the receipt shape.
     _require(isinstance(warm, dict)
-             and warm.get("schema") == "diablogym-resource-warm-start/1",
+             and warm.get("schema") in ("diablogym-resource-warm-start/1",
+                                        "diablogym-resource-warm-start/2"),
              "missing resource warm-start lineage")
     # Reuse the production lineage/partition validation; it does not predict.
     model._assert_critic_migration_contract()

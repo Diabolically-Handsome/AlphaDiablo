@@ -12,6 +12,7 @@ RESOURCE_PURCHASE_MODES = ("none", "heal", "potions", "armor", "full")
 RESOURCE_READINESS_LAWS = ("veto-v1", "coach-v03")
 RESOURCE_RETREAT_PROTOCOLS = ("off", "retreat-v1")
 RESOURCE_PORTAL_PROTOCOLS = ("off", "portal-v1")
+RESOURCE_SWEEP_PROTOCOLS = ("off", "sweep-v1")
 RESOURCE_FARM_CAP = 3600
 RESOURCE_SERVICE_CAP = 600
 
@@ -202,6 +203,47 @@ def validate_native_portal(raw, expected="off"):
     observed = state.get("portal_enabled", False)
     if type(observed) is not bool or observed != (expected != "off"):
         raise RuntimeError("Native portal identity mismatch; isolated rebuild required")
+
+
+def validate_sweep_protocol(protocol, service_policy, sweep):
+    """R18-H (2026-09-07) sweep-v1: the chest/barrel sweep on main L1.
+
+    The sweep only DROPS loot; the loot economy is what turns that loot into
+    gold and gear, so sweep-v1 is layered on sustain-loot-v1 rather than beside
+    it (the sweep hands back and the collect stage runs immediately after).
+    Default off is byte-identical."""
+    if sweep not in RESOURCE_SWEEP_PROTOCOLS:
+        raise ValueError(f"Unknown resource_sweep {sweep!r}; expected one of {RESOURCE_SWEEP_PROTOCOLS}")
+    if sweep != "off":
+        if protocol != "l2-town-v1":
+            raise ValueError("sweep-v1 requires l2-town-v1")
+        if service_policy != "sustain-loot-v1":
+            raise ValueError("sweep-v1 requires sustain-loot-v1 (the loot economy collects what the sweep drops)")
+    return sweep
+
+
+def validate_native_sweep(raw, expected="off"):
+    """Fail closed: the native chest/barrel channel must match the contract.
+
+    Unlike retreat/portal this feature adds NO key to resource_state (that dict
+    is frozen for the on-protocol runs already certified), so the raw key
+    "objects" is itself the identity: present exactly when sweep-v1 is on."""
+    if not isinstance(raw, dict):
+        return
+    observed = raw.get("objects")
+    if expected == "off":
+        if observed is not None:
+            raise RuntimeError("Native sweep identity mismatch; the objects channel is on while sweep is off")
+        return
+    if not isinstance(observed, list):
+        raise RuntimeError("Native sweep identity mismatch; isolated rebuild required")
+    # R18-H review round (2026-09-07): the channel carries the lighting tag the
+    # floor-item channel carries.  A bridge without it would silently give the
+    # sweep omniscient eyes, so fail closed rather than run.
+    for entry in observed:
+        if not isinstance(entry, dict) or "visible" not in entry:
+            raise RuntimeError(
+                "Native sweep identity mismatch; the objects channel predates the visible tag")
 
 
 @dataclass

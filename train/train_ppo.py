@@ -802,6 +802,8 @@ _IMPLEMENTATION_SOURCE_FILES = (
     "train/train_ppo.py",
     "train/migrate_resource_candidate.py",
     "train/migrate_completion_candidate.py",
+    # R18-B3b (2026-09-07): the sustain-loot-v1 warm-start schema/2.
+    "train/migrate_loot_candidate.py",
     "train/prefix_worker.py",
     "train/training_diagnostics.py",
     "train/rollout_diagnostics.py",
@@ -823,6 +825,26 @@ _IMPLEMENTATION_SOURCE_FILES = (
     "python/diablogym/resource_sustain_gold.py",
     "python/diablogym/resource_sustain_armor.py",
     "python/diablogym/resource_sustain_completion.py",
+    # R18-B6 (2026-09-07): every law module that exists in the tree is bound.
+    # R18-B5 flagged the gap: the retreat/portal/aggro/engagement/sweep/
+    # identify/weapon-upgrade laws all decide what the training window does,
+    # yet none of them were hashed, so a resume could silently ride a changed
+    # law while the bundle digest still matched.  The three sustain modules
+    # below were bound by eval_contract.PROTOCOL_SOURCE_FILES but not here,
+    # which is the same gap seen from the other side.  boss_avoidance.py is
+    # deliberately absent: R18-J is not merged, so the file does not exist and
+    # a non-existent path would fail closed at _implementation_bundle_sha256.
+    "python/diablogym/resource_sustain_combat.py",
+    "python/diablogym/resource_sustain_combinations.py",
+    "python/diablogym/resource_sustain_loot.py",
+    "python/diablogym/resource_sustain_protection.py",
+    "python/diablogym/resource_retreat.py",
+    "python/diablogym/resource_portal.py",
+    "python/diablogym/resource_sweep.py",
+    "python/diablogym/resource_identify.py",
+    "python/diablogym/resource_weapon_upgrade.py",
+    "python/diablogym/aggro_cap.py",
+    "python/diablogym/engagement.py",
 )
 
 
@@ -2394,6 +2416,19 @@ def _validate_policy_source_roles(contract: dict) -> dict:
     return roles
 
 
+def _resource_service_recipe_for(protocol, mode, service_policy,
+                                 worker_time_protocol="legacy"):
+    """R18-B3 (2026-09-07):训练侧配方必须写明真正在跑的完成时钟。
+
+    只有 sustain-loot-v1 的配方带时钟,其余服务法走原调用(逐字节不变)。
+    sustain-loot-v1 配 legacy 时钟在此 fail closed —— 战利品经济没有旧时钟版本。
+    """
+    if service_policy != "sustain-loot-v1":
+        return resource_service_recipe(protocol, mode, service_policy)
+    return resource_service_recipe(protocol, mode, service_policy,
+                                   time_protocol=worker_time_protocol)
+
+
 def _training_contract(args, model, batch_size: int,
                        manager_npz_sha256: str | None = None,
                        worker_npz_sha256: str | None = None,
@@ -2699,6 +2734,11 @@ def _training_contract(args, model, batch_size: int,
             True
             if bool(getattr(args, "explore_global_hunt", False))
             else None),
+        # R18-B5 (2026-09-07): a10 全局猎怪的作用域(all = 冻结行为恒写
+        # None,只有 l1-only 是字面值),与 explore_global_hunt 同款记账。
+        "hunt_scope": (
+            getattr(args, "hunt_scope", "all")
+            if getattr(args, "hunt_scope", "all") != "all" else None),
         "progress_far_tiles": (
             int(getattr(args, "progress_far_tiles", 0))
             if int(getattr(args, "progress_far_tiles", 0)) > 0
@@ -2721,10 +2761,12 @@ def _training_contract(args, model, batch_size: int,
         "resource_service_policy": (
             getattr(args, "resource_service_policy", "legacy-v1")
             if getattr(args, "resource_service_policy", "legacy-v1") != "legacy-v1" else None),
-        "resource_service_recipe": resource_service_recipe(
+        # R18-B3: loot 配方带时钟;非 loot 的服务法调用逐字节不变。
+        "resource_service_recipe": _resource_service_recipe_for(
             getattr(args, "resource_protocol", "off"),
             getattr(args, "resource_purchase_mode", "full"),
-            getattr(args, "resource_service_policy", "legacy-v1")),
+            getattr(args, "resource_service_policy", "legacy-v1"),
+            getattr(args, "worker_time_protocol", "legacy")),
         # R17.1 ruling 3: veto-v1 (the legacy law) always writes None; only
         # coach-v03 is literal, so old checkpoint contracts stay equal.
         "resource_readiness_law": (
@@ -2735,6 +2777,22 @@ def _training_contract(args, model, batch_size: int,
         "resource_retreat": (
             getattr(args, "resource_retreat", "off")
             if getattr(args, "resource_retreat", "off") != "off" else None),
+        # R18-B5 (2026-09-07): off (the legacy default) always writes None;
+        # only portal-v1 is literal, so old checkpoint contracts stay equal.
+        "resource_portal": (
+            getattr(args, "resource_portal", "off")
+            if getattr(args, "resource_portal", "off") != "off" else None),
+        # R18-B6 (2026-09-07): off (the legacy default) always writes None; only
+        # the versioned law is literal, so old checkpoint contracts stay equal.
+        "resource_sweep": (
+            getattr(args, "resource_sweep", "off")
+            if getattr(args, "resource_sweep", "off") != "off" else None),
+        "resource_identify": (
+            getattr(args, "resource_identify", "off")
+            if getattr(args, "resource_identify", "off") != "off" else None),
+        "resource_weapon_upgrade": (
+            getattr(args, "resource_weapon_upgrade", "off")
+            if getattr(args, "resource_weapon_upgrade", "off") != "off" else None),
         "worker_hp_loss_price": (
             float(getattr(args, "worker_hp_loss_price", 0.0))
             if (getattr(args, "worker", False)
@@ -2908,6 +2966,15 @@ _ENVIRONMENT_RESTART_ALLOWED_DRIFT = frozenset({
     # R18-B:撤退法(retreat-v1 返城),None→retreat-v1 的漂移属预注册
     # 点名立法(readiness_law 同款)。
     "resource_retreat",
+    # R18-B5 (2026-09-07):传送法(portal-v1 撤退载具),None→portal-v1
+    # 的漂移属预注册点名立法(retreat 同款)。
+    "resource_portal",
+    # R18-B6 (2026-09-07):扫箱法(sweep-v1)、鉴定腿(cain-v1)、
+    # 武器升级腿(smith-v1),None→字面值的漂移属预注册点名立法
+    # (retreat/portal 同款);三者都只在 loot 经济里成立。
+    "resource_sweep",
+    "resource_identify",
+    "resource_weapon_upgrade",
     # R16 修宪(2026-09-01,预注册点名):a13 拾药冷启动先验,
     # None→bonus 的漂移属预注册点名立法(a11 同款)。
     "worker_potion_action13_logit_bonus",
@@ -2917,6 +2984,9 @@ _ENVIRONMENT_RESTART_ALLOWED_DRIFT = frozenset({
     # fallback 375→375 杀几乎不触发,hunt 375→670 杀),与 fallback 同款。
     "explore_global_fallback",
     "explore_global_hunt",
+    # R18-B5 (2026-09-07):a10 猎怪作用域,None→l1-only 的漂移属预注册
+    # 点名立法(explore_global_hunt 同款)。
+    "hunt_scope",
     "progress_far_tiles",
     "farm_scene_cap",
     "reset_layer_clock_on_window",
@@ -2987,14 +3057,24 @@ def _validate_resource_resume_identity(saved: dict | None, current: dict) -> Non
              "sustain-v5/sustain-v6 resume requires an exact resource_service contract; legacy bypass is unavailable")
     for label, identity in (("saved", saved), ("current", current)):
         if identity.get("resource_service_policy") in protected_policies:
-            expected = resource_service_recipe(identity.get("resource_protocol"),
-                identity.get("resource_purchase_mode"), identity["resource_service_policy"])
+            expected = _resource_service_recipe_for(identity.get("resource_protocol"),
+                identity.get("resource_purchase_mode"), identity["resource_service_policy"],
+                identity.get("worker_time_protocol") or "legacy")
             _require(identity.get("resource_service_recipe") == expected,
                      f"{label} resource_service_recipe has mismatched native armor/preservation scope/version")
     # R18-B: 撤退法进入恒等键组;旗关两侧都是 None,旧续训逐位不变。
+    # R18-B5 (2026-09-07):传送法同为资源侧法条(portal-v1 只在
+    # l2-town-v1/coach-v03/retreat-v1 下成立),一并进恒等键组;
+    # hunt_scope 不在此列——它是 DiabloGymEnv 级探索开关,不属于
+    # resource_service 身份,漂移由 _ENVIRONMENT_RESTART_ALLOWED_DRIFT 管辖。
+    # R18-B6 (2026-09-07):扫箱/鉴定/武器升级三条法都是 sustain-loot-v1
+    # 行程自身的版本(validate_sweep_protocol / validate_identify_protocol /
+    # validate_weapon_upgrade 全都要 l2-town-v1 + sustain-loot-v1),换法即换
+    # 世界,故与 retreat/portal 同列恒等键组;hunt_scope 仍不在此列。
     keys = ("resource_protocol", "resource_purchase_mode",
             "resource_service_policy", "resource_service_recipe",
-            "resource_retreat")
+            "resource_retreat", "resource_portal",
+            "resource_sweep", "resource_identify", "resource_weapon_upgrade")
     _require(all(saved.get(key) == current.get(key) for key in keys),
              "resource_service version change requires a separately identified initialization; ordinary resume is forbidden")
 
@@ -5991,9 +6071,10 @@ def _validate_worker_time_config(protocol="legacy", *, worker,
         return None
     _require(worker and worker_learning_window_scope == EARNED_DIVE_SUFFIX_SCOPE,
              "completion-l2 protocols require an earned-dive-suffix-v1 Worker")
+    # R18-B3 (2026-09-07): sustain-loot-v1 与 sustain-v6 并列;别的服务法照旧拒绝。
     _require(resource_protocol == "l2-town-v1" and resource_purchase_mode == "full"
-             and resource_service_policy == "sustain-v6",
-             "completion-l2 protocols require l2-town-v1/full/sustain-v6")
+             and resource_service_policy in ("sustain-v6", "sustain-loot-v1"),
+             "completion-l2 protocols require l2-town-v1/full/sustain-v6 or sustain-loot-v1")
     _require(max_steps == recipe["actor_denominator"]
              and farm_scene_cap == recipe["farm_microsteps"],
              "completion-l2 protocols require max_steps=6000 (observation only) and farm_scene_cap=3600")
@@ -6001,6 +6082,14 @@ def _validate_worker_time_config(protocol="legacy", *, worker,
 
 
 def _validate_worker_time_args(args) -> None:
+    # R18-B3 复审 (2026-09-07): loot 只在完成时钟下存在,这条法与学习窗口作用域
+    # 无关。此前 farm-only / farm-dive-v1 下的 loot + legacy 走完整个参数校验层
+    # 才在 OptionsEnv 构造时(python/diablogym/options_env.py:486)才死——那时
+    # run 目录与 config 已落盘、原生引擎已启动。入口先 fail closed,措辞同款。
+    if getattr(args, "resource_service_policy", "legacy-v1") == "sustain-loot-v1":
+        from diablogym.completion_clock import COMPLETION_PROTOCOLS
+        _require(getattr(args, "worker_time_protocol", "legacy") in COMPLETION_PROTOCOLS,
+                 "sustain-loot-v1 requires an explicit completion-l2 time protocol")
     _validate_worker_time_config(getattr(args, "worker_time_protocol", "legacy"),
         worker=getattr(args, "worker", False),
         worker_learning_window_scope=getattr(args, "worker_learning_window_scope", "farm-only"),
@@ -6032,9 +6121,14 @@ def _validate_worker_prefix_args(args) -> None:
              "earned-dive-suffix-v1 requires CPU Worker MaskablePPO")
     _require(args.seed is not None and args.max_steps == 6000,
              "earned-dive-suffix-v1 requires an explicit seed and max_steps=6000")
+    # R18-B3 (2026-09-07): 服务法由单值钉死改为集合成员(sustain-v6 或
+    # sustain-loot-v1),但**留在 `fixed` 的原位(第 3 位)**:R18-B3 复审指出,
+    # 把它提到循环之前会改变已有非法调用者拿到的首个报错。现在除服务法自身
+    # (法条本身变了)之外,每一个钉死值的措辞与检查顺序仍然一字未动。
     fixed = {
         "resource_protocol": "l2-town-v1", "resource_purchase_mode": "full",
-        "resource_service_policy": "sustain-v6", "dive_blocker_recovery": "adjacent-v1",
+        "resource_service_policy": ("sustain-v6", "sustain-loot-v1"),
+        "dive_blocker_recovery": "adjacent-v1",
         "worker_policy_observation_view": "dual-v4-asymmetric-v3",
         "reward_economy": "v4", "worker_action14_logit_bonus": 2.5,
         "worker_dive_action11_logit_bonus": 2.0, "worker_potion_action13_logit_bonus": 2.0,
@@ -6045,8 +6139,20 @@ def _validate_worker_prefix_args(args) -> None:
         "farm_scene_cap": 3600, "reset_layer_clock_on_window": True,
     }
     for key, expected in fixed.items():
-        _require(getattr(args, key, None) == expected,
-                 f"earned-dive-suffix-v1 requires {key}={expected!r}")
+        # 元组 = 集合成员(R18-B3 起只有 resource_service_policy 一处);
+        # 单值键走原来的等号比较与原来的措辞。
+        if isinstance(expected, tuple):
+            _require(getattr(args, key, None) in expected,
+                     f"earned-dive-suffix-v1 requires {key} " + " or ".join(expected))
+        else:
+            _require(getattr(args, key, None) == expected,
+                     f"earned-dive-suffix-v1 requires {key}={expected!r}")
+    # R18-B3 (2026-09-07): 战利品经济没有旧时钟版本;措辞与 worker_env /
+    # options_env 完全同款。
+    from diablogym.completion_clock import COMPLETION_PROTOCOLS
+    _require(getattr(args, "resource_service_policy", None) != "sustain-loot-v1"
+             or getattr(args, "worker_time_protocol", "legacy") in COMPLETION_PROTOCOLS,
+             "sustain-loot-v1 requires an explicit completion-l2 time protocol")
     _require(not any(getattr(args, key, None) for key in (
         "skip_dry", "dry_curriculum_schedule", "deep_start_curriculum", "deep",
         "death_ladder", "resource_calibration", "teacher_override", "bc_init",
@@ -6073,10 +6179,22 @@ def _validate_resource_warm_start_args(args) -> None:
         "resource warm-start cannot combine with resume/migration/reset/curriculum overrides")
     _require(args.distill_beta == 0 and not _bc_aux_active(args),
              "resource warm-start preserves the parent disabled teacher/BC regime")
+    # R18-B3b (2026-09-07): sustain-loot-v1 joins the list. It is mintable only
+    # through migrate_loot_candidate (schema/2), whose target contract pins the
+    # completion clock, the earned-suffix prefix and the readiness/retreat laws;
+    # the sustain-v2..v6 arms are unchanged and still go through schema/1.
     _require(getattr(args, "resource_protocol", "off") == "l2-town-v1"
              and getattr(args, "resource_purchase_mode", "full") == "full"
-             and getattr(args, "resource_service_policy", "legacy-v1") in ("sustain-v2", "sustain-v3", "sustain-v4", "sustain-v5", "sustain-v6"),
-             "resource warm-start requires an explicit sustain-v2/sustain-v3/sustain-v4/sustain-v5/sustain-v6 environment")
+             and getattr(args, "resource_service_policy", "legacy-v1") in ("sustain-v2", "sustain-v3", "sustain-v4", "sustain-v5", "sustain-v6", "sustain-loot-v1"),
+             "resource warm-start requires an explicit sustain-v2/sustain-v3/sustain-v4/sustain-v5/sustain-v6/sustain-loot-v1 environment")
+    if getattr(args, "resource_service_policy", "legacy-v1") == "sustain-loot-v1":
+        from diablogym.completion_clock import COMPLETION_PROTOCOLS
+        _require(getattr(args, "worker_time_protocol", "legacy") in COMPLETION_PROTOCOLS
+                 and getattr(args, "worker_learning_window_scope", "farm-only")
+                     == EARNED_DIVE_SUFFIX_SCOPE
+                 and getattr(args, "dive_blocker_recovery", "off") == "adjacent-v1",
+                 "sustain-loot-v1 warm start requires an explicit completion-l2 time "
+                 "protocol, earned-dive-suffix-v1 and dive_blocker_recovery adjacent-v1")
     _require(pathlib.Path(args.resource_warm_start).is_file(),
              "resource warm-start manifest does not exist")
 
@@ -6453,6 +6571,79 @@ def _validate_args(args) -> None:
              "and --resource-readiness-law coach-v03")
     _require(resource_retreat == "off" or args.worker or args.options,
              "--resource-retreat requires --worker/--options")
+    # R18-B5 (2026-09-07): portal-v1 是撤退的载具,除 l2-town-v1/coach-v03
+    # 之外还必须先有 retreat-v1(引擎侧 validate_portal_protocol 同款)。
+    resource_portal = getattr(args, "resource_portal", "off")
+    _require(resource_portal in ("off", "portal-v1"),
+             "--resource-portal must be off/portal-v1")
+    _require(resource_portal == "off" or (resource_protocol == "l2-town-v1"
+                                          and resource_readiness_law == "coach-v03"),
+             "--resource-portal portal-v1 requires --resource-protocol l2-town-v1 "
+             "and --resource-readiness-law coach-v03")
+    _require(resource_portal == "off" or resource_retreat == "retreat-v1",
+             "--resource-portal portal-v1 requires --resource-retreat retreat-v1")
+    _require(resource_portal == "off" or args.worker or args.options,
+             "--resource-portal requires --worker/--options")
+    # R18-B6 (2026-09-07): sweep-v1 / cain-v1 / smith-v1 都活在 loot 经济的
+    # 行程里(部署侧 validate_sweep_protocol / validate_identify_protocol /
+    # validate_weapon_upgrade 同款):l2-town-v1 + sustain-loot-v1;smith-v1
+    # 另需 full 采购模式。三者都只经 WorkerWindowEnv/OptionsEnv 的
+    # **env_kwargs 直通,故仍限 --worker/--options。
+    # (resource_protocol / resource_purchase_mode / resource_service_policy 已在
+    # 本函数上方取过,这里复用同一份,不重复读 args。)
+    resource_sweep = getattr(args, "resource_sweep", "off")
+    _require(resource_sweep in ("off", "sweep-v1"),
+             "--resource-sweep must be off/sweep-v1")
+    _require(resource_sweep == "off" or resource_protocol == "l2-town-v1",
+             "--resource-sweep sweep-v1 requires --resource-protocol l2-town-v1")
+    _require(resource_sweep == "off" or resource_service_policy == "sustain-loot-v1",
+             "--resource-sweep sweep-v1 requires --resource-service-policy "
+             "sustain-loot-v1 (the loot economy collects what the sweep drops)")
+    _require(resource_sweep == "off" or args.worker or args.options,
+             "--resource-sweep requires --worker/--options")
+    resource_identify = getattr(args, "resource_identify", "off")
+    _require(resource_identify in ("off", "cain-v1"),
+             "--resource-identify must be off/cain-v1")
+    _require(resource_identify == "off" or resource_protocol == "l2-town-v1",
+             "--resource-identify cain-v1 requires --resource-protocol l2-town-v1")
+    _require(resource_identify == "off" or resource_service_policy == "sustain-loot-v1",
+             "--resource-identify cain-v1 requires --resource-service-policy "
+             "sustain-loot-v1 (the identify leg is part of that town trip)")
+    _require(resource_identify == "off" or args.worker or args.options,
+             "--resource-identify requires --worker/--options")
+    # 训练侧词汇表比部署侧窄一个值,并且是故意的:RESOURCE_WEAPON_UPGRADES
+    # 还有 dry-v1,那是 smith-v1 的「只观察不出手」孪生(resource_weapon_
+    # upgrade.py:129-137),它不发命令、不走微步、不做 native 调用,行数据
+    # 与 control 臂逐位相同。用它训练等于给一次控制臂跑动铸一个说谎的身份
+    # ——与 hunt_scope 复核修正同一条理由,故训练侧 fail closed。
+    resource_weapon_upgrade = getattr(args, "resource_weapon_upgrade", "off")
+    _require(resource_weapon_upgrade in ("off", "smith-v1"),
+             "--resource-weapon-upgrade must be off/smith-v1")
+    _require(resource_weapon_upgrade == "off" or resource_protocol == "l2-town-v1",
+             "--resource-weapon-upgrade smith-v1 requires --resource-protocol l2-town-v1")
+    _require(resource_weapon_upgrade == "off"
+             or resource_service_policy == "sustain-loot-v1",
+             "--resource-weapon-upgrade smith-v1 requires --resource-service-policy "
+             "sustain-loot-v1 (the smith leg rides the loot itinerary)")
+    _require(resource_weapon_upgrade == "off" or resource_purchase_mode == "full",
+             "--resource-weapon-upgrade smith-v1 requires --resource-purchase-mode full")
+    _require(resource_weapon_upgrade == "off" or args.worker or args.options,
+             "--resource-weapon-upgrade requires --worker/--options")
+    # R18-B5 (2026-09-07): hunt_scope 是 DiabloGymEnv 级开关(env.py 的构造器
+    # 不要求资源协议,这里不过度收紧),但训练侧只经 WorkerWindowEnv/OptionsEnv
+    # 的 **env_kwargs 直通,故仍限 --worker/--options。
+    hunt_scope = getattr(args, "hunt_scope", "all")
+    _require(hunt_scope in ("all", "l1-only"),
+             "--hunt-scope must be all/l1-only")
+    _require(hunt_scope == "all" or args.worker or args.options,
+             "--hunt-scope l1-only requires --worker/--options")
+    # 复核修正(同日):l1-only 唯一的消费者是 a10 全图寻怪的闸
+    # (env.py 的 `_explore_global_hunt and self._hunt_allowed_here(raw)`),
+    # 寻怪不开时它是保证的空操作。契约与档案身份却会照写这条法,于是身份
+    # 为一部没有跑过的法作证,而一次纯粹的记账差异会让后续续训被判环境漂移。
+    # 与本节其余各条同一条理由:静默失效比早点报错糟得多。
+    _require(hunt_scope == "all" or bool(getattr(args, "explore_global_hunt", False)),
+             "--hunt-scope l1-only requires --explore-global-hunt")
     progress_far_tiles = int(getattr(args, "progress_far_tiles", 0))
     _require(
         progress_far_tiles >= 0,
@@ -7668,6 +7859,11 @@ def make_env(max_steps: int = 1500, deep: bool = False, death_ladder: bool = Fal
              resource_service_policy: str = "legacy-v1",
              resource_readiness_law: str = "veto-v1",
              resource_retreat: str = "off",
+             resource_portal: str = "off",
+             resource_sweep: str = "off",
+             resource_identify: str = "off",
+             resource_weapon_upgrade: str = "off",
+             hunt_scope: str = "all",
              dive_blocker_recovery: str = "off",
              manager_npz_sha256: str | None = None,
              worker_npz_sha256: str | None = None,
@@ -7709,6 +7905,53 @@ def make_env(max_steps: int = 1500, deep: bool = False, death_ladder: bool = Fal
              "resource_retreat retreat-v1 requires l2-town-v1 under coach-v03")
     _require(resource_retreat == "off" or worker or options,
              "resource_retreat requires WorkerWindowEnv/OptionsEnv")
+    # R18-B5: portal-v1 是撤退的载具(引擎侧 validate_portal_protocol 同款)。
+    _require(resource_portal in ("off", "portal-v1"),
+             "resource_portal must be off/portal-v1")
+    _require(resource_portal == "off" or (resource_protocol == "l2-town-v1"
+                                          and resource_readiness_law == "coach-v03"),
+             "resource_portal portal-v1 requires l2-town-v1 under coach-v03")
+    _require(resource_portal == "off" or resource_retreat == "retreat-v1",
+             "resource_portal portal-v1 requires resource_retreat retreat-v1")
+    _require(resource_portal == "off" or worker or options,
+             "resource_portal requires WorkerWindowEnv/OptionsEnv")
+    # R18-B6: 扫箱/鉴定/武器升级三条法逐字复刻部署侧 validator 的措辞。
+    _require(resource_sweep in ("off", "sweep-v1"),
+             "resource_sweep must be off/sweep-v1")
+    _require(resource_sweep == "off" or resource_protocol == "l2-town-v1",
+             "resource_sweep sweep-v1 requires l2-town-v1")
+    _require(resource_sweep == "off" or resource_service_policy == "sustain-loot-v1",
+             "resource_sweep sweep-v1 requires sustain-loot-v1")
+    _require(resource_sweep == "off" or worker or options,
+             "resource_sweep requires WorkerWindowEnv/OptionsEnv")
+    _require(resource_identify in ("off", "cain-v1"),
+             "resource_identify must be off/cain-v1")
+    _require(resource_identify == "off" or resource_protocol == "l2-town-v1",
+             "resource_identify cain-v1 requires l2-town-v1")
+    _require(resource_identify == "off" or resource_service_policy == "sustain-loot-v1",
+             "resource_identify cain-v1 requires sustain-loot-v1")
+    _require(resource_identify == "off" or worker or options,
+             "resource_identify requires WorkerWindowEnv/OptionsEnv")
+    # dry-v1 是观察孪生,训练侧不收(_validate_args 同款理由)。
+    _require(resource_weapon_upgrade in ("off", "smith-v1"),
+             "resource_weapon_upgrade must be off/smith-v1")
+    _require(resource_weapon_upgrade == "off" or resource_protocol == "l2-town-v1",
+             "resource_weapon_upgrade smith-v1 requires l2-town-v1")
+    _require(resource_weapon_upgrade == "off"
+             or resource_service_policy == "sustain-loot-v1",
+             "resource_weapon_upgrade smith-v1 requires sustain-loot-v1")
+    _require(resource_weapon_upgrade == "off" or resource_purchase_mode == "full",
+             "resource_weapon_upgrade smith-v1 requires the full purchase mode")
+    _require(resource_weapon_upgrade == "off" or worker or options,
+             "resource_weapon_upgrade requires WorkerWindowEnv/OptionsEnv")
+    # R18-B5: hunt_scope 只经 WorkerWindowEnv/OptionsEnv 的 **env_kwargs 直通;
+    # 复核修正:寻怪不开时它是空操作,拒绝铸出一个说谎的身份(_validate_args 同款)。
+    _require(hunt_scope in ("all", "l1-only"),
+             "hunt_scope must be all/l1-only")
+    _require(hunt_scope == "all" or worker or options,
+             "hunt_scope l1-only requires WorkerWindowEnv/OptionsEnv")
+    _require(hunt_scope == "all" or explore_global_hunt,
+             "hunt_scope l1-only requires explore_global_hunt")
     validate_dive_blocker_recovery(resource_protocol, dive_blocker_recovery)
     _require(resource_protocol in ("off", "l2-town-v1"),
              "resource_protocol must be off/l2-town-v1")
@@ -7729,6 +7972,18 @@ def make_env(max_steps: int = 1500, deep: bool = False, death_ladder: bool = Fal
     # R18-B: off adds no keyword, so old calls stay identical.
     if resource_retreat != "off":
         resource_kwargs["resource_retreat"] = resource_retreat
+    # R18-B5: off/all add no keyword, so old calls stay identical.
+    if resource_portal != "off":
+        resource_kwargs["resource_portal"] = resource_portal
+    # R18-B6: off adds no keyword, so old calls stay identical.
+    if resource_sweep != "off":
+        resource_kwargs["resource_sweep"] = resource_sweep
+    if resource_identify != "off":
+        resource_kwargs["resource_identify"] = resource_identify
+    if resource_weapon_upgrade != "off":
+        resource_kwargs["resource_weapon_upgrade"] = resource_weapon_upgrade
+    if hunt_scope != "all":
+        resource_kwargs["hunt_scope"] = hunt_scope
     if dive_blocker_recovery != "off":
         resource_kwargs["dive_blocker_recovery"] = dive_blocker_recovery
     if time_identity is not None:
@@ -9625,8 +9880,10 @@ def _main(resources: _TrainingResources):
                     choices=("none", "heal", "potions", "armor", "full"),
                     help="Resource ablation arm; requires resource protocol")
     ap.add_argument("--resource-service-policy", default="legacy-v1",
-                    choices=("legacy-v1", "sustain-v2", "sustain-v3", "sustain-v4", "sustain-v5", "sustain-v6"),
-                    help="Explicit service identity; sustain-v2/v3/v4/v5/v6 require l2-town-v1/full")
+                    choices=("legacy-v1", "sustain-v2", "sustain-v3", "sustain-v4", "sustain-v5", "sustain-v6", "sustain-loot-v1"),
+                    help="Explicit service identity; sustain-v2/v3/v4/v5/v6 and sustain-loot-v1 "
+                         "require l2-town-v1/full, and sustain-loot-v1 additionally requires a "
+                         "completion-l2 --worker-time-protocol (R18-B3)")
     ap.add_argument("--resource-readiness-law", default="veto-v1",
                     choices=("veto-v1", "coach-v03"),
                     help="R17.1 ruling 3 readiness law; coach-v03 (six native "
@@ -9635,6 +9892,32 @@ def _main(resources: _TrainingResources):
                     choices=("off", "retreat-v1"),
                     help="R18-B return-to-town law; retreat-v1 requires "
                          "l2-town-v1 under coach-v03 and --worker/--options")
+    ap.add_argument("--resource-portal", default="off",
+                    choices=("off", "portal-v1"),
+                    help="R18-B5 Scroll of Town Portal vehicle for the retreat; "
+                         "portal-v1 requires l2-town-v1 under coach-v03, "
+                         "--resource-retreat retreat-v1 and --worker/--options")
+    ap.add_argument("--resource-sweep", default="off",
+                    choices=("off", "sweep-v1"),
+                    help="R18-B6 chest/barrel sweep on main L1; sweep-v1 requires "
+                         "l2-town-v1 with --resource-service-policy sustain-loot-v1 "
+                         "and --worker/--options")
+    ap.add_argument("--resource-identify", default="off",
+                    choices=("off", "cain-v1"),
+                    help="R18-B6 Cain identify leg of the loot town trip; cain-v1 "
+                         "requires l2-town-v1 with sustain-loot-v1 and "
+                         "--worker/--options")
+    ap.add_argument("--resource-weapon-upgrade", default="off",
+                    choices=("off", "smith-v1"),
+                    help="R18-B6 Griswold weapon upgrade leg; smith-v1 requires "
+                         "l2-town-v1/full with sustain-loot-v1 and "
+                         "--worker/--options (dry-v1 is deployment-only: it is "
+                         "an observation twin and would mint a training identity "
+                         "for a bit-identical control arm)")
+    ap.add_argument("--hunt-scope", default="all",
+                    choices=("all", "l1-only"),
+                    help="R18-B5 scope of the a10 global hunt; l1-only masks it "
+                         "on main L2+ and requires --worker/--options")
     ap.add_argument("--dive-blocker-recovery", default="off", choices=("off", "adjacent-v1"),
                     help="Explicit bounded a11 blocker combat; requires resource protocol")
     ap.add_argument("--manager-heuristic", default=None,
@@ -10149,11 +10432,28 @@ def _main(resources: _TrainingResources):
             "resource_protocol": (args.resource_protocol if args.resource_protocol != "off" else None),
             "resource_purchase_mode": (args.resource_purchase_mode if args.resource_protocol != "off" else None),
             "resource_service_policy": (args.resource_service_policy if args.resource_service_policy != "legacy-v1" else None),
-            "resource_service_recipe": resource_service_recipe(
-                args.resource_protocol, args.resource_purchase_mode, args.resource_service_policy),
+            "resource_service_recipe": _resource_service_recipe_for(
+                args.resource_protocol, args.resource_purchase_mode, args.resource_service_policy,
+                getattr(args, "worker_time_protocol", "legacy")),
+            # R18-B3: 只为重算 loot 的 expected 配方而带上时钟;它不进
+            # resource 恒等键组(时钟自有 _validate_worker_time_resume_identity)。
+            "worker_time_protocol": (getattr(args, "worker_time_protocol", "legacy")
+                                     if getattr(args, "worker_time_protocol", "legacy") != "legacy"
+                                     else None),
             # R18-B: 与 _training_contract 同款 None-off 写法。
             "resource_retreat": (getattr(args, "resource_retreat", "off")
                                  if getattr(args, "resource_retreat", "off") != "off" else None),
+            # R18-B5: 与 _training_contract 同款 None-off 写法。
+            "resource_portal": (getattr(args, "resource_portal", "off")
+                                if getattr(args, "resource_portal", "off") != "off" else None),
+            # R18-B6: 与 _training_contract 同款 None-off 写法。
+            "resource_sweep": (getattr(args, "resource_sweep", "off")
+                               if getattr(args, "resource_sweep", "off") != "off" else None),
+            "resource_identify": (getattr(args, "resource_identify", "off")
+                                  if getattr(args, "resource_identify", "off") != "off" else None),
+            "resource_weapon_upgrade": (
+                getattr(args, "resource_weapon_upgrade", "off")
+                if getattr(args, "resource_weapon_upgrade", "off") != "off" else None),
         })
 
     dry_curriculum_start_index = None
@@ -10386,6 +10686,15 @@ def _main(resources: _TrainingResources):
         resource_service_policy=getattr(args, "resource_service_policy", "legacy-v1"),
         resource_readiness_law=getattr(args, "resource_readiness_law", "veto-v1"),
         resource_retreat=getattr(args, "resource_retreat", "off"),
+        # R18-B5 (2026-09-07):传送载具与猎怪作用域直通(默认 off/all 不改变
+        # make_env 的任何构造调用)。
+        resource_portal=getattr(args, "resource_portal", "off"),
+        # R18-B6 (2026-09-07):扫箱/鉴定/武器升级直通(默认 off 不改变
+        # make_env 的任何构造调用)。
+        resource_sweep=getattr(args, "resource_sweep", "off"),
+        resource_identify=getattr(args, "resource_identify", "off"),
+        resource_weapon_upgrade=getattr(args, "resource_weapon_upgrade", "off"),
+        hunt_scope=getattr(args, "hunt_scope", "all"),
         dive_blocker_recovery=getattr(args, "dive_blocker_recovery", "off"),
         manager_npz_sha256=manager_npz_sha256,
         worker_npz_sha256=worker_npz_sha256,

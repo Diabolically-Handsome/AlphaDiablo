@@ -249,6 +249,14 @@ class PortalService:
             # A portal is already standing here: crossing it is the "enter"
             # phase's job, not a new cast, and it costs no scroll.
             return "portal_standing"
+        return self.danger_reason(raw)
+
+    def danger_reason(self, raw):
+        """R18-B5 (2026-09-07) 复核修正:只有这三条危险条款(与 RetreatPolicy
+        同法同阈)才是"死亡等价"的点火理由;脚下已有一扇门(portal_standing)
+        与城里的买卷轴/回程跑腿都不是。原先它们内联在 trigger_reason 的尾部,
+        于是工人侧的托管罚没无法只问危险而不问跑腿;抽成一份后阈值仍只存在
+        一处,trigger_reason 的行为逐位不变。"""
         hp, max_hp = int(raw.get("hp", 0)), max(1, int(raw.get("max_hp", 1)))
         if hp <= 0:
             return None
