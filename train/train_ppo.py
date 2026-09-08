@@ -8852,11 +8852,48 @@ class PrefixAuditCallback(BaseCallback):
         super().__init__()
         self.path = pathlib.Path(run_dir) / "worker_prefix_audit.jsonl"
 
+    # R18-B8 (2026-09-08): the per-env prefix ledger carries the WHOLE attempt history with
+    # full state dumps per DIVE opening, so writing it at every rollout boundary grows the
+    # audit file quadratically (6.2 GB by 254k learner steps; the R18-B arm died of
+    # ENOSPC at 02:19). Rollout boundaries now write a compact receipt (counters + the
+    # latest attempt without state dumps); the complete ledger is written once at
+    # training_end. Nothing in training reads this file.
+    _ROLLOUT_ATTEMPT_KEEP = 2
+
+    @classmethod
+    def compact_ledger(cls, per_env):
+        compact = []
+        for env in per_env:
+            if not isinstance(env, dict):
+                compact.append(env)
+                continue
+            row = {k: v for k, v in env.items() if k != "attempts"}
+            attempts = env.get("attempts") or []
+            row["attempts_count"] = len(attempts)
+            kept = []
+            for attempt in attempts[-cls._ROLLOUT_ATTEMPT_KEEP:]:
+                if not isinstance(attempt, dict):
+                    kept.append(attempt)
+                    continue
+                slim = {k: v for k, v in attempt.items() if k not in ("dive_openings", "windows")}
+                openings = attempt.get("dive_openings") or []
+                slim["dive_openings_count"] = len(openings)
+                slim["dive_openings"] = [{k: v for k, v in o.items() if k != "state"}
+                                         for o in openings[-3:] if isinstance(o, dict)]
+                kept.append(slim)
+            row["attempts"] = kept
+            compact.append(row)
+        return compact
+
     def _emit(self, stage):
+        per_env = self.training_env.env_method("get_prefix_ledger")
+        if stage != "training_end":
+            per_env = self.compact_ledger(per_env)
         receipt = {"version": "earned-dive-prefix-audit-v1", "stage": stage,
                    "learner_steps": int(self.num_timesteps),
                    "prefix_training_contract": "excluded",
-                   "per_env": self.training_env.env_method("get_prefix_ledger")}
+                   "ledger_form": "complete" if stage == "training_end" else "compact-v1",
+                   "per_env": per_env}
         with self.path.open("a", encoding="utf-8") as stream:
             stream.write(json.dumps(receipt, ensure_ascii=False, sort_keys=True) + "\n")
 
