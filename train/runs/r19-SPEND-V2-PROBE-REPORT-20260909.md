@@ -1,12 +1,22 @@
 # R19 spend-v2 报告：`resource_purchase_mode = "full-v2"`（把钱花出去）
 
-- 日期：2026-09-08（夜）
+- 日期：2026-09-08（夜）实现；**2026-09-09 复审轮**（§九）
 - 实现者标签：`r19-spend-v2-implementer`
 - 工作树：`/home/laure/r17_work/r19/spend-tree`（Python only；`build -> /home/laure/r17_work/r17-1/build-res`，与主树同一条活桥）
 - 主树 `/home/laure/AlphaDiablo/diablogym` 未被修改（唯一例外：账本 append）。
-  校验：`find <主树>/python <主树>/src <主树>/tests -newermt "2026-09-08 20:00" -name '*.py'` 为空。
-- 补丁：`/home/laure/r17_work/r19/spend2.patch`（11 个改动文件 + 1 个新测试文件，+966 / −49 行）
+  校验：`find <主树>/python <主树>/src <主树>/tests -newermt "2026-09-08 20:00" -name '*.py'` 为空；
+  复审轮后复查 `<主树>/{python,src,tests,train}` 里 2026-09-08 20:00 之后被改的文件，
+  只有 `train/runs/` 下各舰队的报告 / 产物副本，**没有一个源码文件**。
+- 补丁：`/home/laure/r17_work/r19/spend2.patch`——**复审轮后已重生成**：
+  **12 个改动文件 + 1 个新测试文件，+1344 / −42 行**（初版是 11 + 1，+966 / −49）。
 - C++ / 引擎：**一字未改**。`src/resource_protocol.hpp` 只被**读**，用来确认哪些原生购买路径存在。
+
+> **复审轮已完成（2026-09-09）。见 §九。**
+> 复审判定 fix-first：2 高 / 4 中 / 5 低。**每一条都已修**（1 条 low 只需重述报告文字）。
+> **§一 的 `healer_rows_seen` 那句话、§六.2 / §六.3 的整张账本表、§六.4 的 2133010 一行、
+> §七.3 的缺口——都被 §九 的重跑数字取代。** 旧账本是"每局只剩最后一趟"的残页；
+> §九 的账本覆盖每一趟。三条臂的 `rows_sha_v3` 在修前修后**逐位相同**，
+> 也就是说这一轮修的是**观测**，不是**行为**。
 
 ---
 
@@ -61,9 +71,15 @@ if int(ready["belt_heals"]) < int(ready["required_belt_heals"]) and int(ready["b
   这两个 pinned 行**不因购买而消失**（这正是 R18-K2b 把 `HEALER_MIN_HEAL_PRICE = 50`
   当作“Pepin 永远报得出的最便宜即时治疗”的依据，见
   `python/diablogym/resource_weapon_upgrade.py` 模块文档）。
-- 探针侧：ON 臂 39 次 v2 行程，`healer_rows_seen` 每次都 ≥ 4，
-  `stock_limited` 恒 false，`potion_stop` 直方图 `{belt_full: 25, unaffordable: 14}`。
+- 探针侧（**已按 §九 的重跑更正**）：ON 臂 **103** 次 v2 行程里，
+  `healer_rows_seen` 只在 **80** 次上有数（min 3 / max 13）——另外 23 次
+  药水腿在**走到 Pepin 之前**就以 `belt_full` / `no_free_slot` 收手，
+  **根本没数过货**，所以那 23 次没有行数可言。
+  `stock_limited` 103 次全为 false，`stock_empty` **一次没触发**，
+  `potion_stop` 直方图 `{belt_full: 67, unaffordable: 31, 未触及: 5}`。
   **一次都没有**因为“Pepin 没货”或“腰带没空位”停下。
+  （初版这里写的是“39 次行程里每次都 ≥ 4”：39 是残页数，
+  “每次都 ≥ 4”是把 7 个 `null` 当成了有数——**两处都错，已作废**。）
 
 一句话：**钱和腰带容量是墙，货不是**——与主席的裁定一致，缺陷在采购脚本。
 
@@ -295,7 +311,8 @@ weapon_upgrades 29 / weapon_gold 6620 / identify_gold 1600）。
 | 武器腿升级次数 / 金额 | 29 / 6620 | **4 / 710** |
 | 鉴定花费 | 1600 | 1900 |
 
-spend-v2 账本（ON，48 局共 39 次到达新腿的行程）：
+spend-v2 账本（ON）——**下表是初版的残页统计，已被 §九.4 取代，仅留档对照**
+（当时 `SustainLootService._begin_trip` 每趟都把账本清空，所以只剩每局的最后一趟）：
 
 | 类别 | 次数 | 金额 |
 |---|---|---|
@@ -337,7 +354,7 @@ spend-v2 账本（ON，48 局共 39 次到达新腿的行程）：
 | gold_final median / max / total | 78 / 623 / 6855 | **1550** / 3142 / 87040 |
 | 武器腿升级次数 / 金额 | 29 / 6620 | **52 / 14920** |
 
-spend-v2 账本（rich，38 次行程）：药水 73 次 / 3650 金；护甲 43 次 / 5050 金
+spend-v2 账本（rich，**残页统计，已被 §九.5 取代**）：药水 73 次 / 3650 金；护甲 43 次 / 5050 金
 （实现增益 171 = 投影 171）；武器 18 次 / 5230 金；每趟药水 1.921、每趟采购 3.526；
 `stock_limited` 占比 **0.0**；
 **`potion_stop` 38/38 全是 `belt_full`，`armor_stop` 38/38 全是 `no_upgrade`。**
@@ -373,7 +390,7 @@ spend-v2 账本（rich，38 次行程）：药水 73 次 / 3650 金；护甲 43 
    或把三条腿改成按**原生投影收益/金币**统一排序，而不是固定次序。本轮**没做**——
    那会引入一个新阈值，越出今晚的授权。
 2. **`v2_armor` 的回访开销。** 见 6.4；`v2_potions` 空手时也会走一趟铁匠。
-3. **`train/eval_contract.py` 的配方还在说旧话。**
+3. ~~**`train/eval_contract.py` 的配方还在说旧话。**~~ **已在复审轮补上，见 §九.2 F5。**
    `resource_service_recipe("l2-town-v1", "full-v2", "sustain-loot-v1", ...)`
    仍返回 `potion_target: 4`，也没列出三条新阶段。
    这是**元数据**：`eval_contract` 在一局里从不被调用（它只出现在探针的
@@ -383,7 +400,9 @@ spend-v2 账本（rich，38 次行程）：药水 73 次 / 3650 金；护甲 43 
    宁可留一条被测试**钉住**的缺口（`test_eval_contract_admits_the_value` 里有
    一段说明为什么这里断言的是 4），也不要让报告里的 sha 与树里的字节对不上。
 4. **CLI 未打通**：`train_ppo.py` 的 `--resource-purchase-mode` 已经接受 `full-v2`，
-   但没有为它做过一次训练 smoke（**not verified**）。
+   但**至今没有为它做过一次训练 smoke（not verified）**。复审轮补的是另一半：
+   `migrate_loot_candidate.py` 现在**拒绝**把 full-v2 的训练产物铸成标着 `"full"` 的档案
+   （§九.2 F6）。
 5. **原生限制两条**（不是本法的保守）：武器只能是**普通品质**、只能**单手**
    （`IsResourceUpgradeWeapon`，hpp:466-472）。放宽要改 C++。
 6. **护甲只买柜台上的**：`v2_armor` 不看背包里已有的护甲（那是
@@ -412,3 +431,176 @@ spend-v2 账本（rich，38 次行程）：药水 73 次 / 3650 金；护甲 43 
 | 纯净对照副本 | `/home/laure/r17_work/r19/spend-pristine` |
 | 本报告 | `/home/laure/r17_work/r19/SPEND2-REPORT.md` |
 | 账本事件 | `R19_SPEND_V2_IMPLEMENTED` / `R19_SPEND_V2_PROBE_RESULT`（`train/runs/r10-staging/r13_ledger.jsonl`） |
+
+---
+
+## 九、复审轮（2026-09-09 白天）
+
+复审判定 **fix-first**：2 高 / 4 中 / 5 低。**十条全部处理**（其中 1 条 low 只需重述报告文字，
+1 条 low 复审自己判定无需改动）。修完之后：**测试重跑、OFF 回归重跑、ON 与 rich 两臂重跑**。
+
+### 九.1 一句话结论
+
+- **OFF 回归仍然通过**：`rows_sha_v3 = 0e5a1acd2fb2c07cd27eb72f9ecc574322e72f362ef0376b692376d9a99be886`，
+  与认证控制行**逐位相同**（48 行，运行时错误 0）。
+- **修的是观测，不是行为**：三条臂的 `rows_sha_v3` 修前 / 修后**完全一样**——
+  `off 0e5a1acd…`（= 控制）、`on 3144b5da…`、`rich dd4e48c3…`。
+  一局都没有改道。变的是**账本能看见多少**、**停下时说的是哪一堵墙**、
+  以及**契约层怎么给 full-v2 命名**。
+- **账本从残页变成全账**：ON 臂 39 → **103** 页（= 真实进城次数 103，`ledger_covers_every_trip: true`）；
+  rich 臂 38 → **110** 页（= 110）。
+- **武器腿对上账了**：ON 账本 4 件 / 710 金 = 武器腿自己的 4 件 / 710 金；
+  rich 账本 52 件 / 14920 金 = 武器腿的 52 件 / 14920 金（初版分别只记到 2/370 与 18/5230）。
+- **“护甲把武器挤掉”这个结论仍然成立，但初版给的证据是坏的**，已换成能站住的证据（§九.6）。
+
+### 九.2 逐条
+
+| # | 级别 | 位置 | 修法 |
+|---|---|---|---|
+| F1 | high | `resource_sustain_loot.py::_begin_trip` | `spend_v2_trips` 是**整局**的账本，从 `fields(SustainCompletionService)` 的清零循环里豁免（与 `gold_memory` 并列）；三个**每趟**阀门（`_spend_v2_potion_attempts` / `_spend_v2_armor_mutations` / `_spend_v2_armor_pending`）与页游标照旧每趟归零。行程账页改在 **`_begin_trip` 开城时**就开好，于是 `gold_before` 真的是"这趟进城时的钱包"。 |
+| F2 | high | `resource_sustain.py::plan_armor_upgrade` | 拒绝理由的判定次序改成**先看价值再看价钱**（`gain < 1` 在 `price > budget` 之前）。原来一柜子零增益 / 降级但很贵的货会被报成 `armor_stop = over_budget`，把"买不起有用的"和"根本没有用的"混成一格。 |
+| F3 | medium | `resource_protocol.py::spend_v2_book_weapon` + `resource_weapon_upgrade.py:493` | 账页按**行程号**寻址（`spend_v2_record(trip)`），武器腿传自己的 `_served_trip`。原来只在城内行程恰好开着游标时才镜像武器购买。 |
+| F4 | medium | 报告 §一 | 那句"39 次行程 `healer_rows_seen` 每次都 ≥ 4"是假的（有 7 个 `null`、有 1 个 3）。已改写成"**80 / 103 次有数，min 3 max 13；另外 23 次药水腿在survey 之前就收手**"。同时新增 `healer_rows_usable`：**存货主张只对柜台上的行说，不对能用能装的子集说**。 |
+| F5 | medium | `train/eval_contract.py` | `resource_service_recipe(..., "full-v2", "sustain-loot-v1", ...)` 现在返回**自己的**配方：版本串 `l1-two-trip-loot-economy-v1[-r18c]-spend-v2`、`potion_target 8`、`potion_target_source "native_readiness.belt_capacity"`、外加三条新阶段（`potions_to_full_belt` / `best_armor_class_per_slot` / `repeated_weapon_upgrade`）。`"full"` 的配方**一字未动**（分支守卫是 `mode == "full-v2"`）。测试里原来钉住 4 的那条也一并改过来。 |
+| F6 | low | `train/migrate_loot_candidate.py` | `RESOURCE_PURCHASE_MODE` 仍是 `"full"`（这条迁移只铸一个世界），但现在**fail-closed**：源 run 若声明 `full-v2`，`target_contract` 直接 `ValueError`，而不是把它悄悄贴上 `"full"` 的标签。`eval_assembled.py` / `train_ppo.py` 面向操作员的报错串也改成"full or full-v2"（**保持在同一行源码里**，因为 `test_r18b6_training_wiring` 用源码子串把这句话钉住了）。 |
+| F7 | low | `resource_weapon_upgrade.py::start` | `_weapon_repeats` 现在在**每条腿开始时**归零。原来它跨行程累计，`SPEND_V2_WEAPON_CAP = 8` 于是成了"整局预算"而不是报告里写的"每腿阀门"。 |
+| F8 | low | 遥测字段语义 | `gold_before` 改在开城时写；`gold_after` 改在 **`_seal_trip` 封账时**写（因此包含武器腿的花费）；每一笔护甲购买自带 **`reserve`**（当时真正约束它的那个数），行程级 `reserve` 只是最后一次护甲扫描的值——三条都写进了 `resource_protocol.py` 的字段说明。**今晚 133 + 64 笔护甲的 per-purchase reserve 全是 0**（药水腿先把腰带填满，底线就归零了），所以这个字段这一轮没有分辨力，只是不再骗人。 |
+| F9 | low | `resource_sustain.py` v2_potions 停因 | 新函数 `instant_heal_rows()` 只按 `vendor == "healer"` + `heal_kind ∈ (1,2,3,4)` 数**柜台原始行**。`stock_empty` / `stock_limited` 只在**一行即时治疗都没有**时才说；能买不能用/装不下的情形报 `unusable_rows`。今晚 213 次行程里 `unusable_rows` 与 `stock_empty` **都没触发**，`healer_rows_usable` 与 `healer_rows_seen` 处处相等——所以初版"不是缺货"的结论**不受影响**，只是这面旗子以后不会撒谎。 |
+| F10 | low | `probe_r17_deployment.py:724` | 复审自己确认 OFF 臂 `resource.spend_v2` 恒为 `None`、且 `spend_v2` 不在 `V3_ROW_KEYS` 里，sha 不受影响。**未改动**（改它会动探针指纹）。 |
+
+补充的测试（在 F1–F9 之外）：`ReviewRoundReserveTests`（每笔护甲带走当时的 reserve，行程级字段已经往前走了）与
+`ReviewRoundMigrationTests`（迁移只铸 `"full"`；full-v2 源 run 被拒；`full` / `None` 源 run 过得了这道门）。
+
+### 九.3 重跑了什么
+
+| 项目 | 结果 |
+|---|---|
+| 新卷 `tests/test_r19_spend_v2.py` | **38 passed**（26 → 38，新增 12 条复审回归） |
+| 全量 `tests/`（跳过纯净副本上同样收集失败的 3 个文件，`-p no:randomly`） | 改动树 **81 failed / 2442 passed / 99 skipped / 3 errors / 1481 subtests**；纯净副本 **82 failed / 2403 passed / 99 skipped / 3 errors / 1481 subtests** |
+| 失败集合双向 `comm` | **改动树独有 0 条**；纯净副本独有 1 条（`test_resource_identify::…test_the_engine_price_constant_matches_the_python_one`，与本改动无关的老不稳定用例）。多出的 39 条 passed = 本卷 38 + 那条。 |
+| OFF 回归（48 种子 / 3 分片） | `rows_sha_v3` **0e5a1acd…** = 认证控制行，**equal True**，运行时错误 0 |
+| ON-normal（48 / 3） | `rows_sha_v3` **3144b5da…**，与**修前的 ON 臂逐位相同**，运行时错误 0 |
+| ON-rich（诊断，48 / 3） | `rows_sha_v3` **dd4e48c3…**，与**修前的 rich 臂逐位相同**，运行时错误 0 |
+
+产物：`/home/laure/r17_work/r19/spend-probe-rr/`（`spend2-{off,on,rich}-merged.json`、
+`spend2-summary-{off,on,rich}.json`、九份分片 json/log/cmd），
+驱动 `/home/laure/r17_work/r19/spend2_probe_driver_rr.py`，
+测试日志 `/home/laure/r17_work/r19/spend-rr/full-rr-{spend,pristine}.log`（+ `-fails.txt`），
+补丁已重生成：`/home/laure/r17_work/r19/spend2.patch`（**13 个文件，+1344 / −42**）。
+
+一次途中发现的**本轮自伤**，如实记下：F6 把 `train_ppo.py` 的报错串折成两行，
+`test_r18b6_training_wiring::test_the_unreachable_worker_gates_are_still_written`
+（用**源码子串**钉住这句话）当场变红。已把串改回**单行**（新措辞是旧措辞的超串），
+该用例恢复绿色；这条红是在纯净副本对照里抓到的，不是猜的。
+
+### 九.4 ON-normal 的**全账**（取代 §六.2 的账本表）
+
+48 局，**103 次进城 = 103 页账本**（`ledger_covers_every_trip: true`；`loot_trip_count` 合计也是 103）。
+
+| 类别 | 次数 | 金额 |
+|---|---|---|
+| 药水 | **158** | **7900** |
+| 护甲 | **64** | **3950**（实现 AC 增益合计 **239** = 原生投影 **239**，无一笔缺回填） |
+| 武器（账本 = 武器腿自己的数） | **4** | **710** |
+| 每趟药水 | 1.534 | |
+| 每趟采购 | 2.194 | |
+| `stock_limited` 占比 | **0.0**（103 / 103 false） | |
+| `potion_stop` | belt_full 67 / unaffordable 31 / 未触及 5 | |
+| `armor_stop` | over_budget 61 / no_upgrade 36 / 未触及 6 | |
+| `healer_rows_seen` | 80 / 103 次有数，min 3 max 13；`healer_rows_usable` 处处相等 | |
+| `armor_rows_seen` | 97 / 103 次有数 | |
+
+内部对账（103 页逐页核）：**腰带增量 = 买的药水数，103 / 103**；
+**AC 增量 = 各件增益之和，103 / 103**；每瓶 50 金；无负余额；
+九份分片日志里 `RuntimeError` **0** 次、"unexplained cash movement" **0** 次。
+
+新腿总花费 **11850 金**（药水 7900 + 护甲 3950）；
+整局钱包口径 `loot_cumulative.gold_spent` **15442（OFF）→ 20848（ON）**，
+`purchases` **161 → 341**。
+
+### 九.5 ON-rich 的**全账**（取代 §六.3 的账本表；仍然是**诊断**，不是法条）
+
+48 局，**110 次进城 = 110 页账本**。
+
+| 类别 | 次数 | 金额 |
+|---|---|---|
+| 药水 | **225** | **11250** |
+| 护甲 | **133** | **16255**（实现增益 **541** = 投影 **541**） |
+| 武器 | **52** | **14920**（= 武器腿总额） |
+| 每趟药水 / 每趟采购 | 2.045 / 3.727 | |
+| `stock_limited` | **0.0** | |
+| `potion_stop` | **belt_full 104 / 104**（另 6 页未触及该腿） | |
+| `armor_stop` | **no_upgrade 104 / 104** | |
+
+初版说的"38 / 38 全是 belt_full 且 no_upgrade"在全账下**更强了**：
+**104 次里 104 次**都是"腰带买满、柜台上再没有一件能提高护甲的货"，
+`unaffordable` **一次没有**，`over_budget` **一次没有**。
+**天花板确实在格里斯沃德的存货上，不在采购脚本上。**
+
+### 九.6 "护甲把武器挤掉"——把坏证据换成好证据
+
+初版的证据是 `armor_stop = over_budget 28 / 39`。这条现在**不能用**，两个理由都能量出来：
+
+1. F2 修之前，那一格混进了"柜台上根本没有能提升护甲的货、而且它还很贵"的行程；
+2. 修完之后 `over_budget` 是 61 / 103，**其中 38 次那一趟护甲一分钱没花**——
+   "护甲吃光了余额"在超过一半的 over_budget 行程里根本没发生。
+
+换成能站住的三条（全部来自本轮重跑的行）：
+
+- **新腿确实把钱花掉了**：103 趟共 **11850 金**走药水 + 护甲（每趟中位 100 金）；
+  **60 / 103 趟**封账时钱包**不足 50 金**。
+- **武器腿因此连**触发**都触发不了**：它的触发条件是"扣掉底线之后，柜台上还有一件
+  原生批准、买得起、伤害更高的单手普通武器"（`weapon_trigger_plan`）。
+  控制臂 105 趟里触发 **29** 次；ON 臂 103 趟里只触发 **4** 次。
+  ON 臂封账时还留着 ≥ **170 金**（控制臂武器成交价的**最低**价）的只有 **12 / 103** 趟，
+  留着 ≥ 200 金（中位价）的只有 **8** 趟。
+- **武器腿一旦跑起来，从来不是被 reserve 卡住的**：ON 臂 8 次 attempt 的结束理由是
+  `weapon_equipped 4 / weapon_no_candidate 4`，**没有一次**是预算或底线。
+
+所以准确的说法是：**新腿在武器腿被评估之前就把余额花掉了，于是武器腿整趟不开工**
+（29 → 4 次升级、6620 → 710 金、首降伤害 11 的局数 5 → 0）。
+这不是 reserve 太紧，是**次序**——与 §七.1 的建议是同一件事，本轮**仍然没做**（那要引入新阈值）。
+
+### 九.7 2133010 更正（取代 §六.4 里那一行）
+
+初版写"ON 臂 v2 账页 1 趟 0 笔采购，法条近乎空操作"。**错**——那是残页。
+全账下这一局跑了 **3 趟**：
+
+| 趟 | gold_before → after | 药水 | 护甲 | 停因 |
+|---|---|---|---|---|
+| 1 | 100 → 196 | **1 瓶 / 50 金**（腰带 7 → 8） | 0（`armor_rows_seen` 12） | potion `belt_full` / armor `no_upgrade` |
+| 2 | 196 → 113 | 0 | **1 件 / 300 金，AC 12 → 20**（投影 20） | potion `belt_full` / armor `no_upgrade` |
+| 3 | 113 → 161 | 0 | 0（`armor_rows_seen` 15） | potion `belt_full` / armor `no_upgrade` |
+
+它仍然死在 L2（clvl 4、AC 20、伤害 7，控制是 AC 7、伤害 11）：
+**这一局是"护甲换伤害"这笔交易的活样本**，不是空操作。
+2133002 那一行**不变**：ON 与控制**逐位相同**（559 拍、clvl 1、21 kills）——它死在第一次进城之前。
+
+### 九.8 复审轮之后仍然打开的缺口
+
+1. **ON-normal 依旧排除不了变坏**：`saved 3 / lost 6 / net −3`、UCB95 **0.16424**。
+   本轮**没有改任何行为**，所以这个数字与初版一致，**问题原样留着**。
+2. **次序仍是固定的**（药水 → 护甲 → 武器）。§七.1 的两个建议（把武器底线扩成
+   "药水底线 + 一件最便宜的已获批武器"，或按原生投影收益/金币统一排序）
+   **都会引入新阈值**，仍然越出今晚的授权。
+3. **训练 smoke 仍未做**（not verified）。`migrate_loot_candidate` 现在会**拒绝** full-v2 源 run，
+   所以下一轮要么给它注册 full-v2，要么明确说"full-v2 只评测不训练"。
+4. `v2_armor` 的回访开销（§七.2）**未动**。
+5. 全量套件里被跳过的 3 个文件仍然**没跑过**（在纯净副本上同样收集失败）。
+6. 主树 `train/runs/r19-reports/` 下的 `SPEND2-REPORT.md` / `spend2.patch` 副本是
+   **11:50 的旧版**（本轮按宪法只对主树做了账本 append，没有覆写那两个副本）；
+   权威版本在 `/home/laure/r17_work/r19/`。
+
+### 九.9 本轮产物
+
+| 用途 | 路径 |
+|---|---|
+| 修复脚本 | `/home/laure/r17_work/r19/spend-rr/{fix_spend2.py,fix_tests.py,fix3.py}`、`/home/laure/r17_work/r19/spend-rr2/{add_tests.py,fix4.py}` |
+| 复审探针驱动 | `/home/laure/r17_work/r19/spend2_probe_driver_rr.py` |
+| 三臂重跑原始行 | `/home/laure/r17_work/r19/spend-probe-rr/spend2-{off,on,rich}-merged.json` |
+| 三臂重跑汇总 | `/home/laure/r17_work/r19/spend-probe-rr/spend2-summary-{off,on,rich}.json` |
+| 全量测试日志 / 失败集合 | `/home/laure/r17_work/r19/spend-rr/full-rr-{spend,pristine}.log` / `-fails.txt` |
+| 邻域测试日志 | `/home/laure/r17_work/r19/spend-rr/nbhd-round2{,-pristine}.log` |
+| 复算脚本 | `/home/laure/r17_work/r19/spend-rr2/{an_rr.py,an_rr2.py}`（输出 `an_rr.out`） |
+| 重生成的补丁 | `/home/laure/r17_work/r19/spend2.patch`（13 文件，+1344 / −42） |
+| 账本事件 | `R19_SPEND_V2_REVIEW_ROUND` |
