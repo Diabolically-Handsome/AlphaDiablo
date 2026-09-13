@@ -1,0 +1,22 @@
+{
+  "video_filename": "butcher-first-kill.mp4",
+  "sha256": "cf601f09094a5ce12e1a2b1ce30980ae9c57cfed49e9d7c4f277e5a3533ac9a3",
+  "bytes": 5616300,
+  "width": 1280,
+  "height": 832,
+  "fps": 10,
+  "encoded_frames": 896,
+  "duration_seconds": 89.6,
+  "audio": false,
+  "raw_snapshot_frames": 351,
+  "encounter_snapshot_frames": 333,
+  "encounter_first_step": 26173,
+  "encounter_final_step": 26505,
+  "engine_ticks_per_bridge_step": 4,
+  "engine_ticks_per_second": 20,
+  "progression": "selected snapshots; not continuous or real-time",
+  "encounter": "every bridge step, each displayed for 0.2 seconds",
+  "recording_method": "fork-child native renderer; parent replay audited unchanged",
+  "overlays": "informational HUD; not the original game UI",
+  "preview": "every fifth encounter frame at 5 fps; 5x speed"
+}

@@ -1,0 +1,74 @@
+--- a/src/diablogym.cpp
++++ b/src/diablogym.cpp
+@@ -108,6 +108,7 @@
+ bool gInGame = false;
+ // Explicit, between-episode experiment switch. The legacy protocol stays off.
+ bool gGearWearScoring = false;
++bool gGearHitScoring = false;
+ bool gStartupTick = true; // 对应 RunGameLoop 里的 gbGameLoopStartup
+ int gHeroClass = 0;       // HeroClass::Warrior
+ int gStallPrints = 0;     // 逻辑失速诊断打印限额
+@@ -585,6 +586,16 @@
+ 	    reserve, std::numeric_limits<uint32_t>::max()));
+ }
+ 
++// Private Diablo/Butcher task recipe: a fixed public AC50 reference, not an
++// omniscient read of the current monster. Apply the native hit floor/cap AFTER
++// armor subtraction; capping raw accuracy first discards useful equipment.
++constexpr int GearReferenceArmor = 50;
++int GearHitChance(int rawPiercingToHit, int enemyArmor)
++{
++	return static_cast<int>(std::clamp<int64_t>(
++	    static_cast<int64_t>(rawPiercingToHit) - enemyArmor, 5, 95));
++}
++
+ uint32_t ScoreGearCombatProfile(
+     const GearCombatProfile &profile, uint32_t durabilityReserve)
+ {
+@@ -619,7 +630,9 @@
+ 	    + nonnegative(profile.demonMin)
+ 	    + nonnegative(profile.demonMax);
+ 	const int meleeHitBasisPoints
+-	    = std::clamp(profile.meleePiercingToHit, 5, 95) * 100;
++	    = (gGearHitScoring
++	            ? GearHitChance(profile.meleePiercingToHit, GearReferenceArmor)
++	            : std::clamp(profile.meleePiercingToHit, 5, 95)) * 100;
+ 
+ 	auto repeatedHitBasisPoints = [](int rawHit, int attempts) {
+ 		const int hit = std::clamp(rawHit, 5, 95);
+@@ -3061,7 +3074,7 @@
+ 		EnsureEngineProcess("configure_field_equipment");
+ 		if (gInGame && enabled != gFieldEquipment)
+ 			throw std::runtime_error("field equipment may change only between episodes");
+-		if (enabled && gGearWearScoring)
++		if (enabled && (gGearWearScoring || gGearHitScoring))
+ 			throw std::invalid_argument("field-v1 requires legacy global gear scoring");
+ 		gFieldEquipment = enabled;
+ 	});
+@@ -3073,13 +3086,26 @@
+ 	    py::arg("index"), py::arg("seed_hi"), py::arg("seed_lo"),
+ 	    py::arg("create_info"), py::arg("base_id"));
+ #include "gear_wear_fixture.hpp"
++	m.def("configure_gear_hit_experiment", [](bool enabled) {
++		EnsureEngineProcess("configure_gear_hit_experiment");
++		if (gInGame && enabled != gGearHitScoring)
++			throw std::runtime_error("hit scoring may change only between episodes");
++		if (enabled && (gGearWearScoring || gFieldEquipment))
++			throw std::invalid_argument("hit-ac50-v1 cannot combine wear or field candidates");
++		gGearHitScoring = enabled;
++	});
++	m.def("probe_gear_hit_probability", &GearHitChance,
++	    py::arg("raw_piercing_to_hit"), py::arg("enemy_armor"));
+ 	m.def("configure_gear_wear_experiment", [](bool enabled) {
+ 		EnsureEngineProcess("configure_gear_wear_experiment");
+ 		if (gInGame && enabled != gGearWearScoring)
+ 			throw std::runtime_error("gear scoring may change only between episodes");
++		if (enabled && gGearHitScoring)
++			throw std::invalid_argument("wear candidate cannot combine hit-ac50-v1");
+ 		gGearWearScoring = enabled;
+ 	});
+ 	m.def("gear_scoring_protocol", []() {
++		if (gGearHitScoring) return "hit-ac50-v1";
+ 		return gGearWearScoring ? "wear-pressure30-v2" : "legacy";
+ 	});
+ 	m.def("engine_config", []() -> py::object {

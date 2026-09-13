@@ -2,6 +2,28 @@
 
 [![CI](https://github.com/Diabolically-Handsome/AlphaDiablo/actions/workflows/ci.yml/badge.svg)](https://github.com/Diabolically-Handsome/AlphaDiablo/actions/workflows/ci.yml)
 
+## New milestone: a reproducible Butcher kill — September 13, 2026
+
+**From a level-1 Warrior start to a level-6 Butcher kill, finishing alive at
+83/110 HP. No preloaded endgame gear or injected XP, equipment or potions.**
+
+[![Watch the native-rendered replay](docs/milestones/2026-09-13-butcher-first-kill/media/poster.png)](https://github.com/Diabolically-Handsome/AlphaDiablo/releases/tag/butcher-first-kill-20260913)
+
+[Watch/download the video](https://github.com/Diabolically-Handsome/AlphaDiablo/releases/tag/butcher-first-kill-20260913)
+· [Results, method and evidence](docs/milestones/2026-09-13-butcher-first-kill/README.md)
+· [中文说明](docs/milestones/2026-09-13-butcher-first-kill/README.zh-CN.md)
+
+This is a **hybrid AI development milestone**, not a pure-RL, world-first or
+stable-win-rate claim. A behavior-cloned combat policy, an RL-derived exploration
+policy, and scripted resource/equipment management work together. The existing
+gear macro includes automatic identification without a separate identification
+charge. The candidate won one of two reused development starts; repeating the
+winning start reproduced the result, but is not an independent success sample.
+The recording is an audited re-render of a later unchanged replay. No active
+certified model is replaced by this evidence/media publication.
+
+---
+
 **A fast, deterministic Diablo I reinforcement-learning environment** built on
 [DevilutionX](https://github.com/diasurgical/devilutionX), plus the training
 pipeline that took a PPO agent from *hiding in a corner* to *opening doors,
