@@ -4,6 +4,10 @@
 
 ## New milestone: a reproducible Butcher kill — September 13, 2026
 
+**Video update:** [smooth 60-fps replay](https://github.com/Diabolically-Handsome/AlphaDiablo/releases/download/butcher-first-kill-20260913/butcher-first-kill-smooth-60fps.mp4)
+· [How it was recorded and checked / 流畅版说明](docs/milestones/2026-09-13-butcher-smooth-video/README.md).
+The original low-frame-rate recording and evidence are preserved.
+
 **From a level-1 Warrior start to a level-6 Butcher kill, finishing alive at
 83/110 HP. No preloaded endgame gear or injected XP, equipment or potions.**
 

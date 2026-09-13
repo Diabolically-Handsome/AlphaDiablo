@@ -1,0 +1,27 @@
+{
+  "video_filename": "butcher-first-kill-smooth-60fps.mp4",
+  "sha256": "8648b52c8df5167823243f19ca06c0a248a4f5783d192125bbddd48cf122bb04",
+  "bytes": 12203621,
+  "width": 1280,
+  "height": 832,
+  "fps": 60,
+  "duration_seconds": 90.0,
+  "encoded_frames": 5400,
+  "native_ticks": 1700,
+  "rendered_frames": 5100,
+  "encounter_rendered_frames": 4260,
+  "simulation_hz": 20,
+  "engine_sub_tick_fractions": [
+    0,
+    42,
+    85
+  ],
+  "denominator": 128,
+  "opening_still_seconds": 2,
+  "final_hold_seconds": 3,
+  "audio": false,
+  "gameplay_interpolation": "none; all actual ticks are recorded",
+  "display_interpolation": "native engine animation/camera only; no optical flow or generative frames",
+  "original_video_preserved": true,
+  "verification_sha256": "f8e3fa486b17e42a48eb9895f99ba8ef7fb2eae324238f4b21a8be904ad22551"
+}

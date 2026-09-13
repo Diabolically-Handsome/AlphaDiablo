@@ -1,0 +1,30 @@
+{
+  "status": "VERIFIED_SMOOTH_NATIVE_REPLAY",
+  "seed": 2133013,
+  "frames": 5100,
+  "native_ticks": 1700,
+  "native_calls": 106964,
+  "row_exact": true,
+  "task_exact": true,
+  "physical_audits_exact": {
+    "spending-audit.json": true,
+    "gear-history.json": true,
+    "fight-audit.json": true,
+    "hit-score.json": true,
+    "combat-profiles.json": true,
+    "wear-audit.json": true,
+    "priority-events.json": true,
+    "field-events.json": true,
+    "torso-events.json": true
+  },
+  "new_training_steps": 0,
+  "independent_validation": false,
+  "simulation_hz": 20,
+  "presentation_fps": 60,
+  "progress_fractions": [
+    0,
+    42,
+    85
+  ],
+  "seconds": 233.589299398
+}

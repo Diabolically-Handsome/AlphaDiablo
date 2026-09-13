@@ -1,0 +1,19 @@
+{
+  "schema": "alphadiablo-smooth-video-evidence/1",
+  "original_capture_verification_sha256": "f8e3fa486b17e42a48eb9895f99ba8ef7fb2eae324238f4b21a8be904ad22551",
+  "local_recorder_source_sha256": {
+    "build.py": "b47180fd712545bc305b28e06aeed6e745a750a9cd60b2bd982bd3142a0dc20c",
+    "capture.py": "a1168bd29d2a89f5d0e4a3d8daa1c5727e30dcb95fd6ec2cbe2890da7897e120",
+    "encode.py": "7f6f0486c5dcc60fa37363eecba352cdc87d05a698cc53e45a7d156dadd4ac3e",
+    "export.py": "1ecce6b05e4d9e15a9fbe244f4c44c3cc43a7a263b2282062812bcace52e68f1",
+    "render_smooth.cpp": "ead9a950299ed41cc34b0730b34ddddf64739be36d2b79c39883a8da68babb41",
+    "tick_observer.cpp": "af62c4fd06fdea558bf5be0af7780ac4746bab2e85e54dcece8fb4b9eebb7aec"
+  },
+  "files": {
+    "capture-verification.json": "f8e3fa486b17e42a48eb9895f99ba8ef7fb2eae324238f4b21a8be904ad22551",
+    "frame-index.json": "b8073b4ee99898d2197cedce0ae94addf274799ae9a5e8adbeb9a5f057d4d3bc",
+    "media.json": "6d0e161f4f00e18db97974852d76aa1be1eff459332cb651407b548e52a89065",
+    "README.md": "3973c61c8d57579afa3043ee813bd872ec3140dba0f42c80fbc300eeb381c15b",
+    "verify.py": "de8b15856935ca1267721550b3b614558f95699812af9d47368b0a249246e88b"
+  }
+}
