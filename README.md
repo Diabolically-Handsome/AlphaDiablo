@@ -2,7 +2,28 @@
 
 [![CI](https://github.com/Diabolically-Handsome/AlphaDiablo/actions/workflows/ci.yml/badge.svg)](https://github.com/Diabolically-Handsome/AlphaDiablo/actions/workflows/ci.yml)
 
-## New milestone: a reproducible Butcher kill — September 13, 2026
+## New milestone: a normal-start Skeleton King kill — September 21, 2026
+
+**Level-1 Warrior → level 7 → Skeleton King defeated, hero alive at 96/96 HP.**
+Normal difficulty, normally acquired equipment and supplies; no injected XP,
+equipment, gold or potions. The native kill record and completed quest agree.
+
+[![Watch the final Skeleton King encounter](docs/milestones/2026-09-21-skeleton-king/media/poster.png)](https://github.com/Diabolically-Handsome/AlphaDiablo/releases/tag/skeleton-king-first-kill-20260921)
+
+[Watch the continuous 85.3-second final fight](https://github.com/Diabolically-Handsome/AlphaDiablo/releases/download/skeleton-king-first-kill-20260921/skeleton-king-final-fight-60fps.mp4)
+· [Release and opening video](https://github.com/Diabolically-Handsome/AlphaDiablo/releases/tag/skeleton-king-first-kill-20260921)
+· [Method, evidence and limitations](docs/milestones/2026-09-21-skeleton-king/README.md)
+· [中文说明](docs/milestones/2026-09-21-skeleton-king/README.zh-CN.md)
+
+An **assistant strategist + frozen RL worker + explicit navigation/service
+execution** achieved this in one paused, segmented world; the opening used
+Ministral 3 8B before the handoff to the RL worker. No weights were updated.
+The strategist ordered all seven healing drinks in the final encounter.
+Two earlier retreats remain in the complete command history. The released
+videos cover the opening and final encounter, **not the complete 46:59 run**.
+This is not a pure-RL, world-first, stable-win-rate or full-game-clear claim.
+
+## Previous milestone: a reproducible Butcher kill — September 13, 2026
 
 **Video update:** [smooth 60-fps replay](https://github.com/Diabolically-Handsome/AlphaDiablo/releases/download/butcher-first-kill-20260913/butcher-first-kill-smooth-60fps.mp4)
 · [How it was recorded and checked / 流畅版说明](docs/milestones/2026-09-13-butcher-smooth-video/README.md).

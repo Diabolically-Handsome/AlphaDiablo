@@ -1,0 +1,28 @@
+{
+  "passed": true,
+  "first_tick": 54682,
+  "last_tick": 56387,
+  "frames": 5118,
+  "seconds": 85.3,
+  "native_fps": 20,
+  "display_fps": 60,
+  "all_ticks_contiguous": true,
+  "native_replay_verified": true,
+  "source_journal_sha256": "eedf89a8f06e4e127d63090c5ecdfc49ff8c9be0f8afa08661b134cffa78156f",
+  "video_sha256": "56efe19fe003b3d1f182f15728f9f0f9f78efc0afafbbdba0c3819e3ab4f9a19",
+  "stream": {
+    "width": 640,
+    "height": 352,
+    "avg_frame_rate": "60/1",
+    "duration": "85.300000",
+    "nb_read_frames": "5118"
+  },
+  "no_new_decisions": true,
+  "no_training": true,
+  "thinking_pauses_excluded": true,
+  "audio": false,
+  "viewport_only": true,
+  "full_run_video": false,
+  "encoding": "H264 CRF18; not pixel-lossless",
+  "subtitle_note": "Optional separate subtitles: floored HP and belt-only healing item count"
+}

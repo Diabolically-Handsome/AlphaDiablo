@@ -1,0 +1,14 @@
+{
+  "source_export_manifest_sha256": "d7ac95341be8d6805540218053d80f1759bb60883de987058ab24fe005ff38c1",
+  "original_journal_sha256": "eedf89a8f06e4e127d63090c5ecdfc49ff8c9be0f8afa08661b134cffa78156f",
+  "original_pause_sha256": "a3d7d045e307e3376689c44977e064c2f9c268971dacdd51faac1e1f14975bc4",
+  "original_success_audit_sha256": "67609aa4ae086c457cb91b5592a1797b1b5a1d72df8c8dadca0c493bf9b25dea",
+  "original_teacher_goals_sha256": "f18fbe2134421815a941a9631166263486ecb9f7055431f8f39f70e6cbd9ddf7",
+  "checked_immutable_source_bindings": 74,
+  "checked_preserved_old_media": 12,
+  "public_export_paths_redacted": true,
+  "native_journal_and_checkpoint_byte_exact": true,
+  "raw_native_save_and_game_assets_included": false,
+  "model_weights_included": false,
+  "full_engine_reexecution_requires_separate_runtime_and_legally_owned_game_assets": true
+}
