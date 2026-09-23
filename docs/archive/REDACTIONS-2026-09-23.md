@@ -4,6 +4,13 @@
 既没有带姓名的 macOS 用户名路径，也没有 Linux/Windows 的本机用户名路径。
 历史提交没有改写，旧提交保持原样。
 
+`tools/check_private_terms.py` 负责守住这一点。它扫描全部入库文件，包括二进制文件、编码内容
+（base64、base32、hex、`%xx`、`\u` 转义、HTML 实体）、压缩流和 zip 成员，也能扫描一个提交的文件树、说明和作者（`--rev`）。
+要查的词连哈希也不入库，因为短名字的哈希用名字表一查就能反推出来。词的 SHA-256 放在库外，
+通过环境变量 `PRIVATE_TERM_SHA256` 或 `PRIVATE_TERMS_FILE` 指向的本地文件传给脚本。两者都没有时，脚本报告 SKIP，
+`tests/test_private_terms.py` 里的仓库扫描也记为跳过，不算通过。要新增一个词，运行
+`python tools/check_private_terms.py --hash -`，从标准输入读入这个词，把算出的哈希加进库外的列表。
+
 ## 内容改变的文件
 
 下面的文件只把本机路径里的用户名文件夹换成了 `/Users/user/`，其余字节不变。SHA-256 因此改变。
