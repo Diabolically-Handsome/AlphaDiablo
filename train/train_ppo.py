@@ -9897,7 +9897,7 @@ def _main(resources: _TrainingResources):
                     help="v22 恶魔臂:296 维平面(停滞钟入观测),配 --bc-init 用")
     ap.add_argument("--worker", action="store_true",
                     help="v23:FARM 操作脑在位训练(WorkerWindowEnv,Discrete(15) 掩 11/12;"
-                         "须配 --algo mppo --gamma 1.0,见 docs/PREREG-v23.md)")
+                         "须配 --algo mppo --gamma 1.0,见 docs/prereg/PREREG-v23.md)")
     ap.add_argument("--manager-npz",
                     default=str(pathlib.Path(__file__).resolve().parent
                                 / "models" / "v22-h-manager" / "policy.npz"),

@@ -1,4 +1,4 @@
-"""v32「喝药主权」驱动(docs/PREREG-v32-喝药主权.md 条款唯一执行者;
+"""v32「喝药主权」驱动(docs/prereg/PREREG-v32-喝药主权.md 条款唯一执行者;
 run_v31_neweducation.py 骨架 × run_v30_relay.py 腿谱 定向融合)。
 
 克隆差异表(PREREG-v32 逐条):
@@ -41,7 +41,8 @@ LEDGER = V32 / "gate_ledger.jsonl"
 EVAL = RUNS / "eval-assembled"
 
 KING_ZIP = ROOT / "train" / "models" / "v28-worker-leg1" / "model_final.zip"
-KING_ZIP_SHA = "2f7bc9dd810956c3feeb330575c9a03ddff0b476333ac429a411935985b04f42"
+# 2026-09-23: re-saved with neutral local paths (content otherwise unchanged); was 2f7bc9dd810956c3
+KING_ZIP_SHA = "0c6f014da19c3bf27b208d55adc76be13fcad8bc5f744b95f4f743be97426434"
 KING_NPZ = ROOT / "train" / "models" / "v28-worker-leg1" / "policy.npz"
 KING_NPZ_SHA = "976b6c05edaa0a32bb30bd372782e1201c72b029cedcbb3a5bf2361d34f27f8a"
 H_NPZ = ROOT / "train" / "models" / "v22-h-manager" / "policy.npz"
@@ -66,9 +67,11 @@ V31_REF = {
 # R2 锚(桥条款消费:strict json + 全文 sha;协议已变禁全式复验)
 R2_BRIDGE = {
     "throne": (EVAL / "r2-throne.json",
-               "2324648a416cbc0cb858858b006b5f797ee9c63422f13cb86c86462948f28c63"),
+               # 2026-09-23: redacted with neutral local paths (content otherwise unchanged); was 2324648a416cbc0c
+               "1390a72db6a527a90238d37b2935adc0872c13bc0cc609e356bd72a86752fc41"),
     "script": (EVAL / "r2-script.json",
-               "71c298e05b6bf19ea94ced26c68b67b9e05303f22637357b610b15c6fb21a7f7"),
+               # 2026-09-23: redacted with neutral local paths (content otherwise unchanged); was 71c298e05b6bf19e
+               "ede6c0507e4010649f426de43748b27c2117faff373341f4b39b827b5e4645f5"),
 }
 
 LEG_STEPS = 499_712
@@ -301,7 +304,7 @@ def preflight(events):
              if l != "?? train/leaderboard-assembled-v3.md"]
     require(not dirty, f"W1: 工作树不净 {dirty}")
     head = git("rev-parse", "HEAD")
-    for path in ("docs/PREREG-v32-喝药主权.md", "train/run_v32_sovereign.py"):
+    for path in ("docs/prereg/PREREG-v32-喝药主权.md", "train/run_v32_sovereign.py"):
         touch = git("log", "-1", "--format=%H", "--", path)
         require(touch == head, f"W1: {path} 最后触碰 != HEAD")
     freezes = [e for e in events if e.get("event") == "FREEZE_SHA"]

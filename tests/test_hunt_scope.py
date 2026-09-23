@@ -2,6 +2,7 @@
 import importlib
 import sys
 import types
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -12,7 +13,7 @@ def _env_class():
     if "_r18g_pkg.env" in sys.modules:
         return sys.modules["_r18g_pkg.env"].DiabloGymEnv
     pkg = types.ModuleType("_r18g_pkg")
-    pkg.__path__ = ["/home/laure/AlphaDiablo/diablogym/python/diablogym"]
+    pkg.__path__ = [str(Path(__file__).resolve().parents[1] / "python" / "diablogym")]
     sys.modules["_r18g_pkg"] = pkg
     bridge = types.ModuleType("_r18g_pkg.bridge")
     for name in ("WM_DIABPREVLVL", "WM_DIABNEXTLVL", "WM_DIABRTNLVL"):

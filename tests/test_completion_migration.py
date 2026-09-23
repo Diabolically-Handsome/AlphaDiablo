@@ -19,8 +19,8 @@ import migrate_resource_candidate as legacy
 
 IMPL = "a" * 64
 POLICY = "b" * 64
-DEFAULT_PARENT = Path("/home/laure/r20_sustain_20260904/candidate-earned-v6-terminal/train/runs/"
-                      "r20-earned-depth24-terminal-four-rollout-s2168000/model_candidate.zip")
+DEFAULT_PARENT = Path.home() / ("r20_sustain_20260904/candidate-earned-v6-terminal/train/runs/"
+                                "r20-earned-depth24-terminal-four-rollout-s2168000/model_candidate.zip")
 
 
 @pytest.fixture(scope="module")

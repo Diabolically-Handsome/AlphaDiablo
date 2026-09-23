@@ -15,7 +15,7 @@
  "source_changed_during_run": [],
  "note": "法证探针,非考卷;readiness-v1 脚本经理部署形态",
  "row_semantics": "died 行主列 = 死亡前最后存活快照(工人拍/存活收窗),post_death = 局末尸检值;存活行主列 = 局末值,post_death=None",
- "worker_zip": "/home/laure/AlphaDiablo/diablogym/train/runs/r16-arm-a-constitution/model_candidate.zip",
+ "worker_zip": "/home/user/AlphaDiablo/diablogym/train/runs/r16-arm-a-constitution/model_candidate.zip",
  "seeds": "2114000-2114015",
  "max_steps": 6000,
  "manager": "readiness-v3",

@@ -1,4 +1,4 @@
-"""B1「捆绑评测基建」驱动(docs/PREREG-B1-捆绑评测基建.md 条款唯一执行者;
+"""B1「捆绑评测基建」驱动(docs/prereg/PREREG-B1-捆绑评测基建.md 条款唯一执行者;
 克隆 run_v32_sovereign.py 骨架,常量区承继 v32 全部 W7 常量 + PRIORS 四档
 sha + v32 CASE_RUNTIME 五 sha)。
 
@@ -59,7 +59,8 @@ EVAL = RUNS / "eval-assembled"
 
 # ---- W7 工件钉死(全文 sha 驱动器冻结常量;失配即 P4 不发车) ----
 KING_ZIP = ROOT / "train" / "models" / "v28-worker-leg1" / "model_final.zip"
-KING_ZIP_SHA = "2f7bc9dd810956c3feeb330575c9a03ddff0b476333ac429a411935985b04f42"
+# 2026-09-23: re-saved with neutral local paths (content otherwise unchanged); was 2f7bc9dd810956c3
+KING_ZIP_SHA = "0c6f014da19c3bf27b208d55adc76be13fcad8bc5f744b95f4f743be97426434"
 KING_NPZ = ROOT / "train" / "models" / "v28-worker-leg1" / "policy.npz"
 KING_NPZ_SHA = "976b6c05edaa0a32bb30bd372782e1201c72b029cedcbb3a5bf2361d34f27f8a"
 KING_STEPS = 3_497_984
@@ -1068,7 +1069,7 @@ def preflight(events):
              if l != "?? train/leaderboard-assembled-v3.md"]
     pre(not dirty, f"W1: 工作树不净 {dirty}")
     head = git("rev-parse", "HEAD")
-    for path in ("docs/PREREG-B1-捆绑评测基建.md", "train/run_b1_infra.py"):
+    for path in ("docs/prereg/PREREG-B1-捆绑评测基建.md", "train/run_b1_infra.py"):
         touch = git("log", "-1", "--format=%H", "--", path)
         pre(touch == head, f"W1: {path} 最后触碰 != HEAD")
     freezes = [e for e in events if e.get("event") == "FREEZE_SHA"]

@@ -1,4 +1,4 @@
-"""v25-ALT「换届选举」驱动(docs/PREREG-v25.md 条款唯一执行者)。
+"""v25-ALT「换届选举」驱动(docs/prereg/PREREG-v25.md 条款唯一执行者)。
 
 流程:G-A0(仪器回归)→ M-warm 权重包 → 两臂串行训练(v22-H 原配方)→
 G-A0m(逐臂 npz parity)→ 提前放弃闸(16 种子双 <75)→ 两臂满 32 →
@@ -37,9 +37,11 @@ WARM_SD = ROOT / "train" / "models" / "v22-h-manager" / "policy_full_sd.pt"
 WARM_MANIFEST = WARM_SD.with_name(f"{WARM_SD.name}.manifest.json")
 ARCHIVE = RUNS / "eval-assembled" / "v24-G3-leg7.json"   # 参考行 92.0(逐种子)
 ARCHIVE_SHA = "22d9442257d3a3c79feb5b40918890917772e11036e4026ca4d3cc2005318359"
-LEG7_ZIP_SHA = "ac65d4eb91fdb678f38ba7ea502812353c7c83afa0551e89ea4a12b13d55e781"
+# 2026-09-23: re-saved with neutral local paths (content otherwise unchanged); was ac65d4eb91fdb678
+LEG7_ZIP_SHA = "fb9cd6f58c5e212202e1579457234288acdfe156b292c5971bebd1bac8b63d9b"
 LEG7_NPZ_SHA = "a31fa7c6b18b5c3593f4e1753d97aac9386689aa6ad8b158c526b673c57fbc2a"
-V22H_ZIP_SHA = "f3b579d2b0c9b613045692435a46702d1a9e8de8fc62e155c651f565d8bd6f1a"
+# 2026-09-23: re-saved with neutral local paths (content otherwise unchanged); was f3b579d2b0c9b613
+V22H_ZIP_SHA = "9dcf40b061bcb40b5548f30587d726758f2ea27df745dd7fb418c44adaa81c38"
 
 ABANDON = 75.0        # 提前放弃闸(双臂 16 种子均 < 此值)
 EXPECTED_STEPS = 40_192  # ceil(40_000 / (64×4)) × (64×4)
@@ -228,7 +230,7 @@ def main():
 
 def _main():
     preflight()
-    log({"event": "start", "prereg": "docs/PREREG-v25.md v2",
+    log({"event": "start", "prereg": "docs/prereg/PREREG-v25.md v2",
          "paired_line": PAIRED_DIFF, "wins_line": PAIRED_WINS})
 
     # ---- G-A0:仪器回归(npz 工人 + 默认经理 ≡ v24-G3-leg7 存档,32/32)----

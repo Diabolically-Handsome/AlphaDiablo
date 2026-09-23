@@ -1043,7 +1043,7 @@ class LiveWarmStartIdentityTests(unittest.TestCase):
         The test above varies what the three laws SAY; a receipt minted before
         this pass does not mention them at all -- its ``target_world`` carries
         the six pre-B6 keys where this tree writes nine (the real artifact is
-        ``/home/laure/r17_work/r18/m2-smoke-4096/candidate/manifest.json``).
+        ``~/r17_work/r18/m2-smoke-4096/candidate/manifest.json``).
         ``validate_inherited_receipt`` compares ``target_world`` by equality
         against a freshly re-derived world, so it must refuse.  If a later pass
         ever makes ``world_of``/``target_world`` tolerant of the missing keys

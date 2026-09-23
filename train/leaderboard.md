@@ -28,7 +28,7 @@ channel) cannot be re-evaluated under this protocol.
 ² Built to cut deaths, and it did: 17/32 (v11) → 10/32 under this protocol.
 But mean kills regressed and 4,715 of its 4,740 drink presses hit an empty
 belt — the belt count is not in the observation, so the policy cannot learn
-press discipline. Forensics in docs/DESIGN.md lesson 11.
+press discipline. Forensics in docs/design/DESIGN.md lesson 11.
 
 ³ New champion (obs 286→290: belt count + nearest floor heal; door-aware
 pickup macro). The controlled companion to footnote ²: same drink button,
@@ -83,4 +83,4 @@ lesson 15. v13 keeps the crown on mean kills and descent.
 Long-episode probe (max_steps 1500 → 3000, same protocol): per-seed
 kills are bit-identical for both v6 and v10 at both horizons (32/32
 seeds each) — extra time buys zero additional kills; see
-docs/DESIGN.md lesson 9.
+docs/design/DESIGN.md lesson 9.

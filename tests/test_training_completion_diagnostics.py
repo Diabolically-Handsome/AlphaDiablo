@@ -75,7 +75,7 @@ class CompletionReportTests(unittest.TestCase):
         self.assertEqual(got, report(pg=True))
 
     def test_original_frozen_predicate_agrees_across_failure_combinations(self):
-        frozen = Path('/home/laure/r20_sustain_20260904/candidate-earned-v2/train/train_ppo.py')
+        frozen = Path.home() / 'r20_sustain_20260904/candidate-earned-v2/train/train_ppo.py'
         payload = frozen.read_bytes()
         self.assertEqual(hashlib.sha256(payload).hexdigest(),
                          '8dce3c4c776fa349c6338117aa795ccd91af2dc878b97f3447f3529628863915')

@@ -5,7 +5,7 @@ description = "AlphaDiablo: a fast, deterministic Diablo I reinforcement-learnin
 readme = "README.md"
 requires-python = ">=3.11"
 license = { file = "LICENSE" }
-authors = [{ name = "Lawrence Grey" }]
+authors = [{ name = "Diabolically-Handsome" }]
 keywords = ["reinforcement-learning", "gymnasium", "diablo", "devilutionx", "game-ai"]
 
 dependencies = [

@@ -1,4 +1,4 @@
-"""v29「经理再教育」驱动(docs/PREREG-v29.md 条款唯一执行者;run_v25_election.py 定向改造)。
+"""v29「经理再教育」驱动(docs/prereg/PREREG-v29.md 条款唯一执行者;run_v25_election.py 定向改造)。
 
 克隆差异表(PREREG-v29 D2 逐条对应):
 - 班底:工人 = v28-worker-leg1(zip+npz);锚 = v28-G3-leg1.json(112.4,sha 钉死)
@@ -41,7 +41,8 @@ W_ZIP = str(ROOT / "train" / "models" / "v28-worker-leg1" / "model_final")  # ev
 W_NPZ = ROOT / "train" / "models" / "v28-worker-leg1" / "policy.npz"
 ARCHIVE = EVAL / "v28-G3-leg1.json"        # 参考行 112.4(现任 v22-H × 同一工人,逐种子)
 ARCHIVE_SHA = "6fc6a44c7862424ab5f71ff3a5031adfd34a3e33f9f4f2f8aee781a07711e59d"
-W_ZIP_SHA = "2f7bc9dd810956c3feeb330575c9a03ddff0b476333ac429a411935985b04f42"
+# 2026-09-23: re-saved with neutral local paths (content otherwise unchanged); was 2f7bc9dd810956c3
+W_ZIP_SHA = "0c6f014da19c3bf27b208d55adc76be13fcad8bc5f744b95f4f743be97426434"
 W_NPZ_SHA = "976b6c05edaa0a32bb30bd372782e1201c72b029cedcbb3a5bf2361d34f27f8a"
 
 STEPS = 160_000       # 4× v22-H 自身预算(时钟锚 27.5 决策/s ≈ 97 分钟/臂)
@@ -223,7 +224,7 @@ def _main():
     preflight()
     ref = read_comparable_anchor()
     floor_repro = round(ref["agg"]["ret_mean"] * 85.0 / 92.0, 1)
-    log({"event": "start", "prereg": "docs/PREREG-v29.md", "steps": STEPS,
+    log({"event": "start", "prereg": "docs/prereg/PREREG-v29.md", "steps": STEPS,
          "paired_line": PAIRED_DIFF, "wins_line": PAIRED_WINS,
          "floor": floor_repro})
     ref_rows = by_seed(ref["rows"])

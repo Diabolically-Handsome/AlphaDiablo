@@ -2,7 +2,7 @@
 「4 核认证纯度(推荐)」)。自 run_r7_combat_recovery.py(rev23,
 commit 0129d5f)派生:剥离修正案五/六收养机构(R7 历史专属),
 单配方 risk64 复现认证,B 门原生化,死亡尺换精确条件 McNemar
-(r8_statistics,边距 0.10)。设计全文:docs/PREREG-R8-certification.md
+(r8_statistics,边距 0.10)。设计全文:docs/prereg/PREREG-R8-certification.md
 """
 
 from __future__ import annotations
@@ -127,7 +127,8 @@ PUBLISHED_DIR = TRAIN / "runs" / "r8-certification-published"
 PUBLISHED_MODEL_PATH = PUBLISHED_DIR / "model_final.zip"
 PUBLISHED_RECEIPT_PATH = PUBLISHED_DIR / "r8_publication_receipt.json"
 V28_ZIP = TRAIN / "models" / "v28-worker-leg1" / "model_final.zip"
-V28_SHA256 = "2f7bc9dd810956c3feeb330575c9a03ddff0b476333ac429a411935985b04f42"
+# 2026-09-23: re-saved with neutral local paths (content otherwise unchanged); was 2f7bc9dd810956c3
+V28_SHA256 = "0c6f014da19c3bf27b208d55adc76be13fcad8bc5f744b95f4f743be97426434"
 V28_ACTOR_PARAMETER_SHA256 = (
     "4b205c7cd0358014b36ddf592374a82512e2816741de262fb0d0dd840a662ff8"
 )
@@ -4165,7 +4166,7 @@ def command_adopt_replication() -> None:
         "amendment": "R8-1",
         "post_hoc": True,
         "approval": {
-            "designer": "Lawrence",
+            "designer": "Diabolically-Handsome",
             "wording": "立案续跑(推荐)",
             "date": "2026-07-29",
         },
@@ -4173,7 +4174,7 @@ def command_adopt_replication() -> None:
             "复现门 observed_not_higher 肢为逐池死亡点估计,持平真值下"
             "单池通过率 ~50-58%(掷硬币),三腿 2/3 总功效 ~19%——先于"
             "候选数据即近不可达(死亡肢功效第四次同型缺陷,纯代数可离线"
-            "复核,docs/PREREG-R8-certification.md 修正案 R8-一节)。改为"
+            "复核,docs/prereg/PREREG-R8-certification.md 修正案 R8-一节)。改为"
             "双池合并灾难档(超额死亡 ≤ +5pp;持平真值逐腿功效 91-95%,"
             "门级 ~98.6%);终考判据原封。终考池 2_122 未消费未读,"
             "认证裁决力不受污染。"

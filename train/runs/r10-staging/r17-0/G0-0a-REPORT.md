@@ -17,11 +17,11 @@
 
 | 项 | 值 |
 |---|---|
-| Python 加载点 | `python/diablogym/__init__.py:10` `_build_dir = Path(__file__).resolve().parents[2] / "build"`;`:14-27` `spec_from_file_location("_diablogym", build/_diablogym<EXT_SUFFIX>)`。**不在** site-packages;`.venv/.../__editable__.diablogym-0.1.0.pth` 仅含 `/home/laure/AlphaDiablo/diablogym/python` |
-| 桥 | `/home/laure/AlphaDiablo/diablogym/build/_diablogym.cpython-312-x86_64-linux-gnu.so` — sha256 `b9be56d3780512d6b0625e1f75f9da92c8e77f67d3965042f58d97290ed6145e`,402744 B,mtime **2026-07-27 07:38:25.200 -0400**,RUNPATH `/home/laure/AlphaDiablo/diablogym/build/engine` |
+| Python 加载点 | `python/diablogym/__init__.py:10` `_build_dir = Path(__file__).resolve().parents[2] / "build"`;`:14-27` `spec_from_file_location("_diablogym", build/_diablogym<EXT_SUFFIX>)`。**不在** site-packages;`.venv/.../__editable__.diablogym-0.1.0.pth` 仅含 `/home/user/AlphaDiablo/diablogym/python` |
+| 桥 | `/home/user/AlphaDiablo/diablogym/build/_diablogym.cpython-312-x86_64-linux-gnu.so` — sha256 `b9be56d3780512d6b0625e1f75f9da92c8e77f67d3965042f58d97290ed6145e`,402744 B,mtime **2026-07-27 07:38:25.200 -0400**,RUNPATH `/home/user/AlphaDiablo/diablogym/build/engine` |
 | 引擎 | `build/engine/liblibdevilutionx_so.so` — sha256 `5da1594bfb3669b774461040669de7a1d59a53666ed43dede1035091f8e4e5d8`,8285336 B,mtime 2026-07-27 07:38:23.656 -0400 |
 | 档案一致性 | `r10-cand-a.json meta.runtime.bridge.sha256 = b9be56d3…`,`engine.sha256 = 5da1594b…`(与磁盘一致) |
-| 旧 CMakeCache | `DEVILUTIONX_SRC=/tmp/alphadiablo-dev/devilutionX`(已消失);`CMAKE_C_COMPILER=/usr/bin/cc`,`CMAKE_CXX_COMPILER=/usr/bin/c++`;`CMAKE_BUILD_TYPE=Release`;`Unix Makefiles`;cmake 3.28.3;`-flto=auto`(DISABLE_LTO=OFF);Python `/home/laure/AlphaDiablo/.venv/bin/python` 3.12.3;pybind11 3.0.4;`BUILD_TESTING=ON`(取 `libdevilutionx_so` 目标) |
+| 旧 CMakeCache | `DEVILUTIONX_SRC=/tmp/alphadiablo-dev/devilutionX`(已消失);`CMAKE_C_COMPILER=/usr/bin/cc`,`CMAKE_CXX_COMPILER=/usr/bin/c++`;`CMAKE_BUILD_TYPE=Release`;`Unix Makefiles`;cmake 3.28.3;`-flto=auto`(DISABLE_LTO=OFF);Python `/home/user/AlphaDiablo/.venv/bin/python` 3.12.3;pybind11 3.0.4;`BUILD_TESTING=ON`(取 `libdevilutionx_so` 目标) |
 | 引擎检出 | `~/alphadiablo-dev/devilutionX` HEAD `34c4cfc2e733240ac717f23bba2def887c793008`("Add missing <fmt/format.h> includes");工作树 12 个修改文件 |
 | 补丁核对 | 复现 build.sh:51-64 的临时 index 法(`read-tree HEAD` + `apply --cached patches/000{1..8}` → `diff --stat` 为空;`ls-files --others` 为空):**工作树 = HEAD + 恰好 8 个登记补丁**,已在位,本次无需(也未)写共享检出 |
 
@@ -35,13 +35,13 @@
 
 `~/r17_work/B/configure.sh`(verbatim 关键行):
 ```
-cmake -S /home/laure/AlphaDiablo/diablogym -B /home/laure/r17_work/B/build-g0a -G "Unix Makefiles" \
+cmake -S /home/user/AlphaDiablo/diablogym -B /home/user/r17_work/B/build-g0a -G "Unix Makefiles" \
   -DCMAKE_BUILD_TYPE=Release \
   -DCMAKE_C_COMPILER=/usr/bin/cc -DCMAKE_CXX_COMPILER=/usr/bin/c++ \
-  -DDEVILUTIONX_SRC=/home/laure/alphadiablo-dev/devilutionX \
-  -Dpybind11_DIR=/home/laure/AlphaDiablo/.venv/lib/python3.12/site-packages/pybind11/share/cmake/pybind11 \
-  -DPython_EXECUTABLE=/home/laure/AlphaDiablo/.venv/bin/python \
-  -DALPHADIABLO_EXPECTED_PYTHON_EXECUTABLE=/home/laure/AlphaDiablo/.venv/bin/python \
+  -DDEVILUTIONX_SRC=/home/user/alphadiablo-dev/devilutionX \
+  -Dpybind11_DIR=/home/user/AlphaDiablo/.venv/lib/python3.12/site-packages/pybind11/share/cmake/pybind11 \
+  -DPython_EXECUTABLE=/home/user/AlphaDiablo/.venv/bin/python \
+  -DALPHADIABLO_EXPECTED_PYTHON_EXECUTABLE=/home/user/AlphaDiablo/.venv/bin/python \
   -DALPHADIABLO_EXPECTED_PYTHON_EXT_SUFFIX=.cpython-312-x86_64-linux-gnu.so \
   -DALPHADIABLO_EXPECTED_PYTHON_INCLUDE_DIR=/usr/include/python3.12
 ```
@@ -51,11 +51,11 @@ cmake -S /home/laure/AlphaDiablo/diablogym -B /home/laure/r17_work/B/build-g0a -
 
 configure.log 摘录:
 ```
--- Found Python: /home/laure/AlphaDiablo/.venv/bin/python (found version "3.12.3") found components: Interpreter Development.Module
--- Found pybind11: /home/laure/AlphaDiablo/.venv/lib/python3.12/site-packages/pybind11/include (found version "3.0.4")
+-- Found Python: /home/user/AlphaDiablo/.venv/bin/python (found version "3.12.3") found components: Interpreter Development.Module
+-- Found pybind11: /home/user/AlphaDiablo/.venv/lib/python3.12/site-packages/pybind11/include (found version "3.0.4")
 -- Configuring done (31.8s)  -- Generating done (0.4s)
 CONFIGURE_RC=0
-executable=/home/laure/AlphaDiablo/.venv/bin/python
+executable=/home/user/AlphaDiablo/.venv/bin/python
 include_dirs=/usr/include/python3.12
 ext_suffix=.cpython-312-x86_64-linux-gnu.so
 real 0m33.380s
@@ -93,7 +93,7 @@ assets laid out: build-g0a/engine/devilutionx.app/Contents/Resources (209 files)
 **桥(逐节 `objcopy -j` + `cmp`)**:`.text`(279490 B,sha256 `4909fd22857fe52f…`)、`.rodata`(21787)、`.data`、`.data.rel.ro`、
 `.eh_frame`、`.eh_frame_hdr`、`.gcc_except_table`、`.dynsym`、`.gnu.hash`、`.gnu.version(_r)`、`.rela.dyn/.plt`、`.plt*`、`.got*`、
 `.init/.fini(_array)`、`.note.gnu.property` **全部 identical**;仅 `.dynstr`(13939 vs 13932 B:RUNPATH 字符串
-`/home/laure/AlphaDiablo/diablogym/build/engine` → `/home/laure/r17_work/B/build-g0a/engine`)、`.dynamic`(同因)、
+`/home/user/AlphaDiablo/diablogym/build/engine` → `/home/user/r17_work/B/build-g0a/engine`)、`.dynamic`(同因)、
 `.note.gnu.build-id`(2610eb3b… → a71da7d3…)不同。规范化反汇编 diff = 0 行(仅文件名头)。
 `nm -D` 464/464 动态符号逐条相同(`BRIDGE_DYNSYM_IDENTICAL`,`BRIDGE_EXPORTS_IDENTICAL`,54 个已定义导出);NEEDED 列表相同。
 
@@ -108,7 +108,7 @@ assets laid out: build-g0a/engine/devilutionx.app/Contents/Resources (209 files)
 在 **`${CMAKE_SOURCE_DIR}`**(= 顶层 diablogym 项目,非引擎目录)执行 `git log -1 --format=%h`。2026-07-27 构建时
 diablogym/.git 不存在(docs/OPS-windows-feasibility.md「缺失:…diablogym/.git」)故无后缀;现在存在故带 `-3d9aafa`。
 `.rodata` 字符串路径规范化后仅剩该横幅两处不同;源码路径字符串两边各 20 处(`/tmp/alphadiablo-dev/…` vs
-`/home/laure/alphadiablo-dev/…`,`__FILE__`/断言文本),长度 +7 解释 `.rodata` 其余增量。
+`/home/user/alphadiablo-dev/…`,`__FILE__`/断言文本),长度 +7 解释 `.rodata` 其余增量。
 
 **补充(§7)钉 `-DVERSION_SUFFIX=-Release` 的第二次构建**(`build-g0a-pin`,未用于行为证明):引擎 `.text` 大小回到 4867970,
 横幅恰为 `1.6.0-dev-Release`,**规范化反汇编与已安装逐行相同(diff 仅文件名头)**,`.rodata` 规范化字符串 diff 为空,
@@ -124,20 +124,20 @@ diablogym/.git 不存在(docs/OPS-windows-feasibility.md「缺失:…diablogym/.
 
 加载路径核验(verbatim):
 ```
-$ cd ~/r17_work/B && PYTHONPATH=/home/laure/r17_work/B/root/python .venv/bin/python -c "import diablogym, sys; print(diablogym.__file__); print(diablogym.bridge.__file__)"
-/home/laure/r17_work/B/root/python/diablogym/__init__.py
-/home/laure/r17_work/B/root/build/_diablogym.cpython-312-x86_64-linux-gnu.so
-identity_check.py: bridge.path=/home/laure/r17_work/B/build-g0a/_diablogym…so sha256 8a337256…;engine.path=/home/laure/r17_work/B/build-g0a/engine/liblibdevilutionx_so.so sha256 3324e294…
+$ cd ~/r17_work/B && PYTHONPATH=/home/user/r17_work/B/root/python .venv/bin/python -c "import diablogym, sys; print(diablogym.__file__); print(diablogym.bridge.__file__)"
+/home/user/r17_work/B/root/python/diablogym/__init__.py
+/home/user/r17_work/B/root/build/_diablogym.cpython-312-x86_64-linux-gnu.so
+identity_check.py: bridge.path=/home/user/r17_work/B/build-g0a/_diablogym…so sha256 8a337256…;engine.path=/home/user/r17_work/B/build-g0a/engine/liblibdevilutionx_so.so sha256 3324e294…
   assets sha256 661adc715d6b4ccdb3e87cb6373b745e134a08677af3e78d82e396ec67ff155c file_count 209(== 锚)
   python_protocol sha256 14e2bbc7790d7c552ee13030b48fd6a35695a5dff603664bd5009033769a0e4b(== r13-rebake-devil-a 当前冻结 bundle)
-  loaded_engine_binary_path OK -> /home/laure/r17_work/B/build-g0a/engine/liblibdevilutionx_so.so
+  loaded_engine_binary_path OK -> /home/user/r17_work/B/build-g0a/engine/liblibdevilutionx_so.so
   mapped native images = [build-g0a/_diablogym…so, build-g0a/engine/liblibdevilutionx_so.so]   (无仓库 build/ 映像)
   identity stable after import = True
 ```
 评测命令(两次,`run_eval.sh`):
 ```
-train/eval_assembled.py --worker /home/laure/AlphaDiablo/diablogym/train/runs/r9-reeducation/staging/worker.zip \
-  --manager-npz /home/laure/AlphaDiablo/diablogym/train/runs/r10-econ-mgr/policy.npz \
+train/eval_assembled.py --worker /home/user/AlphaDiablo/diablogym/train/runs/r9-reeducation/staging/worker.zip \
+  --manager-npz /home/user/AlphaDiablo/diablogym/train/runs/r10-econ-mgr/policy.npz \
   --manager-policy-observation-view raw-v4 --reward-economy v2 --seeds 2114000-2114007 --tag r17-g0a-rebuilt-8
   … --seeds 2114008-2114063 --tag r17-g0a-rebuilt-56
 ```

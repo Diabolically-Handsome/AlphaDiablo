@@ -1,4 +1,4 @@
-"""R9「认证班底经理再教育」驱动(docs/PREREG-R9-manager-reeducation.md 条款唯一执行者;
+"""R9「认证班底经理再教育」驱动(docs/prereg/PREREG-R9-manager-reeducation.md 条款唯一执行者;
 run_v29_relection.py 定向改造克隆,非薄包装)。
 
 克隆差异表(PREREG-R9 逐条对应):
@@ -908,7 +908,7 @@ def preflight():
                 f"目标档案已存在:{t}(重启协议:先 .void)")
     for arm in ARMS:
         require(not (RUNS / arm).exists(), f"运行目录残留:{arm}(重启协议:先归档)")
-    log({"event": "preflight_ok", "prereg": "docs/PREREG-R9-manager-reeducation.md",
+    log({"event": "preflight_ok", "prereg": "docs/prereg/PREREG-R9-manager-reeducation.md",
          "protocol_version": PROTOCOL_VERSION,
          "worker_zip_sha16": W_ZIP_SHA[:16], "staged_sha16": staged_sha[:16],
          "m29_sha16": M29_SHA[:16],
@@ -936,7 +936,7 @@ def main():
 
 def _main():
     preflight()
-    log({"event": "start", "prereg": "docs/PREREG-R9-manager-reeducation.md",
+    log({"event": "start", "prereg": "docs/prereg/PREREG-R9-manager-reeducation.md",
          "steps": STEPS, "arms": {n: e for n, e in ARMS.items()},
          "pools": {"a": seeds_arg(POOL_A), "b": seeds_arg(POOL_B),
                    "final": seeds_arg(POOL_FINAL)},

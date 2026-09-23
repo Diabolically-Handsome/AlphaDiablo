@@ -14,7 +14,7 @@
 #   3) 日志重定向:stdout+stderr 追加到 <case-dir>/driver.<UTC时间戳>.log,
 #      并落 launch receipt(PID/命令/日志路径)到 <case-dir>/launch_receipt.json。
 #
-# 心跳检查细则(值守操作项,阈值成文;详见 docs/OPS-launcher.md):
+# 心跳检查细则(值守操作项,阈值成文;详见 docs/protocol/OPS-launcher.md):
 #   训练腿在跑时:train/runs/<leg>/progress.jsonl 的 mtime 距今
 #     > 120 秒 = WARN(采样降速/卡窗),> 600 秒 = DEAD(按 P 线处置);
 #   驱动器评测/导出阶段:driver 日志 mtime 距今 > 900 秒 = WARN,
@@ -77,4 +77,4 @@ echo "已点火(孤儿化+caffeinate -is):PID=$PID"
 echo "  日志: $LOG"
 echo "  回执: $RECEIPT"
 echo "  值守核验: ps -o ppid= -p $PID   # 壳退出后应为 1"
-echo "  心跳细则: docs/OPS-launcher.md(progress.jsonl mtime 120s WARN / 600s DEAD)"
+echo "  心跳细则: docs/protocol/OPS-launcher.md(progress.jsonl mtime 120s WARN / 600s DEAD)"

@@ -1,4 +1,4 @@
-"""v24-KL「皮筋」:LeashedMaskablePPO(docs/PREREG-v24.md D1/D4)。
+"""v24-KL「皮筋」:LeashedMaskablePPO(docs/prereg/PREREG-v24.md D1/D4)。
 
 总损失 = PPO 原三项 + β · CE(π_T, π_θ),其中:
   - 教师 π_T = 冻结 BC 网(train/runs/bc-worker/policy_sd.pt,G1 证与脚本零分歧);

@@ -1,5 +1,5 @@
 """v33「内容案:课⑤干窗课程 × ④乙正样本」驱动
-(docs/PREREG-内容案-课⑤x④乙.md rev4 条款唯一执行者;骨架 = run_b1_infra.py 式
+(docs/prereg/PREREG-内容案-课⑤x④乙.md rev4 条款唯一执行者;骨架 = run_b1_infra.py 式
 (冻结常量块 / stage_done 幂等 / pre() 预检 / --smoke 独立入口)+
 run_v32_sovereign.py 之 exam_or_adopt/biteq/腿循环/胜者裁定段)。
 
@@ -96,7 +96,8 @@ EXIT_CODES = {
 # W7 工件钉死(全文 sha 驱动器冻结常量;失配即 P4 不发车)
 # ======================================================================
 KING_ZIP = ROOT / "train" / "models" / "v28-worker-leg1" / "model_final.zip"
-KING_ZIP_SHA = "2f7bc9dd810956c3feeb330575c9a03ddff0b476333ac429a411935985b04f42"
+# 2026-09-23: re-saved with neutral local paths (content otherwise unchanged); was 2f7bc9dd810956c3
+KING_ZIP_SHA = "0c6f014da19c3bf27b208d55adc76be13fcad8bc5f744b95f4f743be97426434"
 KING_NPZ = ROOT / "train" / "models" / "v28-worker-leg1" / "policy.npz"
 KING_NPZ_SHA = "976b6c05edaa0a32bb30bd372782e1201c72b029cedcbb3a5bf2361d34f27f8a"
 KING_STEPS = 3_497_984
@@ -146,11 +147,11 @@ W_PIN = {
                         "3b4ef1681134d51d61c3081195fc620ea4ad4d7c7f034597b9f92782cabe6a19"),
     "b1-ref8k-science": (EVAL / "b1-ref8k-science.json",
                          "e23a83383b8e286d9baa85ee9142970103457b0b5a3b249c4f0826b184910ef4"),
-    "AUDIT-内容案档案审计": (ROOT / "docs" / "AUDIT-内容案档案审计.md",
+    "AUDIT-内容案档案审计": (ROOT / "docs" / "forensics" / "AUDIT-内容案档案审计.md",
                      "433f3a970d799b786815feadc9bd96eae839d1e08de2b75724a04684b571166d"),
     # 升格审查卷(未决 E 履行件)+ g1_results.json:NEWLINE_ADOPT 两条件载荷之
     # 真源档;g1_results sha 补入 W-PIN 系该卷肢一成立条件之明文选项。
-    "AUDIT-G1双标签肢升格审查": (ROOT / "docs" / "AUDIT-内容案-G1双标签肢升格审查.md",
+    "AUDIT-G1双标签肢升格审查": (ROOT / "docs" / "forensics" / "AUDIT-内容案-G1双标签肢升格审查.md",
                         "8e4be0148aa3760a5bb1a7de0514685e3f032d8c05fa77112329d30f2897c7e0"),
     "g1_results.json": (RUNS / "recal-g1" / "g1_results.json",
                         "aa03addea7003e2f6f5b2e9fb595dd75179d8a5cddb14b478c0073c6a48e74b0"),
@@ -312,7 +313,7 @@ OC_ALPHA_COLUMNS = {"worker_leg_old_alpha_mean": 0.357,
                     "note": "OC old_vs_new 四列随呈(升格审查肢一限定 6)"}
 
 # G1 核认①② 文本逐字(升格审查卷两条件;NEWLINE_ADOPT 事件载荷位真源 =
-# docs/PREREG-G1-闸线重标定.md rev3 核认修正章,经亲证逐字转录)
+# docs/prereg/PREREG-G1-闸线重标定.md rev3 核认修正章,经亲证逐字转录)
 G1_VERIFY_NOTE_1 = ("若无后案跨池施考之在册义务,跨池覆盖系前瞻裁量而非既存义务;"
                     "当前资格语境(H×7000)下本线之全部操作性余量(1→8)系域外档"
                     "(K1)独供")
@@ -812,7 +813,7 @@ def preflight(events, smoke: bool = False):
              if l != "?? train/leaderboard-assembled-v3.md"]
     pre(not dirty, f"W1: 工作树不净 {dirty}")
     head = git("rev-parse", "HEAD")
-    for path in ("docs/PREREG-内容案-课⑤x④乙.md", "train/run_v33_content.py"):
+    for path in ("docs/prereg/PREREG-内容案-课⑤x④乙.md", "train/run_v33_content.py"):
         touch = git("log", "-1", "--format=%H", "--", path)
         pre(bool(touch), f"W1: {path} 未入库(无公证 commit)")
     freezes = [e for e in events if e.get("event") == "FREEZE_SHA"]
