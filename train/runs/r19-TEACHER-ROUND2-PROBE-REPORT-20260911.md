@@ -38,10 +38,10 @@
 - 角色：teacher 第二轮实施者
 - 裁定依据：主席 2026-09-10 ~23:00 批准的第二轮臂（ledger `R19_TEACHER_ROUND2_PLAN`）；
   主席已入睡，授权自主执行**且仅执行**本轮。
-- 工作树：`/home/laure/r17_work/r19/oracle2-tree`
+- 工作树：`/home/user/r17_work/r19/oracle2-tree`
   （`rsync -a --exclude __pycache__ --exclude .pytest_cache` 自**只读**的第一轮
-  `oracle-tree`；`build -> /home/laure/r17_work/r17-1/build-res`）
-- 只读且零写入：主树 `/home/laure/AlphaDiablo/diablogym`、`m2-merge`、`oracle-tree`（见 §十二）
+  `oracle-tree`；`build -> /home/user/r17_work/r17-1/build-res`）
+- 只读且零写入：主树 `/home/user/AlphaDiablo/diablogym`、`m2-merge`、`oracle-tree`（见 §十二）
 - 新代码只有一个模块 `train/runs/r10-staging/teacher_v2.py` 与它自己的
   `test_teacher_v2.py`。**第一轮的 `teacher_v1.py` / `test_teacher_v1.py` 一字未动**
   （sha256 与 `oracle-tree` 逐位相同，§十二）。**没有任何 C++／引擎改动，没有动任何已注册法条。**
@@ -226,11 +226,11 @@
 ## 四、回归（第一道闸）
 
   parent: got f33f7af5f236f1fc... expected f33f7af5f236f1fc... equal=True all_refs_agree=True
-      ref /home/laure/r17_work/r19/m2rr-probe/rr-set-rows.json: f33f7af5f236f1fc
-      ref /home/laure/r17_work/r19/m2-probe/m2-set-rows.json: f33f7af5f236f1fc
-      ref /home/laure/r17_work/r19/teacher-probe/parent-rows.json: f33f7af5f236f1fc
+      ref /home/user/r17_work/r19/m2rr-probe/rr-set-rows.json: f33f7af5f236f1fc
+      ref /home/user/r17_work/r19/m2-probe/m2-set-rows.json: f33f7af5f236f1fc
+      ref /home/user/r17_work/r19/teacher-probe/parent-rows.json: f33f7af5f236f1fc
   oracle: got 1507c3be68a0da29... expected 1507c3be68a0da29... equal=True all_refs_agree=True
-      ref /home/laure/r17_work/r19/teacher-probe/oracle-rows.json: 1507c3be68a0da29
+      ref /home/user/r17_work/r19/teacher-probe/oracle-rows.json: 1507c3be68a0da29
 
 两道闸**都过**，而且 `parent` 的 SHA 同时与三个独立的既有产物一致
 （`m2rr-probe/rr-set-rows.json`、`m2-probe/m2-set-rows.json`、
@@ -910,7 +910,7 @@ ledger 只能追加不能改，所以更正写在 `R19_TEACHER_ROUND2_RESULT` �
 
 ### 16.3 复核轮的读写纪律
 
-- 主树 `/home/laure/AlphaDiablo/diablogym`：283 条指纹 ＋ `build` 符号链接 ＋ `_diablogym*.so`
+- 主树 `/home/user/AlphaDiablo/diablogym`：283 条指纹 ＋ `build` 符号链接 ＋ `_diablogym*.so`
   与 `r19/main-tree-fingerprint-before-round2.txt` **diff 为空**
   （`round2/main-tree-fingerprint-review-before.txt` 与 `…-review-after.txt`）；
   唯一新于 23:14 的主树文件仍然只有 `r13_ledger.jsonl`。
@@ -951,9 +951,9 @@ ledger 只能追加不能改，所以更正写在 `R19_TEACHER_ROUND2_RESULT` �
 ---
 
 *本报告由 teacher 第二轮实施者写于 2026-09-10 深夜至 2026-09-11 凌晨。
-所有数字来自 `/home/laure/r17_work/r19/round2/probe/` 下本轮自产的文件，
+所有数字来自 `/home/user/r17_work/r19/round2/probe/` 下本轮自产的文件，
 表格由 `round2/teacher2_extra.py` 机器生成；
-第一轮的数字来自原样保留的 `/home/laure/r17_work/r19/teacher-probe/`；
+第一轮的数字来自原样保留的 `/home/user/r17_work/r19/teacher-probe/`；
 没有出处的地方一律写了「未验证」。
 复核轮（§十六）于 2026-09-11 凌晨在同一棵树上执行，
 六条臂全部重跑、两道回归闸重过，单元卷 85 项全过。*

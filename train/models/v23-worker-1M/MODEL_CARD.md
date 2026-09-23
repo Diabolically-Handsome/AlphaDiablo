@@ -12,8 +12,8 @@ v23 章与 docs/PREREG-v23.md。入库理由:它是本仓库第一个在脚本�
 | 架构 | MaskablePPO MlpPolicy(64,64),γ=1.0,观测 298 维,Discrete(15) 掩 11/12 |
 | 训练 | WorkerWindowEnv 在位(冻结 v22-H 经理),BC 热启动 + freeze 200k,ent 0.005,run `ppo-worker-v23`(2026-07-10 夜) |
 | 世界 | v20 规则;工资 = 原始奖励 − 换层奖金(剥薪套利修复,全程换层率 0.0) |
-| SHA-256 前缀 | `b6e1cbdd0137feca` |
-| 随附 | sentinel.jsonl(500k 步粒度哨兵:干/鲜配比、动作份额、终止原因谱) |
+| SHA-256 前缀 | `104f72fd8368bc23`(2026-09-23 重新保存:仅 zip 内 `data` 元数据里的本机路径换成中性路径,权重与优化器状态逐字节不变;原始文件见提交 c1ffced,原前缀 `b6e1cbdd0137feca`) |
+| 随附 | sentinel.jsonl(500k 步粒度哨兵:干/鲜配比、动作份额、终止原因谱;原始训练日志,2026-09-23 起不在主干,见提交 c1ffced) |
 
 ## 复现
 

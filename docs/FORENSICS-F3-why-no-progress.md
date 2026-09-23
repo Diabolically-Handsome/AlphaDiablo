@@ -74,7 +74,7 @@ leg 预算仍 266k 步(稀有事件暴露缺口原封)、冻结 M29 协同漂移
 
 ## 运维注记
 
-项目已整树迁至 Windows(C:\Users\Laure\Desktop\AlphaDiablo),缺 .git/.venv/
+项目已整树迁至 Windows(C:\Users\user\Desktop\AlphaDiablo),缺 .git/.venv/
 引擎构建——**R7 点火在本机暂不可行**,需先移植构建(bootstrap/build 系 macOS
 脚本)或回 Mac 执行。本卷分析纯离线,零引擎依赖,未改动任何既有项目文件。
 

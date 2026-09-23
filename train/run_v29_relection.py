@@ -41,7 +41,8 @@ W_ZIP = str(ROOT / "train" / "models" / "v28-worker-leg1" / "model_final")  # ev
 W_NPZ = ROOT / "train" / "models" / "v28-worker-leg1" / "policy.npz"
 ARCHIVE = EVAL / "v28-G3-leg1.json"        # 参考行 112.4(现任 v22-H × 同一工人,逐种子)
 ARCHIVE_SHA = "6fc6a44c7862424ab5f71ff3a5031adfd34a3e33f9f4f2f8aee781a07711e59d"
-W_ZIP_SHA = "2f7bc9dd810956c3feeb330575c9a03ddff0b476333ac429a411935985b04f42"
+# 2026-09-23: re-saved with neutral local paths (content otherwise unchanged); was 2f7bc9dd810956c3
+W_ZIP_SHA = "0c6f014da19c3bf27b208d55adc76be13fcad8bc5f744b95f4f743be97426434"
 W_NPZ_SHA = "976b6c05edaa0a32bb30bd372782e1201c72b029cedcbb3a5bf2361d34f27f8a"
 
 STEPS = 160_000       # 4× v22-H 自身预算(时钟锚 27.5 决策/s ≈ 97 分钟/臂)

@@ -49,34 +49,34 @@
   },
   "worker": {
    "kind": "numpy_policy",
-   "path": "/Users/lawrencegrey/Desktop/AlphaDiablo/diablogym/train/models/v24-worker-leg7/policy.npz",
+   "path": "/Users/user/Desktop/AlphaDiablo/diablogym/train/models/v24-worker-leg7/policy.npz",
    "sha256": "a31fa7c6b18b5c3593f4e1753d97aac9386689aa6ad8b158c526b673c57fbc2a",
    "num_timesteps": null,
    "gate_report_sha256": null
   },
   "manager": {
    "kind": "numpy_policy",
-   "path": "/Users/lawrencegrey/Desktop/AlphaDiablo/diablogym/train/models/v22-h-manager/policy.npz",
+   "path": "/Users/user/Desktop/AlphaDiablo/diablogym/train/models/v22-h-manager/policy.npz",
    "sha256": "0f2264860b0960e7951efd424836b90c09c002cebca7bf8109fd669b13be63d7",
    "num_timesteps": null,
    "gate_report_sha256": null
   },
   "runtime": {
    "bridge": {
-    "path": "/Users/lawrencegrey/Desktop/AlphaDiablo/diablogym/build/_diablogym.cpython-313-darwin.so",
+    "path": "/Users/user/Desktop/AlphaDiablo/diablogym/build/_diablogym.cpython-313-darwin.so",
     "sha256": "8c45da3ea4121eab13da2b1a62ba52a189a25e6ea36833fa98d58d0b46140ba1"
    },
    "engine": {
-    "path": "/Users/lawrencegrey/Desktop/AlphaDiablo/diablogym/build/engine/liblibdevilutionx_so.dylib",
+    "path": "/Users/user/Desktop/AlphaDiablo/diablogym/build/engine/liblibdevilutionx_so.dylib",
     "sha256": "be59473ea7db0a122350b179d1509454bd05ebf0e7d07946f24b2f57ff1890ce"
    },
    "content": {
     "game_data": {
-     "path": "/Users/lawrencegrey/Library/Application Support/diasurgical/devilution/DIABDAT.MPQ",
+     "path": "/Users/user/Library/Application Support/diasurgical/devilution/DIABDAT.MPQ",
      "sha256": "63fb47d9c76484024c7640d90ab6b7ec5e13f567a7e1a917b6c03a6631d3f2b0"
     },
     "assets": {
-     "path": "/Users/lawrencegrey/Desktop/AlphaDiablo/diablogym/build/engine/devilutionx.app/Contents/Resources",
+     "path": "/Users/user/Desktop/AlphaDiablo/diablogym/build/engine/devilutionx.app/Contents/Resources",
      "sha256": "b344b24f7743a88b5bf3dcc9635d096e41ee14172f687383f46a9002882b954d",
      "file_count": 232
     }

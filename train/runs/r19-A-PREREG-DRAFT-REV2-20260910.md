@@ -8,7 +8,7 @@ resume 腿继承 critic 预热回执、--bc-init 全新暖启动在结构上不�
 
 > **状态:草案 / 未冻结 / 未入台账 / 不得据此发射。**
 > 本文件是 `train/runs/r19-A-PREREG-DRAFT-20260909.md` 的修订稿,落在设计目录
-> `/home/laure/r17_work/r19/step2-design/`,**不是主树文件**。冻结时须以**新文件**落到
+> `/home/user/r17_work/r19/step2-design/`,**不是主树文件**。冻结时须以**新文件**落到
 > `train/runs/`,sha 入台账后方可发射(宪法:冻结件新文件、先 sha 后发射)。
 > 上位文件:`r19-PREREG-DRAFT-20260908.md`(战役草案)。
 > 步骤一(teacher-v1 vs 学生 7e31dc54)正在跑;**凡需步骤一数字处一律写

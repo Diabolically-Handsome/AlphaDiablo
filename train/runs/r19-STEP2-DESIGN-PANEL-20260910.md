@@ -5,7 +5,7 @@ eval_assembled.py:1100-1121 anneal_closed;leashed_ppo.py:5126-5154 蒸馏 CE 只
 # R19 步骤二 · 神谕教师面板评审总结(2026-09-10,合成席)
 
 本文件为面板记录,**非预注册**。预注册修订草案见
-`/home/laure/r17_work/r19/step2-design/R19-A-PREREG-DRAFT-REV2-20260910.md`(草案/未冻结)。
+`/home/user/r17_work/r19/step2-design/R19-A-PREREG-DRAFT-REV2-20260910.md`(草案/未冻结)。
 
 ---
 

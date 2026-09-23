@@ -1,10 +1,10 @@
 # R19-M1 报告：三法合并（spend-v2 + sweep-v2 + gold-grab-v1）与合并探针
 
 - 日期：2026-09-09（`by` = `r19-m1-integrator`）
-- 合并树：`/home/laure/r17_work/r19/merge-tree`（Python only；`build -> /home/laure/r17_work/r17-1/build-res`，与主树同一条活桥）
-- 补丁：`/home/laure/r17_work/r19/m1.patch`（`diff -ruN` 对主树；21 个文件，+5769 / −174；`src/` 与主树**逐字节相同**，C++/引擎一字未动）
-- 探针原始产物：`/home/laure/r17_work/r19/m1-probe-final/`（最终树；`m1-probe/` 是同一份代码在文档字符串修订前的首轮，两轮 sha 见 §6.1）
-- 主树 `/home/laure/AlphaDiablo/diablogym` 未被修改（唯一例外：账本 append）
+- 合并树：`/home/user/r17_work/r19/merge-tree`（Python only；`build -> /home/user/r17_work/r17-1/build-res`，与主树同一条活桥）
+- 补丁：`/home/user/r17_work/r19/m1.patch`（`diff -ruN` 对主树；21 个文件，+5769 / −174；`src/` 与主树**逐字节相同**，C++/引擎一字未动）
+- 探针原始产物：`/home/user/r17_work/r19/m1-probe-final/`（最终树；`m1-probe/` 是同一份代码在文档字符串修订前的首轮，两轮 sha 见 §6.1）
+- 主树 `/home/user/AlphaDiablo/diablogym` 未被修改（唯一例外：账本 append）
 
 > ⚠️ **本报告有两轮。§一～§十是首轮（2026-09-09 中午）。复核轮（§十一，2026-09-09 下午）修了 7 条发现，其中一条（半径漏进窗内）改变了行为，所以三臂重跑过。**凡首轮与复核轮数字不一致处，以 §十一 为准**；每一处都在原地打了标记，没有删掉任何一个首轮数字。
 >
@@ -16,7 +16,7 @@
 
 ## 一、合并树是怎么造的
 
-按宪法配方新建 `/home/laure/r17_work/r19/merge-tree`：`rsync -a --exclude __pycache__` 主树的 `python/ src/ tests/ patches/` 与 `train/*.py`；`train/runs/eval-assembled` 与 `train/runs/r10-staging`（后者带 `probe_r17_deployment.py`）；`build -> /home/laure/r17_work/r17-1/build-res` 软链。
+按宪法配方新建 `/home/user/r17_work/r19/merge-tree`：`rsync -a --exclude __pycache__` 主树的 `python/ src/ tests/ patches/` 与 `train/*.py`；`train/runs/eval-assembled` 与 `train/runs/r10-staging`（后者带 `probe_r17_deployment.py`）；`build -> /home/user/r17_work/r17-1/build-res` 软链。
 
 **一处必须记录的补充**：探针 `source_identity()` 的 `_SOURCE_FILES` 还绑住 `train/runs/r10-staging/probe_r15_deployment.py`，配方没提它，缺了它探针在启动时 `FileNotFoundError`。已从主树原样复制（未修改）。
 
@@ -132,7 +132,7 @@ tests/test_r19_gold_grab.py + tests/test_r19_sweep_v2.py + tests/test_r19_spend_
 |---|---|
 | 三个新文件 + `test_resource_sweep.py` | **301 passed / 166 subtests，0 失败** |
 | loot/sustain/weapon/identify/portal/retreat/sweep 邻域（glob） | **942 passed, 17 skipped, 546 subtests，0 失败** |
-| 点名邻域（含 `test_options_env.py`、`test_r18b6_training_wiring.py` 等 16 个文件） | 15 failed / 707 passed —— **15 个失败逐条出现在纯净副本基线里**（`/home/laure/r17_work/r19/pristine-fails.txt`） |
+| 点名邻域（含 `test_options_env.py`、`test_r18b6_training_wiring.py` 等 16 个文件） | 15 failed / 707 passed —— **15 个失败逐条出现在纯净副本基线里**（`/home/user/r17_work/r19/pristine-fails.txt`） |
 | 全量 `tests/`（3 个收集失败文件除外） | 81 failed / 2642 passed / 99 skipped / 1545 subtests。与纯净基线逐条比对：**新增失败 0 个** |
 
 被排除/新增错误的说明（都不是代码回归）：
@@ -142,7 +142,7 @@ tests/test_r19_gold_grab.py + tests/test_r19_sweep_v2.py + tests/test_r19_spend_
 
 ## 六、探针
 
-pool **2_133**，种子 2133000–2133047，**3 个并行分片**（a 2133000-2133015 / b 2133016-2133031 / c 2133032-2133047），worker `7e31dc54` = 主树 `train/runs/r16-arm-a-constitution/model_candidate.zip`，`max_steps 6000`、`decoding sample`、探针 `r17-deployment-v3-r18m2`。配对 McNemar 与单侧 95% UCB 的公式逐字取自 `/home/laure/r17_work/r18/m2_probe_driver.py::paired`；`arm_stats` 的口径同源（本轮补了收入/支出/按层/时间占比几列）。**处女池 2_116-119、2_126-128 零接触。**
+pool **2_133**，种子 2133000–2133047，**3 个并行分片**（a 2133000-2133015 / b 2133016-2133031 / c 2133032-2133047），worker `7e31dc54` = 主树 `train/runs/r16-arm-a-constitution/model_candidate.zip`，`max_steps 6000`、`decoding sample`、探针 `r17-deployment-v3-r18m2`。配对 McNemar 与单侧 95% UCB 的公式逐字取自 `/home/user/r17_work/r18/m2_probe_driver.py::paired`；`arm_stats` 的口径同源（本轮补了收入/支出/按层/时间占比几列）。**处女池 2_116-119、2_126-128 零接触。**
 
 ### 6.1 三臂身份（**回归通过**）
 
@@ -318,21 +318,21 @@ ALL-ON-RICH（**诊断**）：net +8、UCB95 -0.01087（**小于 0**）、L3 8�
 
 | 用途 | 路径 |
 |---|---|
-| 合并树 | `/home/laure/r17_work/r19/merge-tree` |
-| 合并补丁（对主树 `diff -ruN`） | `/home/laure/r17_work/r19/m1.patch` |
-| 三方合并 / 冲突判定 / 围栏脚本 | `/home/laure/r17_work/r19/m1/{merge.sh,resolve.py,fence.py}` |
-| sweep-v2 触发改动脚本 | `/home/laure/r17_work/r19/m1/{sweepv2.py,sweepv2b.py,doc2.py,doc3.py}` |
-| 测试改动脚本 | `/home/laure/r17_work/r19/m1/{tests1.py,tests2.py,tests3.py}` |
-| 探针驱动 | `/home/laure/r17_work/r19/m1/m1_probe_driver.py`（最终树版 `…_final.py`） |
-| rich 臂驱动 | `/home/laure/r17_work/r19/m1/m1_rich_probe.py` |
-| 三臂原始行（首轮） | `/home/laure/r17_work/r19/m1-probe-final/m1-{off,on,rich}-rows.json` |
-| 三臂汇总（首轮，**有错，见发现 5**） | `/home/laure/r17_work/r19/m1-probe-final/m1-summary-all.json` |
-| 三臂原始行（**复核轮，权威**） | `/home/laure/r17_work/r19/m1-probe-rr/m1-{off,on,rich}-rows.json` |
-| 三臂汇总（**复核轮，权威**） | `/home/laure/r17_work/r19/m1-probe-rr/m1-summary-all.json` |
-| 首轮（文档字符串修订前）产物 | `/home/laure/r17_work/r19/m1-probe/` |
-| 重算聚合（本报告每个数字的来源） | `/home/laure/r17_work/r19/m1/aggregates.json` + `agg.py` |
-| 测试日志 | `/home/laure/r17_work/r19/m1/{t1.log,t-nbhd.log,t-nbhd2.log,t-full.log,t-full-fails.txt}` |
-| 树指纹（跑前/跑后） | `/home/laure/r17_work/r19/m1/final-tree-fingerprint-{before,after}.txt` |
+| 合并树 | `/home/user/r17_work/r19/merge-tree` |
+| 合并补丁（对主树 `diff -ruN`） | `/home/user/r17_work/r19/m1.patch` |
+| 三方合并 / 冲突判定 / 围栏脚本 | `/home/user/r17_work/r19/m1/{merge.sh,resolve.py,fence.py}` |
+| sweep-v2 触发改动脚本 | `/home/user/r17_work/r19/m1/{sweepv2.py,sweepv2b.py,doc2.py,doc3.py}` |
+| 测试改动脚本 | `/home/user/r17_work/r19/m1/{tests1.py,tests2.py,tests3.py}` |
+| 探针驱动 | `/home/user/r17_work/r19/m1/m1_probe_driver.py`（最终树版 `…_final.py`） |
+| rich 臂驱动 | `/home/user/r17_work/r19/m1/m1_rich_probe.py` |
+| 三臂原始行（首轮） | `/home/user/r17_work/r19/m1-probe-final/m1-{off,on,rich}-rows.json` |
+| 三臂汇总（首轮，**有错，见发现 5**） | `/home/user/r17_work/r19/m1-probe-final/m1-summary-all.json` |
+| 三臂原始行（**复核轮，权威**） | `/home/user/r17_work/r19/m1-probe-rr/m1-{off,on,rich}-rows.json` |
+| 三臂汇总（**复核轮，权威**） | `/home/user/r17_work/r19/m1-probe-rr/m1-summary-all.json` |
+| 首轮（文档字符串修订前）产物 | `/home/user/r17_work/r19/m1-probe/` |
+| 重算聚合（本报告每个数字的来源） | `/home/user/r17_work/r19/m1/aggregates.json` + `agg.py` |
+| 测试日志 | `/home/user/r17_work/r19/m1/{t1.log,t-nbhd.log,t-nbhd2.log,t-full.log,t-full-fails.txt}` |
+| 树指纹（跑前/跑后） | `/home/user/r17_work/r19/m1/final-tree-fingerprint-{before,after}.txt` |
 
 凡本报告未由上述文件直接支撑的说法，一律标注 not verified。
 
@@ -342,7 +342,7 @@ ALL-ON-RICH（**诊断**）：net +8、UCB95 -0.01087（**小于 0**）、L3 8�
 
 复核给了 **7 条**：2 条 high、4 条 medium、1 条 low。**7 条全部处理**，其中 6 条改了代码，第 6 条按复核自己给的两条出路之一处理（改度量、不改法条，把校正后的数字交给主席）。**本节的数字是权威数字**；§六～§八的首轮数字已被本节取代，逐处都打了标记。
 
-产物在 `/home/laure/r17_work/r19/m1rr/`（脚本、日志、证据）与 `/home/laure/r17_work/r19/m1-probe-rr/`（三臂原始行与汇总）。
+产物在 `/home/user/r17_work/r19/m1rr/`（脚本、日志、证据）与 `/home/user/r17_work/r19/m1-probe-rr/`（三臂原始行与汇总）。
 
 ### 11.1 逐条
 
@@ -616,18 +616,18 @@ ALL-ON-RICH（**诊断**）：net +9、UCB95 **−0.0449（小于 0）**、L3 5�
 
 | 用途 | 路径 |
 |---|---|
-| 修理脚本（逐条对应发现） | `/home/laure/r17_work/r19/m1rr/fix{1..10}_*.py` |
-| 金币通道实证（发现 2） | `/home/laure/r17_work/r19/m1rr/goldchan.py` + `goldchan.json` |
-| 发现 1 的真引擎双向复现 | `/home/laure/r17_work/r19/m1rr/{f1check.py,runf1.sh,f1check.log}` |
-| 发现 1 的钉子在旧树上确实会红 | `/home/laure/r17_work/r19/m1rr/ast_negcheck.sh` |
-| 探针后唯一一处编辑无害的字节码证明 | `/home/laure/r17_work/r19/m1rr/{bytecheck.py,bytecheck.log}` |
-| 复核轮探针驱动 | `/home/laure/r17_work/r19/m1/m1_probe_driver_rr.py` |
-| 三臂原始行（**权威**） | `/home/laure/r17_work/r19/m1-probe-rr/m1-{off,on,rich}-rows.json` |
-| 三臂汇总（**权威**，已与 agg 对账） | `/home/laure/r17_work/r19/m1-probe-rr/m1-summary-all.json` |
-| 重算聚合（本节每个数字的来源） | `/home/laure/r17_work/r19/m1rr/aggregates-rr.json` + `agg_rr.py` |
-| 汇总/聚合对账脚本 | `/home/laure/r17_work/r19/m1rr/resummarize.py` |
-| 测试日志 | `/home/laure/r17_work/r19/m1rr/{t-new.log,t-nbhd.log,t-named.log,t-full.log,t-full-fails.txt,t-full-new.txt}` |
-| 树指纹（跑前/跑后） | `/home/laure/r17_work/r19/m1rr/tree-fingerprint-{before,after}.txt` |
-| 合并补丁（重新生成） | `/home/laure/r17_work/r19/m1.patch`（21 个文件，+6260 / −180；`src/` 仍与主树逐字节相同） |
+| 修理脚本（逐条对应发现） | `/home/user/r17_work/r19/m1rr/fix{1..10}_*.py` |
+| 金币通道实证（发现 2） | `/home/user/r17_work/r19/m1rr/goldchan.py` + `goldchan.json` |
+| 发现 1 的真引擎双向复现 | `/home/user/r17_work/r19/m1rr/{f1check.py,runf1.sh,f1check.log}` |
+| 发现 1 的钉子在旧树上确实会红 | `/home/user/r17_work/r19/m1rr/ast_negcheck.sh` |
+| 探针后唯一一处编辑无害的字节码证明 | `/home/user/r17_work/r19/m1rr/{bytecheck.py,bytecheck.log}` |
+| 复核轮探针驱动 | `/home/user/r17_work/r19/m1/m1_probe_driver_rr.py` |
+| 三臂原始行（**权威**） | `/home/user/r17_work/r19/m1-probe-rr/m1-{off,on,rich}-rows.json` |
+| 三臂汇总（**权威**，已与 agg 对账） | `/home/user/r17_work/r19/m1-probe-rr/m1-summary-all.json` |
+| 重算聚合（本节每个数字的来源） | `/home/user/r17_work/r19/m1rr/aggregates-rr.json` + `agg_rr.py` |
+| 汇总/聚合对账脚本 | `/home/user/r17_work/r19/m1rr/resummarize.py` |
+| 测试日志 | `/home/user/r17_work/r19/m1rr/{t-new.log,t-nbhd.log,t-named.log,t-full.log,t-full-fails.txt,t-full-new.txt}` |
+| 树指纹（跑前/跑后） | `/home/user/r17_work/r19/m1rr/tree-fingerprint-{before,after}.txt` |
+| 合并补丁（重新生成） | `/home/user/r17_work/r19/m1.patch`（21 个文件，+6260 / −180；`src/` 仍与主树逐字节相同） |
 
-凡本节未由上述文件直接支撑的说法，一律标注 not verified。**主树 `/home/laure/AlphaDiablo/diablogym` 本轮未被修改**（唯一例外：账本 append；用 `find -newermt` 验证过）。
+凡本节未由上述文件直接支撑的说法，一律标注 not verified。**主树 `/home/user/AlphaDiablo/diablogym` 本轮未被修改**（唯一例外：账本 append；用 `find -newermt` 验证过）。

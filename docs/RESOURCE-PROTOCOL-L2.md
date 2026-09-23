@@ -75,15 +75,15 @@ L1→L2 的最终许可由 C++ `EvaluateResourceReadiness` 与玩家原生换层
 
 ## 隔离候选与运行方式
 
-原仓库和原生库先快照保留。施工与验证目录为 `/home/laure/r18_resource_20260904/`；`snapshot/` 保存回滚证据，最终 `build-v4/` 是隔离原生库，`candidate-v4/` 是冻结代码镜像。较早候选及其失败现场保留用于追溯。候选目录不自动跟随源代码；已有评测目录不得更新，后续修改应创建新的候选及输出目录。
+原仓库和原生库先快照保留。施工与验证目录为 `/home/user/r18_resource_20260904/`；`snapshot/` 保存回滚证据，最终 `build-v4/` 是隔离原生库，`candidate-v4/` 是冻结代码镜像。较早候选及其失败现场保留用于追溯。候选目录不自动跟随源代码；已有评测目录不得更新，后续修改应创建新的候选及输出目录。
 
 在候选镜像中运行，不替换原仓库的 `build/`：
 
 ```sh
-cd /home/laure/r18_resource_20260904/candidate-v4
+cd /home/user/r18_resource_20260904/candidate-v4
 PYTHONPATH="$PWD/python" .venv/bin/python train/probe_resource_protocol.py \
   --phase smoke \
-  --output-dir /home/laure/r18_resource_20260904/reports/smoke-v4-reproduction
+  --output-dir /home/user/r18_resource_20260904/reports/smoke-v4-reproduction
 ```
 
 smoke 包含 16 个 R16 游戏种子、同 16 种子逐局重复以及 16 个认证工人独立复核。除了无工程异常和逐局重复一致，两个模型各须至少完成一次实际 L1→town→L1 往返，且服务以 canonical ready 的 `complete` 结束。16 局均未触发商店或均死亡不能假通过覆盖门。
@@ -93,8 +93,8 @@ smoke 包含 16 个 R16 游戏种子、同 16 种子逐局重复以及 16 个认
 ```sh
 PYTHONPATH="$PWD/python" .venv/bin/python train/probe_resource_protocol.py \
   --phase pilot \
-  --engineering-receipt /home/laure/r18_resource_20260904/reports/smoke-v4-reproduction/summary.json \
-  --output-dir /home/laure/r18_resource_20260904/reports/pilot-v4
+  --engineering-receipt /home/user/r18_resource_20260904/reports/smoke-v4-reproduction/summary.json \
+  --output-dir /home/user/r18_resource_20260904/reports/pilot-v4
 ```
 
 输出目录必须不存在。驱动保存配置、原生与模型身份、逐局 JSONL、重复轨迹、认证复核、失败现场及汇总。只读记录进入城镇时的原有 raw 快照、商店库存内容变化及服务阶段变化时的微拍/位置；raw 未导出 RNG 时明确记录为空，不额外调用 observe。PASS 是相应执行/覆盖门通过，不等于模型能力认证，更不自动授权续训。
@@ -105,4 +105,4 @@ V3 完整测试为 932 项通过、1 项跳过、443 个子测试通过；十组
 
 原生测试覆盖实际方向踏梯、即时健康变化、触碰传送门及回城消息的拒绝原子性、Pepin 首次剧情对话、购买/换装/维修、失败无资源和随机数副作用、正常拾金、返层状态保存与跨局商店重放。范围为 Release、单人且禁用 Lua 的 Gym 可达入口；未修改不可达的调试传送和多人竞技场菜单。
 
-最终模型冒烟、交付库旧法抽检、零训练效果试验是否获准开始，以及原始证据路径统一见 [实施结果](/home/laure/r18_resource_20260904/reports/IMPLEMENTATION-RESULTS.md)。冒烟中的真实闭环覆盖未通过时，不运行五臂效果试验，不降低门槛，不启动训练或替换认证模型。
+最终模型冒烟、交付库旧法抽检、零训练效果试验是否获准开始，以及原始证据路径统一见 [实施结果](/home/user/r18_resource_20260904/reports/IMPLEMENTATION-RESULTS.md)。冒烟中的真实闭环覆盖未通过时，不运行五臂效果试验，不降低门槛，不启动训练或替换认证模型。

@@ -2,6 +2,7 @@
 import importlib
 import sys
 import types
+from pathlib import Path
 
 import pytest
 
@@ -12,7 +13,7 @@ def _clock_module():
     if name in sys.modules:
         return sys.modules[name]
     pkg = types.ModuleType("_r18c_pkg")
-    pkg.__path__ = ["/home/laure/AlphaDiablo/diablogym/python/diablogym"]
+    pkg.__path__ = [str(Path(__file__).resolve().parents[1] / "python" / "diablogym")]
     sys.modules["_r18c_pkg"] = pkg
     module = importlib.import_module("_r18c_pkg.completion_clock")
     sys.modules[name] = module

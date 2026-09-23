@@ -1,6 +1,6 @@
 """v22 策略脑/操作脑:OptionsEnv——冻结宏之上的 SMDP 包装器。
 
-设计稿:docs/DESIGN.md v22 章(评审团 wf_66e41e30 合成,Lawrence 批准)。
+设计稿:docs/DESIGN.md v22 章(评审团 wf_66e41e30 合成,Diabolically-Handsome 批准)。
 核心承诺:
   - 操作脑 = 神谕 oracle_mountain 的内环逐字移植并冻结(平稳 SMDP);
   - "榨干→下潜"不写死在脚本里,升格为策略脑的决策(本章唯一考题);

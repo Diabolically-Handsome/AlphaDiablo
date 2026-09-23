@@ -1,28 +1,28 @@
 # R19-M2 报告：主席四条裁定的合并、探针与归因
 
 - 日期：2026-09-09（`by` = `r19-m2-integrator`）
-- 合并树：`/home/laure/r17_work/r19/m2-merge`（`rsync -a --exclude __pycache__`
-  自 R19-M1 合并树；`build -> /home/laure/r17_work/r17-1/build-res` 原样保留）
-- 补丁：`/home/laure/r17_work/r19/m2.patch`（`diff -ruN` 对**主树**，**25 个文件**，
+- 合并树：`/home/user/r17_work/r19/m2-merge`（`rsync -a --exclude __pycache__`
+  自 R19-M1 合并树；`build -> /home/user/r17_work/r17-1/build-res` 原样保留）
+- 补丁：`/home/user/r17_work/r19/m2.patch`（`diff -ruN` 对**主树**，**25 个文件**，
   **复核轮后重生成：+10028 / −215 行**，全 LF，sha256 `315133a531bbc13d`；复核前是 +9208 / −222）。25 = M1 那一轮已有的 21 个条目 + 本轮新增的 4 个
   （`python/diablogym/resource_emergency_stop.py`、
   `tests/test_r19_m2_emergency_stop.py`、`tests/test_r19_m2_rulings.py`、
   `tests/test_resource_readiness_law.py`）
-- 输入：实施者 A 的 `/home/laure/r17_work/r19/m2-tree`（裁定 1/2/3 + coach-v05）、
-  实施者 B 的 `/home/laure/r17_work/r19/stop-tree`（裁定 4 的紧急停止 stop-v1）
-- 只读树复核：主树 `/home/laure/AlphaDiablo/diablogym` **只被 append 了账本**
-  （`find /home/laure/AlphaDiablo/diablogym -newermt "2026-09-09 17:30"`
+- 输入：实施者 A 的 `/home/user/r17_work/r19/m2-tree`（裁定 1/2/3 + coach-v05）、
+  实施者 B 的 `/home/user/r17_work/r19/stop-tree`（裁定 4 的紧急停止 stop-v1）
+- 只读树复核：主树 `/home/user/AlphaDiablo/diablogym` **只被 append 了账本**
+  （`find /home/user/AlphaDiablo/diablogym -newermt "2026-09-09 17:30"`
   ——本轮起点——在整棵主树上只命中
   `train/runs/r10-staging/r13_ledger.jsonl` 一个文件；`src/` 与合并树
-  `diff -rq` 逐文件相同 = `SRC_IDENTICAL`）；M1 合并树 `/home/laure/r17_work/r19/merge-tree`
+  `diff -rq` 逐文件相同 = `SRC_IDENTICAL`）；M1 合并树 `/home/user/r17_work/r19/merge-tree`
   **本轮零写入**（`grep -c coach-v05` = 0，`resource_emergency_stop` 零命中）
-- 探针产物：`/home/laure/r17_work/r19/m2-probe/`（5 臂 × 48 种子 × 3 分片 = 15 个分片作业，
+- 探针产物：`/home/user/r17_work/r19/m2-probe/`（5 臂 × 48 种子 × 3 分片 = 15 个分片作业，
   外加继承的认证控制行与 M1 ALL-ON 行）
 - **复核轮（2026-09-09 晚，`by` = `r19-m2-fixer`）**：一位复核者提了 4 high + 5 medium，
   **九条全部改掉**，代码 / 测试 / 探针 / 补丁 / 本报告都重跑重写过。
   **§二、§八、§十、§11.1、§11.3、§十三 里带 `> 复核轮更正` 引用块的段落，
   以复核轮为准**；完整交代见 **§十六**，复核轮探针产物在
-  `/home/laure/r17_work/r19/m2rr-probe/`。
+  `/home/user/r17_work/r19/m2rr-probe/`。
   一句话：**OFF 回归两次重跑都仍等于认证控制行；M2-SET 逐比特未变；
   裁定 4 的两条在缺陷修好之后依然赢不过 M2-SET。**
 
@@ -85,13 +85,13 @@ m2-merge  = rsync -a --exclude __pycache__  merge-tree/           (M1 认证探�
 A 在那里建 coach-v05 的停滞簿记，B 在那里建紧急停止服务。两段互不读对方的字段，
 **判为纯加性，两段都要，A 先 B 后**（顺序按运行期被问的先后：教练在选项边界
 `resource_option_choice` 被问，停止法在窗内每个工人拍的尾部被问）。
-决议脚本：`/home/laure/r17_work/r19/m2/resolve.py`（把这句理由写进了代码注释）。
+决议脚本：`/home/user/r17_work/r19/m2/resolve.py`（把这句理由写进了代码注释）。
 
 其余 5 个文件自动合并干净——但**自动干净不等于两边都落了地**，所以：
 
 ### 1.2 并集校验（不是“看起来对”）
 
-`/home/laure/r17_work/r19/m2/verify_merge.py`：对 6 个双改文件，各自
+`/home/user/r17_work/r19/m2/verify_merge.py`：对 6 个双改文件，各自
 以 M1 合并树为基线算出 A 的增删行多重集、B 的增删行多重集与**合并结果**的增删行多重集，
 要求
 
@@ -116,7 +116,7 @@ removed(merged) == removed(A) | removed(B)
 
 ### 1.3 认证法条逐条未被碰（不是 grep，是把法条行读出来比）
 
-`/home/laure/r17_work/r19/m2/lawdump.py` 在**每棵树各一个进程**里 `import` 部署侧模块，
+`/home/user/r17_work/r19/m2/lawdump.py` 在**每棵树各一个进程**里 `import` 部署侧模块，
 把 `SWEEP_LAWS` 的两行、`RetreatPolicy()` 的每个字段、两个模块的全部大写常量、
 coach 词汇表、`resource_sustain` 的全部大写常量 dataclass-展开成 JSON。
 M1 合并树 vs M2 合并树的 `diff`，**只有 `>` 行（新增），只有两处 `<` 行**——
@@ -136,7 +136,7 @@ M1 合并树 vs M2 合并树的 `diff`，**只有 `>` 行（新增），只有�
 ## 二、测试：两位实施者邻域的**并集**
 
 命令：`pytest -p no:randomly -q <21 个文件>`，`DIABLOGYM_ROOT=<树>`，
-对照是**同一条 rsync 配方做出的净合并树副本** `/home/laure/r17_work/r19/m2a-pristine`
+对照是**同一条 rsync 配方做出的净合并树副本** `/home/user/r17_work/r19/m2a-pristine`
 （`diff -rq` 复核 = `PRISTINE_IS_MERGE_TREE`）。
 
 | 树 | 结果 |
@@ -165,22 +165,22 @@ tests/test_r18b6_training_wiring.py::MakeEnvTests::test_the_factory_forwards_the
 tests/test_r18b6_training_wiring.py::TrainingCliTests::test_validate_args_accepts_the_whole_b6_world
 ```
 
-日志：`/home/laure/r17_work/r19/m2/t-{pristine,merged}.log`，
+日志：`/home/user/r17_work/r19/m2/t-{pristine,merged}.log`，
 失败集合 `t-{pristine,merged}-fails.txt`。**全量 `tests/` 仍未跑**（继承缺口）。
 
 ---
 
 ## 三、探针设计
 
-- worker：`7e31dc54` = `/home/laure/AlphaDiablo/diablogym/train/runs/r16-arm-a-constitution/model_candidate.zip`
+- worker：`7e31dc54` = `/home/user/AlphaDiablo/diablogym/train/runs/r16-arm-a-constitution/model_candidate.zip`
 - 种子：**只有** 2_133 池 2133000–2133047，三分片 a/b/c（16 + 16 + 16），
   `max_steps 6000`，`decoding sample`
-- 驱动：`/home/laure/r17_work/r19/m2/m2_probe_driver.py`
+- 驱动：`/home/user/r17_work/r19/m2/m2_probe_driver.py`
   （`arm_stats` / `paired` **逐字**来自
-  `/home/laure/r17_work/r18/m2_probe_driver.py`，经 M1 的
+  `/home/user/r17_work/r18/m2_probe_driver.py`，经 M1 的
   `m1_probe_driver_rr.py` 传下来；`m2_stats` 是本轮新增的**只增不改**的一半）
 - 收入 / 支出 / 首降那几行来自
-  `/home/laure/r17_work/r19/m2/agg2.py`，它把 M1 的
+  `/home/user/r17_work/r19/m2/agg2.py`，它把 M1 的
   `m1rr/agg_rr.py::stats` 用 `ast` **原样取出来执行**（不是重打一遍），
   并**断言**它在 M1 ALL-ON 行上复现 M1-REPORT §11.3 印的 12 个数字，
   否则脚本直接停——所以本报告与 M1 报告是同一把尺。
@@ -523,7 +523,7 @@ L1 上 71 次本该拒绝的场合，FARM 已经被掩掉，于是放行并记 `
 
 任务书给的画像是：种子 2133047「400 拍绕圈、12 扇 const_dive DIVE 窗、
 readiness 0.91、全部以 stall 收窗」。我在**认证控制行**上把那一局的 DIVE 窗
-逐扇打出来（脚本 `/home/laure/r17_work/r19/m2/extra.py`）：
+逐扇打出来（脚本 `/home/user/r17_work/r19/m2/extra.py`）：
 
 ```
 beat0=5909  tau=63   coach_ready  end=sweep_trigger   ratio_v2=1.1111
@@ -701,24 +701,24 @@ L2: {windows 169, piles 184, gold 3490}}`——L2 的金比 M1（3064）多 14%�
 
 | 用途 | 路径 |
 |---|---|
-| 合并树 | `/home/laure/r17_work/r19/m2-merge` |
-| 对**主树**的补丁（25 文件） | `/home/laure/r17_work/r19/m2.patch` |
-| A / B 的原始差异 | `/home/laure/r17_work/r19/m2/{a,b}.diff` |
-| 三方合并结果 | `/home/laure/r17_work/r19/m2/mf/*.py` |
-| 冲突决议脚本 | `/home/laure/r17_work/r19/m2/resolve.py` |
-| **并集校验**（合并 == A ∪ B） | `/home/laure/r17_work/r19/m2/verify_merge.py` |
-| **认证法条行比对** | `/home/laure/r17_work/r19/m2/lawdump.py` + `law-{m1,m2}.json` |
-| 测试日志 / 失败集合 | `/home/laure/r17_work/r19/m2/t-{pristine,merged}{.log,-fails.txt}` |
-| 探针驱动（3 主臂） | `/home/laure/r17_work/r19/m2/m2_probe_driver.py` |
-| 探针驱动（2 归因臂） | `/home/laure/r17_work/r19/m2/attrib.py` |
-| 臂汇总 | `/home/laure/r17_work/r19/m2-probe/m2-summary-{all,attrib}.json` |
-| 逐臂行 | `/home/laure/r17_work/r19/m2-probe/m2-{off,set,full,coach,stop}-rows.json` |
-| 收入/支出/首降（同 M1 的尺） | `/home/laure/r17_work/r19/m2/agg2.py` + `agg2.json` |
-| 2133047 逐窗 + 归一化重排 | `/home/laure/r17_work/r19/m2/extra.py` |
+| 合并树 | `/home/user/r17_work/r19/m2-merge` |
+| 对**主树**的补丁（25 文件） | `/home/user/r17_work/r19/m2.patch` |
+| A / B 的原始差异 | `/home/user/r17_work/r19/m2/{a,b}.diff` |
+| 三方合并结果 | `/home/user/r17_work/r19/m2/mf/*.py` |
+| 冲突决议脚本 | `/home/user/r17_work/r19/m2/resolve.py` |
+| **并集校验**（合并 == A ∪ B） | `/home/user/r17_work/r19/m2/verify_merge.py` |
+| **认证法条行比对** | `/home/user/r17_work/r19/m2/lawdump.py` + `law-{m1,m2}.json` |
+| 测试日志 / 失败集合 | `/home/user/r17_work/r19/m2/t-{pristine,merged}{.log,-fails.txt}` |
+| 探针驱动（3 主臂） | `/home/user/r17_work/r19/m2/m2_probe_driver.py` |
+| 探针驱动（2 归因臂） | `/home/user/r17_work/r19/m2/attrib.py` |
+| 臂汇总 | `/home/user/r17_work/r19/m2-probe/m2-summary-{all,attrib}.json` |
+| 逐臂行 | `/home/user/r17_work/r19/m2-probe/m2-{off,set,full,coach,stop}-rows.json` |
+| 收入/支出/首降（同 M1 的尺） | `/home/user/r17_work/r19/m2/agg2.py` + `agg2.json` |
+| 2133047 逐窗 + 归一化重排 | `/home/user/r17_work/r19/m2/extra.py` |
 | **复核轮的全部产物** | 见 §16.9 |
-| 渲染表 | `/home/laure/r17_work/r19/m2/render{,2}.txt` |
-| 树指纹（跑前/跑后） | `/home/laure/r17_work/r19/m2/tree-fingerprint-{before,after}.txt` |
-| 冒烟（2 种子，FULL 臂） | `/home/laure/r17_work/r19/m2/smoke-full.{json,log}` |
+| 渲染表 | `/home/user/r17_work/r19/m2/render{,2}.txt` |
+| 树指纹（跑前/跑后） | `/home/user/r17_work/r19/m2/tree-fingerprint-{before,after}.txt` |
+| 冒烟（2 种子，FULL 臂） | `/home/user/r17_work/r19/m2/smoke-full.{json,log}` |
 | 账本 | `R19_M2_INTEGRATED`、`R19_M2_PROBE_RESULT` |
 
 ---
@@ -772,7 +772,7 @@ tests/test_r18b6_training_wiring.py::MakeEnvTests::test_the_clock_and_retreat_ri
 tests/test_r18b6_training_wiring.py::TrainingCliTests::test_validate_args_pins_each_law_to_the_loot_itinerary
 ```
 
-改锚重跑（脚本 `/home/laure/r17_work/r19/m2rr/rr_tests.sh`）：
+改锚重跑（脚本 `/home/user/r17_work/r19/m2rr/rr_tests.sh`）：
 
 | 树 | 结果 | 失败行 | 互不相同的 test id |
 |---|---|---|---|
@@ -960,16 +960,16 @@ RESUPPLY  sweep_complete 743, grab_complete 565, scene 231,
 
 | 用途 | 路径 |
 |---|---|
-| 全部改动脚本（逐条锚点替换，可复算） | `/home/laure/r17_work/r19/m2rr/p1_protocol.py` … `p16_section16.py` |
-| 修正后的测试并集脚本 | `/home/laure/r17_work/r19/m2rr/rr_tests.sh` |
-| 测试日志 / 失败集合 | `/home/laure/r17_work/r19/m2rr/rr-{pristine,merged}{.log,-fails.txt,-ids.txt}` |
-| 探针驱动（5 臂，复用 M2 的统计代码） | `/home/laure/r17_work/r19/m2rr/rr_driver.py` |
-| 探针脚本（两趟） | `/home/laure/r17_work/r19/m2rr/rr_probe.sh`、`rr2_probe.sh` |
-| 逐臂行 | `/home/laure/r17_work/r19/m2rr-probe/rr-{off,set,full,coach,stop}-rows.json` |
-| 臂汇总 | `/home/laure/r17_work/r19/m2rr-probe/rr-summary-{all,"off,full,stop"}.json` |
-| **半径 3 反事实臂（已退回的改动）** | `/home/laure/r17_work/r19/m2rr-probe/radius3/` |
-| 复核轮读数脚本 / 输出 | `/home/laure/r17_work/r19/m2rr/rr_read.py`、`rr-read-final.txt` |
-| 树指纹（跑前 / 跑后，两趟） | `/home/laure/r17_work/r19/m2rr/rr{,2}-tree-{before,after}.txt` |
-| 身份检查 + 补丁重生成 | `/home/laure/r17_work/r19/m2rr/rr_patch.sh` |
-| **对主树的补丁（25 文件，+10028 / −215 内容行，全 LF，sha256 `315133a531bbc13d…`）** | `/home/laure/r17_work/r19/m2.patch`（已重生成；行数口径见账本 21:00 那条） |
-| 本报告复核前的备份 | `/home/laure/r17_work/r19/m2rr/M2-REPORT.md.prereview.bak` |
+| 全部改动脚本（逐条锚点替换，可复算） | `/home/user/r17_work/r19/m2rr/p1_protocol.py` … `p16_section16.py` |
+| 修正后的测试并集脚本 | `/home/user/r17_work/r19/m2rr/rr_tests.sh` |
+| 测试日志 / 失败集合 | `/home/user/r17_work/r19/m2rr/rr-{pristine,merged}{.log,-fails.txt,-ids.txt}` |
+| 探针驱动（5 臂，复用 M2 的统计代码） | `/home/user/r17_work/r19/m2rr/rr_driver.py` |
+| 探针脚本（两趟） | `/home/user/r17_work/r19/m2rr/rr_probe.sh`、`rr2_probe.sh` |
+| 逐臂行 | `/home/user/r17_work/r19/m2rr-probe/rr-{off,set,full,coach,stop}-rows.json` |
+| 臂汇总 | `/home/user/r17_work/r19/m2rr-probe/rr-summary-{all,"off,full,stop"}.json` |
+| **半径 3 反事实臂（已退回的改动）** | `/home/user/r17_work/r19/m2rr-probe/radius3/` |
+| 复核轮读数脚本 / 输出 | `/home/user/r17_work/r19/m2rr/rr_read.py`、`rr-read-final.txt` |
+| 树指纹（跑前 / 跑后，两趟） | `/home/user/r17_work/r19/m2rr/rr{,2}-tree-{before,after}.txt` |
+| 身份检查 + 补丁重生成 | `/home/user/r17_work/r19/m2rr/rr_patch.sh` |
+| **对主树的补丁（25 文件，+10028 / −215 内容行，全 LF，sha256 `315133a531bbc13d…`）** | `/home/user/r17_work/r19/m2.patch`（已重生成；行数口径见账本 21:00 那条） |
+| 本报告复核前的备份 | `/home/user/r17_work/r19/m2rr/M2-REPORT.md.prereview.bak` |

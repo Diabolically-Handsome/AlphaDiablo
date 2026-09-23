@@ -2,10 +2,10 @@
 
 - 日期：2026-09-08
 - 实现者标签：`r19-a1-implementer`
-- 工作树：`/home/laure/r17_work/r19/a1-tree`（Python only；`build -> /home/laure/r17_work/r17-1/build-res`，即主树同一条活桥）
-- 主树 `/home/laure/AlphaDiablo/diablogym` 未被修改（唯一例外：账本 append）
-- 补丁：`/home/laure/r17_work/r19/a1.patch`（5 个文件，+228 行，无删除逻辑）
-- 引擎 `/home/laure/alphadiablo-dev/devilutionX`、`src/*.cpp|hpp` 一律未改；今晚无新引擎补丁
+- 工作树：`/home/user/r17_work/r19/a1-tree`（Python only；`build -> /home/user/r17_work/r17-1/build-res`，即主树同一条活桥）
+- 主树 `/home/user/AlphaDiablo/diablogym` 未被修改（唯一例外：账本 append）
+- 补丁：`/home/user/r17_work/r19/a1.patch`（5 个文件，+228 行，无删除逻辑）
+- 引擎 `/home/user/alphadiablo-dev/devilutionX`、`src/*.cpp|hpp` 一律未改；今晚无新引擎补丁
 
 ---
 
@@ -88,7 +88,7 @@
 ## 三、测试
 
 - 新增 `tests/test_r19_retreat_scope.py`：**30 tests / 92 subtests，全绿**
-  （`/home/laure/r17_work/r19/a1-tree`，`PYTHONPATH=python:train`）。
+  （`/home/user/r17_work/r19/a1-tree`，`PYTHONPATH=python:train`）。
   覆盖：L2 上两个 scope 判词逐例相同（13 个案例 × 深度 2/3 + 压力子句 + 冷却/active 子句）；
   L1 只在 `l1-plus` 开口且阈值同款（50%、51%、空带 75%、76% 边界）；
   城（depth 0）在任何 scope 下都不是撤退层；
@@ -99,10 +99,10 @@
 - 邻域回归（retreat / portal / protocol / sustain-loot / sweep / identify /
   loot-protocol-integration / probe-sustain）：**448 passed, 410 subtests passed**。
 - 全部 import `options_env|worker_env|retreat|resource_sustain` 的测试文件
-  （`/home/laure/r17_work/r19/tests-wide.log`）：**1756 passed / 39 skipped / 24 failed**。
+  （`/home/user/r17_work/r19/tests-wide.log`）：**1756 passed / 39 skipped / 24 failed**。
   这 24 条**与本改动无关**：在同一台机、同样只 rsync 了 python/tests/train/*.py 的
-  **纯净副本** `/home/laure/r17_work/r19/base-tree` 上跑同样三个文件，失败集合
-  **逐条相同**（`comm` 双向差集为空，见 `/home/laure/r17_work/r19/tests-baseline.log`）。
+  **纯净副本** `/home/user/r17_work/r19/base-tree` 上跑同样三个文件，失败集合
+  **逐条相同**（`comm` 双向差集为空，见 `/home/user/r17_work/r19/tests-baseline.log`）。
   它们是 `test_content_case_infra.py` / `test_r18b6_training_wiring.py` /
   `test_r9_machinery.py` 里读取本副本没有拷贝的启动脚本与 CLI 资产的用例。
   完整 10 分钟全量套件未跑（**not verified**）。
@@ -111,10 +111,10 @@
 
 ## 四、探针（pool 2_133，48 种子，3 分片并行，worker 7e31dc54）
 
-命令与原始产物：`/home/laure/r17_work/r19/probe/`（`a1_probe_driver.py`，
-`*.cmd` / `*.log` / `*.json`），驱动脚本 `/home/laure/r17_work/r19/a1_probe_driver.py`。
+命令与原始产物：`/home/user/r17_work/r19/probe/`（`a1_probe_driver.py`，
+`*.cmd` / `*.log` / `*.json`），驱动脚本 `/home/user/r17_work/r19/a1_probe_driver.py`。
 探针版本 `r17-deployment-v3-r18m2`，`max_steps 6000`，decoding `sample`，
-覆盖 = `/home/laure/r17_work/r18/gates/v1world-overrides.json` 的 16 键。
+覆盖 = `/home/user/r17_work/r18/gates/v1world-overrides.json` 的 16 键。
 
 ### 4.1 OFF / 默认臂（回归）——**通过**
 
@@ -124,14 +124,14 @@ expected    = 0e5a1acd2fb2c07cd27eb72f9ecc574322e72f362ef0376b692376d9a99be886
 equal = true   n_rows = 48   runtime_errors = 0   elapsed = 653.1 s
 ```
 
-与认证控制行 `/home/laure/r17_work/r18/merge-probe/ctl-v1-world-193557.json` **逐位相等**。
+与认证控制行 `/home/user/r17_work/r18/merge-probe/ctl-v1-world-193557.json` **逐位相等**。
 派生统计亦逐项复现（L2 触达 34、L2 hazard 0.2220、首降中位 5535、L1 死亡 7、
 retreats 71、chests 253）。默认 `l1_retreats = 0`。
 
 ### 4.2 ON 臂（控制覆盖 + `{"resource_retreat_scope": "l1-plus"}`）
 
 `rows_sha_v3 = 1954e35f4d0100da1886b4c50295539ea41e4093bda66f00bec03b5532f2257c`
-（`/home/laure/r17_work/r19/probe/a1-on-204811.json`），`runtime_errors = 0`，elapsed 635.4 s。
+（`/home/user/r17_work/r19/probe/a1-on-204811.json`），`runtime_errors = 0`，elapsed 635.4 s。
 
 **配对 McNemar（存活，公式同 `m2_probe_driver.py:paired`）**
 
@@ -246,15 +246,15 @@ retreats 71、chests 253）。默认 `l1_retreats = 0`。
 
 ```bash
 # 树
-/home/laure/r17_work/r19/a1-tree            # build -> /home/laure/r17_work/r17-1/build-res
+/home/user/r17_work/r19/a1-tree            # build -> /home/user/r17_work/r17-1/build-res
 # 测试
-bash /home/laure/r17_work/r19/run_tests_new.sh      # 新增用例
-bash /home/laure/r17_work/r19/run_tests_wide.sh     # 邻域 + 相关文件
-bash /home/laure/r17_work/r19/baseline.sh           # 纯净副本对照（失败集合相同）
+bash /home/user/r17_work/r19/run_tests_new.sh      # 新增用例
+bash /home/user/r17_work/r19/run_tests_wide.sh     # 邻域 + 相关文件
+bash /home/user/r17_work/r19/baseline.sh           # 纯净副本对照（失败集合相同）
 # 探针（两臂并行）
-bash /home/laure/r17_work/r19/run_both.sh
+bash /home/user/r17_work/r19/run_both.sh
 # 分析
-bash /home/laure/r17_work/r19/run_an.sh             # -> probe/a1-analysis.json
+bash /home/user/r17_work/r19/run_an.sh             # -> probe/a1-analysis.json
 ```
 
 ---
@@ -263,7 +263,7 @@ bash /home/laure/r17_work/r19/run_an.sh             # -> probe/a1-analysis.json
 
 复核意见给出 3 条 blocker + 4 条 major + 1 条 minor。本节逐条说明**做了什么**、
 **在哪一行**、以及**哪个数字变了**。所有数字来自本轮亲自跑出来的文件
-（`/home/laure/r17_work/r19/probe-rv/`、`tests-wide-*-full.log`），不是估计。
+（`/home/user/r17_work/r19/probe-rv/`、`tests-wide-*-full.log`），不是估计。
 
 > **重要：§4.2 的 ON 臂数字已被本轮的重跑取代。**旧的
 > `rows_sha_v3 = 1954e35f…` 是在两条 blocker 仍然存在的树上跑出来的，
@@ -358,7 +358,7 @@ OFF/默认回归（先跑）：`rows_sha_v3 = 0e5a1acd2fb2c07cd27eb72f9ecc574322
 
 ON = 16 条控制覆盖 + `{"resource_retreat_scope": "l1-plus"}`，
 `rows_sha_v3 = 0e388a102698d70116e2426337266a8da553c6da34f54d00176334c9064c9389`，
-0 RuntimeError，679.5 s，产物 `/home/laure/r17_work/r19/probe-rv/a1-on-221543.json`。
+0 RuntimeError，679.5 s，产物 `/home/user/r17_work/r19/probe-rv/a1-on-221543.json`。
 
 配对 McNemar vs `ctl-v1-world-193557`：
 **saved 7 / lost 3 / net +4 / discordant 10 / ucb95_one_sided 0.02322**。
@@ -436,14 +436,14 @@ ON = 16 条控制覆盖 + `{"resource_retreat_scope": "l1-plus"}`，
 ### 8.6 本轮产物
 
 ```
-/home/laure/r17_work/r19/a1-tree                     # 仍然 build -> r17-1/build-res（未改 C++）
-/home/laure/r17_work/r19/a1-review.patch             # 本轮相对 base-tree 的完整 diff（13 文件）
-/home/laure/r17_work/r19/a1_probe_driver_review.py   # 拆分 L1/L2 计数的驱动器
-/home/laure/r17_work/r19/probe-rv/a1-summary-off.json
-/home/laure/r17_work/r19/probe-rv/a1-summary-on.json
-/home/laure/r17_work/r19/probe-rv/a1-on-221543.json  # 48 行 + 双臂统计 + 配对
-/home/laure/r17_work/r19/tests-wide-base-full.log
-/home/laure/r17_work/r19/tests-wide-review-full.log
+/home/user/r17_work/r19/a1-tree                     # 仍然 build -> r17-1/build-res（未改 C++）
+/home/user/r17_work/r19/a1-review.patch             # 本轮相对 base-tree 的完整 diff（13 文件）
+/home/user/r17_work/r19/a1_probe_driver_review.py   # 拆分 L1/L2 计数的驱动器
+/home/user/r17_work/r19/probe-rv/a1-summary-off.json
+/home/user/r17_work/r19/probe-rv/a1-summary-on.json
+/home/user/r17_work/r19/probe-rv/a1-on-221543.json  # 48 行 + 双臂统计 + 配对
+/home/user/r17_work/r19/tests-wide-base-full.log
+/home/user/r17_work/r19/tests-wide-review-full.log
 ```
 
 主树复核：`python/`、`tests/`、`src/`、`train/*.py`、`train/runs/r10-staging/probe_r17_deployment.py`

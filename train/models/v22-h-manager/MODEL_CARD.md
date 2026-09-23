@@ -11,7 +11,7 @@
 | 动作 | Discrete(3):FARM / DIVE / RESUPPLY(选项级,SMDP;内环为神谕逐字冻结宏) |
 | 训练 | 3M 微步 @ M1 Max,`train_ppo.py --options`,run `ppo-hier-v22-h`(2026-07-09) |
 | 引擎 | DevilutionX 钉死 `34c4cfc2e733`(bootstrap.sh ENGINE_REF)+ diablogym 桥(v20 世界规则:下楼阶梯 + 死亡阶梯 + 自动加点) |
-| SHA-256 | `f3b579d2b0c9b613045692435a46702d1a9e8de8fc62e155c651f565d8bd6f1a` |
+| SHA-256 | `9dcf40b061bcb40b5548f30587d726758f2ea27df745dd7fb418c44adaa81c38`(2026-09-23 重新保存:仅 zip 内 `data` 元数据里的本机路径换成中性路径,权重与优化器状态逐字节不变;原始文件见提交 c1ffced,原 SHA-256 `f3b579d2b0c9b613045692435a46702d1a9e8de8fc62e155c651f565d8bd6f1a`) |
 
 ## 战绩(金种子 9000-9031,终评协议)
 

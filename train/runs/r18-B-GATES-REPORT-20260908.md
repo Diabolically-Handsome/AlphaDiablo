@@ -190,32 +190,32 @@
 {
  "xdevil-a": {
   "rc": 1,
-  "out": "/home/laure/r17_work/r18/gates/exam-root/train/runs/eval-assembled/r18-arm-a-loot-4-xdevil-a.json",
+  "out": "/home/user/r17_work/r18/gates/exam-root/train/runs/eval-assembled/r18-arm-a-loot-4-xdevil-a.json",
   "last_line": "eval_contract.EvalContractError: asymmetric Worker checkpoint 尚未完成可部署 actor 训练，或不在完整 PPO 更新边界:{'num_timesteps': 1048576, 'last_completed_rollout': 1048576, 'ppo_optimizer_steps': 27023, 'warmup_start': None, 'warmup_until': None, 'warmup_expected_rollouts': 0, 'warmup_completed_rollouts': 0, 'warmup_optimizer_steps': 0, 'actor_optimizer_steps': 27023}"
  },
  "xdevil-b": {
   "rc": 1,
-  "out": "/home/laure/r17_work/r18/gates/exam-root/train/runs/eval-assembled/r18-arm-a-loot-4-xdevil-b.json",
+  "out": "/home/user/r17_work/r18/gates/exam-root/train/runs/eval-assembled/r18-arm-a-loot-4-xdevil-b.json",
   "last_line": "eval_contract.EvalContractError: asymmetric Worker checkpoint 尚未完成可部署 actor 训练，或不在完整 PPO 更新边界:{'num_timesteps': 1048576, 'last_completed_rollout': 1048576, 'ppo_optimizer_steps': 27023, 'warmup_start': None, 'warmup_until': None, 'warmup_expected_rollouts': 0, 'warmup_completed_rollouts': 0, 'warmup_optimizer_steps': 0, 'actor_optimizer_steps': 27023}"
  },
  "xm29-a": {
   "rc": 1,
-  "out": "/home/laure/r17_work/r18/gates/exam-root/train/runs/eval-assembled/r18-arm-a-loot-4-xm29-a.json",
+  "out": "/home/user/r17_work/r18/gates/exam-root/train/runs/eval-assembled/r18-arm-a-loot-4-xm29-a.json",
   "last_line": "eval_contract.EvalContractError: asymmetric Worker checkpoint 尚未完成可部署 actor 训练，或不在完整 PPO 更新边界:{'num_timesteps': 1048576, 'last_completed_rollout': 1048576, 'ppo_optimizer_steps': 27023, 'warmup_start': None, 'warmup_until': None, 'warmup_expected_rollouts': 0, 'warmup_completed_rollouts': 0, 'warmup_optimizer_steps': 0, 'actor_optimizer_steps': 27023}"
  },
  "xm29-b": {
   "rc": 1,
-  "out": "/home/laure/r17_work/r18/gates/exam-root/train/runs/eval-assembled/r18-arm-a-loot-4-xm29-b.json",
+  "out": "/home/user/r17_work/r18/gates/exam-root/train/runs/eval-assembled/r18-arm-a-loot-4-xm29-b.json",
   "last_line": "eval_contract.EvalContractError: asymmetric Worker checkpoint 尚未完成可部署 actor 训练，或不在完整 PPO 更新边界:{'num_timesteps': 1048576, 'last_completed_rollout': 1048576, 'ppo_optimizer_steps': 27023, 'warmup_start': None, 'warmup_until': None, 'warmup_expected_rollouts': 0, 'warmup_completed_rollouts': 0, 'warmup_optimizer_steps': 0, 'actor_optimizer_steps': 27023}"
  },
  "xm29full-a": {
   "rc": 1,
-  "out": "/home/laure/r17_work/r18/gates/exam-root/train/runs/eval-assembled/r18-arm-a-loot-4-xm29full-a.json",
+  "out": "/home/user/r17_work/r18/gates/exam-root/train/runs/eval-assembled/r18-arm-a-loot-4-xm29full-a.json",
   "last_line": "eval_contract.EvalContractError: asymmetric Worker checkpoint 尚未完成可部署 actor 训练，或不在完整 PPO 更新边界:{'num_timesteps': 1048576, 'last_completed_rollout': 1048576, 'ppo_optimizer_steps': 27023, 'warmup_start': None, 'warmup_until': None, 'warmup_expected_rollouts': 0, 'warmup_completed_rollouts': 0, 'warmup_optimizer_steps': 0, 'actor_optimizer_steps': 27023}"
  },
  "xm29full-b": {
   "rc": 1,
-  "out": "/home/laure/r17_work/r18/gates/exam-root/train/runs/eval-assembled/r18-arm-a-loot-4-xm29full-b.json",
+  "out": "/home/user/r17_work/r18/gates/exam-root/train/runs/eval-assembled/r18-arm-a-loot-4-xm29full-b.json",
   "last_line": "eval_contract.EvalContractError: asymmetric Worker checkpoint 尚未完成可部署 actor 训练，或不在完整 PPO 更新边界:{'num_timesteps': 1048576, 'last_completed_rollout': 1048576, 'ppo_optimizer_steps': 27023, 'warmup_start': None, 'warmup_until': None, 'warmup_expected_rollouts': 0, 'warmup_completed_rollouts': 0, 'warmup_optimizer_steps': 0, 'actor_optimizer_steps': 27023}"
  }
 }
@@ -370,13 +370,13 @@ null
 
 ```
 {
- "worker": "/home/laure/AlphaDiablo/diablogym/train/runs/r18-arm-a-loot-4/model_candidate.zip",
+ "worker": "/home/user/AlphaDiablo/diablogym/train/runs/r18-arm-a-loot-4/model_candidate.zip",
  "worker_sha256": "20adb0dfcdaed4cf5e10cf71f8fe5a387daf1073a43e1559b765ca759926ae47",
  "worker_kind": "model_candidate.zip (published)",
  "prereg": "r18-B-PREREG-FROZEN-20260907.md + amendments 1-2",
  "control_row": "0e5a1acd2fb2c07cd27eb72f9ecc574322e72f362ef0376b692376d9a99be886",
  "probe": "r17-deployment-v3-r18m2",
- "gates_dir": "/home/laure/r17_work/r18/gates",
+ "gates_dir": "/home/user/r17_work/r18/gates",
  "eval_assembled_main_sha256": "73c2bae7a8edcaf428c0400b805a556ec80156353a95c9ce7e90cb474b23b8ee"
 }
 ```

@@ -40,7 +40,8 @@ EVAL = RUNS / "eval-assembled"
 M29_NPZ = RUNS / "v29-mfresh" / "policy.npz"
 M29_SHA = "894413884d04adfdb2a574866a15dfed0c1c01d6781403d9ab4ff07b1f7b66d6"
 W_ZIP = ROOT / "train" / "models" / "v28-worker-leg1" / "model_final.zip"
-W_SHA = "2f7bc9dd810956c3feeb330575c9a03ddff0b476333ac429a411935985b04f42"
+# 2026-09-23: re-saved with neutral local paths (content otherwise unchanged); was 2f7bc9dd810956c3
+W_SHA = "0c6f014da19c3bf27b208d55adc76be13fcad8bc5f744b95f4f743be97426434"
 W_NPZ = ROOT / "train" / "models" / "v28-worker-leg1" / "policy.npz"
 W_NPZ_SHA = "976b6c05edaa0a32bb30bd372782e1201c72b029cedcbb3a5bf2361d34f27f8a"
 START_NT = 3_497_984            # v28-leg1 zip num_timesteps(=7×499,712,发车断言)

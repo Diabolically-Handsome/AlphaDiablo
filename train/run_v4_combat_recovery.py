@@ -110,7 +110,8 @@ CANDIDATE_RECEIPT = CANDIDATE_DIR / "bc_aux_behavior_receipt.json"
 CANDIDATE_PREFLIGHT = CANDIDATE_DIR / "bc_aux_liveness_preflight.json"
 
 V28_ZIP = TRAIN / "models" / "v28-worker-leg1" / "model_final.zip"
-V28_SHA256 = "2f7bc9dd810956c3feeb330575c9a03ddff0b476333ac429a411935985b04f42"
+# 2026-09-23: re-saved with neutral local paths (content otherwise unchanged); was 2f7bc9dd810956c3
+V28_SHA256 = "0c6f014da19c3bf27b208d55adc76be13fcad8bc5f744b95f4f743be97426434"
 V28_POLICY_HEAD_SHA256 = (
     "627814498a5c6ab5819d3d7abaea7ce4d37cef1dbf2fd388d160434e61b71d40"
 )

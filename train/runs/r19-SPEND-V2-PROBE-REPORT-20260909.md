@@ -2,12 +2,12 @@
 
 - 日期：2026-09-08（夜）实现；**2026-09-09 复审轮**（§九）
 - 实现者标签：`r19-spend-v2-implementer`
-- 工作树：`/home/laure/r17_work/r19/spend-tree`（Python only；`build -> /home/laure/r17_work/r17-1/build-res`，与主树同一条活桥）
-- 主树 `/home/laure/AlphaDiablo/diablogym` 未被修改（唯一例外：账本 append）。
+- 工作树：`/home/user/r17_work/r19/spend-tree`（Python only；`build -> /home/user/r17_work/r17-1/build-res`，与主树同一条活桥）
+- 主树 `/home/user/AlphaDiablo/diablogym` 未被修改（唯一例外：账本 append）。
   校验：`find <主树>/python <主树>/src <主树>/tests -newermt "2026-09-08 20:00" -name '*.py'` 为空；
   复审轮后复查 `<主树>/{python,src,tests,train}` 里 2026-09-08 20:00 之后被改的文件，
   只有 `train/runs/` 下各舰队的报告 / 产物副本，**没有一个源码文件**。
-- 补丁：`/home/laure/r17_work/r19/spend2.patch`——**复审轮后已重生成**：
+- 补丁：`/home/user/r17_work/r19/spend2.patch`——**复审轮后已重生成**：
   **12 个改动文件 + 1 个新测试文件，+1344 / −42 行**（初版是 11 + 1，+966 / −49）。
 - C++ / 引擎：**一字未改**。`src/resource_protocol.hpp` 只被**读**，用来确认哪些原生购买路径存在。
 
@@ -25,7 +25,7 @@
 1. **回归通过。** 法条关闭（`resource_purchase_mode = "full"`，即认证控制行的 16 键覆盖）时，
    本工作树在 pool 2_133 的 48 个种子上复现
    `rows_sha_v3 = 0e5a1acd2fb2c07cd27eb72f9ecc574322e72f362ef0376b692376d9a99be886`，
-   与 `/home/laure/r17_work/r18/merge-probe/ctl-v1-world-193557.json` **逐位相同**，
+   与 `/home/user/r17_work/r18/merge-probe/ctl-v1-world-193557.json` **逐位相同**，
    `arm_stats` 也逐字段相同（alive 20、l2 34、l3 4、hazard 0.222、
    belt/AC 直方图、gold_final median 78、weapon_upgrades 29 / 6620 金）。运行时错误 0。
 2. **药水停在 4 不是 bug，是另一条法的阈值。** 认证臂跑的是
@@ -225,7 +225,7 @@ if int(ready["belt_heals"]) < int(ready["required_belt_heals"]) and int(ready["b
 ## 五、测试
 
 - 新增 `tests/test_r19_spend_v2.py`：**26 tests 全绿**
-  （`/home/laure/r17_work/r19/spend-tree`，`PYTHONPATH=python:train`）。覆盖：
+  （`/home/user/r17_work/r19/spend-tree`，`PYTHONPATH=python:train`）。覆盖：
   词表登记与 validator 收/拒（`full-v3`/`fullv2`/`FULL-V2`/`full_v2` 全拒）；
   下游三条法（service policy / weapon upgrade / ordinary armor scope）只认这一族；
   **"full" 逐字节**（`minimum_potions` 仍在 4 瓶收手、仍直接转 `return`、
@@ -257,7 +257,7 @@ if int(ready["belt_heals"]) < int(ready["required_belt_heals"]) and int(ready["b
   ——原生价格常量对照，与本改动无关，两树共用同一条 build 软链，疑似不稳定用例）。
   多出的 27 条 passed = 本卷 26 条 + 上面那条。
 
-  **对照基准是今晚现做的纯净副本** `/home/laure/r17_work/r19/spend-pristine`
+  **对照基准是今晚现做的纯净副本** `/home/user/r17_work/r19/spend-pristine`
   （从主树 rsync，未打任何补丁）。A1 留下的 `base-tree` 已经过期：先用它比对时
   凭空报出 24 条“新失败”（`test_critic_migration` / `test_content_case_bc` /
   `test_training_core` / `test_run_r7_combat_recovery` / `test_eval_pipeline` /
@@ -268,12 +268,12 @@ if int(ready["belt_heals"]) < int(ready["required_belt_heals"]) and int(ready["b
 
 ## 六、探针（pool 2_133，48 种子，3 分片，worker 7e31dc54）
 
-驱动：`/home/laure/r17_work/r19/spend2_probe_driver.py`；
-原始产物：`/home/laure/r17_work/r19/spend-probe/`
+驱动：`/home/user/r17_work/r19/spend2_probe_driver.py`；
+原始产物：`/home/user/r17_work/r19/spend-probe/`
 （`spend2-{off,on,rich}-{a,b,c}.json|log|cmd`、三份 `spend2-*-merged.json`、
 `spend2-summary-all.json`）。
 探针版本 `r17-deployment-v3-r18m2`，`max_steps 6000`，decoding `sample`，
-覆盖 = `/home/laure/r17_work/r18/gates/v1world-overrides.json` 的 16 键。
+覆盖 = `/home/user/r17_work/r18/gates/v1world-overrides.json` 的 16 键。
 三臂九分片同时起，总耗时 656 s，**运行时错误 0**。
 
 ### 6.1 OFF（回归）—— 通过
@@ -337,7 +337,7 @@ spend-v2 账本（ON）——**下表是初版的残页统计，已被 §九.4 �
 
 标注：**诊断，不是法条**。金币由 `bridge.probe_resource_add_gold` 在每局 reset 后注入
 （`train/runs/r10-staging/spend2_rich_probe.py`，抄自
-`/home/laure/r17_work/r19/rich-probe/rich_probe.py` 并改用本工作树 + `full-v2`）。
+`/home/user/r17_work/r19/rich-probe/rich_probe.py` 并改用本工作树 + `full-v2`）。
 
 | 指标 | 控制 | ON-rich |
 |---|---|---|
@@ -419,17 +419,17 @@ spend-v2 账本（rich，**残页统计，已被 §九.5 取代**）：药水 73
 
 | 用途 | 路径 |
 |---|---|
-| 工作树 | `/home/laure/r17_work/r19/spend-tree` |
-| 补丁 | `/home/laure/r17_work/r19/spend2.patch` |
-| 探针驱动 | `/home/laure/r17_work/r19/spend2_probe_driver.py` |
-| 富启动探针（诊断） | `/home/laure/r17_work/r19/spend-tree/train/runs/r10-staging/spend2_rich_probe.py` |
-| 三臂原始行 | `/home/laure/r17_work/r19/spend-probe/spend2-{off,on,rich}-merged.json` |
-| 三臂汇总 | `/home/laure/r17_work/r19/spend-probe/spend2-summary-all.json` |
-| 新测试 | `/home/laure/r17_work/r19/spend-tree/tests/test_r19_spend_v2.py` |
-| 全量测试日志（改动树 / 纯净副本） | `/home/laure/r17_work/r19/spend-tests-full.log` / `pristine-tests-full.log` |
-| 失败集合对照 | `/home/laure/r17_work/r19/spend-fails.txt` / `pristine-fails.txt` |
-| 纯净对照副本 | `/home/laure/r17_work/r19/spend-pristine` |
-| 本报告 | `/home/laure/r17_work/r19/SPEND2-REPORT.md` |
+| 工作树 | `/home/user/r17_work/r19/spend-tree` |
+| 补丁 | `/home/user/r17_work/r19/spend2.patch` |
+| 探针驱动 | `/home/user/r17_work/r19/spend2_probe_driver.py` |
+| 富启动探针（诊断） | `/home/user/r17_work/r19/spend-tree/train/runs/r10-staging/spend2_rich_probe.py` |
+| 三臂原始行 | `/home/user/r17_work/r19/spend-probe/spend2-{off,on,rich}-merged.json` |
+| 三臂汇总 | `/home/user/r17_work/r19/spend-probe/spend2-summary-all.json` |
+| 新测试 | `/home/user/r17_work/r19/spend-tree/tests/test_r19_spend_v2.py` |
+| 全量测试日志（改动树 / 纯净副本） | `/home/user/r17_work/r19/spend-tests-full.log` / `pristine-tests-full.log` |
+| 失败集合对照 | `/home/user/r17_work/r19/spend-fails.txt` / `pristine-fails.txt` |
+| 纯净对照副本 | `/home/user/r17_work/r19/spend-pristine` |
+| 本报告 | `/home/user/r17_work/r19/SPEND2-REPORT.md` |
 | 账本事件 | `R19_SPEND_V2_IMPLEMENTED` / `R19_SPEND_V2_PROBE_RESULT`（`train/runs/r10-staging/r13_ledger.jsonl`） |
 
 ---
@@ -482,11 +482,11 @@ spend-v2 账本（rich，**残页统计，已被 §九.5 取代**）：药水 73
 | ON-normal（48 / 3） | `rows_sha_v3` **3144b5da…**，与**修前的 ON 臂逐位相同**，运行时错误 0 |
 | ON-rich（诊断，48 / 3） | `rows_sha_v3` **dd4e48c3…**，与**修前的 rich 臂逐位相同**，运行时错误 0 |
 
-产物：`/home/laure/r17_work/r19/spend-probe-rr/`（`spend2-{off,on,rich}-merged.json`、
+产物：`/home/user/r17_work/r19/spend-probe-rr/`（`spend2-{off,on,rich}-merged.json`、
 `spend2-summary-{off,on,rich}.json`、九份分片 json/log/cmd），
-驱动 `/home/laure/r17_work/r19/spend2_probe_driver_rr.py`，
-测试日志 `/home/laure/r17_work/r19/spend-rr/full-rr-{spend,pristine}.log`（+ `-fails.txt`），
-补丁已重生成：`/home/laure/r17_work/r19/spend2.patch`（**13 个文件，+1344 / −42**）。
+驱动 `/home/user/r17_work/r19/spend2_probe_driver_rr.py`，
+测试日志 `/home/user/r17_work/r19/spend-rr/full-rr-{spend,pristine}.log`（+ `-fails.txt`），
+补丁已重生成：`/home/user/r17_work/r19/spend2.patch`（**13 个文件，+1344 / −42**）。
 
 一次途中发现的**本轮自伤**，如实记下：F6 把 `train_ppo.py` 的报错串折成两行，
 `test_r18b6_training_wiring::test_the_unreachable_worker_gates_are_still_written`
@@ -589,18 +589,18 @@ spend-v2 账本（rich，**残页统计，已被 §九.5 取代**）：药水 73
 5. 全量套件里被跳过的 3 个文件仍然**没跑过**（在纯净副本上同样收集失败）。
 6. 主树 `train/runs/r19-reports/` 下的 `SPEND2-REPORT.md` / `spend2.patch` 副本是
    **11:50 的旧版**（本轮按宪法只对主树做了账本 append，没有覆写那两个副本）；
-   权威版本在 `/home/laure/r17_work/r19/`。
+   权威版本在 `/home/user/r17_work/r19/`。
 
 ### 九.9 本轮产物
 
 | 用途 | 路径 |
 |---|---|
-| 修复脚本 | `/home/laure/r17_work/r19/spend-rr/{fix_spend2.py,fix_tests.py,fix3.py}`、`/home/laure/r17_work/r19/spend-rr2/{add_tests.py,fix4.py}` |
-| 复审探针驱动 | `/home/laure/r17_work/r19/spend2_probe_driver_rr.py` |
-| 三臂重跑原始行 | `/home/laure/r17_work/r19/spend-probe-rr/spend2-{off,on,rich}-merged.json` |
-| 三臂重跑汇总 | `/home/laure/r17_work/r19/spend-probe-rr/spend2-summary-{off,on,rich}.json` |
-| 全量测试日志 / 失败集合 | `/home/laure/r17_work/r19/spend-rr/full-rr-{spend,pristine}.log` / `-fails.txt` |
-| 邻域测试日志 | `/home/laure/r17_work/r19/spend-rr/nbhd-round2{,-pristine}.log` |
-| 复算脚本 | `/home/laure/r17_work/r19/spend-rr2/{an_rr.py,an_rr2.py}`（输出 `an_rr.out`） |
-| 重生成的补丁 | `/home/laure/r17_work/r19/spend2.patch`（13 文件，+1344 / −42） |
+| 修复脚本 | `/home/user/r17_work/r19/spend-rr/{fix_spend2.py,fix_tests.py,fix3.py}`、`/home/user/r17_work/r19/spend-rr2/{add_tests.py,fix4.py}` |
+| 复审探针驱动 | `/home/user/r17_work/r19/spend2_probe_driver_rr.py` |
+| 三臂重跑原始行 | `/home/user/r17_work/r19/spend-probe-rr/spend2-{off,on,rich}-merged.json` |
+| 三臂重跑汇总 | `/home/user/r17_work/r19/spend-probe-rr/spend2-summary-{off,on,rich}.json` |
+| 全量测试日志 / 失败集合 | `/home/user/r17_work/r19/spend-rr/full-rr-{spend,pristine}.log` / `-fails.txt` |
+| 邻域测试日志 | `/home/user/r17_work/r19/spend-rr/nbhd-round2{,-pristine}.log` |
+| 复算脚本 | `/home/user/r17_work/r19/spend-rr2/{an_rr.py,an_rr2.py}`（输出 `an_rr.out`） |
+| 重生成的补丁 | `/home/user/r17_work/r19/spend2.patch`（13 文件，+1344 / −42） |
 | 账本事件 | `R19_SPEND_V2_REVIEW_ROUND` |

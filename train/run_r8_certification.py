@@ -127,7 +127,8 @@ PUBLISHED_DIR = TRAIN / "runs" / "r8-certification-published"
 PUBLISHED_MODEL_PATH = PUBLISHED_DIR / "model_final.zip"
 PUBLISHED_RECEIPT_PATH = PUBLISHED_DIR / "r8_publication_receipt.json"
 V28_ZIP = TRAIN / "models" / "v28-worker-leg1" / "model_final.zip"
-V28_SHA256 = "2f7bc9dd810956c3feeb330575c9a03ddff0b476333ac429a411935985b04f42"
+# 2026-09-23: re-saved with neutral local paths (content otherwise unchanged); was 2f7bc9dd810956c3
+V28_SHA256 = "0c6f014da19c3bf27b208d55adc76be13fcad8bc5f744b95f4f743be97426434"
 V28_ACTOR_PARAMETER_SHA256 = (
     "4b205c7cd0358014b36ddf592374a82512e2816741de262fb0d0dd840a662ff8"
 )
@@ -4165,7 +4166,7 @@ def command_adopt_replication() -> None:
         "amendment": "R8-1",
         "post_hoc": True,
         "approval": {
-            "designer": "Lawrence",
+            "designer": "Diabolically-Handsome",
             "wording": "立案续跑(推荐)",
             "date": "2026-07-29",
         },

@@ -52,13 +52,17 @@ M29_ZIP_SHA = "9d5820bfb951f6ba122b98ebad707f75a5471b4ce35dd09c3e8105775a3097ee"
 
 # R2 ANCHOR_GRANT 消费(显式路径 + 全文 sha + 运行时可比性全式复验)
 R2_ANCHORS = {
-    "r2-launch": ("8ab6b51065105a6719c1348d561c5fe4b15f674f27869e6870c0bf813642dff1",
+    # 2026-09-23: redacted with neutral local paths (content otherwise unchanged); was 8ab6b51065105a67
+    "r2-launch": ("bf9a543759bde261eed92e0beccc3b9422c21c10876c07e7da81ec441ec5a47b",
                   "W", None),
-    "r2-science": ("8d6a05d3517a6481c756109158b446b3eb7bae8858d02841b42c43a972e273f5",
+    # 2026-09-23: redacted with neutral local paths (content otherwise unchanged); was 8d6a05d3517a6481
+    "r2-science": ("37fab311e0a07a1ea22b35fd13d23448291b1d461d2f3b81f2dbe0e9d9391511",
                    "W", "M29"),
-    "r2-throne": ("2324648a416cbc0cb858858b006b5f797ee9c63422f13cb86c86462948f28c63",
+    # 2026-09-23: redacted with neutral local paths (content otherwise unchanged); was 2324648a416cbc0c
+    "r2-throne": ("1390a72db6a527a90238d37b2935adc0872c13bc0cc609e356bd72a86752fc41",
                   "W24", None),
-    "r2-script": ("71c298e05b6bf19ea94ced26c68b67b9e05303f22637357b610b15c6fb21a7f7",
+    # 2026-09-23: redacted with neutral local paths (content otherwise unchanged); was 71c298e05b6bf19e
+    "r2-script": ("ede6c0507e4010649f426de43748b27c2117faff373341f4b39b827b5e4645f5",
                   "script", None),
 }
 

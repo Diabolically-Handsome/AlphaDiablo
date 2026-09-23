@@ -2,15 +2,15 @@
 
 - 日期：2026-09-08
 - 实现者标签：`r19-gold-grab-implementer`
-- 工作树：`/home/laure/r17_work/r19/gold-tree`（Python only；`build -> /home/laure/r17_work/r17-1/build-res`，与主树同一条活桥）
-- 主树 `/home/laure/AlphaDiablo/diablogym` 未被修改（唯一例外：账本 append）；`src/*.cpp|hpp`、引擎、C++ 一律未动，今晚无新引擎补丁
-- 补丁：`/home/laure/r17_work/r19/gold.patch`（8 个文件：1 个新法模块、1 个新测试文件、6 处登记）
-- 探针原始产物：`/home/laure/r17_work/r19/gold-probe/`（`*.cmd` / `*.log` / `*.json`），驱动脚本 `/home/laure/r17_work/r19/gs/gold_probe_driver.py`
+- 工作树：`/home/user/r17_work/r19/gold-tree`（Python only；`build -> /home/user/r17_work/r17-1/build-res`，与主树同一条活桥）
+- 主树 `/home/user/AlphaDiablo/diablogym` 未被修改（唯一例外：账本 append）；`src/*.cpp|hpp`、引擎、C++ 一律未动，今晚无新引擎补丁
+- 补丁：`/home/user/r17_work/r19/gold.patch`（8 个文件：1 个新法模块、1 个新测试文件、6 处登记）
+- 探针原始产物：`/home/user/r17_work/r19/gold-probe/`（`*.cmd` / `*.log` / `*.json`），驱动脚本 `/home/user/r17_work/r19/gs/gold_probe_driver.py`
 
 > **2026-09-08 夜 · 复核轮已完成，见[第七节](#七复核轮2026-09-08-夜review-round)。**
 > 复核者给了 2 high + 3 medium + 1 low，**全部已修**；两臂**已按修好的树全部重跑**
-> （OFF 回归 sha 仍逐位相同；ON 臂产物在 `/home/laure/r17_work/r19/gold-probe-rr/`，
-> 驱动脚本 `/home/laure/r17_work/r19/rr/gold_probe_driver_rr.py`）。
+> （OFF 回归 sha 仍逐位相同；ON 臂产物在 `/home/user/r17_work/r19/gold-probe-rr/`，
+> 驱动脚本 `/home/user/r17_work/r19/rr/gold_probe_driver_rr.py`）。
 > **第一至六节是第一遍的原始记录，未删改**；其中被复核证伪的三处已在原地标注
 > 〔复核轮更正〕。凡与第七节冲突之处，**以第七节为准**。
 
@@ -117,7 +117,7 @@ loot 经济进城行程前的 `collect` 阶段，而且只在主线 L1
 
 ## 三、测试
 
-- 新增 `tests/test_r19_gold_grab.py`：**76 passed / 24 subtests passed（0 失败）**（`/home/laure/r17_work/r19/gold-tree`，
+- 新增 `tests/test_r19_gold_grab.py`：**76 passed / 24 subtests passed（0 失败）**（`/home/user/r17_work/r19/gold-tree`，
   `PYTHONPATH=python:train`）。覆盖：词汇表与 fail-closed validator（没有 loot 经济就拒）；
   四个触发条件逐条与边界（R=8 边界、切比雪夫对角、hp 51/50/49、idle、行程活动中、
   怪贴人 / 怪贴目标堆 / 死怪 / 109 无效标记 / 不可见活怪）；作用域（L0/L3/L4/L16/set level 全拒，
@@ -130,8 +130,8 @@ loot 经济进城行程前的 `collect` 阶段，而且只在主线 L1
   loot-protocol-integration / probe-sustain / options_env / r18b6-training-wiring / hunt_scope）：
   **354 passed / 4 skipped / 527 subtests passed / 11 failed**。
   这 11 条失败**与本改动无关**：在同一台机、同样只 rsync 了 python/tests/train 的**纯净副本**
-  `/home/laure/r17_work/r19/base-tree` 上跑同样的文件（去掉本文件），失败集合**逐条相同**
-  （`/home/laure/r17_work/r19/gold-tests-base-full.log`：11 failed, 278 passed；本树 11 failed, 354 passed）。
+  `/home/user/r17_work/r19/base-tree` 上跑同样的文件（去掉本文件），失败集合**逐条相同**
+  （`/home/user/r17_work/r19/gold-tests-base-full.log`：11 failed, 278 passed；本树 11 failed, 354 passed）。
   它们全部来自 `test_r18b6_training_wiring.py`，读的是本副本没有拷贝的
   `train/runs/r16-arm-a-constitution/model_candidate.zip`。
 - 完整 10 分钟全量套件**未跑**（not verified）。
@@ -145,19 +145,19 @@ loot 经济进城行程前的 `collect` 阶段，而且只在主线 L1
 ## 四、探针（pool 2_133，48 种子 2133000-2133047，3 分片并行，worker 7e31dc54）
 
 探针版本 `r17-deployment-v3-r18m2`，`max_steps 6000`，decoding `sample`，
-覆盖 = `/home/laure/r17_work/r18/gates/v1world-overrides.json` 的 16 键。
+覆盖 = `/home/user/r17_work/r18/gates/v1world-overrides.json` 的 16 键。
 
 ### 4.1 OFF / 默认臂（回归）——**通过**
 
 - `rows_sha_v3` = `0e5a1acd2fb2c07cd27eb72f9ecc574322e72f362ef0376b692376d9a99be886`
-- 认证控制行 = `0e5a1acd2fb2c07cd27eb72f9ecc574322e72f362ef0376b692376d9a99be886`（`/home/laure/r17_work/r18/merge-probe/ctl-v1-world-193557.json`，48 行）
+- 认证控制行 = `0e5a1acd2fb2c07cd27eb72f9ecc574322e72f362ef0376b692376d9a99be886`（`/home/user/r17_work/r18/merge-probe/ctl-v1-world-193557.json`，48 行）
 - **相等：是**；48 行；RuntimeError 计数 0；耗时 594.9s
-- 合并行：`/home/laure/r17_work/r19/gold-probe/gold-off-merged-rows.json`
+- 合并行：`/home/user/r17_work/r19/gold-probe/gold-off-merged-rows.json`
 
 ### 4.2 ON 臂 = 16 键 + `{"resource_gold_grab": "gold-grab-v1"}`
 
-- 原始行：`/home/laure/r17_work/r19/gold-probe/gold-on-235012.json`；RuntimeError 计数 0；耗时 580.6s
-- 配对 McNemar（公式取自 `/home/laure/r17_work/r18/m2_probe_driver.py` 的 `paired()`）：
+- 原始行：`/home/user/r17_work/r19/gold-probe/gold-on-235012.json`；RuntimeError 计数 0；耗时 580.6s
+- 配对 McNemar（公式取自 `/home/user/r17_work/r18/m2_probe_driver.py` 的 `paired()`）：
   **saved 11、lost 9、net 2、discordant 20、
   ucb95_one_sided 0.11128**
 
@@ -302,10 +302,10 @@ loot 经济进城行程前的 `collect` 阶段，而且只在主线 L1
 
 复核者给了 6 条（2 条 high、3 条 medium、1 条 low）。**5 条全部修了**（含两条 high 与三条
 medium），low 那条（缺集成测试）也补了。改动仍然只在副本树
-`/home/laure/r17_work/r19/gold-tree`，仍然是 Python-only，仍然没有改任何既有法条的阈值；
-主树 `/home/laure/AlphaDiablo/diablogym` 复核后仍与 `base-tree` 的 `python/`、`tests/`、
+`/home/user/r17_work/r19/gold-tree`，仍然是 Python-only，仍然没有改任何既有法条的阈值；
+主树 `/home/user/AlphaDiablo/diablogym` 复核后仍与 `base-tree` 的 `python/`、`tests/`、
 `train/*.py` 逐字节相同（只有 append-only 台账除外）。补丁重新生成：
-`/home/laure/r17_work/r19/gold.patch`（同样 8 个文件）。
+`/home/user/r17_work/r19/gold.patch`（同样 8 个文件）。
 
 ### 7.1 修了什么
 
@@ -361,7 +361,7 @@ grab 档确实压在 portal/retreat 之上、旗关时该档惰性）、`GrabEsc
 
 ### 7.2 新测试确实咬人（反向验证）
 
-把同一个测试文件放到**修复前**的三份源文件上（`/home/laure/r17_work/r19/rr/pre-tree`，
+把同一个测试文件放到**修复前**的三份源文件上（`/home/user/r17_work/r19/rr/pre-tree`，
 只把 `resource_gold_grab.py` / `options_env.py` / `worker_env.py` 换回改动前的版本）：
 **24 failed / 92 passed**，失败正是上面 6 条对应的用例；在修复后的树上
 **112 passed / 37 subtests passed / 0 failed**。
@@ -371,13 +371,13 @@ grab 档确实压在 portal/retreat 之上、旗关时该档惰性）、`GrabEsc
 - **OFF 回归（旗关）**：`rows_sha_v3 = 0e5a1acd2fb2c07cd27eb72f9ecc574322e72f362ef0376b692376d9a99be886`，
   期望 `0e5a1acd2fb2c07cd27eb72f9ecc574322e72f362ef0376b692376d9a99be886`，**equal = true**，48 行，
   RuntimeError 0，621.5s。
-  行文件 `/home/laure/r17_work/r19/gold-probe-rr/gold2-off-merged-rows.json`。
+  行文件 `/home/user/r17_work/r19/gold-probe-rr/gold2-off-merged-rows.json`。
 - **ON 臂重跑**（16 键 + `resource_gold_grab=gold-grab-v1`，pool 2_133 48 种子 3 分片，
   worker 7e31dc54，max_steps 6000，decoding sample，探针 `r17-deployment-v3-r18m2`）：
   RuntimeError 0，630.8s，
-  行文件 `/home/laure/r17_work/r19/gold-probe-rr/gold2-on-004806.json`。
+  行文件 `/home/user/r17_work/r19/gold-probe-rr/gold2-on-004806.json`。
 - 邻域回归：**11 failed, 554 passed, 4 skipped, 711 subtests passed**；11 条失败与纯净副本 `base-tree` 的失败集合**逐条相同**
-  （`/home/laure/r17_work/r19/rr/rr-fails.txt` 与 `base-fails.txt` diff 为空），
+  （`/home/user/r17_work/r19/rr/rr-fails.txt` 与 `base-fails.txt` diff 为空），
   全部来自 `test_r18b6_training_wiring.py` 读不到本副本没拷贝的
   `train/runs/r16-arm-a-constitution/model_candidate.zip`。完整 10 分钟全量套件仍**未跑**。
 

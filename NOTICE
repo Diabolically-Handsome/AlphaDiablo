@@ -1,0 +1,21 @@
+AlphaDiablo / DiabloGym
+Copyright (c) 2026 Diabolically-Handsome
+
+The MIT License in LICENSE applies to this repository with the following
+notices.
+
+1. This license covers the original code in this repository (the DiabloGym
+   bridge, Python environment, training pipeline, and tooling).
+
+2. Files under patches/ are derivative snippets of DevilutionX
+   (https://github.com/diasurgical/devilutionX), which is distributed under
+   the Sustainable Use License (non-commercial). Those files carry upstream's
+   terms, and using this project as a whole is therefore restricted to
+   non-commercial purposes. The build scripts fetch DevilutionX from upstream;
+   its source is not vendored here.
+
+3. Diablo is a registered trademark of Blizzard Entertainment, Inc. This is an
+   unofficial research project, not affiliated with or endorsed by Blizzard
+   Entertainment or DeepMind. No copyrighted game assets (e.g. DIABDAT.MPQ)
+   are included or distributed; users must supply their own legally obtained
+   game data, or use the freely available shareware spawn.mpq.

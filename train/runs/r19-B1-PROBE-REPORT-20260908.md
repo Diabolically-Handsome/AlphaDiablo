@@ -1,9 +1,9 @@
 # R19-B1 — butcher-room-v1（按布局识别的屠夫房禁区 v2）
 
-实现者 `r19-b1-implementer`，2026-09-08。工作副本 `/home/laure/r17_work/r19/b1-tree`，
-自建桥 `/home/laure/r17_work/r19/b1-build`（`b1-tree/build` 指向它）。
-主树 `/home/laure/AlphaDiablo/diablogym` 全程只读（唯一例外是追加式台账）。
-补丁 `/home/laure/r17_work/r19/b1.patch`（`patch -p1`，**15 个文件**，复核轮后重新生成
+实现者 `r19-b1-implementer`，2026-09-08。工作副本 `/home/user/r17_work/r19/b1-tree`，
+自建桥 `/home/user/r17_work/r19/b1-build`（`b1-tree/build` 指向它）。
+主树 `/home/user/AlphaDiablo/diablogym` 全程只读（唯一例外是追加式台账）。
+补丁 `/home/user/r17_work/r19/b1.patch`（`patch -p1`，**15 个文件**，复核轮后重新生成
 并验证过：干净副本上 `patch -p1` 之后 15 个文件与 `b1-tree` 逐字节相同，
 `verify_patch.sh`）。
 
@@ -27,7 +27,7 @@
 
 ---
 
-> 本节所有行号都是**复核轮之后**的 `/home/laure/r17_work/r19/b1-tree` 的行号；
+> 本节所有行号都是**复核轮之后**的 `/home/user/r17_work/r19/b1-tree` 的行号；
 > 复核修正挪动过 `resource_retreat.trigger_reason` 与 `env.py` 里若干函数的位置。
 
 ## 2. 设计
@@ -265,7 +265,7 @@ eval 档案在这棵树上都会被 `validate_eval_archive` 以"协议源码 bun
   `boss_near_triggers` 计数器真的会动（B1-R5）；两个 CLI 与档案身份词表
   （B1-R7）。
 
-初版邻域回归（`/home/laure/r17_work/r19/b1-tests.log`）：
+初版邻域回归（`/home/user/r17_work/r19/b1-tests.log`）：
 `test_r19_boss_room` + `test_resource_sweep` + `test_resource_retreat` +
 `test_resource_retreat_training` + `test_hunt_scope` + `test_options_env` +
 `test_aggro_engagement` + `test_resource_portal` + `test_resource_protocol` +
@@ -290,7 +290,7 @@ eval 档案在这棵树上都会被 `validate_eval_archive` 以"协议源码 bun
 `grep -l 'options_env|worker_env|retreat|resource_sustain|train_ppo|eval_assembled|
 eval_contract|boss_room|engagement|explore'` 命中、且干净副本里也存在的
 **74 个**测试文件，在**本树**与**未改动的干净副本
-`/home/laure/r17_work/r19/base-tree`** 上各跑一遍，逐条比对失败清单
+`/home/user/r17_work/r19/base-tree`** 上各跑一遍，逐条比对失败清单
 （`run_wide_both.sh`，把 `FAILED` / `SUBFAILED` / `ERROR` 三种行都收进来）：
 
 | | 本树 (`b1-wide-raw.txt`) | 干净副本基线 (`baseline-wide-raw.txt`) |
@@ -342,7 +342,7 @@ rootdir 下造成的，**没有任何源码文件被动过**（主树 `python/` 
 | 用时 | 646.5 s（复核轮重跑） |
 
 这条闸门同时证明了两件事：Python 侧默认关闭逐位同构，**以及**我自己从
-`/home/laure/alphadiablo-dev/devilutionX`（未改动，patch 0014 已在）重建的桥
+`/home/user/alphadiablo-dev/devilutionX`（未改动，patch 0014 已在）重建的桥
 `b1-build/_diablogym…so`（sha256 `c95da114…0877`）在 gore 旗关闭时与线上
 `build-res` 行为等价（`build-b1.log` 另有 `RESOURCES_IDENTICAL`）。
 
@@ -569,27 +569,27 @@ n = 48、零训练、单一 worker、每臂只跑了一次。按预注册公式 
 
 | | 路径 |
 |---|---|
-| 工作树 | `/home/laure/r17_work/r19/b1-tree` |
-| 桥构建目录 | `/home/laure/r17_work/r19/b1-build`（`_diablogym…so` sha256 `c95da114fcf40ecc470925eea6cbe461da976684f82aa64ff0fe20b7d1100877`） |
-| 构建日志 | `/home/laure/r17_work/r19/build-b1.log`（`RESOURCES_IDENTICAL`） |
-| 补丁 | `/home/laure/r17_work/r19/b1.patch`（`patch -p1`，**15 文件**，复核轮后重生成并验证） |
-| 测试日志 | 初版 `/home/laure/r17_work/r19/b1-tests.log`；复核轮 `b1-wide.txt`（本树）与 `baseline-wide.txt`（干净副本基线） |
-| 关闭臂 | `/home/laure/r17_work/r19/b1-probe/b1-summary-off.json`、`b1-off-merged.json` |
-| 开启臂 | `/home/laure/r17_work/r19/b1-probe/b1-on-merged.json`、`b1-summary-on.json` |
-| 分析 | 初版 `/home/laure/r17_work/r19/b1-probe/b1-analysis.json`；**复核轮 `b1-analysis-review.json`（正文用的就是这一份）** |
-| 冒烟（锚点实测） | `/home/laure/r17_work/r19/b1-smoke/on.json` |
-| 探针驱动 | `/home/laure/r17_work/r19/b1_probe_driver.py` |
-| 本报告 | `/home/laure/r17_work/r19/B1-REPORT.md` |
+| 工作树 | `/home/user/r17_work/r19/b1-tree` |
+| 桥构建目录 | `/home/user/r17_work/r19/b1-build`（`_diablogym…so` sha256 `c95da114fcf40ecc470925eea6cbe461da976684f82aa64ff0fe20b7d1100877`） |
+| 构建日志 | `/home/user/r17_work/r19/build-b1.log`（`RESOURCES_IDENTICAL`） |
+| 补丁 | `/home/user/r17_work/r19/b1.patch`（`patch -p1`，**15 文件**，复核轮后重生成并验证） |
+| 测试日志 | 初版 `/home/user/r17_work/r19/b1-tests.log`；复核轮 `b1-wide.txt`（本树）与 `baseline-wide.txt`（干净副本基线） |
+| 关闭臂 | `/home/user/r17_work/r19/b1-probe/b1-summary-off.json`、`b1-off-merged.json` |
+| 开启臂 | `/home/user/r17_work/r19/b1-probe/b1-on-merged.json`、`b1-summary-on.json` |
+| 分析 | 初版 `/home/user/r17_work/r19/b1-probe/b1-analysis.json`；**复核轮 `b1-analysis-review.json`（正文用的就是这一份）** |
+| 冒烟（锚点实测） | `/home/user/r17_work/r19/b1-smoke/on.json` |
+| 探针驱动 | `/home/user/r17_work/r19/b1_probe_driver.py` |
+| 本报告 | `/home/user/r17_work/r19/B1-REPORT.md` |
 | 复核轮代码补丁脚本 | `patch_review.py`、`patch_review2.py`、`patch_review4.py`、`patch_tests.py`（同目录） |
 | 复核轮报告补丁脚本 | `patch_report1.py` … `patch_report6.py` |
 | 复核轮分析 / 台账脚本 | `scripts/analyze_b1_review.py`、`scripts/diff_seeds.py`、`scripts/ledger_b1_review.py` |
-| 补丁自验 | `/home/laure/r17_work/r19/verify_patch.sh`（干净副本 + `patch -p1` 后 15 文件逐字节相同） |
+| 补丁自验 | `/home/user/r17_work/r19/verify_patch.sh`（干净副本 + `patch -p1` 后 15 文件逐字节相同） |
 
 台账：`R19_B1_BUTCHER_ROOM_V1_IMPLEMENTED`、`R19_B1_PROBE_RESULT` 与
 **`R19_B1_REVIEW_ROUND`** 已追加到
-`/home/laure/AlphaDiablo/diablogym/train/runs/r10-staging/r13_ledger.jsonl`。
+`/home/user/AlphaDiablo/diablogym/train/runs/r10-staging/r13_ledger.jsonl`。
 
-主树未被修改（台账除外），`/home/laure/alphadiablo-dev/devilutionX` 未被修改，
+主树未被修改（台账除外），`/home/user/alphadiablo-dev/devilutionX` 未被修改，
 虚种子池 2_116-119 / 2_126-128 零接触。
 
 
@@ -600,7 +600,7 @@ n = 48、零训练、单一 worker、每臂只跑了一次。按预注册公式 
 B1 的代码复核提了 11 条（3 条 major 判定为"阻断"级、8 条 minor）；
 我自己在写测试与加宽回归时又抓到 2 条（B1-R12 遥测计数、**B1-R13 我自己造成的回归**）。
 本节逐条写清楚**做了什么**、**没做什么**，以及重跑的两条臂。
-所有代码改动都落在同一个副本 `/home/laure/r17_work/r19/b1-tree`，主树仍然只读。
+所有代码改动都落在同一个副本 `/home/user/r17_work/r19/b1-tree`，主树仍然只读。
 
 ### 10.1 逐条
 

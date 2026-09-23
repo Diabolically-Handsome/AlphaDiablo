@@ -31,16 +31,16 @@
 - 裁定依据：主席 2026-09-10 裁定 `R19_CHAIRMAN_RULING_ORACLE_TEACHER`
   （"oracle thinking - scripts become teachers, not runtime rules;
   first prove the teacher beats the student"）
-- 工作树：`/home/laure/r17_work/r19/oracle-tree`
+- 工作树：`/home/user/r17_work/r19/oracle-tree`
   （`rsync -a --exclude __pycache__` 自只读的 `m2-merge`；
-  `build -> /home/laure/r17_work/r17-1/build-res`）
-- 主树 `/home/laure/AlphaDiablo/diablogym`、M2 合并树 `m2-merge`：**只读、零写入**
+  `build -> /home/user/r17_work/r17-1/build-res`）
+- 主树 `/home/user/AlphaDiablo/diablogym`、M2 合并树 `m2-merge`：**只读、零写入**
   （本轮重新用 sha256 逐文件复验，见 §一）。
 - 种子：只用 2_133 池 2133000–2133047，3 片
   （a 2133000-2133015 / b 2133016-2133031 / c 2133032-2133047），
   外加 a 片再跑一次做**地形中性对照**。
   处女池 2_116-119、2_126-128：**零接触**（本轮枚举了所有产物里的全部种子复验）。
-- 第一轮的全部产物原样保留在 `/home/laure/r17_work/r19/round1/`，
+- 第一轮的全部产物原样保留在 `/home/user/r17_work/r19/round1/`，
   本报告里凡是「第一轮说过什么」都能在那里核对。
 - 本报告所有数字都来自本轮自己产出的文件，来源逐处标注；
   没有文件支持的一律写「未验证」。
@@ -129,19 +129,19 @@
 
 | 物件 | 路径 | sha256 前 16 |
 |---|---|---|
-| 老师模块 | `/home/laure/r17_work/r19/oracle-tree/train/runs/r10-staging/teacher_v1.py` | `65c1a14f029e7311` |
-| 单元卷 | `/home/laure/r17_work/r19/oracle-tree/train/runs/r10-staging/test_teacher_v1.py` | `f12d94d98f911e24` |
-| 分片执行器 | `/home/laure/r17_work/r19/teacher_shard.py` | `1bf9a8ad45696e46` |
-| 探针驱动 | `/home/laure/r17_work/r19/teacher_probe_driver.py` | `49448d8e91f262e9` |
-| 复核轮诊断 | `/home/laure/r17_work/r19/teacher_extra2.py` | `bdd292b2f5aef90d` |
-| 地形中性对照 | `/home/laure/r17_work/r19/observe_control.py` | `d6f45d51ac9b15bd` |
-| 表格生成 | `/home/laure/r17_work/r19/gen_tables.py` | `e51d6d3806e72c95` |
-| 行/统计/配对 | `/home/laure/r17_work/r19/teacher-probe/{parent,oracle,teacher-v1}-rows.json`、`teacher-summary.json` | — |
-| 回归凭据 | `/home/laure/r17_work/r19/teacher-probe/regression-receipt.json` | — |
-| 中性对照凭据 | `/home/laure/r17_work/r19/teacher-probe/terrain-neutrality-receipt.json` | — |
-| 表格与诊断 | `/home/laure/r17_work/r19/teacher-probe/{tables.md,extra2.txt}` | — |
-| 单元卷日志 | `/home/laure/r17_work/r19/teacher-tests-rr.log` | — |
-| 第一轮全部产物 | `/home/laure/r17_work/r19/round1/` | — |
+| 老师模块 | `/home/user/r17_work/r19/oracle-tree/train/runs/r10-staging/teacher_v1.py` | `65c1a14f029e7311` |
+| 单元卷 | `/home/user/r17_work/r19/oracle-tree/train/runs/r10-staging/test_teacher_v1.py` | `f12d94d98f911e24` |
+| 分片执行器 | `/home/user/r17_work/r19/teacher_shard.py` | `1bf9a8ad45696e46` |
+| 探针驱动 | `/home/user/r17_work/r19/teacher_probe_driver.py` | `49448d8e91f262e9` |
+| 复核轮诊断 | `/home/user/r17_work/r19/teacher_extra2.py` | `bdd292b2f5aef90d` |
+| 地形中性对照 | `/home/user/r17_work/r19/observe_control.py` | `d6f45d51ac9b15bd` |
+| 表格生成 | `/home/user/r17_work/r19/gen_tables.py` | `e51d6d3806e72c95` |
+| 行/统计/配对 | `/home/user/r17_work/r19/teacher-probe/{parent,oracle,teacher-v1}-rows.json`、`teacher-summary.json` | — |
+| 回归凭据 | `/home/user/r17_work/r19/teacher-probe/regression-receipt.json` | — |
+| 中性对照凭据 | `/home/user/r17_work/r19/teacher-probe/terrain-neutrality-receipt.json` | — |
+| 表格与诊断 | `/home/user/r17_work/r19/teacher-probe/{tables.md,extra2.txt}` | — |
+| 单元卷日志 | `/home/user/r17_work/r19/teacher-tests-rr.log` | — |
+| 第一轮全部产物 | `/home/user/r17_work/r19/round1/` | — |
 
 **法条影响：无。** `teacher_v1.py` 仍在 `train/runs/r10-staging/`（探针侧），
 不在 `probe_r17_deployment._SOURCE_FILES` 指纹包里，**也不在任何其他指纹包里**；
@@ -227,8 +227,8 @@ equal       = True
 
 | 认证行文件 | 本轮重算的 `rows_sha_v3` |
 |---|---|
-| `/home/laure/r17_work/r19/m2rr-probe/rr-set-rows.json`（复核轮产物） | `f33f7af5…ded75da4` |
-| `/home/laure/r17_work/r19/m2-probe/m2-set-rows.json`（复核轮前） | `f33f7af5…ded75da4` |
+| `/home/user/r17_work/r19/m2rr-probe/rr-set-rows.json`（复核轮产物） | `f33f7af5…ded75da4` |
+| `/home/user/r17_work/r19/m2-probe/m2-set-rows.json`（复核轮前） | `f33f7af5…ded75da4` |
 
 `all_references_agree = True`（`teacher-probe/regression-receipt.json`）。
 `alive 28 / L1 deaths 8 / L2 hazard 0.1374 / L2 kills 826 / L3 2` 也与
@@ -606,6 +606,6 @@ M2-SET 自己的 8 个 L1 死亡种子是
 ---
 
 *本报告由 teacher-v1 实施者写于 2026-09-10（复核轮）。
-所有数字来自 `/home/laure/r17_work/r19/teacher-probe/` 下本轮自产的文件，
-第一轮的数字来自原样保留的 `/home/laure/r17_work/r19/round1/`；
+所有数字来自 `/home/user/r17_work/r19/teacher-probe/` 下本轮自产的文件，
+第一轮的数字来自原样保留的 `/home/user/r17_work/r19/round1/`；
 没有出处的地方一律写了「未验证」。*

@@ -1,9 +1,9 @@
 # R19 — sweep-v2 (chests, barrels **and sarcophagi**, main L1 + main L2)
 
 **Date** 2026-09-08 (night) · **Implementer** r19-sweep-v2-implementer
-**Tree** `/home/laure/r17_work/r19/sweep-tree` (Python only; `build -> /home/laure/r17_work/r17-1/build-res`)
-**Patch** `/home/laure/r17_work/r19/sweep2.patch` (`diff -ru` against `/home/laure/r17_work/r19/sweep-base`, a pristine rsync of the main tree)
-**Main tree `/home/laure/AlphaDiablo/diablogym` was never written to** except the append-only ledger.
+**Tree** `/home/user/r17_work/r19/sweep-tree` (Python only; `build -> /home/user/r17_work/r17-1/build-res`)
+**Patch** `/home/user/r17_work/r19/sweep2.patch` (`diff -ru` against `/home/user/r17_work/r19/sweep-base`, a pristine rsync of the main tree)
+**Main tree `/home/user/AlphaDiablo/diablogym` was never written to** except the append-only ledger.
 
 Chairman's ruling 2026-09-08: *chests and barrels are a key income mechanic and must be
 swept properly on L1 **and** L2.*
@@ -105,7 +105,7 @@ pass the value through the single shared `validate_sweep_protocol`, and
 (`r17-deployment-v3-r18m2`) — deliberately, because the certified control row names it.
 
 > **REVIEW ROUND (2026-09-09) — the same list, after the fixes.** The patch
-> `/home/laure/r17_work/r19/sweep2.patch` is now **13 files**: `options_env.py`,
+> `/home/user/r17_work/r19/sweep2.patch` is now **13 files**: `options_env.py`,
 > `resource_protocol.py`, `resource_retreat.py`, `resource_sweep.py`, `worker_env.py`;
 > `tests/{test_r19_sweep_v2,test_resource_sweep,test_r18b6_training_wiring,test_r18b3b_loot_warm_start}.py`;
 > `train/{eval_assembled,eval_contract,migrate_loot_candidate,train_ppo}.py`.
@@ -192,11 +192,11 @@ the chairman's call, not mine.
 ## 5. The evidence  *(first pass, 2026-09-08 — superseded by §10 where they differ)*
 
 Probe `r17-deployment-v3-r18m2`, worker `7e31dc54`
-(`/home/laure/AlphaDiablo/diablogym/train/runs/r16-arm-a-constitution/model_candidate.zip`),
+(`/home/user/AlphaDiablo/diablogym/train/runs/r16-arm-a-constitution/model_candidate.zip`),
 pool 2_133 seeds 2133000-2133047 in 3 shards (a/b/c), `max_steps 6000`, decoding `sample`.
-Driver `/home/laure/r17_work/r19/sweep2_probe_driver.py` (`paired()` and `arm_stats()`
-copied verbatim from `/home/laure/r17_work/r18/m2_probe_driver.py`).
-Rows: `/home/laure/r17_work/r19/sweep-probe/{sweep2-off-rows.json,sweep2-on-rows.json}`;
+Driver `/home/user/r17_work/r19/sweep2_probe_driver.py` (`paired()` and `arm_stats()`
+copied verbatim from `/home/user/r17_work/r18/m2_probe_driver.py`).
+Rows: `/home/user/r17_work/r19/sweep-probe/{sweep2-off-rows.json,sweep2-on-rows.json}`;
 aggregates `sweep2-analysis.json`; logs `sweep2-{off,on}-{a,b,c}.log`.
 
 ### 5.1 Regression (the gate)
@@ -210,11 +210,11 @@ aggregates `sweep2-analysis.json`; logs `sweep2-{off,on}-{a,b,c}.log`.
 discordant — the OFF arm is the control row, row for row.
 
 *Provenance note.* Before the §4 fix the OFF arm produced `066bf39d…`. I did **not** assume
-that was my delta: I built a pristine baseline tree (`/home/laure/r17_work/r19/sweep-base`,
+that was my delta: I built a pristine baseline tree (`/home/user/r17_work/r19/sweep-base`,
 the same rsync + the same `build -> r17-1/build-res` symlink, no R19 code) and ran the same
 arm on it. It reproduced `0e5a1acd…` exactly, which proved the mismatch **was** mine and
 sent me to §4. (For the record, the certified control row was minted in
-`/home/laure/r17_work/r18/merge-tree`, whose `build` points at `merge-build` — a different
+`/home/user/r17_work/r18/merge-tree`, whose `build` points at `merge-build` — a different
 `.so` (`c7efb32f…` vs `f5ad9916…`) — and whose `worker_env.py` predates the R18-B7 prefix
 guard. Neither difference moves this row: the main tree + `r17-1/build-res` reproduces it.)
 
@@ -442,8 +442,8 @@ baseline tree** with the same selection:
 
 | tree | result |
 |---|---|
-| baseline `/home/laure/r17_work/r19/sweep-base` | **59 failed**, 1767 passed, 3 errors, 1275 subtests passed |
-| sweep-v2 `/home/laure/r17_work/r19/sweep-tree` | **59 failed**, 1811 passed, 3 errors, 1293 subtests passed |
+| baseline `/home/user/r17_work/r19/sweep-base` | **59 failed**, 1767 passed, 3 errors, 1275 subtests passed |
+| sweep-v2 `/home/user/r17_work/r19/sweep-tree` | **59 failed**, 1811 passed, 3 errors, 1293 subtests passed |
 
 The failing set is **identical** (`diff` of the sorted `FAILED`/`ERROR` lines: empty). Every
 one of the 44 extra passes is one of my new tests. The 59 pre-existing failures and 3 errors
@@ -452,8 +452,8 @@ touched; four further files (`_a14_fuse_receipt_probe.py`, `_progression_probe.p
 `test_content_case_aux.py`, `test_worker_env.py`) fail at *collection* on both trees for the
 same reason and were excluded from both runs.
 
-Logs: `/home/laure/r17_work/r19/wide2-{base,sweep2}.log`,
-`/home/laure/r17_work/r19/wide2-{base,sweep2}-fails.txt`.
+Logs: `/home/user/r17_work/r19/wide2-{base,sweep2}.log`,
+`/home/user/r17_work/r19/wide2-{base,sweep2}-fails.txt`.
 
 ---
 
@@ -515,7 +515,7 @@ keeps working.
    pool for the same reason the whole L2 clause is: 0 of the ON arm's windows open on L2.
    It is unit-tested against the real `RetreatService` and is, on this evidence,
    *implemented and unexercised* — exactly like the L2 scope itself.
-9. **Merge risk with `gold-grab-v1`** (`/home/laure/r17_work/r19/gold-tree`, untouched by me):
+9. **Merge risk with `gold-grab-v1`** (`/home/user/r17_work/r19/gold-tree`, untouched by me):
    we both edit `options_env.py`'s service chain and `worker_env.py`. In particular that fleet
    also reasons about the RESUPPLY owner chain and the escrow close reasons — the two changes
    in §3 will need to be reconciled by hand tomorrow, not auto-merged.
@@ -526,8 +526,8 @@ keeps working.
 
 Reviewer verdict: **fix-first** — 2 high, 3 medium, 2 low. Everything in this section
 was re-measured after the fixes; no figure here is carried over from the first pass.
-Driver `/home/laure/r17_work/r19/sweep2_review_driver.py`; rows, logs and aggregates
-under `/home/laure/r17_work/r19/sweep-probe-rr/`.
+Driver `/home/user/r17_work/r19/sweep2_review_driver.py`; rows, logs and aggregates
+under `/home/user/r17_work/r19/sweep-probe-rr/`.
 
 ### 10.1 What was fixed in the tree
 
@@ -567,7 +567,7 @@ The reviewer's objection: `sweep-v2` changes **five** things against the control
 (0 windows on L2, 0 episodes budget-bound). So run the arm that moves **only the cap**.
 
 `CAP` = the 16 certified overrides with `resource_sweep=sweep-v1`, run in
-`/home/laure/r17_work/r19/attrib-tree` — a pristine rsync of the main tree whose only
+`/home/user/r17_work/r19/attrib-tree` — a pristine rsync of the main tree whose only
 difference from the certified baseline is one integer, `SWEEP_MAX_TARGETS = 48`
 (verified by `diff -r`: one line; no R19 code anywhere in that tree).
 
@@ -756,7 +756,7 @@ and `book_on_close` for sweep-v1. Both move certified v1 rows.
   `test_r18b6_training_wiring`, `test_r18b3b_loot_warm_start`,
   `test_r18b5_hunt_portal_training`, `test_resource_retreat`): **334 passed, 683 subtests passed in 5.52s**
 * Wide regression, the **same 55 test files** run in my tree and in the pristine
-  baseline tree `/home/laure/r17_work/r19/sweep-base`:
+  baseline tree `/home/user/r17_work/r19/sweep-base`:
 
 | tree | result |
 |---|---|

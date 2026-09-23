@@ -4,7 +4,7 @@
 
 ## 独立身份与恢复
 
-施工目录：`/home/laure/r21_loot_economy_20260905/candidate`；引擎修改仅位于同级 `engine/`，隔离构建位于 `build-r*/`。原 WSL 工作源、其未提交改动、现用库、冻结 v7/v8 和模型没有被覆盖。
+施工目录：`/home/user/r21_loot_economy_20260905/candidate`；引擎修改仅位于同级 `engine/`，隔离构建位于 `build-r*/`。原 WSL 工作源、其未提交改动、现用库、冻结 v7/v8 和模型没有被覆盖。
 
 同级 `snapshot/` 保存修改前工作源、冻结 v8 来源及原引擎未提交改动；`preparation.json` 和 `reports/preserved-artifacts.json` 记录身份。新实现以已完成的 v8 源码为隔离载体，但采购算法沿用 v7 的 `SustainCompletionService`；没有采用暂停中的 v9 战斗排序草稿，也没有把此前组合补给实验改成默认。
 

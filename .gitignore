@@ -1,64 +1,53 @@
-# 构建产物(引擎 + pybind11 模块,~490MB)
+# Build output (engine + pybind11 bridge, ~490 MB)
 build/
 
-# 训练产物(模型/TB 日志/战绩;曲线图见 docs/assets)
+# Training and evaluation output: run folders, TensorBoard logs, eval
+# archives, ledgers and logs.  Nothing under train/runs/ is picked up by
+# default.  The few receipts that code and tests read are already tracked;
+# add a new one only on purpose (git add -f) and never add raw run logs.
 train/runs/
 
 # Python
 __pycache__/
 *.pyc
 *.egg-info/
-.venv
+.venv/
+.pytest_cache/
+.mypy_cache/
 
-# macOS
-.DS_Store
+# Logs and scratch files
+*.log
+*.tmp
 
-# 游戏数据永不入库(版权:Diablo © Blizzard Entertainment)
-*.mpq
-*.exe
+# Game data never enters the repo (Diablo (c) Blizzard Entertainment).
+# The patterns are case-insensitive so DIABDAT.MPQ / SPAWN.MPQ are ignored
+# on case-sensitive file systems (Linux, WSL) as well.
+*.[mM][pP][qQ]
+*.sv
+*.[eE][xX][eE]
 
-# 2026-09-06: receipts that ARE the science get tracked; bulk run artefacts stay out
-!train/runs/
-train/runs/*
-!train/runs/*.md
-!train/runs/r10-staging/
-train/runs/r10-staging/*
-!train/runs/r10-staging/*.py
-!train/runs/r10-staging/*.sh
-!train/runs/r10-staging/*.md
-!train/runs/r10-staging/*.jsonl
-!train/runs/r10-staging/r16-deploy-arm.json
-!train/runs/r10-staging/r17-0/
-!train/runs/eval-assembled/
-train/runs/eval-assembled/*
-!train/runs/eval-assembled/r10-cand-*.json
-!train/runs/eval-assembled/r10-anchor-*.json
-!train/runs/eval-assembled/r16-anchor-*.json
-# native libraries and engine binaries never enter the repo
+# Native libraries and engine binaries
 *.so
-# 2026-09-06 late: gate summaries are receipts, not bulk artefacts
-!train/runs/r10-staging/t0/
-train/runs/r10-staging/t0/*
-!train/runs/r10-staging/t0/T0-SUMMARY.json
-!train/runs/r10-staging/t0-prime/
-train/runs/r10-staging/t0-prime/*
-!train/runs/r10-staging/t0-prime/T0-PRIME-SUMMARY.json
-!train/runs/r10-staging/t0-double-prime/
-train/runs/r10-staging/t0-double-prime/*
-!train/runs/r10-staging/t0-double-prime/T0-DOUBLE-PRIME-SUMMARY.json
-# 2026-09-07: R18 probe summaries are receipts
-!train/runs/r10-staging/r18c-probe/
-train/runs/r10-staging/r18c-probe/*
-!train/runs/r10-staging/r18c-probe/R18C-SUMMARY.json
-!train/runs/r10-staging/r18de-probe/
-train/runs/r10-staging/r18de-probe/*
-!train/runs/r10-staging/r18de-probe/R18DE-SUMMARY.json
-!train/runs/r10-staging/r18g-probe/
-train/runs/r10-staging/r18g-probe/*
-!train/runs/r10-staging/r18g-probe/R18G-SUMMARY.json
-!train/runs/r10-staging/r18f-probe/
-train/runs/r10-staging/r18f-probe/*
-!train/runs/r10-staging/r18f-probe/R18F-SUMMARY.json
-!train/runs/r10-staging/r18p0-probe/
-train/runs/r10-staging/r18p0-probe/*
-!train/runs/r10-staging/r18p0-probe/R18P0-SUMMARY.json
+*.dylib
+*.dll
+*.pyd
+
+# Media and model checkpoints (large files belong in release assets)
+*.mp4
+*.mov
+*.pt
+*.pth
+*.ckpt
+*.safetensors
+
+# Secrets and local environment files
+.env*
+
+# OS, editor and agent folders
+.DS_Store
+._*
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
+.claude/

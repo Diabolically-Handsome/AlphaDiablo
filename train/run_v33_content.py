@@ -96,7 +96,8 @@ EXIT_CODES = {
 # W7 工件钉死(全文 sha 驱动器冻结常量;失配即 P4 不发车)
 # ======================================================================
 KING_ZIP = ROOT / "train" / "models" / "v28-worker-leg1" / "model_final.zip"
-KING_ZIP_SHA = "2f7bc9dd810956c3feeb330575c9a03ddff0b476333ac429a411935985b04f42"
+# 2026-09-23: re-saved with neutral local paths (content otherwise unchanged); was 2f7bc9dd810956c3
+KING_ZIP_SHA = "0c6f014da19c3bf27b208d55adc76be13fcad8bc5f744b95f4f743be97426434"
 KING_NPZ = ROOT / "train" / "models" / "v28-worker-leg1" / "policy.npz"
 KING_NPZ_SHA = "976b6c05edaa0a32bb30bd372782e1201c72b029cedcbb3a5bf2361d34f27f8a"
 KING_STEPS = 3_497_984
