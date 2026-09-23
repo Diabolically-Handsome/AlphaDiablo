@@ -7,7 +7,7 @@
 | [`design/`](design/) | 设计笔记。主文档是 [`design/DESIGN.md`](design/DESIGN.md)（二十轮迭代、十七课教训） |
 | [`prereg/`](prereg/) | 各案预注册（`PREREG-*.md`，v23 到 R9、B1、G1、E-fix、定锚/重锚） |
 | [`forensics/`](forensics/) | 法证、尸检和档案审计报告 |
-| [`protocol/`](protocol/) | R19–R21 的协议规格，以及案级驱动器的值守细则 `OPS-launcher.md` |
+| [`protocol/`](protocol/) | R19–R21 的协议规格，案级驱动器的值守细则 `OPS-launcher.md`，以及从 README 移来的 R7/R8 时期协议说明 [`PROTOCOL-V4-NOTES.md`](protocol/PROTOCOL-V4-NOTES.md) |
 | [`rounds/`](rounds/) | R9–R19 的轮次文书：预注册、发车令、判决书、探针报告、评审记录 |
 | [`archive/`](archive/) | 内部备忘，以及 [`REDACTIONS-2026-09-23.md`](archive/REDACTIONS-2026-09-23.md)（本次去除个人信息的记录） |
 | [`assets/`](assets/) | 图表和基线档，代码按路径读取，不要搬动 |
