@@ -1,4 +1,4 @@
-"""v28「绿洲续航」分腿驱动(docs/PREREG-v28.md 终稿;run_v26_legs.py 定向改造)。
+"""v28「绿洲续航」分腿驱动(docs/prereg/PREREG-v28.md 终稿;run_v26_legs.py 定向改造)。
 
 与 v26 驱动的差异表(PREREG-v28 D2 克隆差异表逐条对应,面板 24 项裁决落地):
 - 续航:全 8 腿 resume,腿 1 起点 = v26-leg6/model_final.zip;bc-init 分支物理删除

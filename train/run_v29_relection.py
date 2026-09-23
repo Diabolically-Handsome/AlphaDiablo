@@ -1,4 +1,4 @@
-"""v29「经理再教育」驱动(docs/PREREG-v29.md 条款唯一执行者;run_v25_election.py 定向改造)。
+"""v29「经理再教育」驱动(docs/prereg/PREREG-v29.md 条款唯一执行者;run_v25_election.py 定向改造)。
 
 克隆差异表(PREREG-v29 D2 逐条对应):
 - 班底:工人 = v28-worker-leg1(zip+npz);锚 = v28-G3-leg1.json(112.4,sha 钉死)
@@ -224,7 +224,7 @@ def _main():
     preflight()
     ref = read_comparable_anchor()
     floor_repro = round(ref["agg"]["ret_mean"] * 85.0 / 92.0, 1)
-    log({"event": "start", "prereg": "docs/PREREG-v29.md", "steps": STEPS,
+    log({"event": "start", "prereg": "docs/prereg/PREREG-v29.md", "steps": STEPS,
          "paired_line": PAIRED_DIFF, "wins_line": PAIRED_WINS,
          "floor": floor_repro})
     ref_rows = by_seed(ref["rows"])

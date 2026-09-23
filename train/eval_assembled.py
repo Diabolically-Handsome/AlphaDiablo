@@ -1,4 +1,4 @@
-"""v23 组装体评测:冻结 H 经理 + {脚本|BC|PPO} FARM 工人(docs/PREREG-v23.md)。
+"""v23 组装体评测:冻结 H 经理 + {脚本|BC|PPO} FARM 工人(docs/prereg/PREREG-v23.md)。
 
 用法:
   H7 基线:  .venv/bin/python train/eval_assembled.py --worker script --seeds 7000-7031

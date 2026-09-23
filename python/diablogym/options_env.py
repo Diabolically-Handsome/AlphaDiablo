@@ -1,6 +1,6 @@
 """v22 策略脑/操作脑:OptionsEnv——冻结宏之上的 SMDP 包装器。
 
-设计稿:docs/DESIGN.md v22 章(评审团 wf_66e41e30 合成,Diabolically-Handsome 批准)。
+设计稿:docs/design/DESIGN.md v22 章(评审团 wf_66e41e30 合成,Diabolically-Handsome 批准)。
 核心承诺:
   - 操作脑 = 神谕 oracle_mountain 的内环逐字移植并冻结(平稳 SMDP);
   - "榨干→下潜"不写死在脚本里,升格为策略脑的决策(本章唯一考题);
@@ -21,7 +21,7 @@
 依赖 action10 暗中下楼所形成的无限干窗；仅 DIVE 非法时保留 FARM，并强制
 ≥25 拍复访地板。
 
-v23(docs/PREREG-v23.md):窗口循环的逐拍簿记(保险丝/反射/终止阶梯)抽成
+v23(docs/prereg/PREREG-v23.md):窗口循环的逐拍簿记(保险丝/反射/终止阶梯)抽成
 共享方法——OptionsEnv(组装/评测)与 WorkerWindowEnv(在位训练)跑同一段
 代码,消灭"第三份实现"。支持 workers={选项: 策略} 把某选项的脚本内环换成
 可学习工人:

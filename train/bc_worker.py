@@ -1,4 +1,4 @@
-"""v23:FARM 操作脑 BC 热启动(docs/PREREG-v23.md D4)。
+"""v23:FARM 操作脑 BC 热启动(docs/prereg/PREREG-v23.md D4)。
 
 在位采集:冻结 H 经理 + 脚本教师(dispatch farm 分支;反射拍是包装器所有,
 天然不入集;保险丝强制拍整拍剔除)。当前示范种子 2102000-2102127,只录 FARM

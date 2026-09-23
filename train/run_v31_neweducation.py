@@ -1,4 +1,4 @@
-"""v31「新世界再教育」驱动(docs/PREREG-v31-新世界再教育.md 条款唯一执行者;
+"""v31「新世界再教育」驱动(docs/prereg/PREREG-v31-新世界再教育.md 条款唯一执行者;
 run_v29_relection.py 定向改造)。
 
 克隆差异表(PREREG-v31 逐条对应;面板 wf_8e3a60e2 两 BLOCK 修正在内):

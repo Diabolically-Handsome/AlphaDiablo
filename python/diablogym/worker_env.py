@@ -1,4 +1,4 @@
-"""v23 WorkerWindowEnv:FARM 操作脑的在位训练环境(docs/PREREG-v23.md)。
+"""v23 WorkerWindowEnv:FARM 操作脑的在位训练环境(docs/prereg/PREREG-v23.md)。
 
 一个 Gym episode = 一个真实底层游戏，而不是一个 FARM 窗口。
   - reset():同局快进——经理(numpy 前向,argmax+经理掩码)逐窗决策,

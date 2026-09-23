@@ -80,7 +80,7 @@ dungeon* — fourteen documented runs, one diagnosed failure mode eliminated
 *Left: training-time kills (sampled policy, rolling 100) across the six
 iterations that built the champion. Right: the gold standard — deterministic
 (argmax) evaluation on 32 fixed seeds. Full run-by-run post-mortems in
-[docs/DESIGN.md](docs/DESIGN.md) (Chinese; lesson summaries below).*
+[docs/design/DESIGN.md](docs/design/DESIGN.md) (Chinese; lesson summaries below).*
 
 ## Results (32-seed deterministic gold standard)
 
@@ -345,7 +345,7 @@ curl -L -o "$HOME/Library/Application Support/diasurgical/devilution/spawn.mpq" 
 echo "64427cd7c1ba904eaa2e0031c16a6b136d0ecef9abc888c5ff8344b459356e38  $HOME/Library/Application Support/diasurgical/devilution/spawn.mpq" \
   | shasum -a 256 -c -
 #    - Full game: buy Diablo on GOG, extract DIABDAT.MPQ with `brew install innoextract`,
-#      drop it in the same folder (see docs/DESIGN.md notes).
+#      drop it in the same folder (see docs/design/DESIGN.md notes).
 
 # 2. Engine + bridge (clones DevilutionX at the pinned commit, applies patches, builds)
 ./bootstrap.sh && ./build.sh
@@ -699,7 +699,7 @@ option、宏退化吸引子、评估运气税、任务设计>架构、能力住�
 也是新藏身处、纪律是观测的函数而藏身处守恒、**奖励流是最后一位观察者**
 (v14 装备键:前置条件全可观测,但护甲的收益对奖励流不可见——48,000 步
 评估只按了 6 次,0/32 穿甲)——每一课都有数据实锤,完整踩坑史见
-[docs/DESIGN.md](docs/DESIGN.md)。
+[docs/design/DESIGN.md](docs/design/DESIGN.md)。
 
 ## Legal
 

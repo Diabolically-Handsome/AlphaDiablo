@@ -1,4 +1,4 @@
-"""v32「喝药主权」驱动(docs/PREREG-v32-喝药主权.md 条款唯一执行者;
+"""v32「喝药主权」驱动(docs/prereg/PREREG-v32-喝药主权.md 条款唯一执行者;
 run_v31_neweducation.py 骨架 × run_v30_relay.py 腿谱 定向融合)。
 
 克隆差异表(PREREG-v32 逐条):
@@ -304,7 +304,7 @@ def preflight(events):
              if l != "?? train/leaderboard-assembled-v3.md"]
     require(not dirty, f"W1: 工作树不净 {dirty}")
     head = git("rev-parse", "HEAD")
-    for path in ("docs/PREREG-v32-喝药主权.md", "train/run_v32_sovereign.py"):
+    for path in ("docs/prereg/PREREG-v32-喝药主权.md", "train/run_v32_sovereign.py"):
         touch = git("log", "-1", "--format=%H", "--", path)
         require(touch == head, f"W1: {path} 最后触碰 != HEAD")
     freezes = [e for e in events if e.get("event") == "FREEZE_SHA"]

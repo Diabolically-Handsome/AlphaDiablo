@@ -4170,7 +4170,7 @@ def command_adopt_development() -> None:
         "justification": (
             "开发死亡非劣性上界在 n=128、族错 α=0.005 下 CI 半宽≈0.110,"
             "预注册边距 0.05 先于任何候选数据即不可达(第 9 项设计缺陷,"
-            "纯 α/n/边距代数,docs/PREREG-R7-rev21-proposal.md 修正案五)。"
+            "纯 α/n/边距代数,docs/prereg/PREREG-R7-rev21-proposal.md 修正案五)。"
             "开发判据改为预注册检查集减去该单项;非劣推断移交终考"
             "(边距 0.025→0.10;0.10 系对抗复核按实现统计量 CP-Bonferroni"
             "重标定功效后由总设计师复批)。终考池从未消费,裁决力不受污染。"

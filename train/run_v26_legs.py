@@ -1,4 +1,4 @@
-"""v26「绿洲」分腿驱动(docs/PREREG-v26.md;v24 条款参数化克隆)。
+"""v26「绿洲」分腿驱动(docs/prereg/PREREG-v26.md;v24 条款参数化克隆)。
 
 克隆参数表:LEG=244×2048、PROBES=(250k,450k)、前缀 v26-leg、训练加 --skip-dry;
 SPS_FLOOR/tail_cut 禁用(附录重划后的健全性上限:任一腿墙钟 >2 小时 → STOP);

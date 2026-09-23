@@ -32,37 +32,37 @@
 另有 25 个文件的本机路径里带着 Linux/Windows 的本机用户名，共 309 处。用户名文件夹统一换成 `user`：
 `/home/<用户名>/` 换成 `/home/user/`，`C:\Users\<用户名>\` 换成 `C:\Users\user\`。
 5 个测试文件例外：代码里的路径改成 `Path.home()` 或仓库内的相对路径，文档字符串里的改成 `~/`。
-其余字节不变。改之前的原文件在提交 `c1ffced` 里。
+其余字节不变。改之前的原文件在提交 `c1ffced` 里（在旧路径下，换算见 [`docs/README.md`](../README.md)）。
 当前树里没有代码、测试或文书引用这些文件的 SHA-256。已移出主干的 r13 总账（在 `c1ffced` 里）记录过其中两份报告的原始
-SHA-256：`r18-B-GATES-REPORT-20260908.md` 和 `r19-M2-COMBINED-PROBE-REPORT-20260909.md`，与下表的“原 SHA-256”一致。
+SHA-256：`docs/rounds/r18-B-GATES-REPORT-20260908.md` 和 `docs/rounds/r19-M2-COMBINED-PROBE-REPORT-20260909.md`，与下表的“原 SHA-256”一致。
 
 | 文件 | 处数 | 原 SHA-256（前 16 位） | 新 SHA-256（前 16 位） |
 |---|---|---|---|
-| `docs/FORENSICS-F3-why-no-progress.md` | 1 | `53f83f51ade703cf` | `3893c1106bdb6ba8` |
-| `docs/LOOT-ECONOMY-R21.md` | 1 | `842303ef2b11d23d` | `c347fb933a913961` |
-| `docs/RESOURCE-CALIBRATION-R19.md` | 1 | `51c89b5e5a7e58f7` | `81caf916bb048d75` |
-| `docs/RESOURCE-PROTOCOL-L2.md` | 6 | `e4cb892b636ff67f` | `3dd8293e7716b360` |
-| `docs/SUSTAIN-PROTOCOL-R20.md` | 3 | `56fa7b8709342982` | `770cb05830836584` |
-| `tests/test_completion_migration.py` | 1 | `9b75b5ef1ead230b` | `8ce37eae900151bc` |
+| `docs/forensics/FORENSICS-F3-why-no-progress.md` | 1 | `53f83f51ade703cf` | `3893c1106bdb6ba8` |
+| `docs/protocol/LOOT-ECONOMY-R21.md` | 1 | `842303ef2b11d23d` | `c347fb933a913961` |
+| `docs/protocol/RESOURCE-CALIBRATION-R19.md` | 1 | `51c89b5e5a7e58f7` | `81caf916bb048d75` |
+| `docs/protocol/RESOURCE-PROTOCOL-L2.md` | 6 | `e4cb892b636ff67f` | `3822d247002c238c` |
+| `docs/protocol/SUSTAIN-PROTOCOL-R20.md` | 3 | `56fa7b8709342982` | `770cb05830836584` |
+| `tests/test_completion_migration.py` | 1 | `9b75b5ef1ead230b` | `9dc5edb504302b35` |
 | `tests/test_completion_r18c.py` | 1 | `446628e0050aa64f` | `8c005912a704007a` |
 | `tests/test_hunt_scope.py` | 1 | `4c9ddefc777c3853` | `f8a69f2e95d9939c` |
 | `tests/test_r18b6_training_wiring.py` | 1 | `0547c3d62e349079` | `d93905b3fe31a08b` |
 | `tests/test_training_completion_diagnostics.py` | 1 | `5ca171f6494b84b3` | `7c92b43df0dfeaf8` |
 | `train/runs/r10-staging/r16-deploy-arm.json` | 1 | `58d1192678d159a8` | `7ee06d6809109deb` |
 | `train/runs/r10-staging/r17-0/G0-0a-REPORT.md` | 24 | `e90fb598275d4bb8` | `14badb45a00d3387` |
-| `train/runs/r17-DIRECTION-PANEL-20260902.md` | 1 | `e9d997bb7775d4cd` | `44f94f7d67a37534` |
-| `train/runs/r18-B-GATES-REPORT-20260908.md` | 8 | `12696c15f9f7ab9e` | `2ac104ed9766a775` |
-| `train/runs/r19-A-PREREG-DRAFT-REV2-20260910.md` | 1 | `652e2d722d487a3e` | `84ab58508d7a1165` |
-| `train/runs/r19-A1-PROBE-REPORT-20260908.md` | 31 | `daab8027a058e862` | `da8d1d78d702dc74` |
-| `train/runs/r19-B1-PROBE-REPORT-20260908.md` | 23 | `d71767792b344065` | `4888dc15f8a15d55` |
-| `train/runs/r19-GOLD-GRAB-PROBE-REPORT-20260909.md` | 23 | `ba4989ef73d16426` | `3b179cb142964a0a` |
-| `train/runs/r19-M1-COMBINED-PROBE-REPORT-20260909.md` | 40 | `9c51a020c0dd2bee` | `2bc41aa3b940dfff` |
-| `train/runs/r19-M2-COMBINED-PROBE-REPORT-20260909.md` | 51 | `90fded7597367c33` | `e68a2c8f32afbf00` |
-| `train/runs/r19-SPEND-V2-PROBE-REPORT-20260909.md` | 36 | `99f3fd1dc8064bf9` | `04be9b383c02589c` |
-| `train/runs/r19-STEP2-DESIGN-PANEL-20260910.md` | 1 | `22089d88c67cd261` | `dd2d07a186167f97` |
-| `train/runs/r19-SWEEP-V2-PROBE-REPORT-20260909.md` | 21 | `4e275877c4ec46c9` | `e96f7d5e836a8d85` |
-| `train/runs/r19-TEACHER-ROUND2-PROBE-REPORT-20260911.md` | 10 | `d22c8d896a66f4f6` | `dfff20eb62110201` |
-| `train/runs/r19-TEACHER-V1-PROBE-REPORT-20260910.md` | 21 | `01445123dbbd99fa` | `9f748f6217f8e1f8` |
+| `docs/rounds/r17-DIRECTION-PANEL-20260902.md` | 1 | `e9d997bb7775d4cd` | `44f94f7d67a37534` |
+| `docs/rounds/r18-B-GATES-REPORT-20260908.md` | 8 | `12696c15f9f7ab9e` | `2ac104ed9766a775` |
+| `docs/rounds/r19-A-PREREG-DRAFT-REV2-20260910.md` | 1 | `652e2d722d487a3e` | `84ab58508d7a1165` |
+| `docs/rounds/r19-A1-PROBE-REPORT-20260908.md` | 31 | `daab8027a058e862` | `da8d1d78d702dc74` |
+| `docs/rounds/r19-B1-PROBE-REPORT-20260908.md` | 23 | `d71767792b344065` | `4888dc15f8a15d55` |
+| `docs/rounds/r19-GOLD-GRAB-PROBE-REPORT-20260909.md` | 23 | `ba4989ef73d16426` | `3b179cb142964a0a` |
+| `docs/rounds/r19-M1-COMBINED-PROBE-REPORT-20260909.md` | 40 | `9c51a020c0dd2bee` | `2bc41aa3b940dfff` |
+| `docs/rounds/r19-M2-COMBINED-PROBE-REPORT-20260909.md` | 51 | `90fded7597367c33` | `e68a2c8f32afbf00` |
+| `docs/rounds/r19-SPEND-V2-PROBE-REPORT-20260909.md` | 36 | `99f3fd1dc8064bf9` | `04be9b383c02589c` |
+| `docs/rounds/r19-STEP2-DESIGN-PANEL-20260910.md` | 1 | `22089d88c67cd261` | `dd2d07a186167f97` |
+| `docs/rounds/r19-SWEEP-V2-PROBE-REPORT-20260909.md` | 21 | `4e275877c4ec46c9` | `e96f7d5e836a8d85` |
+| `docs/rounds/r19-TEACHER-ROUND2-PROBE-REPORT-20260911.md` | 10 | `d22c8d896a66f4f6` | `dfff20eb62110201` |
+| `docs/rounds/r19-TEACHER-V1-PROBE-REPORT-20260910.md` | 21 | `01445123dbbd99fa` | `9f748f6217f8e1f8` |
 
 ## 跟着改的 SHA 钉
 
@@ -74,11 +74,11 @@ SHA-256：`r18-B-GATES-REPORT-20260908.md` 和 `r19-M2-COMBINED-PROBE-REPORT-202
 没有改的：
 
 - `train/run_r9_reeducation.py` 里 R8 终考 `worker.zip` 的 SHA 钉。它校验的是 `train/runs/` 下的本地副本，不是仓库里的这个文件。
-- 历史文书（PREREG、`docs/DESIGN.md`、台账 `gate_ledger.jsonl`、排行榜可见行）里记下的原始 SHA-256。它们描述的是当时的文件。
+- 历史文书（PREREG、`docs/design/DESIGN.md`、台账 `gate_ledger.jsonl`、排行榜可见行）里记下的原始 SHA-256。它们描述的是当时的文件。
 - 已结案战役留在本地 `train/runs/` 下的证据（从未入库）记录的是原始 SHA-256。重新续跑这些战役前要先知道这一点。
 
 ## 署名
 
 LICENSE 和 `pyproject.toml` 的署名、以及代码和设计文书里批准人一栏的签名，统一改为 `Diabolically-Handsome`：
-`docs/DESIGN.md` 3 处，`python/diablogym/options_env.py` 1 处，`train/run_r7_combat_recovery.py` 2 处，
+`docs/design/DESIGN.md` 3 处，`python/diablogym/options_env.py` 1 处，`train/run_r7_combat_recovery.py` 2 处，
 `train/run_r8_certification.py` 1 处。LICENSE 改成标准 MIT 文本，原来的附加说明移到 `NOTICE`。

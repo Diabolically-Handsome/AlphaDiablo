@@ -1,4 +1,4 @@
-"""v25-ALT「换届选举」驱动(docs/PREREG-v25.md 条款唯一执行者)。
+"""v25-ALT「换届选举」驱动(docs/prereg/PREREG-v25.md 条款唯一执行者)。
 
 流程:G-A0(仪器回归)→ M-warm 权重包 → 两臂串行训练(v22-H 原配方)→
 G-A0m(逐臂 npz parity)→ 提前放弃闸(16 种子双 <75)→ 两臂满 32 →
@@ -230,7 +230,7 @@ def main():
 
 def _main():
     preflight()
-    log({"event": "start", "prereg": "docs/PREREG-v25.md v2",
+    log({"event": "start", "prereg": "docs/prereg/PREREG-v25.md v2",
          "paired_line": PAIRED_DIFF, "wins_line": PAIRED_WINS})
 
     # ---- G-A0:仪器回归(npz 工人 + 默认经理 ≡ v24-G3-leg7 存档,32/32)----

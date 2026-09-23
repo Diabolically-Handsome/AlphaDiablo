@@ -21,8 +21,8 @@
 ### 现状诊断(实码钉点)
 
 - a14 仅在有可穿装备时合法(掩码);脚本教师 farm 分支会按
-  ([options_env.py:84](python/diablogym/options_env.py:84));塑形价 =
-  **+0.5×ΔAC 穿甲时**([env.py](python/diablogym/env.py) v15"教训十三"
+  ([options_env.py:84](../../python/diablogym/options_env.py#L84));塑形价 =
+  **+0.5×ΔAC 穿甲时**([env.py](../../python/diablogym/env.py) v15"教训十三"
   自举塑形:AC 系守恒存量,ΔAC>0 ⟺ 真穿上,不可刷,死亡掉装负 Δ 不罚)。
 - **灭绝事实**:v28 五万次调用 a14 = 0 次(FORENSICS-神之一手 #3)。
 - **机理假说 H③(单价错配)**:+0.5×ΔAC 是一次性小额(一件甲 ΔAC≈2-5
@@ -52,7 +52,7 @@
 
 ### 现状诊断(实码钉点)
 
-- a12 恒掩([options_env.py:327](python/diablogym/options_env.py:327)
+- a12 恒掩([options_env.py:327](../../python/diablogym/options_env.py#L327)
   "喝药归脑干");反射 **hp<0.5 ∧ belt>0 → 12** 双实现:脚本 dispatch
   内嵌(:61-63,嵌在一切模式里)+ 学习工人 wrapper `_drain()` 逐拍
   排水(可跨榨干/CAP/死亡,工人一步 = 动作一拍 + 反射尾部排水)。
@@ -122,4 +122,5 @@ a14 实际执行数 = 0**,而装备机会(gear_available=True 拍)高达
 第 4 条自动搁置。课③ 可行路径改道:③D 教师优先级重谈(dispatch 系
 冻结纯函数,改之 = 协议级动作,须专案亲批)或 ③E 合成示范注入(训练侧,
 另案设计)。数据:train/runs/probe-gear-value/probe_report.json;探针:
-train/probe_gear_value.py(monkeypatch 研究探针,eval 档案零写入)。
+train/probe_gear_value.py(monkeypatch 研究探针,eval 档案零写入)。两者 2026-09-23
+起不在主干,见提交 c1ffced。

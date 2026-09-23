@@ -1,4 +1,4 @@
-"""B1「捆绑评测基建」驱动(docs/PREREG-B1-捆绑评测基建.md 条款唯一执行者;
+"""B1「捆绑评测基建」驱动(docs/prereg/PREREG-B1-捆绑评测基建.md 条款唯一执行者;
 克隆 run_v32_sovereign.py 骨架,常量区承继 v32 全部 W7 常量 + PRIORS 四档
 sha + v32 CASE_RUNTIME 五 sha)。
 
@@ -1069,7 +1069,7 @@ def preflight(events):
              if l != "?? train/leaderboard-assembled-v3.md"]
     pre(not dirty, f"W1: 工作树不净 {dirty}")
     head = git("rev-parse", "HEAD")
-    for path in ("docs/PREREG-B1-捆绑评测基建.md", "train/run_b1_infra.py"):
+    for path in ("docs/prereg/PREREG-B1-捆绑评测基建.md", "train/run_b1_infra.py"):
         touch = git("log", "-1", "--format=%H", "--", path)
         pre(touch == head, f"W1: {path} 最后触碰 != HEAD")
     freezes = [e for e in events if e.get("event") == "FREEZE_SHA"]

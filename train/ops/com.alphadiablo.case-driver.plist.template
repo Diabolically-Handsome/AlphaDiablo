@@ -10,7 +10,7 @@
      - KeepAlive=false:驱动器自带幂等续跑,崩溃后由值守按 P 线人工裁量重启,
        不自动复活(防止无人值守时额度被自动重试烧穿——台账制额度是人裁的);
      - RunAtLoad=true:bootstrap 即点火一次;
-     - 日志与心跳检查细则见 docs/OPS-launcher.md。 -->
+     - 日志与心跳检查细则见 docs/protocol/OPS-launcher.md。 -->
 <plist version="1.0">
 <dict>
   <key>Label</key>

@@ -17,7 +17,7 @@
 
 均回报 **93.9**(中位 103.45),死亡 **2/32**,对恶魔臂 F 成对胜 24/32。
 教师脚本 101.5 但死 25/32——本模型用 7.5% 的回报换掉了 92% 的死亡。
-完整对局记录见 `train/leaderboard-hier.md`,判决书见 `docs/DESIGN.md` v22 章。
+完整对局记录见 `train/leaderboard-hier.md`,判决书见 `docs/design/DESIGN.md` v22 章。
 
 ## 复现 / 加载
 

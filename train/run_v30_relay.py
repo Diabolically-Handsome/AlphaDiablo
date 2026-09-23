@@ -1,4 +1,4 @@
-"""v30「工人接力」双臂驱动(docs/PREREG-v30.md 终稿条款唯一执行者)。
+"""v30「工人接力」双臂驱动(docs/prereg/PREREG-v30.md 终稿条款唯一执行者)。
 
 结构:preflight(sha 全链)→ king 锚 sd 导出 + G-KL-W 保真闸 → G-A0W(组装
 回归 ≡140.3 档案)→ 双臂串行(各 2 腿 resume 链;臂间唯一变量 = 皮筋教师:
@@ -348,7 +348,7 @@ def _main():
         r["died"] and r["depth"] >= 2 for r in science_doc["rows"])
     screen_base = read_comparable_screen()["agg"]["ret_mean"]
     trip_line = round(0.85 * screen_base, 2)
-    log({"event": "start", "prereg": "docs/PREREG-v30.md", "leg": LEG, "legs_per_arm": LEGS,
+    log({"event": "start", "prereg": "docs/prereg/PREREG-v30.md", "leg": LEG, "legs_per_arm": LEGS,
          "trip": trip_line, "screen_base": screen_base,
          "floor": floor, "science_base": science_base, "pre140": PRE140_LINE,
          "launch": [PD112_LINE, WINS112_LINE, DEATHS_MAX, d2death_launch_max]})
