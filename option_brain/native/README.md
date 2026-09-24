@@ -28,8 +28,9 @@ exact binaries.
   (`diff -r --strip-trailing-cr`); applying `engine-r11-loadmonster.patch` on top gives the r11 `Source/` tree
   exactly.
 - What the patches do (four kinds): crash guards for headless running; default-off hooks that can only refuse a
-  level change; a shop-transaction refactor that keeps prices and random-number use; read-only interfaces.
-  None of them changes a combat, drop, price, experience, quest or map-generation formula or data table.
+  level change; a shop/unequip transaction refactor that keeps prices and random-number use; read-only
+  interfaces. Neither they nor the LoadMonster fix above change a combat, drop, price, experience, quest or
+  map-generation formula or data table.
 
 To build the engine the way the games used it, apply `patches/0001`–`0014` and then
 `option_brain/native/engine-r11-loadmonster.patch` to DevilutionX `34c4cfc`:
@@ -57,13 +58,21 @@ inventory.
 
 **Test probes.** The bridge binary also contains test probes that would be cheats if called, for example
 `probe_invincible`, `probe_add_experience`, `probe_resource_add_gold` and `probe_warp_main_level`. The
-published game code has no call site for them (the only `probe_` calls in `option_brain/` are the read-only
-`probe_tile` and `probe_is_spawn` of `bench/butcher_probe.py`, the tick-0 quest check made before the exam, which
-never enters the dungeon), and the native journals of all 48 completed exam games contain
+published code has no call site for any of them. The only `probe_` calls in the code are read-only:
+
+- in a game process, `probe_tile` (walkability of one tile), called by `strategist-rl-hands-20260921/runtime.py`
+  and in five places of the runtime `diablogym/env.py` (see `runtime-deps/`);
+- outside the games, `probe_tile` and `probe_is_spawn` in `bench/butcher_probe.py`, the tick-0 quest check made
+  before the exam, which never enters the dungeon.
+
+The native journals record game commands, not `probe_` calls. The journals of all 48 completed exam games contain
 only 18 ordinary command kinds (`tick`, `walk`, `attack_stand`, `attack`, `pickup`, `operate`, `stat`, `drink`,
-`buy`, `equip`, `talk`, `dismiss`, `sell`, `belt`, `unbelt_exact`, `repair`, `reset`, `identify`). Nothing
-structurally blocks the probes: the Python wrapper refuses names that start with `debug`, `test_`, `force`,
-`inject` or `set_`, but not `probe_`.
+`buy`, `equip`, `talk`, `dismiss`, `sell`, `belt`, `unbelt_exact`, `repair`, `reset`, `identify`), but that
+census alone cannot show that no cheat probe was called. The stronger evidence is the replay: in the 38 exam
+games replayed from their journals, every row's hash chain, which includes the engine's checkpoint hash, was
+equal; a state change that was not in the journal would have broken it. Nothing structurally blocks the probes:
+the Python wrapper refuses names that start with `debug`, `test_`, `force`, `inject` or `set_`, but not
+`probe_`.
 
 ## Build records
 

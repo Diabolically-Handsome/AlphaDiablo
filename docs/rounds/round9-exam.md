@@ -50,12 +50,20 @@ Because the round-9 menu hides more options than the round-8 menu (for example t
 Butcher mission), the old arm's numbers here are **not** the same experiment as its round-8 held-out numbers
 (Skeleton King 9/14, Butcher 8/16), and the two are not pooled.
 
+The round-8 held-out check is not a pre-registration: its rules were appended to the notebook shortly before each
+round (round 2: 7 s before launch), without a sha256 freeze or an external timestamp. The six round-1 King seeds
+were the first six with the King quest and without the Butcher quest, which differs from the written rule (King
+games without the Butcher quest: 7 kills in 10; with it: 2 in 4). The menu changed between its two rounds (a
+filter added after round-1 game 4150042 looped); `--allow-heldout` and the use of the 30 seeds were approved
+afterwards; in 5 of the 16 Butcher games the Butcher never appeared in the model's enemy list. By round: round 1,
+King 5/6 (0 deaths) and Butcher 4/8 (1 death); round 2, King 4/8 (3 deaths) and Butcher 4/8 (1 death).
+
 ## Protocol (summary)
 
 The exam followed an internal pre-registration (in Chinese), frozen before the first game: its frozen copy has
-sha256 `6da34cd41104ddac42474a1e7a7b830a100bdbcf568af039401aef34f6d4dfcf`, and five revisions were appended
-afterwards (two code fixes and the new-arm change before the freeze, the owner's approval to start, the owner's
-stop). There is no external timestamp, and the document itself is not published because it contains internal
+sha256 `6da34cd41104ddac42474a1e7a7b830a100bdbcf568af039401aef34f6d4dfcf`; it includes three revisions made
+before the freeze (menu-code fixes and two changes of the candidate adapter); two more were appended afterwards
+(the owner's approval to start, the owner's stop). There is no external timestamp, and the document itself is not published because it contains internal
 notes and local paths.
 
 - **Seeds.** Counting up from 4150064, the first 16 seeds with the Skeleton King quest and the first 16 with the
@@ -113,8 +121,9 @@ the released model where it could be compared (King 3/8 vs 7/8), so it was not a
 
 Post-hoc, the candidate lost mainly through three habits, counted over half A: leaving the tomb when it saw the
 Skeleton King and the fact line said "ready" (311 of 596 such decisions, old arm 13 of 254), walking back to a
-doorway with no enemy in sight (3.57 vs 0.76 times per 100 dungeon decisions), and holding a tile (228 vs 79
-times). Its four loop stops came from the doorway habit. The improvement the candidate showed on the 19
+narrow doorway (3.57 vs 0.76 times per 100 dungeon decisions; 2.33 vs 0.63 with no enemy adjacent), and holding a
+tile (228 vs 79 times). Two of its four loop stops involved the doorway option (King 069, King 082); the other two
+looped on exploring (Butcher 065) and on fight / fight-all (Butcher 072). The improvement the candidate showed on the 19
 training-world gate seeds (8, then 11, then 14 of 19 over three rounds) was largely overfitting to those seeds:
 three rounds of fixes and retraining were judged on the same 19 seeds, one round added gate positions to the
 training data, and the old arm, which received the same code fixes, was never run on the gate.
@@ -194,7 +203,7 @@ potions left in the belt at the end, and whether the game was replayed from its 
 
 - Skeleton King kills: median 35,874 ticks (29.9 minutes of game time), range 26,289–88,216; character level 6–9
   at the kill. Butcher kills: median 24,796 ticks (20.7 minutes), range 17,701–41,633; character level 4–7.
-- All six deaths happened with no healing potion left in the belt: five on dungeon level 2 at character level
+- All six deaths happened with no healing potion left in the belt or the pack: five on dungeon level 2 at character level
   2–4, one on level 3 at level 4. Nobody in the old arm died in the tomb: all 13 old-arm games that entered it
   ended with a Skeleton King kill.
 - Per 100 decisions of the old arm: the model chose to drink 1.2 times (295 drinks, every one of them a model
@@ -243,8 +252,9 @@ and every decision's observation digest.
   journals and combat telemetry were byte-identical to the originals (38/38); final states equal `result.json`
   (38/38). Kills and deaths were read from the engine's own counters, and the reverse check (every kill or death
   seen in a replay is in the results, and vice versa) matched exactly.
-- Not replayed: 10 games with neither a kill nor a death in scope (old Butcher 066, 068, 075; candidate King 064,
-  069, 071, 082 and Butcher 064, 065, 072).
+- Not replayed: 10 games outside the replay scope: old-arm games with neither a kill nor a death (Butcher 066,
+  068, 075) and candidate games without a target kill (King 064 and Butcher 064, both deaths; King 069, 071, 082;
+  Butcher 065, 072).
 - Round 8 (the earlier held-out check of the same adapter): all 50 games replayed, 2,681,486 journal rows and
   41,684 decisions matched; 48 on the first pass, and the two games of seed 4150021 after adding a 6-second wait
   before one pickup (the engine ignores a second pickup of the same item within 6 s of wall-clock time, and the
@@ -262,8 +272,12 @@ arm's adapter:
 
 **Command census.** The native journals of the 48 completed exam games (2,103,086 rows) contain only 18
 ordinary command kinds (`tick`, `walk`, `attack_stand`, `attack`, `pickup`, `operate`, `stat`, `drink`, `buy`,
-`equip`, `talk`, `dismiss`, `sell`, `belt`, `unbelt_exact`, `repair`, `reset`, `identify`). None of the bridge's
-test probes (for example `probe_invincible` or `probe_add_experience`) was called.
+`equip`, `talk`, `dismiss`, `sell`, `belt`, `unbelt_exact`, `repair`, `reset`, `identify`). The journals record
+game commands, not `probe_` calls, so the census alone cannot show that no test probe (for example
+`probe_invincible` or `probe_add_experience`) was called. That rests on two other facts: the published game code
+has no call site for them (its only `probe_` call in a game process is the read-only `probe_tile`), and in all 38
+replays the hash chain, which includes the engine's checkpoint hash, matched row by row; a state change missing
+from the journal would have broken it. See `option_brain/native/README.md`.
 
 **What this does not prove.** The hash chain is unkeyed: it shows that files were not corrupted after recording,
 not that nobody rewrote a whole log. The logs, adapters and executor weights are not published, so these checks
@@ -279,9 +293,10 @@ cannot be repeated by others at this time; the code that ran and the sha256 of e
   in the teachers' guidance.
 - The game is paused while the model decides, and the model sees structured text (including exact hit points of
   visible monsters), not pixels.
-- The engine is patched for headless running (crash guards, read-only interfaces, a shop-transaction refactor
-  with the same prices and random-number use, and one upstream save-load fix); no combat, drop, price, experience,
-  quest or map-generation rule or data was changed.
+- The engine is patched for headless running (crash guards, read-only interfaces, default-off hooks that can only
+  refuse a level change, a shop/unequip transaction refactor with the same prices and random-number use, and one
+  fix for an upstream save-load bug); no combat, drop, price, experience, quest or map-generation rule or data was
+  changed.
 - The exam is internally pre-registered without an external timestamp, and it was stopped early by the owner
   (affecting the candidate arm).
 - The videos are replay renders of two winning games, not live captures, and neither covers a whole game.

@@ -21,7 +21,7 @@ Nothing else was changed: no code was reformatted, and line endings are kept as 
 | `option-brain-20260922/exam9_lib.py` | `7cc8f810a17e0c4bef9fbd08d43e4dbdad5c4db2adc2531b2c85740ae8669af2` | (same) | — | — | yes |
 | `option-brain-20260922/facts.py` | `485e9fab50da76bf8cd73c7d10f19c59c587c7ba078608149bf51a92fbde9dbe` | (same) | — | — | yes |
 | `option-brain-20260922/fidelity9.py` | `6802ab3aba20478ca0c97b47ef40ffc6017c186547f2f107364449080073c729` | (same) | — | — | yes |
-| `option-brain-20260922/game_executor_r3.py` | `cb998caa1b309126ce113bfcad4534317ce74d1721118ac9e72c9fafbc0b717d` | `27bb52ada6f9fff5efdb70721f14fd9e28550c8c093aac2f86323dac148d1de0` | — | needs the project owner's approval | no |
+| `option-brain-20260922/game_executor_r3.py` | `cb998caa1b309126ce113bfcad4534317ce74d1721118ac9e72c9fafbc0b717d` | `27bb52ada6f9fff5efdb70721f14fd9e28550c8c093aac2f86323dac148d1de0` | — | line 21 docstring: a name replaced by "the project owner" | no |
 | `option-brain-20260922/hf_broker.py` | `735ed3abcd384a0f8f7af7b1690dc75eda3e244fa97368c8d000a24c9ba57245` | (same) | — | — | yes |
 | `option-brain-20260922/launch_gate9.sh` | `13982dd564e172308f47135308a7961de7c2321a26b630e64c4375fcb90e64ca` | `9a6a4bdaec5d7ec2b049cac38fdf0c0a43e5a0b41156cabd86cd4c6bc58a08de` | `$AD_WORKSPACE`×2, `$AD_ROOT`×1 | — | yes |
 | `option-brain-20260922/launch_smoke9.sh` | `0e9dd3401e9d30b11e6c83e85ba2b1b6d8f127a01584bfb86386387ace7a32a3` | `501e54fb6ad427e38c971961611ec08bc6a84323743b8cb39a00664f250e3576` | `$AD_WORKSPACE`×2, `$AD_ROOT`×1 | — | yes |

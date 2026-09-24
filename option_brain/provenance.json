@@ -91,7 +91,7 @@
    "freeze": "in the round-9 freeze list; original sha256 equals the listed one",
    "placeholders": {},
    "edits": [
-    "needs the project owner's approval"
+    "line 21 docstring: a name replaced by \"the project owner\""
    ],
    "roundtrip_equal": false
   },

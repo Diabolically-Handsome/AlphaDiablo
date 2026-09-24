@@ -4,29 +4,33 @@
 
 **English** · [简体中文](README.zh-CN.md)
 
-## Version 9: a local model we fine-tuned kills the Skeleton King in 13 of 16 new worlds — September 24, 2026
+## Version 9: an agent whose high-level decisions come from a locally fine-tuned model kills the Skeleton King in 13 of 16 new worlds — September 24, 2026
 
 [![The released model attacks the Skeleton King in exam world 4150097 (replay render)](docs/rounds/round9-media/poster-king-4150097.png)](https://github.com/Diabolically-Handsome/AlphaDiablo/releases/tag/round9-stable-kills-20260924)
 
 **To our knowledge, no prior published work shows a Diablo I agent with all of the following:**
 
-1. **a locally run model that we fine-tuned ourselves**: Mistral-Small-3.2-24B with our own LoRA adapter, in
+1. **a locally run language model fine-tuned for the task**: Mistral-Small-3.2-24B with our own LoRA adapter, in
    4-bit on one consumer GPU; not hand-written rules and not a cloud AI assistant;
 2. **the model makes every high-level decision**, choosing one option at a time from a menu that code builds;
 3. **a normal game start**: a new level-1 Warrior on Normal difficulty, with no injected gold, experience,
    items or equipment;
-4. **no game-rule changes and no cheat interface**: the engine patches only make headless play possible and add
-   read-only access; the bridge's test probes were never called;
-5. **boss kills on never-before-used worlds in a pre-registered exam**: the Skeleton King in **13 of 16** games
-   and the Butcher in **10 of 16**, with the hero alive at every kill; in the earlier held-out check of the same
-   model, **9 of 14** and **8 of 16**;
+4. **no changes to combat, drop, price, experience, quest or map-generation rules, and no cheat interface used**:
+   the engine patches add crash guards for headless running, read-only interfaces, default-off hooks that can only
+   refuse a level change, a shop/unequip transaction refactor with the same prices and random-number use, and one
+   fix for an upstream save-load bug (monster attribute drains); the bridge's test probes were never called;
+5. **boss kills on never-before-used worlds (apart from a tick-0 quest check) in a pre-registered exam**: the
+   Skeleton King in **13 of 16** games and the Butcher in **10 of 16**, with the hero alive at every kill; in the
+   earlier held-out check of the same model (not pre-registered), **9 of 14** and **8 of 16**;
 6. **every one of those kills replay-verified** from the engine's native command journals;
-7. **the decisions re-scored with the adapter**: 2,000 of 2,000 sampled exam decisions (and 39,743 of 41,684
-   earlier ones) come out as the adapter's top answer again.
+7. **the decisions re-scored with the adapter**: 2,000 of 2,000 sampled exam decisions (and all 39,743 re-scored
+   of the 41,684 round-8 decisions; the other 1,941, from training-world games, were not re-scored) come out as
+   the adapter's top answer again.
 
-This is a claim about that combination, open to correction. Rule-based bots and a tool-assisted speedrun finished
-Diablo I long ago, and reinforcement-learning agents have fought the Butcher (see [Related work](#related-work)).
-It is not a full-game clear and not a benchmark result. The disclosures below belong to the claim.
+This is a claim about that combination, open to correction. A rule-based bot (in 2021, with some human
+intervention) and a tool-assisted speedrun (2024) have completed Diablo I, and reinforcement-learning agents have
+fought the Butcher (see [Related work](#related-work)). It is not a full-game clear and not a benchmark result.
+The disclosures below belong to the claim.
 
 [▶ Skeleton King fight, 144 s](https://github.com/Diabolically-Handsome/AlphaDiablo/releases/download/round9-stable-kills-20260924/exam9-king-kill-4150097.mp4)
 · [▶ Butcher fight, 56 s](https://github.com/Diabolically-Handsome/AlphaDiablo/releases/download/round9-stable-kills-20260924/exam9-butcher-kill-4150078.mp4)
@@ -38,8 +42,10 @@ It is not a full-game clear and not a benchmark result. The disclosures below be
 | | Skeleton King | Butcher | Deaths |
 |---|---|---|---|
 | **Round-9 exam, released model** (27 new seeds, 32 games, 2026-09-24) | **13 / 16** | **10 / 16** | 6 / 32 |
-| Round-8 held-out check, same model, older code (30 new seeds, 2026-09-23) | 9 / 14 | 8 / 16 | 5 / 30 |
+| Round-8 held-out check, same model, older code (30 new seeds, 2026-09-23)† | 9 / 14 | 8 / 16 | 5 / 30 |
 | Round-9 exam, candidate model, first half only (not adopted) | 3 / 8 | 5 / 8 | 3 / 16 |
+
+† Not pre-registered; see the [exam report](docs/rounds/round9-exam.md#what-was-compared).
 
 "Version 9" is the adapter `d9facts3` (trained in round 8) running with the round-9 code. Its weights are not
 published; its sha256 is `1d3b24942f1a2a5825f5aa8ab7a000b1d5cb27639c33ee889e4ce13dd0a6dd72` (base model
@@ -64,10 +70,10 @@ published; its sha256 is `1d3b24942f1a2a5825f5aa8ab7a000b1d5cb27639c33ee889e4ce1
   teachers read written guidance the model never sees.
 - **The exam compared the released model with a new candidate, which was not adopted** (8/16 vs 12/16 on the
   paired half). The project owner stopped the exam after 3 of its 4 waves; that affects only the candidate's
-  arm (its second half never ran). The candidate had not passed all of its own offline criteria, and the owner
-  approved the exam start anyway.
-- **6 deaths in the released model's 32 exam games** (1 in the first half, 5 in the second), all with an empty
-  belt, five of them on dungeon level 2 at character level 2–4.
+  arm (its second half was stopped about 10 minutes in and is not a result). The candidate had not passed all of
+  its own offline criteria, and the owner approved the exam start anyway.
+- **6 deaths in the released model's 32 exam games** (1 in the first half, 5 in the second), all with no healing
+  potion left in the belt or the pack, five of them on dungeon level 2 at character level 2–4.
 - **Limits**: no full-game clear; bosses only up to the Skeleton King; the bridge used here refuses dungeon
   levels below 3; Warrior on Normal only; the boss arenas themselves are fixed maps in every Diablo I world, so
   "new worlds" means a new road to the boss; samples are small. "Pre-registered" means an internal document
@@ -81,8 +87,8 @@ Details, tables and the verification evidence: [docs/rounds/round9-exam.md](docs
   released model killed the Skeleton King in 13/16 and the Butcher in 10/16 games; the candidate was not adopted.
   [Report](docs/rounds/round9-exam.md) · [code](option_brain/README.md).
 - **2026-09-23 — Local option brain and held-out check.** The same local model (`d9facts3`) first killed both
-  bosses in training worlds and then, on 30 never-played seeds, the Skeleton King in 9/14 and the Butcher in 8/16
-  games; all 50 games of the day were later replayed from their journals. Published with this release (numbers in
+  bosses in training worlds and then, on 30 never-played seeds (a held-out check, not pre-registered), the Skeleton
+  King in 9/14 and the Butcher in 8/16 games; all 50 games of the day were later replayed from their journals. Published with this release (numbers in
   the table above and in the exam report).
 - **2026-09-21 — First Skeleton King kill, with an online strategist.** The Codex assistant of the project task as
   strategist (after an opening played with Ministral 3 8B), a frozen RL worker and explicit navigation/service
