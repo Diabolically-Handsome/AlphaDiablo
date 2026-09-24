@@ -8,7 +8,7 @@
 | [`prereg/`](prereg/) | 各案预注册（`PREREG-*.md`，v23 到 R9、B1、G1、E-fix、定锚/重锚） |
 | [`forensics/`](forensics/) | 法证、尸检和档案审计报告 |
 | [`protocol/`](protocol/) | R19–R21 的协议规格，案级驱动器的值守细则 `OPS-launcher.md`，以及从 README 移来的 R7/R8 时期协议说明 [`PROTOCOL-V4-NOTES.md`](protocol/PROTOCOL-V4-NOTES.md) |
-| [`rounds/`](rounds/) | R9–R19 的轮次文书：预注册、发车令、判决书、探针报告、评审记录 |
+| [`rounds/`](rounds/) | R9–R19 的轮次文书：预注册、发车令、判决书、探针报告、评审记录；另有 2026-09-24 选项脑第 9 轮考试的报告 [`round9-exam.md`](rounds/round9-exam.md)（英文）、逐局统计 [`round9-exam-results.json`](rounds/round9-exam-results.json) 和海报图 `round9-media/`。选项脑的轮次编号和 R9–R19 战役无关 |
 | [`archive/`](archive/) | 内部备忘，以及 [`REDACTIONS-2026-09-23.md`](archive/REDACTIONS-2026-09-23.md)（本次去除个人信息的记录） |
 | [`assets/`](assets/) | 图表和基线档，代码按路径读取，不要搬动 |
 | [`milestones/`](milestones/) | 里程碑证据包，由各自的 `manifest.json` 和 `verify.py` 封存，内容不能改动 |

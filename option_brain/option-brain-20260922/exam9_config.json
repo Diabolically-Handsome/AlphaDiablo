@@ -1,0 +1,75 @@
+{
+ "_doc": "Round-9 paired final exam (PREREG-ROUND9.md): the one source of seeds, arms, caps and flags for run_exam9_wave.sh, run_exam9_chain.sh, check_exam9_wave.py, score_exam9.py, broker_watchdog.sh, launch_gate9.sh, launch_smoke9.sh, fidelity9.py, seed_audit9.py and make_exam9_freeze.sh (which also writes exam9-seeds.json from it). Part of the freeze list; do not edit after the freeze. Wave names: exam waves 1-4 (batch exam9-w<wave>-<arm>); a voided wave re-run <wave>r<k> (e.g. 1r2 -> exam9-w1r2-<arm>; the latest re-run replaces the voided wave everywhere); the make-up wave m1 (batch exam9-m1-<arm>) and, if a make-up wave itself is voided, its re-run m1r<k> (exam9-m1r<k>-<arm>); gate[-r<k>] (gate9-new[-r<k>]); smoke[-r<k>] (smoke9-<arm>[-r<k>]). The prereg is frozen as a copy (prereg_frozen, written by make_exam9_freeze.sh); after the freeze PREREG-ROUND9.md may only grow at its end (revision section), which run_exam9_wave.sh and check_exam9_wave.py verify byte for byte.",
+ "root": "$AD_ROOT",
+ "exp": "$AD_WORKSPACE/experiments/option-brain-20260922",
+ "prereg": "PREREG-ROUND9.md",
+ "prereg_frozen": "$AD_ROOT/exam9-prereg-frozen.md",
+ "freeze_list": "$AD_ROOT/exam9-freeze.sha256",
+ "base_freeze_list": "$AD_ROOT/exam9-freeze-base.sha256",
+ "smoke_pass_file": "$AD_ROOT/exam9-smoke-pass.json",
+ "gate_pass_file": "$AD_ROOT/exam9-gate-pass.json",
+ "butcher_probe": {"_doc": "PREREG-ROUND9.md section 2: the original tick-0 probe (the script that produced run1.json; bench/butcher_probe.py is a later copy with a header and another save directory) and its results; make_exam9_freeze.sh copies them from source into <root>/seed-audit/ and checks these shas.", "source": "$AD_ROOT/r9-work/exam9-prep/butcher-probe-original", "probe_sha256": "27217e40829414441d39f4acf2bde9c8c95d633c8b37203c264e467461c6bc98", "run1_sha256": "ce223b1afbfd72731f630a89ef03e596127af367735d3ee54a2742b79a7d7868", "run2_files": 29},
+ "py_model": "$AD_HOME/strategy_brain_sft_20260922/runtime/venv/bin/python",
+ "py_game": "$AD_HOME/AlphaDiablo/.venv/bin/python",
+ "arms": {
+  "new": {"tag": "d13facts5", "adapter": "$AD_ROOT/sft/d13facts5/adapter", "facts_version": 5},
+  "old": {"tag": "d9facts3", "adapter": "$AD_ROOT/sft/d9facts3/adapter", "facts_version": 3}
+ },
+ "extra_hands": "--allow-heldout",
+ "hands": "--executor r3 --r3-chain --r3-target --r3-chain-guard post_hit --r3-hold-floor 0.5 --undo-guard --r3-chase --facts --auto-belt --allow-heldout",
+ "decision_limit": 6000,
+ "minutes": 720,
+ "ticks": {"skeleton_king": 150000, "butcher": 80000},
+ "smoke_ticks": 3000,
+ "smoke_minutes": 30,
+ "broker_model": "mistral24b-nf4",
+ "gpu_uuid": "$AD_GPU_UUID",
+ "gpu_busy_mib": 4096,
+ "min_free_gb": 20,
+ "bridge_sha256": "05fc300940ac491d9e05fdd37dacecf7e9e139811de102d0c886caee8f0952b1",
+ "engine_sha256": "41eb66efd17492ec2d2c0a54795b5e0ddf3f11efc9c7c544cd82299dfa435da2",
+ "bridge_path": "$AD_HOME/strategist_rl_king_20260921/bridge-r3/_diablogym.cpython-312-x86_64-linux-gnu.so",
+ "engine_path": "$AD_HOME/skeleton_king_dual_brain_20260920/engine-repair-r11-1789997109706059134/fixed/liblibdevilutionx_so.so",
+ "king_seeds": [4150064, 4150067, 4150069, 4150070, 4150071, 4150074, 4150081, 4150082, 4150086, 4150089, 4150093, 4150094, 4150095, 4150096, 4150097, 4150098],
+ "butcher_seeds": [4150064, 4150065, 4150066, 4150067, 4150068, 4150072, 4150075, 4150076, 4150078, 4150079, 4150080, 4150081, 4150082, 4150083, 4150086, 4150087],
+ "king_seeds_with_butcher_quest": [4150064, 4150067, 4150081, 4150082, 4150086, 4150093, 4150095],
+ "butcher_seeds_with_king_quest": [4150064, 4150067, 4150081, 4150082, 4150086],
+ "halves": {
+  "A": {"skeleton_king": [4150064, 4150067, 4150069, 4150070, 4150071, 4150074, 4150081, 4150082], "butcher": [4150064, 4150065, 4150066, 4150067, 4150068, 4150072, 4150075, 4150076]},
+  "B": {"skeleton_king": [4150086, 4150089, 4150093, 4150094, 4150095, 4150096, 4150097, 4150098], "butcher": [4150078, 4150079, 4150080, 4150081, 4150082, 4150083, 4150086, 4150087]}
+ },
+ "waves": [
+  {"wave": "1", "arm": "new", "half": "A"},
+  {"wave": "2", "arm": "old", "half": "A"},
+  {"wave": "3", "arm": "old", "half": "B"},
+  {"wave": "4", "arm": "new", "half": "B"}
+ ],
+ "replacements": {
+  "_doc": "PREREG-ROUND9.md section 2: used only before the freeze, for a seed that fails the quest check or the audit (none did: Butcher 16/16 by the tick-0 wounded-townsman probe, King 16/16 by manual_seed_has_king). King: the next King-quest seeds after 4150098 (quest_lottery.py = bridge manual_seed_has_king).",
+  "butcher": [4150088, 4150090, 4150092, 4150093, 4150095, 4150100],
+  "skeleton_king": [4150100, 4150102, 4150103, 4150104, 4150105, 4150106]
+ },
+ "gate": {
+  "_doc": "PREREG-ROUND9.md section 6. Rule b: a cycle signature (exam9_lib.cycle_signature: '<status>:<kinds>', kinds = the chosen-option kinds filling >= 10 of the last 40 decisions, or every kind of the last 4 decisions for no_progress_4) not in known_cycles (the round-8 signatures, written out literally here). Rule e (queue model): per finished gate game, mean think T (all games' think_seconds pooled), its own time per decision own = max(0, seconds/decisions - mean alive games during its run x T); projected minutes = decisions x (concurrency x T + own) / 60; pause when the largest projection > wall_fraction x minutes.",
+  "known_cycles": ["no_progress_4:fight_all", "no_progress_cycle_40:dismiss+exit+npc", "no_progress_cycle_40:equip", "no_progress_cycle_40:exit"],
+  "arm": "new",
+  "skeleton_king": [4150001, 4150011, 4150012, 4150018, 4150019, 4150021, 4150023, 4150024, 4150025, 4150029, 4150030],
+  "butcher": [4150011, 4150012, 4150018, 4150019, 4150023, 4150025, 4150029, 4150030],
+  "deaths_pause_at": 5,
+  "same_no_progress_pause_at": 2,
+  "wall_fraction": 0.5,
+  "concurrency": 16
+ },
+ "smoke": {"skeleton_king": [4150053], "butcher": [4150045]},
+ "fidelity": {
+  "_doc": "PREREG-ROUND9.md sections 5 and 8: old_n round-8 held-out prompts with d9facts3 (argmax = logged choice), each scored repeat times (argmax identical); new_n relabel-d13bf5 test rows with d13facts5 (round 9d since 2026-09-24 09:1x; round 9b: the new arm was d11facts5 with facts version 5; it was d10facts4 / relabel-d10f4 until the owner's retrain decision of 2026-09-23 21:40), scored repeat times; post_n_per_arm exam decisions per arm after the exam, stratified by game.",
+  "old_n": 500, "new_n": 200, "repeat": 2, "post_n_per_arm": 2000, "sample_seed": 20260923,
+  "old_batches": ["heldout-king-v3", "heldout-butcher-v3", "heldout2-king-v3", "heldout2-butcher-v3"],
+  "new_rel": "relabel-d13bf5",
+  "new_files": ["d1-test", "d3stu-test", "d4stu-test", "d5stu-test", "rule-exit-test", "rule-stat-test", "rule-weapon-test"]
+ },
+ "round8_batches": ["king3-v3", "king3b-v3", "butcher1-v3", "heldout-king-v3", "heldout-butcher-v3", "heldout2-king-v3", "heldout2-butcher-v3"],
+ "watchdog": {"poll_seconds": 5, "max_restarts": 5, "min_gap_seconds": 60, "wait_broker_exit_seconds": 900},
+ "check": {"class_a_stop_chain_at": 3},
+ "retreat": {"max_potions": 1, "min_decisions": 20, "threshold": 0.8, "option_substrings": ["stairs UP", "exit back to the main dungeon"]}
+}

@@ -1,0 +1,26 @@
+diff --git a/Source/loadsave.cpp b/Source/loadsave.cpp
+--- a/Source/loadsave.cpp
++++ b/Source/loadsave.cpp
+@@ -777,6 +777,22 @@
+ 		}
+ 	}
+ 
++	// These type-derived fields are not part of the legacy save record. A
++	// monster slot may previously have held a different species or unique;
++	// restore all six fields instead of inheriting the slot's old contents.
++	const auto restoreAttributeDrains = [&monster](const auto &data) {
++		monster.reducePlayerStrength = data.reducePlayerStrength;
++		monster.reducePlayerMagic = data.reducePlayerMagic;
++		monster.reducePlayerDexterity = data.reducePlayerDexterity;
++		monster.reducePlayerVitality = data.reducePlayerVitality;
++		monster.reducePlayerMaxHP = data.reducePlayerMaxHP;
++		monster.reducePlayerMaxMana = data.reducePlayerMaxMana;
++	};
++	if (monster.isUnique())
++		restoreAttributeDrains(UniqueMonstersData[static_cast<size_t>(monster.uniqueType)]);
++	else
++		restoreAttributeDrains(monster.data());
++
+ 	return true;
+ }
+ 

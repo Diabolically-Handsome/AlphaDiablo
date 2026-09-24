@@ -1,3 +1,6 @@
 # The milestone folders are sealed by manifest.json + verify.py, which hash
 # the exact committed bytes.  Never convert their line endings on checkout.
 docs/milestones/** -text
+# option_brain/ is published with the exact bytes recorded in
+# option_brain/PROVENANCE.md (three files use CRLF). Never convert them.
+option_brain/** -text
