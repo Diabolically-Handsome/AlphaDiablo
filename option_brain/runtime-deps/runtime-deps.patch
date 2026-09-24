@@ -1,0 +1,911 @@
+diff --git a/python/diablogym/env.py b/python/diablogym/env.py
+--- a/python/diablogym/env.py
++++ b/python/diablogym/env.py
+@@ -687,7 +687,9 @@
+         hunt_scope: str = "all",
+     ):
+         super().__init__()
+-        from .resource_protocol import validate_resource_config, validate_ordinary_armor_scope
++        from .resource_protocol import (validate_resource_config,
++                                        validate_ordinary_armor_scope,
++                                        is_full_purchase_mode)
+         self.resource_protocol, self.resource_purchase_mode = validate_resource_config(
+             resource_protocol, resource_purchase_mode)
+         self.resource_ordinary_armor_scope = validate_ordinary_armor_scope(
+@@ -698,13 +700,15 @@
+         if type(resource_loot_economy) is not bool:
+             raise ValueError("resource_loot_economy must be bool")
+         if resource_loot_economy and (
+-                self.resource_protocol != "l2-town-v1" or self.resource_purchase_mode != "full"
++                self.resource_protocol != "l2-town-v1"
++                or not is_full_purchase_mode(self.resource_purchase_mode)
+                 or not self.resource_ordinary_armor_scope
+                 or not self._resource_preserve_equipment_readiness):
+             raise ValueError("loot economy requires l2-town-v1/full with ordinary armor and equipment preservation")
+         self._resource_loot_economy = resource_loot_economy
+         # R17.1 ruling 3: readiness law (veto-v1 = R18-R23 native veto, bit-identical;
+-        # coach-v03 = six-condition coach + accounted forced descents).
++        # coach-v03 / coach-v05 = six-condition coach + accounted forced
++        # descents; coach-v05 adds the R19-M2 stall rule in OptionsEnv).
+         from .resource_protocol import validate_readiness_law
+         self.resource_readiness_law = validate_readiness_law(
+             self.resource_protocol, resource_readiness_law)
+@@ -749,7 +753,7 @@
+                 f"expected one of {RESOURCE_WEAPON_UPGRADES}")
+         if resource_weapon_upgrade != "off" and (
+                 self.resource_protocol != "l2-town-v1"
+-                or self.resource_purchase_mode != "full"
++                or not is_full_purchase_mode(self.resource_purchase_mode)
+                 or not self._resource_loot_economy):
+             raise ValueError("smith-v1 requires l2-town-v1/full with the loot economy")
+         self.resource_weapon_upgrade = resource_weapon_upgrade
+@@ -2307,7 +2311,9 @@
+             DiabloGymEnv._sweep_object_channel = sweep
+         if hasattr(bridge, "configure_resource_protocol"):
+             bridge.end_game()
+-            advisory = getattr(self, "resource_readiness_law", "veto-v1") == "coach-v03"
++            from .resource_protocol import is_coach_law
++            advisory = is_coach_law(
++                getattr(self, "resource_readiness_law", "veto-v1"))
+             loot = bool(getattr(self, "resource_loot_economy", False))
+             if loot and not advisory:
+                 # R17.1-D loot economy, exact R21 ABI (no advisory keyword).
+@@ -2419,7 +2425,7 @@
+         if kind in ("attack_monster", "drink", "unequip"):
+             # New script-only commands. Keep the legacy service dispatch below
+             # untouched; every mutation here is bounded by actual native clocks.
+-            if kind == "unequip" and self.resource_purchase_mode != "full":
++            if kind == "unequip" and self.resource_purchase_mode not in ("full", "full-v2"):
+                 raise ValueError("Unequip is restricted to the full resource arm")
+             if kind == "attack_monster":
+                 if (len(args) != 2 or type(args[1]) is not int or args[1] <= 0):
+@@ -2560,7 +2566,7 @@
+         elif kind == "equip":
+             result = bridge.act_equip_inventory_item(*args)
+         elif kind == "repair":
+-            if self.resource_purchase_mode != "full":
++            if self.resource_purchase_mode not in ("full", "full-v2"):
+                 raise ValueError("Paid repair is restricted to the full resource arm")
+             result = bridge.act_repair_equipped_item(*args)
+         elif kind == "identify":
+@@ -2860,7 +2866,9 @@
+             depth = int(self._raw["dungeon_level"])
+             if depth > self._resource_max_main_depth:
+                 receipt = dict(self._raw.get("resource_state", {}).get("transition", {}))
+-                if getattr(self, "resource_readiness_law", "veto-v1") == "coach-v03":
++                from .resource_protocol import is_coach_law
++                if is_coach_law(
++                        getattr(self, "resource_readiness_law", "veto-v1")):
+                     # Forced-unready descents are legal under the frozen mask law;
+                     # the receipt must exist and be accepted, readiness is accounting.
+                     if depth > 1 and not receipt.get("accepted"):
+diff --git a/python/diablogym/options_env.py b/python/diablogym/options_env.py
+--- a/python/diablogym/options_env.py
++++ b/python/diablogym/options_env.py
+@@ -21,7 +21,7 @@
+ 依赖 action10 暗中下楼所形成的无限干窗；仅 DIVE 非法时保留 FARM，并强制
+ ≥25 拍复访地板。
+ 
+-v23(docs/prereg/PREREG-v23.md):窗口循环的逐拍簿记(保险丝/反射/终止阶梯)抽成
++v23(docs/PREREG-v23.md):窗口循环的逐拍簿记(保险丝/反射/终止阶梯)抽成
+ 共享方法——OptionsEnv(组装/评测)与 WorkerWindowEnv(在位训练)跑同一段
+ 代码,消灭"第三份实现"。支持 workers={选项: 策略} 把某选项的脚本内环换成
+ 可学习工人:
+@@ -55,6 +55,11 @@
+     DESCEND_UNIT,
+     REWARD_ECONOMY_V1,
+     DiabloGymEnv,
++    # R19-M2 stop-v1: the direction-key table.  IMPORTED, never copied -- the
++    # emergency stop turns a planner step into the same a1-a8 key the worker
++    # presses, and a second copy of this table is a second definition of what
++    # "north" means (the R19-A1 lesson about copied vocabularies).
++    _DIRS,
+     _scene_identity,
+     gear_combat_utility_value,
+ )
+@@ -441,6 +446,8 @@
+                  resource_retreat: str = "off",
+                  resource_portal: str = "off",
+                  resource_sweep: str = "off",
++                 resource_gold_grab: str = "off",
++                 resource_emergency_stop: str = "off",
+                  resource_identify: str = "off",
+                  resource_weapon_upgrade: str = "off",
+                  **env_kwargs):
+@@ -479,6 +486,24 @@
+             self.resource_protocol, self.resource_service_policy, resource_sweep)
+         if self.resource_sweep != "off":
+             env_kwargs["resource_sweep"] = self.resource_sweep
++        # R19 (2026-09-08) gold-grab-v1: pick up SEEN gold as you go on main
++        # L1/L2.  A MANAGER-side law with no native word of its own (the pickup
++        # is the collect stage's act_pickup_gold_at and the channel is the
++        # frozen resource_state["gold_items"]), so like resource_calibration and
++        # R19-A1's resource_retreat_scope it stays on OptionsEnv and is never
++        # forwarded to DiabloGymEnv.  Default "off" keeps env kwargs
++        # byte-identical.
++        from .resource_gold_grab import validate_gold_grab_protocol
++        self.resource_gold_grab = validate_gold_grab_protocol(
++            self.resource_protocol, self.resource_service_policy, resource_gold_grab)
++        # R19-M2 (2026-09-09) stop-v1: the in-window emergency stop.  Like
++        # gold-grab-v1 it is a pure-Python MANAGER-side law with no native word
++        # of its own (the drink is a12, the disengage is a1-a8), so it stays on
++        # OptionsEnv and is never forwarded to DiabloGymEnv.  Default "off"
++        # keeps env kwargs byte-identical.
++        from .resource_protocol import validate_emergency_stop_protocol
++        self.resource_emergency_stop = validate_emergency_stop_protocol(
++            self.resource_protocol, resource_emergency_stop)
+         # R18-H identify-v1 (default off = byte-identical kwargs).
+         from .resource_identify import validate_identify_protocol
+         self.resource_identify = validate_identify_protocol(
+@@ -501,7 +526,7 @@
+             if (type(max_steps) is not int
+                     or max_steps != recipe.actor_denominator
+                     or self.resource_protocol != "l2-town-v1"
+-                    or self.resource_purchase_mode != "full"
++                    or self.resource_purchase_mode not in ("full", "full-v2")
+                     or self.resource_service_policy not in ("sustain-v6", "sustain-loot-v1")
+                     or self.resource_calibration is not None):
+                 raise ValueError("completion-l2-v1 requires legacy observation denominator and l2-town-v1/full with sustain-v6 or sustain-loot-v1 without calibration")
+@@ -681,11 +706,79 @@
+         else:
+             self.portal_service = None
+         # R18-H sweep-v1: a fresh scripted chest/barrel sweep per episode; None when off.
++        # R19 sweep-v2 (2026-09-08): the SAME service, told which law row it runs
++        # (SWEEP_LAWS in resource_sweep.py).  sweep-v1 keeps its default row.
+         if getattr(self, "resource_sweep", "off") != "off":
+             from .resource_sweep import SweepService
+-            self.sweep_service = SweepService()
++            self.sweep_service = SweepService(protocol=self.resource_sweep)
++            # R19 review round (2026-09-09): the sweep's own abort ladder used
++            # to mirror ONE of the retreat law's three danger clauses (hp <=
++            # 0.5 * max), while the guards at :1126-1131 below stop
++            # RetreatService.trigger_reason from being consulted at all while a
++            # sweep window is live.  On main L2 that combination let a window
++            # hold the body through `empty_belt` and `pressure`.  Bind the law
++            # itself -- retreat first, portal as the fallback, exactly the
++            # order worker_env._sweep_close_is_death_equivalent uses -- so the
++            # body-ownership side and the escrow side of the same fence ask one
++            # question of one law.  None when neither law is on, which is also
++            # when there is no retreat to block.
++            self.sweep_service.set_danger_law(
++                self.retreat_service if self.retreat_service is not None
++                else self.portal_service)
++            # R19-M1 review round (2026-09-09), finding 4.  The DANGER law
++            # above is the retreat law's three clauses; PortalService also
++            # fires on `portal_standing` (a portal already open at this
++            # depth), which resource_portal.py deliberately does NOT make a
++            # danger clause.  The merged portal guard below refuses to start a
++            # portal leg while sweep.active, and _win_term's sweep rung returns
++            # before the portal rung is evaluated, so without this bind a
++            # portal leg that became legal mid-window was deferred for up to
++            # SWEEP_V2_MICROSTEP_BUDGET microsteps.  gold-grab-v1 repaired
++            # exactly this defect for itself in its own review round
++            # (bind_portal + "grab_portal_wanted"); the merge left the sweep
++            # half unfixed.  None when the portal law is off, which keeps the
++            # rung inert -- and inert on main L1 under sweep-v1 anyway, where
++            # PortalService.trigger_reason refuses depth < 2.
++            self.sweep_service.bind_portal(getattr(self, "portal_service", None))
+         else:
+             self.sweep_service = None
++        # R19 gold-grab-v1: a fresh scripted gold-grab service per episode; None when off.
++        if getattr(self, "resource_gold_grab", "off") != "off":
++            from .resource_gold_grab import GoldGrabService
++            self.gold_grab_service = GoldGrabService()
++            # R18-A retreat-v1 keeps priority: an open grab window closes the
++            # beat the retreat law fires (the sweep needed no such term, main L1
++            # being a floor the retreat law cannot speak on).
++            self.gold_grab_service.bind_retreat(getattr(self, "retreat_service", None))
++            # R19 review round (2026-09-08): R18-F portal-v1 gets the same
++            # deference.  Without this bind an open grab window starved a
++            # portal leg for up to a whole window, not the single beat the
++            # action_masks comment used to claim.
++            self.gold_grab_service.bind_portal(getattr(self, "portal_service", None))
++        else:
++            self.gold_grab_service = None
++        # R19-M2 (2026-09-09) chairman ruling 4: a fresh coach-v05 stall
++        # bookkeeper per episode.  None under veto-v1 AND under coach-v03,
++        # which is what makes coach-v03 byte-identical: every consultation
++        # site below is guarded by `is not None`.
++        from .resource_protocol import COACH_V05, ReadinessCoachV05
++        if getattr(self, "resource_readiness_law", "veto-v1") == COACH_V05:
++            self.readiness_coach = ReadinessCoachV05()
++        else:
++            self.readiness_coach = None
++        # R19-M2 stop-v1: a fresh emergency-stop service per episode; None when off.
++        # It binds no other law: the deference to R18-A retreat-v1 / R18-F
++        # portal-v1 is structural rather than a term of this law.  Every beat
++        # the vehicle drives goes through _win_beat, whose _win_term ladder
++        # already asks both of those laws; the first beat at which either wants
++        # the body returns a close reason and the vehicle stops on the spot.
++        if getattr(self, "resource_emergency_stop", "off") != "off":
++            from .resource_emergency_stop import (EmergencyStopService,
++                                                  emergency_stop_law)
++            self.emergency_stop_service = EmergencyStopService(
++                law=emergency_stop_law(self.resource_emergency_stop))
++        else:
++            self.emergency_stop_service = None
+         # R18-H identify-v1: a fresh scripted Cain identify service per episode; None when off.
+         if getattr(self, "resource_identify", "off") != "off":
+             from .resource_identify import IdentifyService
+@@ -696,7 +789,8 @@
+         if getattr(self, "resource_weapon_upgrade", "off") != "off":
+             from .resource_weapon_upgrade import WeaponUpgradeService
+             self.weapon_upgrade_service = WeaponUpgradeService(
+-                protocol=self.resource_weapon_upgrade)
++                protocol=self.resource_weapon_upgrade,
++                purchase_mode=self.resource_purchase_mode)
+         else:
+             self.weapon_upgrade_service = None
+         # 冻结的 V28 worker 与 M29 manager 都在 db7d26c 的 protocol-v3
+@@ -768,7 +862,9 @@
+             # R17.1 ruling 3: under coach-v03 a forced-unready arrival is legal
+             # (accepted, pretransition_ready False, accounted, no escrow); only
+             # the receipt's existence/acceptance and the 1->2 geometry are law.
+-            ready_required = getattr(self, "resource_readiness_law", "veto-v1") != "coach-v03"
++            from .resource_protocol import is_coach_law as _is_coach_law
++            ready_required = not _is_coach_law(
++                getattr(self, "resource_readiness_law", "veto-v1"))
+             if (not transition.get("accepted")
+                     or (ready_required and not transition.get("pretransition_ready"))
+                     or transition.get("source_depth") != 1 or transition.get("target_depth") != 2
+@@ -993,16 +1089,33 @@
+         m[FARM] = not forced_dive
+         if getattr(self, "resource_protocol", "off") != "off":
+             from .resource_protocol import progression_allowed, native_readiness, RESOURCE_FARM_CAP
++            from .resource_protocol import is_coach_law
+             law = getattr(self, "resource_readiness_law", "veto-v1")
+             # veto-v1 masks DIVE on the native verdict; coach-v03 leaves the frozen
+             # DIVE legality untouched (progression_allowed returns True under it).
+             m[DIVE] = bool(m[DIVE] and progression_allowed(raw, law))
+             service = self.resource_service
++            # R19-M1 review round (2026-09-09), finding 1 -- a REGRESSION
++            # against the main tree that the merge introduced and neither
++            # single-law review caught.  `sweep` is a function-local of
++            # action_masks(), and THREE guards below load it at indent 12: the
++            # portal trigger guard, the retreat trigger guard and the grab
++            # trigger guard.  Its only binding used to sit inside the
++            # `sustain-loot-v1` branch (and a redundant rebind sat AFTER all
++            # three), so under any other service policy -- "legacy-v1" is the
++            # default, and eval_contract.py / train_ppo.py both permit
++            # retreat-v1 beside it -- the first beat that reached the retreat
++            # guard died with `UnboundLocalError: cannot access local variable
++            # 'sweep'`.  The main tree has no such load; the sweep tree added
++            # two and the gold tree one.  Bind it ONCE, here, before any guard
++            # can read it.  Under sustain-loot-v1 (every certified arm) the
++            # value is identical to what the old in-branch binding produced,
++            # so this is behaviour-preserving where the old code ran at all.
++            sweep = getattr(self, "sweep_service", None)
+             if getattr(self, "resource_service_policy", "legacy-v1") == "sustain-loot-v1":
+                 alive = sum(1 for monster in raw.get("monsters", [])
+                             if int(monster.get("hp", 0)) > 0 and int(monster.get("type", -1)) != 109)
+                 cleared_now = alive == 0 and int(raw.get("monster_kill_total", 0)) > 0
+-                sweep = getattr(self, "sweep_service", None)
+                 if sweep is not None:
+                     # R18-H (2026-09-07) review round: observe() also records the
+                     # lit-object memory, so the sweep only ever targets objects
+@@ -1010,9 +1123,30 @@
+                     sweep.observe(raw)
+                     sweep_portal = getattr(self, "portal_service", None)
+                     sweep_retreat = getattr(self, "retreat_service", None)
++                    sweep_grab = getattr(self, "gold_grab_service", None)
+                     if (not sweep.active and not service.active
+                             and not getattr(sweep_portal, "active", False)
+-                            and not getattr(sweep_retreat, "active", False)):
++                            and not getattr(sweep_retreat, "active", False)
++                            and not (sweep_grab is not None
++                                     and (sweep_grab.active
++                                          or sweep_grab.pending_pickup))):
++                        # R19-M1 (2026-09-09) integration fence.  Neither
++                        # single-law tree needed this term: gold-grab's own
++                        # trigger already refuses to open while sweep.active,
++                        # but the converse was left to depth-disjointness,
++                        # which sweep-v2 removes on main L1 AND L2 alike.  A
++                        # grab window can still be .active at a window
++                        # BOUNDARY (a non-RESUPPLY window closed for `cap` /
++                        # `scene` while the grab owned the body), and the
++                        # RESUPPLY owner chain prefers the sweep -- so without
++                        # this term the sweep would be started on top of a
++                        # grab leg that is then never driven again.  The
++                        # pending_pickup half is the same wallet-settlement
++                        # lock the maybe_start guard below takes: a coin still
++                        # in flight must land before any other script books a
++                        # receipt against the same wallet.  Provably inert
++                        # when resource_gold_grab is off (the service is None),
++                        # so sweep-v1 and sweep-v2 alone stay byte-identical.
+                         # R18-H sweep-v1: consulted BEFORE maybe_start, on exactly
+                         # the beat the loot trip would depart (floor cleared / FARM
+                         # cap), so the chest and barrel drops are already on the
+@@ -1047,7 +1181,23 @@
+                             sweep.start(raw, int(self.env._steps), trigger,
+                                         loot_trip_slots_left=sweep_slots,
+                                         readiness_deficit=sweep_deficit)
+-                if sweep is None or not sweep.active:
++                grab_guard = getattr(self, "gold_grab_service", None)
++                if ((sweep is None or not sweep.active)
++                        and not (grab_guard is not None
++                                 and (grab_guard.active
++                                      or grab_guard.pending_pickup))):
++                    # R19 review round (2026-09-08): belt and braces for the
++                    # queued-pickup boundary.  A town trip snapshots
++                    # _start_gold at departure; a grab pickup still in flight
++                    # would land inside the trip's scripted RESUPPLY loop,
++                    # where SustainLootService.receipt has no branch for a
++                    # positive wallet delta on a walk / equip / sell beat and
++                    # _seal_trip raises "Completed loot trip has unexplained
++                    # cash movement".  The grab service now holds its own
++                    # window until the coin settles, so this is the second
++                    # lock, not the first; the `grab.active` half also makes
++                    # good the invariant the module docstring asserts (a grab
++                    # window is never open while the town service is).
+                     service.maybe_start(raw, self.env._steps,
+                         farm_scene_steps=self.farm_scene_steps,
+                         cleared=cleared_now)
+@@ -1090,8 +1240,38 @@
+                 service.phase = service._last_phase = "outbound"
+                 bridge.configure_town_service(True)
+             if (portal is not None and not portal.active and not service.active
+-                    and (retreat is None or not retreat.active)):
+-                # R18-M (2026-09-07) review round — why this guard does NOT
++                    and (retreat is None or not retreat.active)
++                    and not (sweep is not None and sweep.active)
++                    and not getattr(getattr(self, "gold_grab_service", None),
++                                    "active", False)):
++                # R19-M1 (2026-09-09) integration: sweep-v2 and gold-grab-v1
++                # each added the term R18-M asked for, for the same reason
++                # (both widen a scripted window onto main L2, where the
++                # portal law is live).  BOTH terms survive; each is inert
++                # while its own law is off.
++                # R19 (2026-09-08) sweep-v2: the `sweep.active` term above is
++                # the one the R18-M note said to add the day the sweep stopped
++                # being main-L1 only.  sweep-v2 runs on main L1 AND main L2, so
++                # the depths are no longer disjoint and a portal leg could
++                # otherwise be started on top of a sweep window that already
++                # owns the body (the RESUPPLY owner chain prefers the sweep, so
++                # the portal would have been started and then never driven).
++                # Under sweep-v1 the term is provably inert (sweep.active
++                # implies dungeon_level == 1, where trigger_reason already
++                # returns None), so v1 stays byte-identical.
++                # R19 gold-grab-v1: same term, same reason.  R19 gold review
++                # round (2026-09-08): the claim that used to stand here --
++                # "this costs the portal at most the one beat that closes the
++                # window" -- was FALSE.  The grab's abort ladder had a retreat
++                # term but no portal term, while the portal law is the retreat
++                # clauses PLUS a carried scroll (and portal_standing, which
++                # never looks at hp), so a portal leg that became legal
++                # mid-window was delayed for up to GRAB_WINDOW_MICROSTEP_CAP
++                # microsteps.  The grab service now also hands the body back on
++                # the beat portal.trigger_reason fires ("grab_portal_wanted",
++                # resource_gold_grab.py), so the one-beat bound is now what the
++                # code actually provides.
++                # R18-M (2026-09-07) review round — why this guard did NOT
+                 # mention the sweep, although a sweep may have started earlier in
+                 # this same action_masks() call (options_env.py:998-1032) against
+                 # the same immutable `raw`: the depths are disjoint by law.
+@@ -1112,7 +1292,29 @@
+                 if trigger is not None:
+                     portal.start(raw, int(self.env._steps), bridge, trigger)
+             if (retreat is not None and not retreat.active and not service.active
+-                    and (portal is None or not portal.active)):
++                    and (portal is None or not portal.active)
++                    and not (sweep is not None and sweep.active)
++                    and not getattr(getattr(self, "gold_grab_service", None),
++                                    "active", False)):
++                # R19-M1 (2026-09-09) integration: BOTH terms survive, same
++                # reason as the portal guard above.
++                # R19 (2026-09-08) sweep-v2: the depth-disjointness that made
++                # the missing term inert is gone once the sweep runs on main L2.
++                # Inert under sweep-v1.
++                # R19 sweep review round (2026-09-09): this term DEFERS the
++                # retreat law, it must never CANCEL it.  What makes the deferral
++                # bounded is on the sweep's side, not here: SweepService.
++                # trigger_reason refuses to open a window on main L2+ while
++                # RetreatService.danger_reason has a verdict, and the in-window
++                # rung (resource_sweep.py, "sweep_danger_*") hands the body back
++                # on the first beat one appears.  Before that pair existed, a
++                # live sweep window silently outranked `empty_belt` and
++                # `pressure` -- two of the retreat law's three clauses -- for up
++                # to a full microstep budget.  Do not restore the guard without
++                # them.
++                # R19 gold-grab-v1: the grab service defers to this law the same
++                # way: its _command closes the window the beat
++                # retreat.trigger_reason(raw, steps) stops returning None.
+                 # R18-M (2026-09-07) review round: same disjoint-depth invariant as
+                 # the portal guard above (resource_sweep.py:205 L1-only vs
+                 # resource_retreat.py:138 depth >= 2) is what keeps the missing
+@@ -1122,10 +1324,37 @@
+                 trigger = retreat.trigger_reason(raw, int(self.env._steps))
+                 if trigger is not None:
+                     retreat.start(raw, int(self.env._steps), bridge, trigger)
+-            sweep = getattr(self, "sweep_service", None)
++            grab = getattr(self, "gold_grab_service", None)
++            if grab is not None:
++                # R19 gold-grab-v1.  Consulted LAST of the manager-side laws --
++                # after the town trip's own maybe_start and after the portal and
++                # retreat triggers -- because the chairman's ruling gives retreat
++                # and portal priority and because a trip that wants to depart
++                # must never be delayed by a grab window.  observe() is
++                # unconditional (the per-floor lit-pile memory and any unsettled
++                # pickup are recorded on every manager beat, open window or not),
++                # exactly as SweepService.observe is.
++                grab.observe(raw, int(self.env._steps))
++                if (not grab.active and not service.active
++                        and not getattr(sweep, "active", False)
++                        and not getattr(portal, "active", False)
++                        and not getattr(portal, "awaiting_return", False)
++                        and not getattr(retreat, "active", False)):
++                    trigger = grab.trigger_reason(
++                        raw, int(self.env._steps),
++                        town_trip_active=bool(service.active))
++                    if trigger is not None:
++                        grab.start(raw, int(self.env._steps), trigger)
++            # R19-M1 review round finding 1: the rebind that used to sit here
++            # is gone -- `sweep` is bound once, at the top of this block.
+             if sweep is not None and sweep.active:
+                 m[:] = False
+                 m[RESUPPLY] = True
++            elif grab is not None and grab.active:
++                # R19: the grab window collapses the manager mask to RESUPPLY
++                # exactly like the sweep / retreat / portal windows.
++                m[:] = False
++                m[RESUPPLY] = True
+             elif portal is not None and portal.active:
+                 m[:] = False
+                 m[RESUPPLY] = True
+@@ -1135,7 +1364,7 @@
+             elif service.active:
+                 m[:] = False
+                 m[RESUPPLY] = True
+-            elif law == "coach-v03":
++            elif is_coach_law(law):
+                 # R17.1 ruling 3: the frozen forced-descent law stands (escape hatch
+                 # kept); forced-unready descents are recorded by the engine receipt
+                 # and paid no escrow (worker_env settlement reads pretransition_ready_law).
+@@ -1158,6 +1387,9 @@
+         sweep = getattr(self, "sweep_service", None)
+         if sweep is not None and sweep.active:
+             return RESUPPLY
++        grab = getattr(self, "gold_grab_service", None)
++        if grab is not None and grab.active:
++            return RESUPPLY
+         portal = getattr(self, "portal_service", None)
+         if portal is not None and portal.active:
+             return RESUPPLY
+@@ -1172,7 +1404,21 @@
+         # verdict so low HP still sends the manager to Pepin (ruling 3).
+         if mask[DIVE] and (raw.get("is_set_level") or raw.get("progression_targets")
+                            or law_ready(raw, getattr(self, "resource_readiness_law", "veto-v1"))):
+-            return DIVE
++            # R19-M2 (2026-09-09) chairman ruling 4 (coach-v05 only; the
++            # object is None under veto-v1 and coach-v03, so those two laws
++            # never reach the call).  Quest mechanisms and set levels keep
++            # their DIVE authority untouched -- the two refusals are about
++            # the ORDINARY main-floor descent, which is the only thing the
++            # diagnostics were about.  The refusal is never applied when the
++            # frozen mask has already taken FARM away: this law does not
++            # fight the mask, and that is also why it cannot deadlock a
++            # floor (an exhausted floor masks FARM off).
++            coach = getattr(self, "readiness_coach", None)
++            if (coach is None or raw.get("is_set_level")
++                    or raw.get("progression_targets")
++                    or coach.dive_verdict(
++                        raw, farm_available=bool(mask[FARM])) is None):
++                return DIVE
+         for option in (FARM, RESUPPLY, DIVE):
+             if mask[option]:
+                 return option
+@@ -1233,6 +1479,12 @@
+             # 或“工人伴随击杀”。WorkerWindowEnv.step 返回的 wage 与这里
+             # 逐步累加的增量使用同一个 W 差分，二者必须严格同源。
+             "worker_wage": 0.0, "worker_kills": 0,
++            # R19-M2 review round (2026-09-09).  stop-v1 drives up to 13
++            # SCRIPTED beats at the tail of a worker transition.  Those beats
++            # are not the policy's proposal, so their W delta, their kills and
++            # any fuse they trip are booked HERE and subtracted out of
++            # worker_wage / worker_kills below.  Flag off -> all three stay 0.
++            "stop_wage": 0.0, "stop_kills": 0, "stop_fuses": 0,
+             "worker_action14_requests": 0,
+             "worker_action14_native_successes": 0,
+             "worker_action14_gear_utility_delta": 0,
+@@ -1267,6 +1519,10 @@
+             sweep = getattr(self, "sweep_service", None)
+             self._win["sweep_window"] = bool(
+                 sweep is not None and sweep.active and option == RESUPPLY)
++            # R19 gold-grab-v1: the same per-window flag, for the same reason.
++            grab = getattr(self, "gold_grab_service", None)
++            self._win["grab_window"] = bool(
++                grab is not None and grab.active and option == RESUPPLY)
+ 
+     def _beat(self, a: int, *, worker_authority: bool = False):
+         """一拍:保险丝 → env.step → 观测缓存 → 停滞钟。
+@@ -1460,6 +1716,23 @@
+                 # rung is what stops the frozen worker acting under a mask that
+                 # no longer describes its window.)
+                 return "sweep_trigger"
++        grab = getattr(self, "gold_grab_service", None)
++        if grab is not None:
++            # R19 gold-grab-v1 (constructed only when the flag is on).  The
++            # sweep's rung verbatim, and needed for the same two reasons:
++            # (1) a grab window must close when the SCRIPT hands back, not when
++            #     the ordinary RESUPPLY belt ladder decides it is done;
++            # (2) action_masks() also runs inside the frozen worker's dual
++            #     observation build, so a grab window can open in the middle of
++            #     a FARM/DIVE window whose embedded manager mask is already
++            #     collapsed to RESUPPLY.  Close that window at once, or the
++            #     frozen worker keeps acting under a mask that no longer
++            #     describes its window (the service re-baselines its own clocks
++            #     on its first command, so it is charged nothing for the tail).
++            if w.get("grab_window"):
++                return None if grab.active else "grab_complete"
++            if opt != RESUPPLY and grab.active:
++                return "grab_trigger"
+         portal = getattr(self, "portal_service", None)
+         if portal is not None:
+             # R18-F portal-v1 (constructed only when the flag is on): a portal
+@@ -1740,20 +2013,65 @@
+         ):
+             self._win["worker_no_effect_requests"] += 1
+         ending = primary
++        stop_ending = None
++        stop_wage = 0.0
++        stop_kills = 0
+         if primary.reason is None:
+             drain_ending = self._drain()
+             if drain_ending is not None:
+                 ending = drain_ending
++            else:
++                # R19-M2 stop-v1 (2026-09-09), chairman ruling 4.  Evaluated on
++                # EVERY worker beat -- that is the whole point of the law: the
++                # retreat/portal laws are only consulted at a window BOUNDARY,
++                # and seed 2133002 died inside one FARM window that lasted the
++                # entire episode.  Placed AFTER the worker's own beat and after
++                # the brainstem drain for two reasons: the worker action was
++                # chosen against the mask of the state it was chosen in (moving
++                # the pair first would make its own action illegal), and the
++                # drain has already spent whatever the reflex band called for.
++                # Flag off -> the service is None and this returns immediately.
++                #
++                # R19-M2 review round (credit assignment).  _drain is the
++                # precedent for the SHAPE of this hook, not for its accounting:
++                # the drain is ONE brainstem beat, the stop is a walk of up to
++                # thirteen.  Measure the stop's own W delta and kills across the
++                # call and subtract them out of the worker's wage and kill
++                # credit, or a scripted walk is paid to the network as if the
++                # network had chosen it.
++                stop_wage_before = float(self._win["W"])
++                stop_kills_before = int(self.env._ep_kills)
++                stop_ending = self._emergency_stop_tail()
++                stop_wage = float(self._win["W"]) - stop_wage_before
++                stop_kills = int(self.env._ep_kills) - stop_kills_before
++                if stop_kills < 0:
++                    raise RuntimeError("单局击杀计数在 stop-v1 载具内回退")
++                self._win["stop_wage"] = (
++                    self._win.get("stop_wage", 0.0) + stop_wage)
++                self._win["stop_kills"] = (
++                    self._win.get("stop_kills", 0) + stop_kills)
++                if stop_ending is not None:
++                    ending = stop_ending
+         # 与 WorkerWindowEnv.step 的 policy reward 完全相同：当前工人提案
+         # 及其反射尾部所造成的 W 增量。开窗恢复/排水发生在调用本方法之前，
+         # 因而不会被错误归给网络。
+-        self._win["worker_wage"] += float(self._win["W"]) - wage_before
+-        worker_kills = int(self.env._ep_kills) - kills_before
++        self._win["worker_wage"] += (
++            float(self._win["W"]) - wage_before - stop_wage)
++        worker_kills = int(self.env._ep_kills) - kills_before - stop_kills
+         if worker_kills < 0:
+             raise RuntimeError("单局击杀计数在 worker transition 内回退")
+         self._win["worker_kills"] += worker_kills
+-        fuse = primary if primary.fuse_tripped else (
+-            ending if ending.fuse_tripped else None)
++        # R19-M2 review round: a fuse tripped by one of stop-v1's own scripted
++        # direction keys is NOT the worker's proposal being rejected -- and that
++        # is exactly what fuse_tripped means downstream (worker_env: 现语义=拒绝
++        # 提案; leashed_ppo filters BC on it).  Book it to the stop.  Flag off
++        # -> stop_ending is None and this is the frozen expression.
++        fuse_ending = ending if ending.fuse_tripped else None
++        if (fuse_ending is not None and stop_ending is not None
++                and fuse_ending is stop_ending):
++            self._win["stop_fuses"] = self._win.get("stop_fuses", 0) + 1
++            fuse_ending = None
++        fuse = primary if primary.fuse_tripped else fuse_ending
+         return WorkerStepOutcome(
+             reason=ending.reason,
+             requested_action=a,
+@@ -1765,6 +2083,143 @@
+             action_effect_audit=primary.action_effect_audit,
+         )
+ 
++    def _emergency_stop_window_owned(self):
++        """True when THIS window is a worker-owned FARM/DIVE window.
++
++        The stop may never take the body from a script.  ``_win_step_worker`` is
++        already a worker-only call site, so this predicate is the second fence:
++        RESUPPLY windows are out, and so is any window a service leg has claimed
++        (the sweep / grab / portal / retreat window flags), which can be set on a
++        window whose ``opt`` is not RESUPPLY."""
++        w = self._win
++        if w is None or int(w.get("opt", -1)) not in (FARM, DIVE):
++            return False
++        return not any(w.get(flag) for flag in
++                       ("sweep_window", "grab_window",
++                        "portal_window", "retreat_window"))
++
++    def _emergency_stop_direction(self, raw, target):
++        """One direction key toward ``target`` along the FROZEN planner, or None.
++
++        Same planner kou-jing as RetreatService._walk / SweepService._walk: the
++        monster-avoiding BFS first, the plain BFS as the fallback.  Two refusals
++        this caller adds, both because the vehicle is a direction key and not a
++        script command: a closed door on the next tile is not something a
++        direction key may open, and a direction onto a DIVE-only progression
++        tile is refused here as well as natively (env._apply_action passes the
++        protected tiles to the engine, which fails closed) so the refusal is
++        auditable rather than silent."""
++        path = self.env._plan_descend_path(
++            raw, int(target[0]), int(target[1]), avoid_monsters=True)
++        if not path:
++            path = self.env._plan_descend_path(
++                raw, int(target[0]), int(target[1]), avoid_monsters=False)
++        if not path:
++            return None, "no_route"
++        nx, ny, door = path[0]
++        if door:
++            return None, "door_on_route"
++        px, py = int(raw["player_x"]), int(raw["player_y"])
++        delta = (int(nx) - px, int(ny) - py)
++        if delta not in _DIRS:
++            return None, "off_grid_step"
++        action = _DIRS.index(delta) + 1
++        if action in DiabloGymEnv._protected_walk_actions(raw):
++            return None, "protected_tile"
++        return action, None
++
++    def _emergency_stop_tail(self):
++        """R19-M2 stop-v1, evaluated at the tail of EVERY worker beat.
++
++        Returns a ``BeatOutcome`` when one of the scripted beats ended the
++        window (exactly as ``_drain`` does), otherwise None.  The stop itself
++        never ends a window: it publishes no close reason, so any reason
++        returned here came from the ordinary ``_win_term`` ladder running on a
++        scripted beat -- death, scene, cap, or R18-A/R18-F taking the body."""
++        stop = getattr(self, "emergency_stop_service", None)
++        if stop is None:
++            return None
++        owned = self._emergency_stop_window_owned()
++        clause = stop.tick(self.env._raw, window_owned=owned,
++                           absolute_steps=int(self.env._steps))
++        if clause is None:
++            return None
++        from . import bridge
++        from .resource_emergency_stop import (choose_disengage_tile,
++                                              min_visible_monster_distance,
++                                              up_stairs_tiles)
++        stop.begin(self.env._raw, clause, int(self.env._steps))
++        # (i) drink first.  Driven the way _drain drives it, so the beat passes
++        # through the fuse, the clocks and the whole termination ladder.
++        raw = self.env._raw
++        if (int(raw.get("belt_heals", 0)) > 0
++                and int(raw.get("hp", 0))
++                < stop.law.drink_hp_fraction * max(1, int(raw.get("max_hp", 1)))):
++            outcome = self._win_beat(12)
++            stop.note_drink(outcome.executed_action == 12)
++            if outcome.reason is not None:
++                stop.finish(self.env._raw, "closed_on_drink:%s" % outcome.reason)
++                return outcome
++        # (ii) the short disengage.
++        raw = self.env._raw
++        local_map = bridge.local_map(radius=int(stop.law.disengage_radius))
++        target = choose_disengage_tile(
++            raw, local_map, stop.law,
++            up_stairs_tiles(raw, getattr(bridge, "WM_DIABPREVLVL", None)))
++        stop.note_target(target)
++        if target is None:
++            stop.note_abort("no_tile")
++            stop.finish(raw, "no_tile")
++            return None
++        # R19-M2 REVIEW ROUND (body ownership).  v1 re-evaluated NOTHING inside
++        # this loop except "have I arrived" and the four planner refusals.
++        # Measured on its own 48 rows: 33 of 50 activations spent all twelve
++        # beats without arriving, 5 ended `closed:death` with the law holding
++        # the body, 13 fired at or below 20% of max hp and 36 with an empty
++        # belt, for a total separation gain of 50 tiles over 508 steps.  The
++        # three aborts below are re-tests of the very reason the vehicle was
++        # started -- the discipline `_drain` already has (it re-tests
++        # `_reflex(self.env._raw)` every iteration) and this loop did not.
++        hp_at_walk = int(self.env._raw.get("hp", 0))
++        best_separation = min_visible_monster_distance(self.env._raw)
++        last_gain_step = 0
++        for step in range(int(stop.law.disengage_microsteps)):
++            raw = self.env._raw
++            if (int(raw["player_x"]), int(raw["player_y"])) == (
++                    int(target[0]), int(target[1])):
++                stop.finish(raw, "arrived")
++                return None
++            if (stop.law.abort_on_hp_loss
++                    and int(raw.get("hp", 0)) < hp_at_walk):
++                stop.note_abort("hp_fell")
++                stop.finish(raw, "hp_fell")
++                return None
++            if (stop.law.abort_on_trigger_cleared
++                    and stop.trigger_clause(raw) is None):
++                stop.note_abort("trigger_cleared")
++                stop.finish(raw, "trigger_cleared")
++                return None
++            separation = min_visible_monster_distance(raw)
++            if (separation is not None and best_separation is not None
++                    and separation > best_separation):
++                best_separation, last_gain_step = separation, step
++            elif step - last_gain_step >= int(stop.law.no_progress_steps):
++                stop.note_abort("no_separation")
++                stop.finish(raw, "no_separation")
++                return None
++            action, refusal = self._emergency_stop_direction(raw, target)
++            if action is None:
++                stop.note_abort(refusal)
++                stop.finish(raw, refusal)
++                return None
++            outcome = self._win_beat(action)
++            stop.note_step()
++            if outcome.reason is not None:
++                stop.finish(self.env._raw, f"closed:{outcome.reason}")
++                return outcome
++        stop.finish(self.env._raw, "steps_spent")
++        return None
++
+     def _consume_fuse_recovery(self):
+         """在下一窗口开头执行一拍可审计恢复；不归因成被拒的 worker 动作。"""
+         if not self._fuse_recovery_pending:
+@@ -1862,6 +2317,14 @@
+                 and int(self.layer_clock) >= KILL_PATIENCE
+             ),
+         }
++        coach = getattr(self, "readiness_coach", None)
++        if coach is not None:
++            # R19-M2 ruling 4: the stall rule is fed the window that just
++            # closed -- its option, its end reason, and whether it changed
++            # main depth.  Reading `extra` rather than the ledger keeps the
++            # law on exactly the numbers the probe row reports.
++            coach.note_window(self.env._raw, extra["opt"], extra["reason"],
++                              extra["dlvl0"], extra["dlvl_end"])
+         if (not all(math.isfinite(float(extra[key]))
+                     for key in ("R", "W", "bonus", "worker_wage"))
+                 or not math.isclose(
+@@ -2373,14 +2836,41 @@
+         # H1 (sweep-v1) adds a rung to the ownership chain; H2 (identify-v1) adds
+         # no rung at all -- it only binds the local, because the Cain leg runs
+         # inside a town trip the town service already owns. H1's rung ORDER is
+-        # kept byte-for-byte (sweep first): sweep is main-L1 only while
+-        # retreat/portal are main-L2+ only, so no two rungs can ever contend for
+-        # the same window and the order carries no behaviour.
++        # kept byte-for-byte (sweep first).
+         # R18-F portal-v1 extends the two-rung chain to three; R18-H sweep-v1 to
+         # four. The town service is still the default owner of a RESUPPLY window.
+-        # The sweep is main-L1 only and the retreat/portal are main-L2+ only, so
+-        # the new rung can never contend with them for the same window.
++        #
++        # R19 (2026-09-08) sweep-v2 + review round (2026-09-09) -- READ THIS
++        # BEFORE TOUCHING THE ORDER.  The two sentences that used to stand here
++        # ("sweep is main-L1 only while retreat/portal are main-L2+ only, so no
++        # two rungs can ever contend for the same window and the order carries
++        # no behaviour") were true of sweep-v1 and are FALSE of sweep-v2, whose
++        # law row is floors == (1, 2).  The order is now load-bearing: it ranks
++        # the sweep ABOVE the retreat and the portal on main L2, and that is
++        # deliberate -- a window already walking to an object must not have the
++        # body taken mid-leg by a script that started on the same beat.  What
++        # keeps the ranking safe is NOT depth disjointness any more; it is that
++        # the sweep refuses to open, and hands back at once, on any beat
++        # RetreatService.danger_reason has a verdict (resource_sweep.py, the
++        # "sweep_danger_*" rung + the trigger gate), and that
++        # worker_env._sweep_close_is_death_equivalent forfeits the escrow on
++        # such a close.  A rung inserted above the sweep, or a sweep law row
++        # widened to a depth where a DIFFERENT script owns the danger, breaks
++        # that argument and needs its own fence.
++        # R19 (2026-09-08) gold-grab-v1 adds a fifth rung, right after the
++        # sweep and before the town service, where the chairman put it.  Its
++        # rung carries no behaviour: the trigger guards in action_masks refuse
++        # to open a grab window while ANY of the other four is active, and the
++        # portal/retreat guards refuse to open on top of a grab window, so no
++        # two rungs can ever be active on the same beat.  The rung is the
++        # fail-closed statement of that invariant, not a tie-break that runs.
++        # R19-M1 (2026-09-09) integration: the chairman's order is
++        # sweep -> gold-grab -> portal -> retreat -> resource_service, which is
++        # exactly what the two laws each documented; it is written once below.
++        from .resource_protocol import is_coach_law
++        grab = getattr(self, "gold_grab_service", None)
+         service = (sweep if sweep is not None and sweep.active
++                   else grab if grab is not None and grab.active
+                    else portal if portal is not None and portal.active
+                    else retreat if retreat is not None and retreat.active
+                    else self.resource_service)
+@@ -2408,7 +2898,8 @@
+                     # R18-K: same hand-back for the surplus weapon leg, so its own
+                     # final beat is still charged to the weapon service's phases.
+                     service = self.resource_service
+-                if (getattr(self, "resource_readiness_law", "veto-v1") == "coach-v03"
++                if (is_coach_law(
++                            getattr(self, "resource_readiness_law", "veto-v1"))
+                         and not getattr(service, "settle_exempt", False)):
+                     # R17.1 ruling 3 (T0′ crash, seed 2133003): a deadline-truncated
+                     # service walk can leave the player mid-tile; the service's next
+@@ -2584,6 +3075,23 @@
+             if sweep is not None:
+                 sweep.observe(self.env._raw)
+                 extra["sweep"] = sweep.telemetry()
++            if grab is not None:
++                # R19: settle an unbooked pickup and the lit-pile memory before
++                # the row is written (a death during the walk ends the episode
++                # without another action_masks call).
++                grab.observe(self.env._raw, int(self.env._steps))
++                extra["gold_grab"] = grab.telemetry()
++                extra["resource"]["gold_grab"] = grab.telemetry()
++            stop = getattr(self, "emergency_stop_service", None)
++            if stop is not None:
++                # R19-M2: settle the 30-beat follow-ups against the LAST state
++                # of the episode before the row is written.  A death ends the
++                # episode without another worker beat, so without this call a
++                # follow-up armed inside the fatal window could never learn the
++                # one fact it exists to record.
++                stop.observe(self.env._raw)
++                extra["emergency_stop"] = stop.telemetry()
++                extra["resource"]["emergency_stop"] = stop.telemetry()
+             if identify is not None:
+                 extra["identify"] = identify.telemetry()
+             weapon = getattr(self, "weapon_upgrade_service", None)
+@@ -2591,6 +3099,12 @@
+                 # R18-K: also nested in the per-row resource dict the probe reads.
+                 extra["weapon_upgrade"] = weapon.telemetry()
+                 extra["resource"]["weapon_upgrade"] = weapon.telemetry()
++            coach = getattr(self, "readiness_coach", None)
++            if coach is not None:
++                # R19-M2 ruling 4: stall-lock activations, suppressed
++                # windows and both by floor.  Absent under coach-v03.
++                extra["readiness_coach"] = coach.telemetry()
++                extra["resource"]["readiness_coach"] = coach.telemetry()
+             info = dict(base_info)
+             info["option_extra"] = extra
+             return self._mgr_obs(self._last_base_obs), extra["R"], done, trunc, info
+@@ -2663,6 +3177,22 @@
+             if sweep is not None:
+                 sweep.observe(self.env._raw)
+                 extra["sweep"] = sweep.telemetry()
++            grab = getattr(self, "gold_grab_service", None)
++            if grab is not None:
++                # R19: same settlement before the row is written.
++                grab.observe(self.env._raw, int(self.env._steps))
++                extra["gold_grab"] = grab.telemetry()
++                extra["resource"]["gold_grab"] = grab.telemetry()
++            stop = getattr(self, "emergency_stop_service", None)
++            if stop is not None:
++                # R19-M2: settle the 30-beat follow-ups against the LAST state
++                # of the episode before the row is written.  A death ends the
++                # episode without another worker beat, so without this call a
++                # follow-up armed inside the fatal window could never learn the
++                # one fact it exists to record.
++                stop.observe(self.env._raw)
++                extra["emergency_stop"] = stop.telemetry()
++                extra["resource"]["emergency_stop"] = stop.telemetry()
+             identify = getattr(self, "identify_service", None)
+             if identify is not None:
+                 extra["identify"] = identify.telemetry()
+@@ -2671,6 +3201,12 @@
+                 # R18-K: also nested in the per-row resource dict the probe reads.
+                 extra["weapon_upgrade"] = weapon.telemetry()
+                 extra["resource"]["weapon_upgrade"] = weapon.telemetry()
++            coach = getattr(self, "readiness_coach", None)
++            if coach is not None:
++                # R19-M2 ruling 4: stall-lock activations, suppressed
++                # windows and both by floor.  Absent under coach-v03.
++                extra["readiness_coach"] = coach.telemetry()
++                extra["resource"]["readiness_coach"] = coach.telemetry()
+         info["option_extra"] = extra
+         return self._mgr_obs(self._last_base_obs), extra["R"], done, trunc, info
+ 
+diff --git a/train/leashed_ppo.py b/train/leashed_ppo.py
+--- a/train/leashed_ppo.py
++++ b/train/leashed_ppo.py
+@@ -1,4 +1,4 @@
+-"""v24-KL「皮筋」:LeashedMaskablePPO(docs/prereg/PREREG-v24.md D1/D4)。
++"""v24-KL「皮筋」:LeashedMaskablePPO(docs/PREREG-v24.md D1/D4)。
+ 
+ 总损失 = PPO 原三项 + β · CE(π_T, π_θ),其中:
+   - 教师 π_T = 冻结 BC 网(train/runs/bc-worker/policy_sd.pt,G1 证与脚本零分歧);

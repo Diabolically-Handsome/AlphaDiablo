@@ -1,0 +1,1506 @@
+// Included inside the bridge's private namespace after the gear helpers.
+// Opt-in L2 curriculum: the native player transition hook is the final gate.
+
+// Ordinary-armor recipes opt in; old one-argument configuration stays chest-only.
+bool gResourceOrdinaryArmorScope = false;
+bool gResourcePreserveEquipmentReadiness = false;
+#include "shop_catalog_scope.hpp"
+// Independent R10 candidate; false preserves the old catalogue exactly.
+bool gResourceFullSmithCatalog = false;
+
+void ConfigureResourceFullSmithCatalog(bool enabled)
+{
+	EnsureEngineProcess("configure_resource_full_smith_catalog");
+	if (gInGame) throw std::runtime_error("Smith catalogue must be configured before reset");
+	if (enabled && !gPreparationEquipment)
+		throw std::invalid_argument("full Smith catalogue requires exact preparation equipment projections");
+	gResourceFullSmithCatalog = enabled;
+}
+// R17.1 chairman ruling 3 (2026-09-06): "coach-v03" law. When set, the L1->L2
+// transition guard only RECORDS the readiness verdict (advisory) instead of
+// vetoing, the deeper-floor wall is lifted (Python per-floor tables govern L3+),
+// and the receipt carries the six-condition law verdict (health excluded).
+bool gResourceReadinessAdvisory = false;
+using ResourceItemIdentity = std::array<int, 4>;
+std::vector<ResourceItemIdentity> gResourceSeenSmithItems;
+uint64_t gResourceSeenSmithGeneration = 0;
+uint32_t gResourceSeenSmithTownSeed = 0;
+
+ResourceItemIdentity ResourceIdentity(const Item &item)
+{
+	return { HighWord(item._iSeed), LowWord(item._iSeed), item._iCreateInfo, static_cast<int>(item.IDidx) };
+}
+
+#include "resource_trip_quota.hpp"
+// Independent growth candidate. Default-on preserves the historical bridge.
+// Only count quotas change; authorizations, counters and resources are intact.
+bool gResourceTripLimitsEnabled = true;
+
+void ConfigureResourceTripLimits(bool enabled)
+{
+	EnsureEngineProcess("configure_resource_trip_limits");
+	if (gInGame && enabled != gResourceTripLimitsEnabled)
+		throw std::runtime_error("resource trip limits may change only between episodes");
+	gResourceTripLimitsEnabled = enabled;
+}
+
+bool gTownServiceAuthorized = false;
+bool gTownServiceTrip = false;
+int gResourceServiceTripsStarted = 0;
+constexpr int MaxLootServiceTrips = 2;
+// R18-A retreat-v1 (2026-09-06): a Python-authorized one-floor ascent from
+// main L2+ (the return-to-town interface). Each completed retreat earns one
+// extra loot-economy town trip. Off = every frozen verdict byte for byte.
+bool gResourceRetreatEnabled = false;
+bool gRetreatAuthorized = false;
+int gResourceRetreatsStarted = 0;
+constexpr int MaxResourceRetreats = 3;
+// R18-F portal-v1 (2026-09-07): a Python-authorized Scroll of Town Portal round
+// trip -- main L2+ -> town (outbound) and town -> the portal's own floor
+// (return). portal.cpp deactivates the portal on the return leg, so one 200g
+// scroll buys exactly one round trip and the budget below counts round trips.
+// Off = every frozen verdict byte for byte (the WM_DIABWARPLVL receipt keeps
+// accepted=false, reason "unsupported_portal_or_warp" and target = -1).
+bool gResourcePortalEnabled = false;
+bool gPortalAuthorized = false;
+int gResourcePortalsStarted = 0;
+constexpr int MaxResourcePortals = 2;
+// R18-H identify-v1 (2026-09-07) 凯恩鉴定: Cain identifies carried/worn magic
+// items for the engine's fixed StorytellerIdentifyPrice, so the town itinerary
+// can sell them at _iIvalue/4 instead of _ivalue/4 (stores.cpp
+// NormalStoreSellPrice) and the gear plan can read their real affixes. The
+// scripted service owns the whole leg; the worker never learns it. Off = every
+// frozen verdict AND every observation dict byte for byte (nothing below is
+// emitted, no native call is made and no extra beat is spent).
+bool gResourceIdentifyEnabled = false;
+// R18-K2b weapon-purchase-v1 (2026-09-07): Griswold's counter and the town
+// equip path are armor-only. When this flag is on they also accept an ORDINARY
+// ONE-HANDED weapon the warrior can wield, and the hand plan is a14's own
+// PlanGearUpgrade -- target slot, displaced slots and the strict conservative
+// full-set utility increase all come from there. Two-handed weapons stay
+// refused in v1, so the shield slot logic never changes. Off = every frozen
+// verdict byte for byte: the flag is the first term of IsResourceUpgradeWeapon,
+// so no episode that never calls configure_resource_weapon_purchase(True) can
+// execute one line of the new code.
+bool gResourceWeaponPurchase = false;
+std::vector<ResourceItemIdentity> gResourceRetainedGear;
+std::vector<ResourceItemIdentity> gResourceLastRetainedGear;
+int gResourceLastRetentionGold = 0;
+bool gResourceVisitedL1 = false;
+int gResourceMaxDepth = 0;
+// A separate stream retains normal town restocking without consuming gameplay RNG.
+constexpr int RequiredResourceBeltHeals = 4;
+constexpr uint32_t TownRestockSeedDomain = 0x74574E31U; // "tWN1"
+std::mt19937 gTownRestockRng;
+uint64_t gTownRestockSequence = 0;
+struct ResourceTransitionReceipt {
+	uint64_t sequence = 0;
+	bool accepted = false;
+	bool ready = false;
+	bool readyLaw = false; // six-condition law (health excluded), R17.1 ruling 3
+	bool sourceIsSet = false;
+	bool targetIsSet = false;
+	int source = 0;
+	int target = 0;
+	int message = 0;
+	std::string reason = "none";
+};
+ResourceTransitionReceipt gResourceTransition;
+
+struct ResourceReadiness {
+	int level = 0;
+	int armor = 0;
+	int damage = 0;
+	int hp = 0;
+	int maxHp = 0;
+	int heals = 0;
+	int minimumDurability = DUR_INDESTRUCTIBLE;
+	bool weapon = false;
+	std::vector<std::string> failures;
+	bool ready() const { return failures.empty(); }
+	// Six-condition readiness law (R17.1 ruling 3): clvl/AC/dmg/belt/durability/weapon,
+	// HP deliberately excluded (HP belongs to the drink reflex and the town-trip trigger).
+	bool readyExcludingHealth() const
+	{
+		for (const std::string &failure : failures)
+			if (failure != "health") return false;
+		return true;
+	}
+};
+
+ResourceReadiness EvaluateResourceReadiness(const Player &player)
+{
+	ResourceReadiness result;
+	result.level = player.getCharacterLevel();
+	result.armor = player.GetArmor();
+	result.damage = player._pIMaxDam + player._pDamageMod;
+	result.hp = player._pHitPoints;
+	result.maxHp = player._pMaxHP;
+	for (const Item &item : player.SpdList)
+		result.heals += InstantHealKind(item) != 0;
+	for (const inv_body_loc slot : { INVLOC_HEAD, INVLOC_HAND_LEFT, INVLOC_HAND_RIGHT, INVLOC_CHEST }) {
+		const Item &item = player.InvBody[slot];
+		if (item.isEmpty())
+			continue;
+		if (item.isWeapon() && item._iStatFlag && item._iDurability != 0)
+			result.weapon = true;
+		if (item._iMaxDur != DUR_INDESTRUCTIBLE)
+			result.minimumDurability = std::min(result.minimumDurability, static_cast<int>(item._iDurability));
+	}
+	if (result.level < 2) result.failures.emplace_back("level");
+	if (result.armor < 9) result.failures.emplace_back("armor");
+	if (result.damage < 6) result.failures.emplace_back("damage");
+	if (result.maxHp <= 0 || int64_t { 5 } * result.hp < int64_t { 4 } * result.maxHp) result.failures.emplace_back("health");
+	if (result.heals < RequiredResourceBeltHeals) result.failures.emplace_back("potions");
+	if (result.minimumDurability < 15) result.failures.emplace_back("durability");
+	if (!result.weapon) result.failures.emplace_back("weapon");
+	return result;
+}
+
+bool EquipmentReadyForPreservation(const Player &player)
+{
+	// Preserve the old path without evaluating or exposing any new state.
+	if (!gResourceProtocol || !gResourcePreserveEquipmentReadiness)
+		return false;
+	const ResourceReadiness readiness = EvaluateResourceReadiness(player);
+	for (const std::string &failure : readiness.failures) {
+		if (failure == "armor" || failure == "damage"
+		    || failure == "weapon" || failure == "durability")
+			return false;
+	}
+	return true;
+}
+
+bool ResourceTransitionGuard(const Player &player, interface_mode mode, int target)
+{
+	if (!gResourceProtocol || &player != MyPlayer)
+		return true;
+	const int source = ConceptualDungeonDepth();
+	const ResourceReadiness readiness = EvaluateResourceReadiness(player);
+	bool accepted = false;
+	bool targetIsSet = false;
+	std::string reason = "unauthorized_transition";
+	// R18-F portal-v1: a portal entry asks this guard TWICE. ProcessTownPortal
+	// asks first and, on acceptance, does ClrPlrPath + CMD_WARP + PM_NEWLVL;
+	// OnWarp -> StartWarpLvl then asks again, and by then PM_NEWLVL would make
+	// the transition_pending branch veto the transition the first call just
+	// authorized (StartWarpLvl returns early and the pair stands on a live
+	// portal that never fires). This recognises exactly that second half:
+	// PM_NEWLVL is already set but InitLevelChange has not yet set
+	// _pLvlChanging. Inert -- and therefore byte-identical -- while off.
+	const bool portalHandoff = gResourcePortalEnabled && mode == WM_DIABWARPLVL
+	    && player._pmode == PM_NEWLVL && !player._pLvlChanging;
+	if (player.hasNoLife() || player._pmode == PM_DEATH) {
+		reason = "dead";
+	} else if (!portalHandoff && (player._pLvlChanging || player._pmode == PM_NEWLVL)) {
+		reason = "transition_pending";
+	} else if (mode == WM_DIABWARPLVL) {
+		// R18-F portal-v1. ProcessTownPortal (missiles.cpp) and StartWarpLvl
+		// (player.cpp) both ask with target = -1, so this branch has to resolve
+		// the real destination itself. With the feature off nothing is resolved
+		// and nothing is written: accepted stays false, target stays -1 and the
+		// reason is the old shared verdict, byte for byte.
+		if (!gResourcePortalEnabled) {
+			reason = "unsupported_portal_or_warp";
+		} else if (!setlevel && leveltype != DTYPE_TOWN && source >= 2) {
+			target = 0; // outbound: GetPortalLevel always forces town
+			accepted = gPortalAuthorized;
+			reason = accepted ? "portal_to_town" : "portal_not_authorized";
+		} else if (!setlevel && leveltype == DTYPE_TOWN && source == 0
+		    && Portals[MyPlayerId].open && !Portals[MyPlayerId].setlvl
+		    && Portals[MyPlayerId].level >= 2) {
+			target = Portals[MyPlayerId].level; // return: the portal's own floor
+			accepted = gPortalAuthorized;
+			reason = accepted ? "portal_return" : "portal_not_authorized";
+		} else {
+			reason = "unsupported_portal_or_warp";
+		}
+	} else if (mode == WM_DIABRETOWN || mode == WM_DIABTWARPUP || mode == WM_DIABTOWNWARP) {
+		reason = "unsupported_portal_or_warp";
+	} else if (mode == WM_DIABSETLVL) {
+		// Quest entry is not descent; it must not be subject to L2 readiness.
+		targetIsSet = true;
+		target = source;
+		accepted = source > 0 && source <= 2;
+		reason = accepted ? "quest_entry" : "curriculum_boundary";
+	} else if (mode == WM_DIABRTNLVL && setlevel) {
+		accepted = target == GetMapReturnLevel() && target > 0 && target <= 2;
+		reason = accepted ? "quest_return" : "curriculum_boundary";
+	} else if (!setlevel && mode == WM_DIABPREVLVL && source >= 2 && target == source - 1) {
+		// R18-A retreat-v1: a Python-authorized one-floor ascent. With the
+		// feature off this stays the old default verdict (unauthorized_transition).
+		accepted = gResourceRetreatEnabled && gRetreatAuthorized;
+		reason = accepted ? "retreat_ascent"
+		                  : (gResourceRetreatEnabled ? "retreat_not_authorized" : "unauthorized_transition");
+	} else if (target > 2) {
+		// coach-v03: deeper floors are governed by the Python per-floor tables;
+		// the engine only records the transition.
+		accepted = gResourceReadinessAdvisory;
+		reason = accepted ? "deeper_advisory" : "curriculum_boundary";
+	} else if (!setlevel && mode == WM_DIABPREVLVL && source == 1 && target == 0) {
+		const bool quotaAllows = !gResourceLootEconomy || ResourceTripQuotaAllows(gResourceTripLimitsEnabled, gResourceServiceTripsStarted, MaxLootServiceTrips + gResourceRetreatsStarted);
+		accepted = gTownServiceAuthorized && quotaAllows;
+		reason = accepted ? "town_service_departure" : (!quotaAllows ? "town_service_trip_limit" : "town_service_not_authorized");
+	} else if (!setlevel && mode == WM_DIABNEXTLVL && source == 0 && target == 1) {
+		accepted = !gResourceVisitedL1 || gTownServiceTrip;
+		reason = accepted ? (gResourceVisitedL1 ? "town_service_return" : "initial_dungeon_entry") : "town_service_not_authorized";
+	} else if (!setlevel && mode == WM_DIABNEXTLVL && source == 1 && target == 2) {
+		if (gResourceReadinessAdvisory) {
+			// Advisory: never veto; the receipt records whether the six-condition
+			// law held (forced-unready descents are paid no escrow on the Python side).
+			accepted = true;
+			reason = readiness.readyExcludingHealth() ? "ready" : "forced_unready";
+		} else {
+			accepted = readiness.ready();
+			reason = accepted ? "ready" : "not_ready";
+		}
+	}
+	++gResourceTransition.sequence;
+	gResourceTransition.accepted = accepted;
+	gResourceTransition.ready = readiness.ready();
+	gResourceTransition.readyLaw = readiness.readyExcludingHealth();
+	gResourceTransition.sourceIsSet = setlevel;
+	gResourceTransition.targetIsSet = targetIsSet;
+	gResourceTransition.source = source;
+	gResourceTransition.target = target;
+	gResourceTransition.message = static_cast<int>(mode);
+	gResourceTransition.reason = reason;
+	return accepted;
+}
+
+void ConfigureResourceProtocol(bool enabled, bool ordinaryArmorScope = false,
+    bool preserveEquipmentReadiness = false, bool lootEconomy = false,
+    bool readinessAdvisory = false, bool retreat = false, bool portal = false,
+    bool identify = false)
+{
+	EnsureEngineProcess("configure_resource_protocol");
+	if (ordinaryArmorScope && !enabled)
+		throw std::invalid_argument("ordinary armor scope requires l2-town-v1");
+	if (preserveEquipmentReadiness && !enabled)
+		throw std::invalid_argument("equipment readiness preservation requires l2-town-v1");
+	if (lootEconomy && (!enabled || !ordinaryArmorScope))
+		throw std::invalid_argument("loot economy requires resource protocol and ordinary armor scope");
+	if (readinessAdvisory && !enabled)
+		throw std::invalid_argument("readiness advisory (coach-v03) requires l2-town-v1");
+	if (retreat && (!enabled || !readinessAdvisory))
+		throw std::invalid_argument("retreat-v1 requires l2-town-v1 under coach-v03");
+	if (portal && (!enabled || !readinessAdvisory))
+		throw std::invalid_argument("portal-v1 requires l2-town-v1 under coach-v03");
+	// R18-H identify-v1: the leg lives inside the loot economy's town trip and
+	// books its fee in that ledger, so it cannot exist without it.
+	if (identify && (!enabled || !lootEconomy))
+		throw std::invalid_argument("identify-v1 requires l2-town-v1 with the loot economy");
+	if (gInGame && (enabled != gResourceProtocol || ordinaryArmorScope != gResourceOrdinaryArmorScope
+	                  || preserveEquipmentReadiness != gResourcePreserveEquipmentReadiness
+	                  || lootEconomy != gResourceLootEconomy
+	                  || readinessAdvisory != gResourceReadinessAdvisory
+	                  || retreat != gResourceRetreatEnabled
+	                  || portal != gResourcePortalEnabled
+	                  || identify != gResourceIdentifyEnabled))
+		throw std::runtime_error("resource protocol may change only between episodes");
+	if (gResourceOrdinaryArmorScope && !ordinaryArmorScope) gResourceSeenSmithItems.clear();
+	gResourceProtocol = enabled;
+	gResourceOrdinaryArmorScope = ordinaryArmorScope;
+	gResourcePreserveEquipmentReadiness = preserveEquipmentReadiness;
+	gResourceLootEconomy = lootEconomy;
+	gResourceReadinessAdvisory = readinessAdvisory;
+	gResourceRetreatEnabled = retreat;
+	gResourcePortalEnabled = portal;
+	gResourceIdentifyEnabled = identify;
+	LevelTransitionGuard = enabled ? ResourceTransitionGuard : nullptr;
+	DisableLevelBacktracking = !enabled;
+}
+
+void ResetResourceEpisode(uint32_t episodeSeed)
+{
+	if (gResourceOrdinaryArmorScope) gResourceSeenSmithItems.clear();
+	gTownRestockRng.seed(episodeSeed ^ TownRestockSeedDomain);
+	gTownRestockSequence = 0;
+	gTownServiceAuthorized = false;
+	gTownServiceTrip = false;
+	gResourceServiceTripsStarted = 0;
+	gRetreatAuthorized = false;
+	gResourceRetreatsStarted = 0;
+	gPortalAuthorized = false;
+	gResourcePortalsStarted = 0;
+	gResourceRetainedGear.clear();
+	gResourceLastRetainedGear.clear();
+	gResourceLastRetentionGold = 0;
+	gResourceVisitedL1 = false;
+	gResourceMaxDepth = 0;
+	gResourceTransition = {};
+	LevelTransitionGuard = gResourceProtocol ? ResourceTransitionGuard : nullptr;
+	DisableLevelBacktracking = !gResourceProtocol;
+	if (gManualControl) {
+		LevelTransitionGuard = ManualTransitionGuard;
+		DisableLevelBacktracking = false;
+	}
+}
+
+void SaveLevelForTransition()
+{
+	const bool restockTown = (gResourceProtocol || gManualControl) && !setlevel && leveltype == DTYPE_TOWN;
+	// SaveLevel normally refreshes DungeonSeeds[0] from the wall-clock-seeded
+	// Xoshiro generator. Reset only owns the gameplay LCG, so the first
+	// town -> L1 save otherwise makes a later town visit irreproducible.
+	// Keep the real save and normal per-departure refresh. Override only the
+	// new protocol's town seed after a successful save, leaving legacy mode
+	// and the dungeon/combat RNG untouched. Failed saves consume no sequence.
+	pfile_save_level();
+	if (restockTown) {
+		if (gResourceOrdinaryArmorScope) gResourceSeenSmithItems.clear();
+		DungeonSeeds[0] = static_cast<uint32_t>(gTownRestockRng());
+		++gTownRestockSequence;
+	}
+}
+
+void ResourceAfterLoad()
+{
+	if (!gResourceProtocol)
+		return;
+	// Gym creates a fresh hero each episode. Shared stash wealth is not part
+	// of this protocol and may never subsidize a purchase across episodes.
+	if (!gInGame)
+		Stash = {};
+	if (Stash.gold != 0)
+		throw std::runtime_error("l2-town-v1 forbids shared-stash gold");
+	if (!setlevel) {
+		const int depth = static_cast<int>(currlevel);
+		gResourceMaxDepth = std::max(gResourceMaxDepth, depth);
+		if (gRetreatAuthorized && gResourceTransition.accepted
+		    && gResourceTransition.reason == "retreat_ascent" && depth == gResourceTransition.target) {
+			gRetreatAuthorized = false;
+			++gResourceRetreatsStarted;
+		}
+		// R18-F portal-v1. The guard runs TWICE per portal entry (ProcessTownPortal
+		// then StartWarpLvl), so authorization is consumed on ARRIVAL, never by
+		// receipt sequence. Outbound opens the shops without spending a loot
+		// economy town trip; the return leg jumps town -> L2+ and therefore has to
+		// clear the town-trip flags itself, because the depth == 1 branch below
+		// (their only other owner) is never reached on that path.
+		if (gPortalAuthorized && gResourceTransition.accepted
+		    && gResourceTransition.reason == "portal_to_town" && depth == 0) {
+			gPortalAuthorized = false;
+			gTownServiceTrip = true;
+		}
+		if (gPortalAuthorized && gResourceTransition.accepted
+		    && gResourceTransition.reason == "portal_return"
+		    && depth >= 2 && depth == gResourceTransition.target) {
+			gPortalAuthorized = false;
+			++gResourcePortalsStarted;
+			gTownServiceTrip = false;
+			gTownServiceAuthorized = false;
+		}
+		if (depth == 0 && !gTownServiceTrip && gResourceTransition.accepted && gResourceTransition.reason == "town_service_departure") {
+			gTownServiceTrip = true;
+			if (gResourceLootEconomy) ++gResourceServiceTripsStarted;
+		}
+		if (depth == 1) {
+			gResourceVisitedL1 = true;
+			if (gTownServiceTrip) {
+				gTownServiceTrip = false;
+				gTownServiceAuthorized = false;
+			}
+		}
+	}
+}
+
+void ConfigureTownService(bool authorized)
+{
+	EnsureInGame("configure_town_service");
+	if (!gResourceProtocol)
+		throw std::runtime_error("town service requires l2-town-v1");
+	if (authorized && !gTownServiceTrip && (setlevel || currlevel != 1))
+		throw std::runtime_error("town service can depart only from main L1");
+	if (gResourceLootEconomy && authorized && !gTownServiceTrip && !ResourceTripQuotaAllows(gResourceTripLimitsEnabled, gResourceServiceTripsStarted, MaxLootServiceTrips + gResourceRetreatsStarted))
+		throw std::runtime_error("loot economy allows at most two town service trips per episode");
+	if (gResourceOrdinaryArmorScope && authorized && !gTownServiceTrip) gResourceSeenSmithItems.clear();
+	gTownServiceAuthorized = authorized;
+}
+
+void ConfigureRetreat(bool authorized)
+{
+	EnsureInGame("configure_retreat");
+	if (!gResourceProtocol || !gResourceRetreatEnabled)
+		throw std::runtime_error("retreat requires l2-town-v1 with retreat-v1 enabled");
+	if (authorized && (setlevel || currlevel < 2))
+		throw std::runtime_error("retreat can depart only from main L2 or deeper");
+	if (authorized && !ResourceTripQuotaAllows(gResourceTripLimitsEnabled, gResourceRetreatsStarted, MaxResourceRetreats))
+		throw std::runtime_error("retreat-v1 allows at most three retreats per episode");
+	gRetreatAuthorized = authorized;
+}
+
+void ConfigureResourcePortal(bool authorized)
+{
+	EnsureInGame("configure_resource_portal");
+	if (!gResourceProtocol || !gResourcePortalEnabled)
+		throw std::runtime_error("portal requires l2-town-v1 with portal-v1 enabled");
+	if (authorized && setlevel)
+		throw std::runtime_error("portal transits belong to the main dungeon");
+	if (authorized && currlevel != 0 && currlevel < 2)
+		throw std::runtime_error("portal can depart only from main L2 or deeper");
+	if (authorized && currlevel == 0
+	    && !(Portals[MyPlayerId].open && !Portals[MyPlayerId].setlvl && Portals[MyPlayerId].level >= 2))
+		throw std::runtime_error("portal return requires an open town portal to main L2 or deeper");
+	if (authorized && !ResourceTripQuotaAllows(gResourceTripLimitsEnabled, gResourcePortalsStarted, MaxResourcePortals))
+		throw std::runtime_error("portal-v1 allows at most two portal round trips per episode");
+	gPortalAuthorized = authorized;
+}
+
+// R18-K2b weapon-purchase-v1 (2026-09-07): the session switch for the smith
+// weapon leg. Like every other new native branch it defaults to false and may
+// change only between episodes, so no frozen arm can flip it mid-episode.
+void ConfigureResourceWeaponPurchase(bool enabled)
+{
+	EnsureEngineProcess("configure_resource_weapon_purchase");
+	if (enabled && (!gResourceProtocol || !gResourceOrdinaryArmorScope))
+		throw std::invalid_argument("weapon-purchase-v1 requires l2-town-v1 with the ordinary armor scope");
+	if (gInGame && enabled != gResourceWeaponPurchase)
+		throw std::runtime_error("weapon purchase scope may change only between episodes");
+	gResourceWeaponPurchase = enabled;
+}
+
+const char *ResourceVendorName(TalkID store)
+{
+	switch (store) {
+	case TalkID::Smith: case TalkID::SmithBuy: return "smith";
+	case TalkID::Healer: case TalkID::HealerBuy: return "healer";
+	// R18-F portal-v1: only ActTalkTowner can open a store in this bridge and
+	// it refuses the witch unless the feature is on, so with portal-v1 off
+	// ActiveStore can never be a witch page and this mapping is unobservable.
+	case TalkID::Witch: case TalkID::WitchBuy: return "witch";
+	default: return "none";
+	}
+}
+
+bool ResourceTownActionAllowed(const char *operation)
+{
+	return CanAcceptPlayerAction(operation) && gResourceProtocol
+	    && !setlevel && currlevel == 0 && gTownServiceTrip
+	    && !MyPlayer->hasNoLife() && MyPlayer->HoldItem.isEmpty();
+}
+
+bool IsOrdinaryResourceArmor(const Item &item)
+{
+	return !item.isEmpty() && item._iClass != ICLASS_QUEST
+	    && ShopCatalogQualityAllowed(gResourceFullSmithCatalog,
+	        item._iMagical == ITEM_QUALITY_NORMAL, item._iIdentified)
+	    && (item.isArmor() || item.isHelm() || item.isShield());
+}
+
+// R18-K2b (2026-09-07): the weapon-purchase-v1 item scope. Ordinary quality
+// only (the Python projection models the readiness metric _pIMaxDam +
+// _pDamageMod and refuses to guess at affixes), never a quest item, and ONE
+// HANDED only -- both the raw ILOC and the player's own GetItemLocation, since
+// that is the routine every engine pairing rule consults. A two-hander would
+// displace the shield, which is an armor decision this law must not take.
+bool IsResourceUpgradeWeapon(const Player &player, const Item &item)
+{
+	return gResourceWeaponPurchase && !item.isEmpty() && item._iClass != ICLASS_QUEST
+	    && ShopCatalogQualityAllowed(gResourceFullSmithCatalog,
+	        item._iMagical == ITEM_QUALITY_NORMAL, item._iIdentified) && item.isWeapon()
+	    && item._iLoc == ILOC_ONEHAND
+	    && player.GetItemLocation(item) == ILOC_ONEHAND;
+}
+
+void AppendOrdinaryResourceArmorState(py::dict &entry, const Item &item, int inventoryIndex);
+
+py::dict ResourceItemState(const Item &source, int inventoryIndex = -1)
+{
+	Item item = source;
+	item._iStatFlag = MyPlayer->CanUseItem(item);
+	const GearUpgradePlan plan = PlanGearUpgrade(*MyPlayer, item);
+	py::dict entry;
+	entry["seed_hi"] = HighWord(item._iSeed);
+	entry["seed_lo"] = LowWord(item._iSeed);
+	entry["create_info"] = item._iCreateInfo;
+	entry["base_id"] = static_cast<int>(item.IDidx);
+	entry["price"] = item._iIvalue;
+	entry["heal_kind"] = InstantHealKind(item);
+	entry["armor_class"] = item._iAC;
+	entry["can_use"] = MyPlayer->CanUseItem(item);
+	entry["can_fit"] = StoreAutoPlace(item, false);
+	entry["is_armor"] = item.isArmor() && item._iMagical == ITEM_QUALITY_NORMAL;
+	entry["durable"] = item._iMaxDur == DUR_INDESTRUCTIBLE || item._iDurability >= 15;
+	entry["projected_armor_class"] = plan.valid ? plan.nextArmorClass : MyPlayer->GetArmor();
+	entry["upgrade"] = plan.valid;
+	entry["meets_armor_gate"] = item.isArmor() && item._iMagical == ITEM_QUALITY_NORMAL
+	    && MyPlayer->CanUseItem(item) && (item._iMaxDur == DUR_INDESTRUCTIBLE || item._iDurability >= 15)
+	    && plan.valid && plan.target == INVLOC_CHEST && plan.nextArmorClass >= 9;
+	if (gResourceOrdinaryArmorScope)
+		AppendOrdinaryResourceArmorState(entry, item, inventoryIndex);
+	return entry;
+}
+
+py::dict ResourceReadinessState(const Player &player)
+{
+	const ResourceReadiness state = EvaluateResourceReadiness(player);
+	py::dict ready;
+	bool repairNeededForGate = false;
+	for (const inv_body_loc slot : { INVLOC_HEAD, INVLOC_HAND_LEFT, INVLOC_HAND_RIGHT, INVLOC_CHEST }) {
+		const Item &item = player.InvBody[slot];
+		repairNeededForGate = repairNeededForGate || (!item.isEmpty()
+		    && item._iMaxDur != DUR_INDESTRUCTIBLE && item._iDurability < 15 && item._iMaxDur >= 15);
+	}
+	ready["repair_service_needed"] = repairNeededForGate;
+	ready["required_belt_heals"] = RequiredResourceBeltHeals;
+	ready["ready"] = state.ready();
+	ready["ready_excluding_health"] = state.readyExcludingHealth();
+	ready["target_main_depth"] = 2;
+	ready["failures"] = state.failures;
+	ready["clvl"] = state.level;
+	ready["armor_class"] = state.armor;
+	ready["damage"] = state.damage;
+	ready["hp"] = state.hp >> 6;
+	ready["max_hp"] = state.maxHp >> 6;
+	ready["hp_fixed"] = state.hp;
+	ready["max_hp_fixed"] = state.maxHp;
+	ready["belt_heals"] = state.heals;
+	ready["belt_free_slots"] = std::count_if(std::begin(player.SpdList), std::end(player.SpdList),
+	    [](const Item &item) { return item.isEmpty(); });
+	ready["belt_capacity"] = MaxBeltItems;
+	const Item &chest = player.InvBody[INVLOC_CHEST];
+	ready["armor_service_needed"] = state.armor < 9
+	    || (!chest.isEmpty() && chest._iMaxDur != DUR_INDESTRUCTIBLE && chest._iDurability < 15);
+	ready["min_finite_durability"] = state.minimumDurability;
+	ready["weapon_equipped"] = state.weapon;
+	if (gPreparationEquipment) ready["preparation"] = PreparationEquipmentState(player);
+	return ready;
+}
+
+// The same normal shift-click rule as CheckInvCut: place the intact item into
+// the inventory, remove its body slot, and recompute with CalcPlrInv. Preview
+// uses an inactive detached player so no world, RNG or network state is touched.
+Player ResourceUnequipSimulation(const Player &source)
+{
+	Player simulated = {};
+	simulated._pClass = source._pClass;
+	simulated.setCharacterLevel(source.getCharacterLevel());
+	simulated._pBaseStr = source._pBaseStr;
+	simulated._pBaseMag = source._pBaseMag;
+	simulated._pBaseDex = source._pBaseDex;
+	simulated._pBaseVit = source._pBaseVit;
+	simulated._pHPBase = source._pHPBase;
+	simulated._pMaxHPBase = source._pMaxHPBase;
+	simulated._pManaBase = source._pManaBase;
+	simulated._pMaxManaBase = source._pMaxManaBase;
+	simulated._pSpellFlags = source._pSpellFlags;
+	simulated._pRSpell = source._pRSpell;
+	simulated._pRSplType = source._pRSplType;
+	simulated._pSBkSpell = source._pSBkSpell;
+	simulated._pMemSpells = source._pMemSpells;
+	simulated._pAblSpells = source._pAblSpells;
+	std::copy(std::begin(source._pSplLvl), std::end(source._pSplLvl), std::begin(simulated._pSplLvl));
+	simulated.plrIsOnSetLevel = !setlevel;
+	simulated._pNumInv = source._pNumInv;
+	std::copy(std::begin(source.InvBody), std::end(source.InvBody), std::begin(simulated.InvBody));
+	std::copy(std::begin(source.InvList), std::end(source.InvList), std::begin(simulated.InvList));
+	std::copy(std::begin(source.InvGrid), std::end(source.InvGrid), std::begin(simulated.InvGrid));
+	std::copy(std::begin(source.SpdList), std::end(source.SpdList), std::begin(simulated.SpdList));
+	return simulated;
+}
+
+// Ordinary armor previews and commits use the same native legal plan. Every
+// displaced item must survive in the real inventory; a hand plan can clear
+// more than its target slot. Detached staging cannot publish network commands.
+bool StageResourceArmorInventory(const Player &player, int inventoryIndex,
+    const GearUpgradePlan &gear, Player &staged)
+{
+	if (inventoryIndex >= 0)
+		staged.RemoveInvItem(inventoryIndex, false, false);
+	for (int slot = 0; slot < NUM_INVLOC; ++slot) {
+		if (gear.clearSlots[slot] && !player.InvBody[slot].isEmpty()
+		    && !AutoPlaceItemInInventory(staged, player.InvBody[slot], false))
+			return false;
+	}
+	return true;
+}
+
+void ApplyResourceArmorPlan(Player &player, const GearUpgradePlan &gear)
+{
+	for (int slot = 0; slot < NUM_INVLOC; ++slot)
+		if (gear.clearSlots[slot]) player.InvBody[slot].clear();
+	player.InvBody[gear.target] = gear.candidate;
+}
+
+struct ResourceArmorPlan {
+	GearUpgradePlan gear;
+	bool canFit = false;
+	bool safe = false;
+	const char *reason = "unsupported_item";
+	py::dict readiness;
+};
+
+ResourceArmorPlan PlanResourceArmor(const Player &player, const Item &item, int inventoryIndex)
+{
+	ResourceArmorPlan result;
+	// R18-K2b (2026-09-07): the ordinary one-handed weapon joins the armor
+	// scope. gResourceWeaponPurchase is the first term of the predicate, so
+	// with the flag off this is literally the old armor-only gate.
+	const bool upgradeWeapon = IsResourceUpgradeWeapon(player, item);
+	if (!IsOrdinaryResourceArmor(item) && !upgradeWeapon) return result;
+	Item candidate = item;
+	candidate._iStatFlag = player.CanUseItem(candidate);
+	if (!candidate._iStatFlag) {
+		result.reason = "cannot_use";
+		return result;
+	}
+	// This is normal inventory equipment, not action14's strict utility
+	// upgrade policy. An AC decrease can still fix a readiness deficit.
+	// Keep PlanGearUpgrade and every legacy caller completely unchanged.
+	Player simulated = ResourceUnequipSimulation(player);
+	auto clearSlot = [&](inv_body_loc slot) {
+		result.gear.clearSlots[slot] = true;
+		simulated.InvBody[slot].clear();
+	};
+	if (item.isHelm()) {
+		clearSlot(INVLOC_HEAD);
+		result.gear.target = INVLOC_HEAD;
+	} else if (item.isArmor()) {
+		clearSlot(INVLOC_CHEST);
+		result.gear.target = INVLOC_CHEST;
+	} else if (upgradeWeapon) {
+		// R18-K2b (2026-09-07): the weapon hand plan is a14's own plan. Target
+		// slot, displaced slots AND the strict conservative full-set utility
+		// increase all come from PlanGearUpgrade -- the same verdict a14 uses
+		// to accept a floor drop, including CanPairOneHanded (so a retained
+		// shield is respected) and the two-hand clear. This planner never
+		// invents a weapon slot rule of its own.
+		// R18-K2b review round (2026-09-07): ask a14 for the plan WITHOUT its
+		// own retention-capacity filter and let StageResourceArmorInventory
+		// below be the single capacity judge. a14 stages the displaced item
+		// into a copy of the LIVE pack, which at equip time already holds the
+		// just-purchased weapon and is never removed for that check, while the
+		// counter runs the same plan with inventoryIndex = -1 before the pack
+		// holds it at all. The counter was therefore strictly looser than the
+		// equip verdict by the new weapon's own footprint: a tight-pack
+		// purchase passed the counter and was then refused at the hand,
+		// losing the gold (reproduced at seed 8001). StageResourceArmorInventory
+		// models the removal in BOTH cases, so with the filter off the two
+		// answers are the same question -- and a genuine capacity refusal now
+		// surfaces as no_room_for_replaced_items instead of not_an_upgrade.
+		// Armor never reaches this branch and the weapon branch is behind the
+		// default-off flag, so no frozen verdict moves.
+		const GearUpgradePlan upgrade = PlanGearUpgrade(player, candidate, false);
+		if (!upgrade.valid || (upgrade.target != INVLOC_HAND_LEFT && upgrade.target != INVLOC_HAND_RIGHT)) {
+			result.reason = "not_an_upgrade";
+			return result;
+		}
+		for (int slot = 0; slot < NUM_INVLOC; ++slot)
+			if (upgrade.clearSlots[slot]) clearSlot(static_cast<inv_body_loc>(slot));
+		result.gear.target = upgrade.target;
+	} else {
+		// Match ordinary hand compatibility and the shift-click preference:
+		// replace a shield, retain a compatible weapon, or clear a two-hand
+		// weapon. AutoEquip below validates the real engine pairing rules.
+		const Item &left = player.InvBody[INVLOC_HAND_LEFT];
+		const Item &right = player.InvBody[INVLOC_HAND_RIGHT];
+		const bool twoHands = (!left.isEmpty() && player.GetItemLocation(left) == ILOC_TWOHAND)
+		    || (!right.isEmpty() && player.GetItemLocation(right) == ILOC_TWOHAND);
+		if (twoHands) {
+			clearSlot(INVLOC_HAND_LEFT);
+			clearSlot(INVLOC_HAND_RIGHT);
+		} else if (!left.isEmpty() && left._iClass == candidate._iClass) {
+			clearSlot(INVLOC_HAND_LEFT);
+		} else if (!right.isEmpty() && right._iClass == candidate._iClass) {
+			clearSlot(INVLOC_HAND_RIGHT);
+		}
+		result.gear.target = simulated.InvBody[INVLOC_HAND_LEFT].isEmpty()
+		    ? INVLOC_HAND_LEFT : INVLOC_HAND_RIGHT;
+	}
+	// persist=false is the engine's pure legality probe: no network, RNG,
+	// light/stat mutation, or item moved into the live player's hand.
+	if (!AutoEquip(simulated, candidate, false, false)) {
+		result.reason = "incompatible_slot";
+		return result;
+	}
+	result.gear.valid = true;
+	result.gear.candidate = candidate;
+	result.canFit = StageResourceArmorInventory(player, inventoryIndex, result.gear, simulated);
+	ApplyResourceArmorPlan(simulated, result.gear);
+	CalcPlrInv(simulated, false);
+	result.gear.nextArmorClass = simulated.GetArmor();
+	result.gear.nextCurrentHitPoints = simulated._pHitPoints;
+	result.gear.nextMaxHitPoints = simulated._pMaxHP;
+	// Full readiness (including health fraction and the remaining weapon)
+	// is observable separately. Normal legal equipment need only leave the
+	// player alive and the newly equipped item usable after stat cascades.
+	const bool usable = simulated.InvBody[result.gear.target]._iStatFlag;
+	const bool alive = (simulated._pHitPoints >> 6) > 0;
+	result.safe = alive && usable;
+	result.readiness = ResourceReadinessState(simulated);
+	result.readiness["block_enabled"] = simulated._pBlockFlag;
+	result.readiness["block_chance"] = simulated.GetBlockChance();
+	result.reason = !alive ? "unsafe_life" : (!usable ? "cannot_use_after_swap"
+	    : (!result.canFit ? "no_room_for_replaced_items" : "ready"));
+	// R18-K2b (2026-09-07): fail closed on the one metric the weapon leg
+	// exists to raise. a14's aggregate utility can rise while the readiness
+	// damage (_pIMaxDam + _pDamageMod) does not; such a swap is refused here
+	// instead of being sold to Python as a damage upgrade. Armor never
+	// reaches this branch, so no frozen armor verdict moves.
+	if (gPreparationEquipment && result.gear.valid) {
+		const auto before = GearCombatProfileFromPlayer(player, false, true);
+		const auto after = GearCombatProfileFromPlayer(simulated, false, true);
+		if (!PreparationPreserves(PreparationGoal(before), PreparationGoal(after))
+		    || int64_t(after.currentHitPoints) * before.maxHitPoints < int64_t(before.currentHitPoints) * after.maxHitPoints) {
+			result.gear.valid = result.safe = result.canFit = false;
+			result.reason = "preparation_goal_regression";
+		}
+	}
+	if (!gPreparationEquipment && upgradeWeapon && result.gear.valid) {
+		const int damageBefore = player._pIMaxDam + player._pDamageMod;
+		const int damageAfter = py::cast<int>(result.readiness["damage"]);
+		if (damageAfter <= damageBefore) {
+			result.gear.valid = false;
+			result.safe = false;
+			result.canFit = false;
+			result.reason = "no_damage_gain";
+		}
+	}
+	return result;
+}
+
+void AppendOrdinaryResourceArmorState(py::dict &entry, const Item &item, int inventoryIndex)
+{
+	AppendItemCombatState(entry, item, 0);
+	const ResourceArmorPlan plan = PlanResourceArmor(*MyPlayer, item, inventoryIndex);
+	py::list replaced;
+	if (plan.gear.valid)
+		for (int slot = 0; slot < NUM_INVLOC; ++slot)
+			if (plan.gear.clearSlots[slot] && !MyPlayer->InvBody[slot].isEmpty()) replaced.append(slot);
+	entry["is_ordinary_armor"] = IsOrdinaryResourceArmor(item);
+	// R18-K2b (2026-09-07): only emitted while weapon-purchase-v1 is on, so
+	// every frozen observation keeps its exact key set.
+	if (gResourceWeaponPurchase) entry["is_upgrade_weapon"] = IsResourceUpgradeWeapon(*MyPlayer, item);
+	entry["target_slot"] = plan.gear.valid ? static_cast<int>(plan.gear.target) : -1;
+	entry["replaced_slots"] = replaced;
+	entry["can_equip"] = plan.gear.valid && plan.safe && plan.canFit;
+	entry["equip_reason"] = plan.reason;
+	entry["projected_readiness"] = plan.readiness;
+	if (plan.gear.valid) entry["projected_armor_class"] = plan.gear.nextArmorClass;
+	const bool durable = item._iMaxDur == DUR_INDESTRUCTIBLE || item._iDurability >= 15;
+	bool projectedCombatGate = false;
+	if (plan.gear.valid && plan.safe) {
+		const auto failures = py::cast<std::vector<std::string>>(plan.readiness["failures"]);
+		projectedCombatGate = std::none_of(failures.begin(), failures.end(), [](const std::string &failure) {
+			return failure == "armor" || failure == "damage" || failure == "weapon";
+		});
+	}
+	entry["meets_armor_gate"] = IsOrdinaryResourceArmor(item) && durable
+	    && plan.gear.valid && plan.safe && plan.canFit && projectedCombatGate;
+}
+
+bool IsResourceUnequipSlot(const Player &player, int slot)
+{
+	if (slot < 0 || slot >= NUM_INVLOC) return false;
+	const Item &item = player.InvBody[slot];
+	if (item.isEmpty() || item._iClass == ICLASS_QUEST) return false;
+	return (slot == INVLOC_HEAD && item.isHelm())
+	    || (slot == INVLOC_CHEST && item.isArmor())
+	    || ((slot == INVLOC_HAND_LEFT || slot == INVLOC_HAND_RIGHT) && item.isShield());
+}
+
+bool ResourceUnequipActionAllowed()
+{
+	return ResourceTownActionAllowed("act_unequip_equipped_item") && !qtextflag
+	    && MyPlayer->_pmode <= PM_WALK_SIDEWAYS;
+}
+
+struct ResourceUnequipPlan {
+	bool canFit = false;
+	bool safe = false;
+	py::dict readiness;
+};
+
+ResourceUnequipPlan PlanResourceUnequip(const Player &player, int slot)
+{
+	ResourceUnequipPlan plan;
+	if (!IsResourceUnequipSlot(player, slot)) return plan;
+	Player simulated = ResourceUnequipSimulation(player);
+	const Item item = simulated.InvBody[slot];
+	plan.canFit = AutoPlaceItemInInventory(simulated, item, false);
+	// Even when full, expose the prospective native stats separately from
+	// executability; a missing inventory slot must never become a free delete.
+	RemoveEquipment(simulated, static_cast<inv_body_loc>(slot), false, false);
+	CalcPlrInv(simulated, false);
+	// hasNoLife() deliberately ignores life in town; reject an unequip
+	// that would leave the player dead when normal dungeon rules resume.
+	plan.safe = (simulated._pHitPoints >> 6) > 0;
+	plan.readiness = ResourceReadinessState(simulated);
+	if (gResourceOrdinaryArmorScope) {
+		plan.readiness["block_enabled"] = simulated._pBlockFlag;
+		plan.readiness["block_chance"] = simulated.GetBlockChance();
+	}
+	return plan;
+}
+
+py::list ObserveUnequipCandidates()
+{
+	py::list candidates;
+	// New projections belong only to an executable town inventory action;
+	// dungeon/default-off observations must not simulate equipment changes.
+	if (!gResourceProtocol || setlevel || currlevel != 0 || !gTownServiceTrip
+	    || !ResourceUnequipActionAllowed()) return candidates;
+	const bool available = true;
+	const ResourceReadiness current = EvaluateResourceReadiness(*MyPlayer);
+	for (const inv_body_loc slot : { INVLOC_HEAD, INVLOC_HAND_LEFT, INVLOC_HAND_RIGHT, INVLOC_CHEST }) {
+		if (!IsResourceUnequipSlot(*MyPlayer, slot)) continue;
+		const Item &item = MyPlayer->InvBody[slot];
+		const ResourceUnequipPlan plan = PlanResourceUnequip(*MyPlayer, slot);
+		py::dict entry;
+		entry["slot"] = static_cast<int>(slot);
+		entry["seed_hi"] = HighWord(item._iSeed);
+		entry["seed_lo"] = LowWord(item._iSeed);
+		entry["create_info"] = item._iCreateInfo;
+		entry["base_id"] = static_cast<int>(item.IDidx);
+		entry["durability"] = item._iDurability;
+		entry["max_durability"] = item._iMaxDur;
+		entry["can_fit"] = plan.canFit;
+		entry["can_unequip"] = available && plan.canFit && plan.safe;
+		entry["reason"] = !available ? "unavailable" : !plan.canFit ? "no_room" : !plan.safe ? "unsafe_life" : "available";
+		entry["projected_readiness"] = plan.readiness;
+		entry["removes_durability_failure"] = current.minimumDurability < 15
+		    && py::cast<int>(plan.readiness["min_finite_durability"]) >= 15;
+		candidates.append(entry);
+	}
+	return candidates;
+}
+
+// inventory_items is armor-only, so a Scroll of Town Portal is otherwise
+// invisible to Python. Export the INVITEM_* spellFrom code act_cast_town_portal
+// needs plus the ordinary four-field seed identity. Only under portal-v1.
+py::list ObserveResourcePortalScrolls()
+{
+	py::list scrolls;
+	const Player &player = *MyPlayer;
+	auto append = [&scrolls](const Item &item, int spellFrom, const char *container, int slot) {
+		if (item.isEmpty() || !item.isScrollOf(SpellID::TownPortal)) return;
+		py::dict entry;
+		entry["seed_hi"] = HighWord(item._iSeed);
+		entry["seed_lo"] = LowWord(item._iSeed);
+		entry["create_info"] = item._iCreateInfo;
+		entry["base_id"] = static_cast<int>(item.IDidx);
+		entry["container"] = container;
+		entry["index"] = slot;
+		entry["spell_from"] = spellFrom;
+		scrolls.append(entry);
+	};
+	for (int index = 0; index < player._pNumInv; ++index)
+		append(player.InvList[index], INVITEM_INV_FIRST + index, "inventory", index);
+	for (int slot = 0; slot < MaxBeltItems; ++slot)
+		append(player.SpdList[slot], INVITEM_BELT_FIRST + slot, "belt", slot);
+	return scrolls;
+}
+
+// New loot APIs remain absent from legacy raw observations.
+#include "resource_loot.hpp"
+// R18-H identify-v1 needs the loot helpers above (sale quote, quest guard,
+// inventory state) and, like them, stays absent from every frozen observation.
+#include "resource_identify.hpp"
+
+py::dict ObserveResourceState()
+{
+	py::dict ready = ResourceReadinessState(*MyPlayer);
+	py::dict transition;
+	transition["sequence"] = gResourceTransition.sequence;
+	transition["accepted"] = gResourceTransition.accepted;
+	transition["reason"] = gResourceTransition.reason;
+	transition["source_depth"] = gResourceTransition.source;
+	transition["target_depth"] = gResourceTransition.target;
+	transition["message"] = gResourceTransition.message;
+	transition["pretransition_ready"] = gResourceTransition.ready;
+	transition["pretransition_ready_law"] = gResourceTransition.readyLaw;
+	transition["source_is_set"] = gResourceTransition.sourceIsSet;
+	transition["target_is_set"] = gResourceTransition.targetIsSet;
+	py::dict town;
+	town["active_vendor"] = ResourceVendorName(ActiveStore);
+	town["dialog_active"] = qtextflag;
+	py::list npcs, stock, gold, inventory, repairs, inventoryEquipment;
+	if (!setlevel && currlevel == 0) {
+		for (size_t index = 0; index < Towners.size(); ++index) {
+			const Towner &npc = Towners[index];
+			// The witch appears only under portal-v1; every frozen arm keeps the
+			// two-vendor town observation byte for byte.
+			const bool witch = gResourcePortalEnabled && npc._ttype == TOWN_WITCH;
+			// R18-H identify-v1: Cain is exported only under the flag, and only so
+			// the script can walk to him; the bridge never opens his store pages.
+			const bool storyteller = gResourceIdentifyEnabled && npc._ttype == TOWN_STORY;
+			if (npc._ttype != TOWN_SMITH && npc._ttype != TOWN_HEALER && !witch && !storyteller) continue;
+			py::dict entry;
+			entry["id"] = index;
+			entry["type"] = storyteller ? "storyteller"
+			    : (witch ? "witch" : (npc._ttype == TOWN_SMITH ? "smith" : "healer"));
+			entry["x"] = npc.position.x;
+			entry["y"] = npc.position.y;
+			npcs.append(entry);
+		}
+		auto appendStock = [&stock](const auto &items, const char *vendor, int indexOffset = 0) {
+			for (size_t index = 0; index < items.size(); ++index) {
+				py::dict entry = ResourceItemState(items[index]);
+				entry["vendor"] = vendor;
+				entry["index"] = index + indexOffset;
+				if (gResourceFullSmithCatalog && std::string(vendor) == "smith")
+					entry["catalog"] = indexOffset == ResourcePremiumIndexBase ? "premium" : "ordinary";
+				stock.append(entry);
+				// Remember only identities actually exported at the visited shop.
+				if (gResourceOrdinaryArmorScope && gTownServiceTrip && std::string(vendor) == "smith") {
+					if (gResourceSeenSmithGeneration != gTownRestockSequence || gResourceSeenSmithTownSeed != DungeonSeeds[0])
+						gResourceSeenSmithItems.clear();
+					gResourceSeenSmithGeneration = gTownRestockSequence;
+					gResourceSeenSmithTownSeed = DungeonSeeds[0];
+					const auto identity = ResourceIdentity(items[index]);
+					if (std::find(gResourceSeenSmithItems.begin(), gResourceSeenSmithItems.end(), identity) == gResourceSeenSmithItems.end())
+						gResourceSeenSmithItems.push_back(identity);
+				}
+			}
+		};
+		// Stock becomes policy-visible only at the corresponding vendor.
+		if (std::string(ResourceVendorName(ActiveStore)) == "smith") {
+			appendStock(SmithItems, "smith");
+			if (gResourceFullSmithCatalog)
+				appendStock(PremiumItems, "smith", ResourcePremiumIndexBase);
+			if (!qtextflag) {
+				for (const inv_body_loc slot : { INVLOC_HEAD, INVLOC_HAND_LEFT, INVLOC_HAND_RIGHT, INVLOC_CHEST }) {
+					const Item &item = MyPlayer->InvBody[slot];
+					const std::optional<int> price = GetStoreRepairPrice(item);
+					if (!price.has_value()) continue;
+					py::dict entry;
+					entry["slot"] = static_cast<int>(slot);
+					entry["seed_hi"] = HighWord(item._iSeed);
+					entry["seed_lo"] = LowWord(item._iSeed);
+					entry["create_info"] = item._iCreateInfo;
+					entry["base_id"] = static_cast<int>(item.IDidx);
+					entry["price"] = *price;
+					entry["durability"] = item._iDurability;
+					entry["max_durability"] = item._iMaxDur;
+					entry["repair_needed_for_gate"] = item._iDurability < 15 && item._iMaxDur >= 15;
+					repairs.append(entry);
+				}
+			}
+		}
+		if (std::string(ResourceVendorName(ActiveStore)) == "healer") appendStock(HealerItems, "healer");
+		if (gResourcePortalEnabled && std::string(ResourceVendorName(ActiveStore)) == "witch")
+			appendStock(WitchItems, "witch");
+	}
+	for (int index = 0; index < MyPlayer->_pNumInv; ++index) {
+		if (MyPlayer->InvList[index].isEquipment()) {
+			py::dict entry;
+			AppendItemCombatState(entry, MyPlayer->InvList[index], 0);
+			entry["index"] = index;
+			inventoryEquipment.append(entry);
+		}
+		if (gResourceOrdinaryArmorScope ? !IsOrdinaryResourceArmor(MyPlayer->InvList[index]) : !MyPlayer->InvList[index].isArmor()) continue;
+		py::dict entry = ResourceItemState(MyPlayer->InvList[index], index);
+		entry["index"] = index;
+		inventory.append(entry);
+	}
+	for (int i = 0; i < ActiveItemCount; ++i) {
+		const int id = ActiveItems[i];
+		const Item &item = Items[id];
+		if (item._itype != ItemType::Gold || !IsTileLit(item.position)) continue;
+		py::dict entry;
+		entry["active_id"] = id;
+		entry["x"] = item.position.x;
+		entry["y"] = item.position.y;
+		entry["seed_hi"] = HighWord(item._iSeed);
+		entry["seed_lo"] = LowWord(item._iSeed);
+		entry["create_info"] = item._iCreateInfo;
+		entry["base_id"] = static_cast<int>(item.IDidx);
+		entry["value"] = item._ivalue;
+		gold.append(entry);
+	}
+	town["npcs"] = npcs;
+	town["stock"] = stock;
+	town["repair_quotes"] = repairs;
+	py::dict result;
+	result["protocol"] = "l2-town-v1";
+	result["enabled"] = true;
+	if (gResourceOrdinaryArmorScope) result["ordinary_armor_scope"] = true;
+	if (gResourcePreserveEquipmentReadiness) result["preserve_equipment_readiness"] = true;
+	if (gResourceReadinessAdvisory) result["readiness_advisory"] = true;
+	result["service_authorized"] = gTownServiceAuthorized;
+	result["service_trip"] = gTownServiceTrip;
+	if (!gResourceTripLimitsEnabled) {
+		result["trip_limits_enabled"] = false;
+		result["trip_limit_protocol"] = "growth-trip-quota-off/1";
+	}
+	result["retreat_enabled"] = gResourceRetreatEnabled;
+	if (gResourceRetreatEnabled) {
+		result["retreat_authorized"] = gRetreatAuthorized;
+		result["retreats_started"] = gResourceRetreatsStarted;
+		result["max_retreats"] = gResourceTripLimitsEnabled ? py::cast(MaxResourceRetreats) : py::none();
+	}
+	result["portal_enabled"] = gResourcePortalEnabled;
+	if (gResourcePortalEnabled) {
+		const Portal &myPortal = Portals[MyPlayerId];
+		result["portal_authorized"] = gPortalAuthorized;
+		result["portals_started"] = gResourcePortalsStarted;
+		result["max_portals"] = gResourceTripLimitsEnabled ? py::cast(MaxResourcePortals) : py::none();
+		result["portal_open"] = myPortal.open;
+		result["portal_level"] = myPortal.level;
+		result["portal_x"] = myPortal.position.x;
+		result["portal_y"] = myPortal.position.y;
+		result["portal_set_level"] = myPortal.setlvl;
+		result["portal_on_level"] = PortalOnLevel(*MyPlayer);
+		result["portal_scrolls"] = ObserveResourcePortalScrolls();
+	}
+	// R18-K2b weapon-purchase-v1 (2026-09-07): the handshake the Python law
+	// checks on every observation. Written like retreat_enabled/portal_enabled.
+	result["weapon_purchase_enabled"] = gResourceWeaponPurchase;
+	result["max_main_depth_reached"] = gResourceMaxDepth;
+	// coach-v03 lifts the native curriculum wall (Python per-floor tables govern L3+).
+	result["curriculum_max_depth"] = gResourceReadinessAdvisory ? 16 : 2;
+	result["town_restock_sequence"] = gTownRestockSequence;
+	result["town_seed"] = DungeonSeeds[0];
+	result["readiness"] = ready;
+	result["transition"] = transition;
+	result["town"] = town;
+	result["gold_items"] = gold;
+	result["inventory_items"] = inventory;
+	result["unequip_candidates"] = ObserveUnequipCandidates();
+	result["inventory_equipment"] = inventoryEquipment;
+	if (gResourceLootEconomy) AppendResourceLootState(result, town);
+	if (gResourceIdentifyEnabled) {
+		result["identify_enabled"] = true;
+		result["identify_price"] = StorytellerIdentifyPrice;
+		result["identify_at_storyteller"] = ResourceIdentifyAtStoryteller();
+		town["identify_quotes"] = ObserveResourceIdentifyQuotes();
+	}
+	return result;
+}
+
+py::list ProjectSeenResourceSmithItems(const std::vector<ResourceItemIdentity> &identities)
+{
+	EnsureInGame("project_seen_resource_smith_items");
+	if (!gResourceOrdinaryArmorScope || !ResourceTownActionAllowed("project_seen_resource_smith_items")
+	    || MyPlayer->_pmode != PM_STAND || qtextflag)
+		throw std::runtime_error("known Smith projection requires idle ordinary-armor town service");
+	if (gResourceSeenSmithGeneration != gTownRestockSequence || gResourceSeenSmithTownSeed != DungeonSeeds[0])
+		throw std::invalid_argument("Smith projection belongs to another town generation");
+	// Check the whole request against observation memory before looking at
+	// live stock. Unknown identities cannot be used as an inventory oracle.
+	std::vector<ResourceItemIdentity> requested;
+	for (const auto &identity : identities) {
+		if (std::find(requested.begin(), requested.end(), identity) != requested.end())
+			throw std::invalid_argument("duplicate known Smith identity");
+		if (std::find(gResourceSeenSmithItems.begin(), gResourceSeenSmithItems.end(), identity) == gResourceSeenSmithItems.end())
+			throw std::invalid_argument("unobserved Smith identity");
+		requested.push_back(identity);
+	}
+	py::list result;
+	for (const auto &identity : requested) {
+		py::dict entry;
+		bool found = false;
+		for (size_t index = 0; index < SmithItems.size(); ++index) {
+			if (ResourceIdentity(SmithItems[index]) != identity) continue;
+			entry = ResourceItemState(SmithItems[index]);
+			entry["vendor"] = "smith";
+			entry["index"] = index;
+			entry["status"] = "projected";
+			found = true;
+			break;
+		}
+		if (!found && gResourceFullSmithCatalog) {
+			for (size_t index = 0; index < PremiumItems.size(); ++index) {
+				if (PremiumItems[index].isEmpty() || ResourceIdentity(PremiumItems[index]) != identity) continue;
+				entry = ResourceItemState(PremiumItems[index]);
+				entry["vendor"] = "smith";
+				entry["catalog"] = "premium";
+				entry["index"] = index + ResourcePremiumIndexBase;
+				entry["status"] = "projected";
+				found = true;
+				break;
+			}
+		}
+		if (!found) {
+			entry["seed_hi"] = identity[0];
+			entry["seed_lo"] = identity[1];
+			entry["create_info"] = identity[2];
+			entry["base_id"] = identity[3];
+			entry["status"] = "stale_item"; // no projection or old-cache fallback
+		}
+		entry["projection_origin"] = "known-smith-live-player";
+		entry["town_restock_sequence"] = gTownRestockSequence;
+		entry["town_seed"] = DungeonSeeds[0];
+		result.append(entry);
+	}
+	return result;
+}
+
+int ActPickupGoldAt(int activeItemId, uint16_t seedHigh, uint16_t seedLow, uint16_t createInfo, int baseId)
+{
+	if (!CanAcceptPlayerAction("act_pickup_gold_at") || !gResourceProtocol || MyPlayer->hasNoLife()
+	    || activeItemId < 0 || activeItemId >= MAXITEMS)
+		return 0;
+	bool active = false;
+	for (int i = 0; i < ActiveItemCount; ++i) active = active || ActiveItems[i] == activeItemId;
+	const Item &item = Items[activeItemId];
+	if (!active || item._itype != ItemType::Gold || !IsTileLit(item.position)
+	    || MyPlayer->position.future != item.position
+	    || !MatchesItemIdentity(item, seedHigh, seedLow, createInfo, baseId)) return 0;
+	NetSendCmdLocParam1(true, CMD_GOTOAGETITEM, item.position, static_cast<uint16_t>(activeItemId));
+	return 1;
+}
+
+int ActTalkTowner(int index)
+{
+	if (!ResourceTownActionAllowed("act_talk_towner") || qtextflag || index < 0 || static_cast<size_t>(index) >= Towners.size()) return 0;
+	const Towner &npc = Towners[index];
+	const bool witch = gResourcePortalEnabled && npc._ttype == TOWN_WITCH;
+	if ((npc._ttype != TOWN_HEALER && npc._ttype != TOWN_SMITH && !witch)
+	    || MyPlayer->position.tile.WalkingDistance(npc.position) >= 2) return 0;
+	NetSendCmdLocParam1(true, CMD_TALKXY, npc.position, static_cast<uint16_t>(index));
+	return 1;
+}
+
+int ActDismissDialog()
+{
+	if (!ResourceTownActionAllowed("act_dismiss_dialog")) return 0;
+	if (qtextflag) {
+		qtextflag = false;
+		stream_stop();
+		return 1;
+	}
+	if (!IsPlayerInStore()) return 0;
+	StoreESC();
+	return 1;
+}
+
+py::dict ResourceActionResult(bool accepted, const char *reason, int paid = 0)
+{
+	py::dict result;
+	result["accepted"] = accepted;
+	result["reason"] = reason;
+	result["price"] = paid;
+	return result;
+}
+
+py::dict ActBuyStoreItem(const std::string &vendor, int index, uint16_t seedHigh, uint16_t seedLow, uint16_t createInfo, int baseId)
+{
+	if (!ResourceTownActionAllowed("act_buy_store_item") || qtextflag) return ResourceActionResult(false, "unavailable");
+	const bool healer = vendor == "healer";
+	// R18-F portal-v1: the witch sells exactly one SKU (the pinned Scroll of Town
+	// Portal, WitchItems[2]), and only while the feature is on. Her general
+	// catalogue is never reachable from this API.
+	const bool witch = gResourcePortalEnabled && vendor == "witch";
+	if ((!healer && !witch && vendor != "smith") || vendor != ResourceVendorName(ActiveStore)) return ResourceActionResult(false, "wrong_vendor");
+	const Towner *npc = GetTowner(witch ? TOWN_WITCH : (healer ? TOWN_HEALER : TOWN_SMITH));
+	if (npc == nullptr || MyPlayer->position.tile.WalkingDistance(npc->position) >= 2) return ResourceActionResult(false, "not_adjacent");
+	const bool premium = gResourceFullSmithCatalog && vendor == "smith" && index >= ResourcePremiumIndexBase;
+	const int nativeIndex = premium ? index - ResourcePremiumIndexBase : index;
+	const std::span<const Item> items = premium ? std::span<const Item>(PremiumItems)
+	    : witch ? std::span<const Item>(WitchItems)
+	    : (healer ? std::span<const Item>(HealerItems) : std::span<const Item>(SmithItems));
+	if (nativeIndex < 0 || static_cast<size_t>(nativeIndex) >= items.size()) return ResourceActionResult(false, "invalid_item");
+	const Item &item = items[nativeIndex];
+	if (!MatchesItemIdentity(item, seedHigh, seedLow, createInfo, baseId)) return ResourceActionResult(false, "stale_item");
+	if (!MyPlayer->CanUseItem(item)) return ResourceActionResult(false, "cannot_use");
+	// R18-K2b weapon-purchase-v1 (2026-09-07): Griswold may also sell an
+	// ordinary one-handed weapon. IsResourceUpgradeWeapon starts with the
+	// default-off flag, so with the flag off the condition below reduces to
+	// the frozen armor-only text and answers every weapon unsupported_item.
+	const bool upgradeWeapon = IsResourceUpgradeWeapon(*MyPlayer, item);
+	if (witch ? item.IDidx != IDI_PORTAL : (healer ? InstantHealKind(item) == 0 : (gResourceOrdinaryArmorScope ? !(IsOrdinaryResourceArmor(item) || upgradeWeapon) : (!item.isArmor() || item._iMagical != ITEM_QUALITY_NORMAL)))) return ResourceActionResult(false, "unsupported_item");
+	// Fail closed: surplus gold buys a weapon only when the native plan can
+	// actually wear it at this instant (a14 upgrade verdict, pairing rules,
+	// inventory capacity for the displaced item, life and stat cascades, and
+	// a strictly higher readiness damage). A purchase that cannot be equipped
+	// would be pure gold loss, so it never leaves the counter.
+	if (upgradeWeapon) {
+		const ResourceArmorPlan plan = PlanResourceArmor(*MyPlayer, item, -1);
+		if (!plan.gear.valid || !plan.safe || !plan.canFit)
+			return ResourceActionResult(false, plan.reason);
+	}
+	// StoreAutoPlace prefers the belt and CanBePlacedOnBelt accepts a usable
+	// scroll, so the portal scroll can eat a slot the four-heal readiness law
+	// needs. Sell it only once those four heals are already in the belt.
+	if (witch) {
+		int beltHeals = 0;
+		for (const Item &belt : MyPlayer->SpdList) beltHeals += InstantHealKind(belt) != 0;
+		if (beltHeals < RequiredResourceBeltHeals) return ResourceActionResult(false, "belt_reserved_for_heals");
+	}
+	if (Stash.gold != 0) throw std::runtime_error("l2-town-v1 forbids shared-stash gold");
+	if (premium) {
+		// Use the unchanged GUI transaction, including real price, placement,
+		// purchase RNG and ReplacePremium. Do NOT move an item into SmithItems
+		// to trick the ordinary kernel or synthesize equipment/gold ourselves.
+		if (item.isEmpty() || item._iIvalue <= 0) return ResourceActionResult(false, "invalid_item");
+		const int price = item._iIvalue;
+		if (!PlayerCanAfford(price)) return ResourceActionResult(false, "no_money");
+		Item checked = item;
+		if (!StoreAutoPlace(checked, false)) return ResourceActionResult(false, "no_room");
+		const int goldBefore = MyPlayer->_pGold;
+		int visibleIndex = 0;
+		for (int i = 0; i < nativeIndex; ++i) visibleIndex += !PremiumItems[i].isEmpty();
+		StartStore(TalkID::SmithPremiumBuy);
+		for (int i = 0; i < visibleIndex; ++i) StoreDown();
+		StoreEnter();
+		if (ActiveStore != TalkID::Confirm || OldActiveStore != TalkID::SmithPremiumBuy
+		    || !MatchesItemIdentity(TempItem, seedHigh, seedLow, createInfo, baseId)
+		    || TempItem._iIvalue != price) {
+			StartStore(TalkID::Smith);
+			throw std::runtime_error("premium GUI selection did not match the quoted native item");
+		}
+		CurrentTextLine = 18; // Native ConfirmEnter's normal Yes selection.
+		StoreEnter();
+		StartStore(TalkID::Smith);
+		bool owned = false;
+		for (int i = 0; i < MyPlayer->_pNumInv; ++i)
+			owned |= MatchesItemIdentity(MyPlayer->InvList[i], seedHigh, seedLow, createInfo, baseId);
+		for (const Item &equipped : MyPlayer->InvBody)
+			owned |= MatchesItemIdentity(equipped, seedHigh, seedLow, createInfo, baseId);
+		if (!owned || goldBefore - MyPlayer->_pGold != price)
+			throw std::runtime_error("premium native purchase failed cash/ownership verification");
+		py::dict result = ResourceActionResult(true, "purchased", price);
+		result["catalog"] = "premium";
+		result["native_transaction"] = "StoreEnter/SmithBuyPItem";
+		result["gold_before"] = goldBefore;
+		result["gold_after"] = MyPlayer->_pGold;
+		return result;
+	}
+	const auto purchase = TryBuyStoreItem(witch ? StoreVendor::Witch : (healer ? StoreVendor::Healer : StoreVendor::Smith), static_cast<size_t>(index), (uint32_t { seedHigh } << 16) | seedLow, createInfo, baseId);
+	switch (purchase.status) {
+	case StoreBuyStatus::Success: return ResourceActionResult(true, "purchased", purchase.paid);
+	case StoreBuyStatus::InvalidItem: return ResourceActionResult(false, "invalid_item");
+	case StoreBuyStatus::StaleItem: return ResourceActionResult(false, "stale_item");
+	case StoreBuyStatus::NoMoney: return ResourceActionResult(false, "no_money");
+	case StoreBuyStatus::NoRoom: return ResourceActionResult(false, "no_room");
+	}
+	throw std::runtime_error("unknown store transaction status");
+}
+
+// R18-F portal-v1: read the Scroll of Town Portal WITHOUT UseInvItem. The bridge
+// forces ControlMode == KeyboardAndMouse, and items.cpp's UseItem turns a
+// TARGETED scroll (Town Portal is one) into CURSOR_TELEPORT instead of a cast;
+// after that inv.cpp makes every later UseInvItem -- including the ActDrink
+// reflex -- a silent no-op for the rest of the episode. Emit items.cpp's
+// non-targeted branch command (CMD_SPELLXY / SpellType::Scroll) directly.
+py::dict ActCastTownPortal(int spellFrom)
+{
+	if (!CanAcceptPlayerAction("act_cast_town_portal") || !gResourceProtocol || !gResourcePortalEnabled)
+		return ResourceActionResult(false, "unavailable");
+	Player &player = *MyPlayer;
+	if (player.hasNoLife() || player._pmode != PM_STAND || pcurs != CURSOR_HAND
+	    || qtextflag || IsPlayerInStore() || !player.HoldItem.isEmpty())
+		return ResourceActionResult(false, "unavailable");
+	if (setlevel || leveltype == DTYPE_TOWN || currlevel < 2)
+		return ResourceActionResult(false, "wrong_scene");
+	// A second scroll on the same floor would only replace the first one.
+	if (Portals[MyPlayerId].open && !Portals[MyPlayerId].setlvl
+	    && Portals[MyPlayerId].level == static_cast<int>(currlevel))
+		return ResourceActionResult(false, "portal_already_open");
+	if (spellFrom > INVITEM_BELT_LAST || !IsValidSpellFrom(spellFrom))
+		return ResourceActionResult(false, "invalid_item");
+	const Item *scroll = nullptr;
+	if (spellFrom >= INVITEM_INV_FIRST && spellFrom <= INVITEM_INV_LAST) {
+		const int inventoryIndex = spellFrom - INVITEM_INV_FIRST;
+		if (inventoryIndex < player._pNumInv) scroll = &player.InvList[inventoryIndex];
+	} else if (spellFrom >= INVITEM_BELT_FIRST && spellFrom <= INVITEM_BELT_LAST) {
+		scroll = &player.SpdList[spellFrom - INVITEM_BELT_FIRST];
+	}
+	if (scroll == nullptr || scroll->isEmpty() || !scroll->isScrollOf(SpellID::TownPortal))
+		return ResourceActionResult(false, "invalid_item");
+	if (!CanUseScroll(player, SpellID::TownPortal))
+		return ResourceActionResult(false, "cannot_use");
+	NetSendCmdLocParam3(true, CMD_SPELLXY, player.position.future,
+	    static_cast<int8_t>(SpellID::TownPortal), static_cast<uint8_t>(SpellType::Scroll),
+	    static_cast<uint16_t>(spellFrom));
+	py::dict result = ResourceActionResult(true, "cast_requested");
+	result["spell_from"] = spellFrom;
+	return result;
+}
+
+py::dict ActRepairEquippedItem(int slot, uint16_t seedHigh, uint16_t seedLow, uint16_t createInfo, int baseId, int expectedDurability, int expectedPrice)
+{
+	if (!ResourceTownActionAllowed("act_repair_equipped_item") || qtextflag) return ResourceActionResult(false, "unavailable");
+	if (std::string(ResourceVendorName(ActiveStore)) != "smith") return ResourceActionResult(false, "wrong_vendor");
+	const Towner *npc = GetTowner(TOWN_SMITH);
+	if (npc == nullptr || MyPlayer->position.tile.WalkingDistance(npc->position) >= 2) return ResourceActionResult(false, "not_adjacent");
+	if (slot != INVLOC_HEAD && slot != INVLOC_HAND_LEFT && slot != INVLOC_HAND_RIGHT && slot != INVLOC_CHEST) return ResourceActionResult(false, "invalid_item");
+	if (Stash.gold != 0) throw std::runtime_error("l2-town-v1 forbids shared-stash gold");
+	const auto repair = TryRepairStoreItem(true, static_cast<size_t>(slot), (uint32_t { seedHigh } << 16) | seedLow,
+	    createInfo, baseId, expectedDurability, expectedPrice);
+	switch (repair.status) {
+	case StoreBuyStatus::Success: return ResourceActionResult(true, "repaired", repair.paid);
+	case StoreBuyStatus::InvalidItem: return ResourceActionResult(false, "invalid_item");
+	case StoreBuyStatus::StaleItem: return ResourceActionResult(false, "stale_item");
+	case StoreBuyStatus::NoMoney: return ResourceActionResult(false, "no_money");
+	case StoreBuyStatus::NoRoom: return ResourceActionResult(false, "no_room");
+	}
+	throw std::runtime_error("unknown store repair status");
+}
+
+py::dict ActEquipOrdinaryInventoryArmor(int index, const Item &candidate)
+{
+	Player &player = *MyPlayer;
+	if (player._pmode > PM_WALK_SIDEWAYS)
+		return ResourceActionResult(false, "unavailable");
+	const ResourceArmorPlan plan = PlanResourceArmor(player, candidate, index);
+	if (!plan.gear.valid || !plan.safe || !plan.canFit)
+		return ResourceActionResult(false, plan.reason);
+	Player staged = ResourceUnequipSimulation(player);
+	if (!StageResourceArmorInventory(player, index, plan.gear, staged))
+		return ResourceActionResult(false, "no_room_for_replaced_items");
+	ApplyResourceArmorPlan(staged, plan.gear);
+	CalcPlrInv(staged, false);
+	const auto resources = CapturePlayerResourceState(player);
+	// R18-K2b (2026-09-07): the committed weapon swap must reproduce the
+	// planned strict damage increase, or the whole transaction is rolled back
+	// exactly like a failed armor swap. False for every armor candidate, so
+	// the frozen armor commit condition is unchanged.
+	const bool upgradeWeapon = IsResourceUpgradeWeapon(player, candidate);
+	const int damageBefore = player._pIMaxDam + player._pDamageMod;
+	std::array<Item, NUM_INVLOC> previousBody;
+	std::copy(std::begin(player.InvBody), std::end(player.InvBody), previousBody.begin());
+	ApplyResourceArmorPlan(player, plan.gear);
+	CalcPlrInv(player, true);
+	bool preparationMatches = true;
+	if (gPreparationEquipment) {
+		const py::dict actual = PreparationEquipmentState(player);
+		const py::dict expected = py::cast<py::dict>(plan.readiness["preparation"]);
+		for (const char *key : { "armor", "minimum", "maximum", "sword", "shield", "to_hit",
+		         "utility", "attack_cycle_frames", "hp_fixed", "max_hp_fixed" })
+			preparationMatches &= py::cast<int64_t>(actual[key]) == py::cast<int64_t>(expected[key]);
+	}
+	if ((player._pHitPoints >> 6) <= 0 || !player.InvBody[plan.gear.target]._iStatFlag
+	    || player.GetArmor() != plan.gear.nextArmorClass
+	    || player._pHitPoints != plan.gear.nextCurrentHitPoints
+	    || player._pMaxHP != plan.gear.nextMaxHitPoints
+	    || (!gPreparationEquipment && upgradeWeapon && player._pIMaxDam + player._pDamageMod <= damageBefore)
+	    || !preparationMatches) {
+		RestoreGearUpgradeTransaction(player, previousBody, resources);
+		return ResourceActionResult(false, "equipment_validation_failed");
+	}
+	// Publish only after both the capacity and post-stat transaction succeed.
+	// Inventory removal compacts indices, so send all old/new origins exactly
+	// as the shared GUI purchase kernel does instead of guessing old indices.
+	std::array<int8_t, InventoryGridCells> previousGrid;
+	std::copy(std::begin(player.InvGrid), std::end(player.InvGrid), previousGrid.begin());
+	player._pNumInv = staged._pNumInv;
+	std::copy(std::begin(staged.InvList), std::end(staged.InvList), std::begin(player.InvList));
+	std::copy(std::begin(staged.InvGrid), std::end(staged.InvGrid), std::begin(player.InvGrid));
+	// CalcPlrInv refreshes carried requirements only for MyPlayer. Detached
+	// inventory staging therefore cannot supply the final post-swap caches.
+	for (int itemIndex = 0; itemIndex < player._pNumInv; ++itemIndex)
+		player.InvList[itemIndex].updateRequiredStatsCacheForPlayer(player);
+	for (Item &item : player.SpdList)
+		item.updateRequiredStatsCacheForPlayer(player);
+	player.CalcScrolls();
+	std::array<bool, InventoryGridCells> sent {};
+	for (int cell = 0; cell < InventoryGridCells; ++cell) {
+		const int oldIndex = std::abs(previousGrid[cell]) - 1;
+		if (oldIndex >= 0 && !sent[oldIndex]) {
+			NetSendCmdParam1(false, CMD_DELINVITEMS, static_cast<uint16_t>(cell));
+			sent[oldIndex] = true;
+		}
+	}
+	sent.fill(false);
+	for (int cell = 0; cell < InventoryGridCells; ++cell) {
+		const int newIndex = std::abs(player.InvGrid[cell]) - 1;
+		if (newIndex >= 0 && !sent[newIndex]) {
+			NetSendCmdChInvItem(false, cell);
+			sent[newIndex] = true;
+		}
+	}
+	py::list replaced;
+	for (int slot = 0; slot < NUM_INVLOC; ++slot) {
+		if (!plan.gear.clearSlots[slot] || previousBody[slot].isEmpty()) continue;
+		replaced.append(slot);
+		if (slot != plan.gear.target) NetSendCmdDelItem(false, static_cast<uint8_t>(slot));
+	}
+	NetSendCmdChItem(false, static_cast<uint8_t>(plan.gear.target), true);
+	py::dict result = ResourceActionResult(true, "equipped");
+	result["target_slot"] = static_cast<int>(plan.gear.target);
+	result["replaced_slots"] = replaced;
+	py::dict equipped;
+	AppendItemCombatState(equipped, player.InvBody[plan.gear.target], 0);
+	result["equipped_item"] = equipped;
+	result["readiness_after"] = ResourceReadinessState(player);
+	return result;
+}
+
+py::dict ActEquipInventoryItem(int index, uint16_t seedHigh, uint16_t seedLow, uint16_t createInfo, int baseId)
+{
+	if (!ResourceTownActionAllowed("act_equip_inventory_item") || qtextflag) return ResourceActionResult(false, "unavailable");
+	Player &player = *MyPlayer;
+	if (index < 0 || index >= player._pNumInv) return ResourceActionResult(false, "invalid_item");
+	const Item candidate = player.InvList[index];
+	if (!MatchesItemIdentity(candidate, seedHigh, seedLow, createInfo, baseId)) return ResourceActionResult(false, "stale_item");
+	if (gResourceOrdinaryArmorScope) return ActEquipOrdinaryInventoryArmor(index, candidate);
+	if (!candidate.isArmor() || candidate._iMagical != ITEM_QUALITY_NORMAL || !player.CanUseItem(candidate)) return ResourceActionResult(false, "cannot_use");
+	const GearUpgradePlan plan = PlanGearUpgrade(player, candidate);
+	if (!plan.valid || plan.target != INVLOC_CHEST) return ResourceActionResult(false, "not_upgrade");
+	// Stage the normal inventory removal/placement rules on a detached player.
+	// No live world mutation or network command occurs before capacity passes.
+	Player staged = {};
+	staged._pNumInv = player._pNumInv;
+	std::copy(std::begin(player.InvList), std::end(player.InvList), std::begin(staged.InvList));
+	std::copy(std::begin(player.InvGrid), std::end(player.InvGrid), std::begin(staged.InvGrid));
+	int removedGrid = -1;
+	for (int i = 0; i < InventoryGridCells; ++i)
+		if (std::abs(player.InvGrid[i]) == index + 1 && removedGrid < 0) removedGrid = i;
+	staged.RemoveInvItem(index, false, false);
+	const Item oldArmor = player.InvBody[INVLOC_CHEST];
+	if (!oldArmor.isEmpty() && !AutoPlaceItemInInventory(staged, oldArmor, false)) return ResourceActionResult(false, "no_room_for_old_armor");
+	const auto resources = CapturePlayerResourceState(player);
+	std::array<Item, NUM_INVLOC> previousBody;
+	std::copy(std::begin(player.InvBody), std::end(player.InvBody), previousBody.begin());
+	player.InvBody[INVLOC_CHEST] = candidate;
+	CalcPlrInv(player, true);
+	if (player.hasNoLife() || !player.InvBody[INVLOC_CHEST]._iStatFlag || player.GetArmor() != plan.nextArmorClass) {
+		RestoreGearUpgradeTransaction(player, previousBody, resources);
+		return ResourceActionResult(false, "equipment_validation_failed");
+	}
+	player._pNumInv = staged._pNumInv;
+	std::copy(std::begin(staged.InvList), std::end(staged.InvList), std::begin(player.InvList));
+	std::copy(std::begin(staged.InvGrid), std::end(staged.InvGrid), std::begin(player.InvGrid));
+	player.CalcScrolls();
+	if (removedGrid >= 0) NetSendCmdParam1(false, CMD_DELINVITEMS, static_cast<uint16_t>(removedGrid));
+	if (!oldArmor.isEmpty()) {
+		for (int grid = 0; grid < InventoryGridCells; ++grid) {
+			if (player.InvGrid[grid] == player._pNumInv) {
+				NetSendCmdChInvItem(false, grid);
+				break;
+			}
+		}
+	}
+	NetSendCmdChItem(false, INVLOC_CHEST, true);
+	return ResourceActionResult(true, "equipped");
+}
+
+
+py::dict ActUnequipEquippedItem(int slot, uint16_t seedHigh, uint16_t seedLow, uint16_t createInfo, int baseId)
+{
+	if (!ResourceUnequipActionAllowed()) return ResourceActionResult(false, "unavailable");
+	Player &player = *MyPlayer;
+	if (!IsResourceUnequipSlot(player, slot)) return ResourceActionResult(false, "invalid_item");
+	const Item item = player.InvBody[slot];
+	if (!MatchesItemIdentity(item, seedHigh, seedLow, createInfo, baseId)) return ResourceActionResult(false, "stale_item");
+	const ResourceUnequipPlan plan = PlanResourceUnequip(player, slot);
+	if (!plan.canFit) return ResourceActionResult(false, "no_room");
+	if (!plan.safe) return ResourceActionResult(false, "unsafe_life");
+	// The preflight and commit execute synchronously on the same unchanged
+	// inventory. AutoPlace performs no mutation if its capacity check fails.
+	const int inventoryIndex = player._pNumInv;
+	if (!AutoPlaceItemInInventory(player, item, false)) return ResourceActionResult(false, "no_room");
+	RemoveEquipment(player, static_cast<inv_body_loc>(slot), false, false);
+	CalcPlrInv(player, true);
+	// Publish only the completed ordinary transaction. No failed request can
+	// leave an inventory addition or equipment deletion in the network queue.
+	for (int grid = 0; grid < InventoryGridCells; ++grid) {
+		if (player.InvGrid[grid] == inventoryIndex + 1) {
+			NetSendCmdChInvItem(false, grid);
+			break;
+		}
+	}
+	NetSendCmdDelItem(false, static_cast<inv_body_loc>(slot));
+	py::dict result = ResourceActionResult(true, "unequipped");
+	result["slot"] = slot;
+	result["inventory_index"] = inventoryIndex;
+	result["readiness_after"] = ResourceReadinessState(player);
+	py::dict carried;
+	AppendItemCombatState(carried, player.InvList[inventoryIndex], 0);
+	carried["index"] = inventoryIndex;
+	result["inventory_item"] = carried;
+	return result;
+}

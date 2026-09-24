@@ -2,70 +2,125 @@
 
 [![CI](https://github.com/Diabolically-Handsome/AlphaDiablo/actions/workflows/ci.yml/badge.svg)](https://github.com/Diabolically-Handsome/AlphaDiablo/actions/workflows/ci.yml)
 
-## New milestone: a normal-start Skeleton King kill — September 21, 2026
+**English** · [简体中文](README.zh-CN.md)
 
-**Level-1 Warrior → level 7 → Skeleton King defeated, hero alive at 96/96 HP.**
-Normal difficulty, normally acquired equipment and supplies; no injected XP,
-equipment, gold or potions. The native kill record and completed quest agree.
+## Version 9: an agent whose high-level decisions come from a locally fine-tuned model kills the Skeleton King in 13 of 16 new worlds — September 24, 2026
 
-[![Watch the final Skeleton King encounter](docs/milestones/2026-09-21-skeleton-king/media/poster.png)](https://github.com/Diabolically-Handsome/AlphaDiablo/releases/tag/skeleton-king-first-kill-20260921)
+[![The released model attacks the Skeleton King in exam world 4150097 (replay render)](docs/rounds/round9-media/poster-king-4150097.png)](https://github.com/Diabolically-Handsome/AlphaDiablo/releases/tag/round9-stable-kills-20260924)
 
-[Watch the continuous 85.3-second final fight](https://github.com/Diabolically-Handsome/AlphaDiablo/releases/download/skeleton-king-first-kill-20260921/skeleton-king-final-fight-60fps.mp4)
-· [Release and opening video](https://github.com/Diabolically-Handsome/AlphaDiablo/releases/tag/skeleton-king-first-kill-20260921)
-· [Method, evidence and limitations](docs/milestones/2026-09-21-skeleton-king/README.md)
-· [中文说明](docs/milestones/2026-09-21-skeleton-king/README.zh-CN.md)
+**To our knowledge, no prior published work shows a Diablo I agent with all of the following:**
 
-An **assistant strategist + frozen RL worker + explicit navigation/service
-execution** achieved this in one paused, segmented world; the opening used
-Ministral 3 8B before the handoff to the RL worker. No weights were updated.
-The strategist ordered all seven healing drinks in the final encounter.
-Two earlier retreats remain in the complete command history. The released
-videos cover the opening and final encounter, **not the complete 46:59 run**.
-This is not a pure-RL, world-first, stable-win-rate or full-game-clear claim.
+1. **a locally run language model fine-tuned for the task**: Mistral-Small-3.2-24B with our own LoRA adapter, in
+   4-bit on one consumer GPU; not hand-written rules and not a cloud AI assistant;
+2. **the model makes every high-level decision**, choosing one option at a time from a menu that code builds;
+3. **a normal game start**: a new level-1 Warrior on Normal difficulty, with no injected gold, experience,
+   items or equipment;
+4. **no changes to combat, drop, price, experience, quest or map-generation rules, and no cheat interface used**:
+   the engine patches add crash guards for headless running, read-only interfaces, default-off hooks that can only
+   refuse a level change, a shop/unequip transaction refactor with the same prices and random-number use, and one
+   fix for an upstream save-load bug (monster attribute drains); the bridge's test probes were never called;
+5. **boss kills on never-before-used worlds (apart from a tick-0 quest check) in a pre-registered exam**: the
+   Skeleton King in **13 of 16** games and the Butcher in **10 of 16**, with the hero alive at every kill; in the
+   earlier held-out check of the same model (not pre-registered), **9 of 14** and **8 of 16**;
+6. **every one of those kills replay-verified** from the engine's native command journals;
+7. **the decisions re-scored with the adapter**: 2,000 of 2,000 sampled exam decisions (and all 39,743 re-scored
+   of the 41,684 round-8 decisions; the other 1,941, from training-world games, were not re-scored) come out as
+   the adapter's top answer again.
 
-## Previous milestone: a reproducible Butcher kill — September 13, 2026
+This is a claim about that combination, open to correction. A rule-based bot (in 2021, with some human
+intervention) and a tool-assisted speedrun (2024) have completed Diablo I, and reinforcement-learning agents have
+fought the Butcher (see [Related work](#related-work)). It is not a full-game clear and not a benchmark result.
+The disclosures below belong to the claim.
 
-**Video update:** [smooth 60-fps replay](https://github.com/Diabolically-Handsome/AlphaDiablo/releases/download/butcher-first-kill-20260913/butcher-first-kill-smooth-60fps.mp4)
-· [How it was recorded and checked / 流畅版说明](docs/milestones/2026-09-13-butcher-smooth-video/README.md).
-The original low-frame-rate recording and evidence are preserved.
+[▶ Skeleton King fight, 144 s](https://github.com/Diabolically-Handsome/AlphaDiablo/releases/download/round9-stable-kills-20260924/exam9-king-kill-4150097.mp4)
+· [▶ Butcher fight, 56 s](https://github.com/Diabolically-Handsome/AlphaDiablo/releases/download/round9-stable-kills-20260924/exam9-butcher-kill-4150078.mp4)
+· [Release](https://github.com/Diabolically-Handsome/AlphaDiablo/releases/tag/round9-stable-kills-20260924)
+· [Exam report](docs/rounds/round9-exam.md)
+· [Code that ran](option_brain/README.md)
+· [中文](README.zh-CN.md)
 
-**From a level-1 Warrior start to a level-6 Butcher kill, finishing alive at
-83/110 HP. No preloaded endgame gear or injected XP, equipment or potions.**
+| | Skeleton King | Butcher | Deaths |
+|---|---|---|---|
+| **Round-9 exam, released model** (27 new seeds, 32 games, 2026-09-24) | **13 / 16** | **10 / 16** | 6 / 32 |
+| Round-8 held-out check, same model, older code (30 new seeds, 2026-09-23)† | 9 / 14 | 8 / 16 | 5 / 30 |
+| Round-9 exam, candidate model, first half only (not adopted) | 3 / 8 | 5 / 8 | 3 / 16 |
 
-[![Watch the native-rendered replay](docs/milestones/2026-09-13-butcher-first-kill/media/poster.png)](https://github.com/Diabolically-Handsome/AlphaDiablo/releases/tag/butcher-first-kill-20260913)
+† Not pre-registered; see the [exam report](docs/rounds/round9-exam.md#what-was-compared).
 
-[Watch/download the video](https://github.com/Diabolically-Handsome/AlphaDiablo/releases/tag/butcher-first-kill-20260913)
-· [Results, method and evidence](docs/milestones/2026-09-13-butcher-first-kill/README.md)
-· [中文说明](docs/milestones/2026-09-13-butcher-first-kill/README.zh-CN.md)
+"Version 9" is the adapter `d9facts3` (trained in round 8) running with the round-9 code. Its weights are not
+published; its sha256 is `1d3b24942f1a2a5825f5aa8ab7a000b1d5cb27639c33ee889e4ce13dd0a6dd72` (base model
+`mistralai/Mistral-Small-3.2-24B-Instruct-2506`, revision `95a6d26c4bfb886c58daf9d3f7332c857cb27b43`).
 
-This is a **hybrid AI development milestone**, not a pure-RL, world-first or
-stable-win-rate claim. A behavior-cloned combat policy, an RL-derived exploration
-policy, and scripted resource/equipment management work together. The existing
-gear macro includes automatic identification without a separate identification
-charge. The candidate won one of two reused development starts; repeating the
-winning start reproduced the result, but is not an independent success sample.
-The recording is an audited re-render of a later unchanged replay. No active
-certified model is replaced by this evidence/media publication.
+### Read this before quoting the numbers
+
+- **The game is paused while the model decides.** Model and game run in lockstep: about one decision per 47 game
+  ticks, i.e. every 2.3 s of game time on average (20 ticks per second). A human player cannot pause like this.
+- **The menu is built by code, and code hides some options**: for example the stairs down on dungeon level 2 in
+  the Butcher mission (and on level 3 always), options that just failed or had no effect, selling an item bought
+  in the same town visit, and actions that would just undo the previous one. In the released model's exam games
+  the menu rules alone hid at least one option in 26.6% of all decisions, and the undo guard in 16.8%.
+- **The fact lines are computed by code** from engine data and formulas and given to the model: hit chance
+  against the boss, the swings needed to kill him, the healing potions needed, and a "ready / not ready yet"
+  verdict whose thresholds we set. The model's fight-or-leave choices largely follow that verdict.
+- **The "hands" are code**: walking (shortest path), attack chains and target choice, chasing, moving potions
+  into the belt (auto-belt) and closing shop windows. The model directly orders drinking, attribute points and
+  trading; a frozen small RL network sits in the melee loop but, measured in round 8, always chose "attack".
+- **The teacher labels came from Claude-based teacher workflows and from earlier demonstrations** by an OpenAI
+  Codex agent; the model was trained by imitation learning (with DAgger), not reinforcement learning, and the
+  teachers read written guidance the model never sees.
+- **The exam compared the released model with a new candidate, which was not adopted** (8/16 vs 12/16 on the
+  paired half). The project owner stopped the exam after 3 of its 4 waves; that affects only the candidate's
+  arm (its second half was stopped about 10 minutes in and is not a result). The candidate had not passed all of
+  its own offline criteria, and the owner approved the exam start anyway.
+- **6 deaths in the released model's 32 exam games** (1 in the first half, 5 in the second), all with no healing
+  potion left in the belt or the pack, five of them on dungeon level 2 at character level 2–4.
+- **Limits**: no full-game clear; bosses only up to the Skeleton King; the bridge used here refuses dungeon
+  levels below 3; Warrior on Normal only; the boss arenas themselves are fixed maps in every Diablo I world, so
+  "new worlds" means a new road to the boss; samples are small. "Pre-registered" means an internal document
+  frozen by sha256 before the first game, without an external timestamp.
+
+Details, tables and the verification evidence: [docs/rounds/round9-exam.md](docs/rounds/round9-exam.md).
+
+## Milestones
+
+- **2026-09-24 — Version 9: round-9 exam** (this release). A pre-registered paired exam on 27 new seeds: the
+  released model killed the Skeleton King in 13/16 and the Butcher in 10/16 games; the candidate was not adopted.
+  [Report](docs/rounds/round9-exam.md) · [code](option_brain/README.md).
+- **2026-09-23 — Local option brain and held-out check.** The same local model (`d9facts3`) first killed both
+  bosses in training worlds and then, on 30 never-played seeds (a held-out check, not pre-registered), the Skeleton
+  King in 9/14 and the Butcher in 8/16 games; all 50 games of the day were later replayed from their journals. Published with this release (numbers in
+  the table above and in the exam report).
+- **2026-09-21 — First Skeleton King kill, with an online strategist.** The Codex assistant of the project task as
+  strategist (after an opening played with Ministral 3 8B), a frozen RL worker and explicit navigation/service
+  execution, in one paused, segmented world with surviving retries (the first two King encounters ended in living
+  retreats); hero alive at 96/96 HP, no weights updated. The released videos cover the opening and the final fight,
+  not the complete 46:59 run. [Evidence and limitations](docs/milestones/2026-09-21-skeleton-king/README.md)
+  · [release](https://github.com/Diabolically-Handsome/AlphaDiablo/releases/tag/skeleton-king-first-kill-20260921).
+- **2026-09-13 — First Butcher kill.** A hybrid system: a behaviour-cloned combat policy, an RL exploration policy
+  and scripted resource/equipment management, from a level-1 start to a level-6 kill (alive at 83/110 HP). It won one
+  of two reused development starts; repeating the winning start reproduced it, which is not an independent sample.
+  [Evidence and limitations](docs/milestones/2026-09-13-butcher-first-kill/README.md) ·
+  [smooth 60-fps video](docs/milestones/2026-09-13-butcher-smooth-video/README.md) ·
+  [release](https://github.com/Diabolically-Handsome/AlphaDiablo/releases/tag/butcher-first-kill-20260913).
 
 ## Where the project stands (September 2026)
 
-- **Milestones.** Both public milestones above come from hybrid systems:
-  learned policies working together with scripted or assistant-driven parts.
-  The [Butcher](docs/milestones/2026-09-13-butcher-first-kill/README.md) and
-  [Skeleton King](docs/milestones/2026-09-21-skeleton-king/README.md) folders
-  hold the evidence, replay verification and stated limitations; each has a
-  `verify.py` that checks its sealed files.
-- **Not in this repository yet.** The runtime behind the Skeleton King run (the
-  assistant strategist, the Ministral 3 8B opening, the frozen RL worker and the
-  navigation/goal execution) is not bundled here. Neither are the newest local
-  experiments, such as the option-brain work from 2026-09-22.
-- **In this repository.** The environment (C++ bridge and Python package), the
-  training and evaluation pipeline, the hierarchical manager/worker line
-  (v22-v33) with its models in `train/models/`, the drivers of the closed
-  pre-registered campaigns R7-R9, and the design notes, pre-registrations,
-  forensics and round papers R9-R19 under [`docs/`](docs/README.md).
+- **What works.** From a normal start, a locally run language model that chooses among code-built options,
+  with code-computed facts and scripted hands, kills the Skeleton King in most new worlds (13/16) and the Butcher
+  in a majority (10/16). Deaths come mostly from fighting on dungeon level 2 at low character level without
+  potions.
+- **What does not work yet.** Anything beyond the Skeleton King: the bridge used for these games stops at dungeon
+  level 3, and there is no full-game run. The candidate model trained in round 9 did not beat the released one;
+  its improvements on the 19 training-world gate seeds were largely overfitting to those seeds.
+- **What is published.** The environment (C++ bridge and Python package), the training and evaluation pipeline,
+  the hierarchical manager/worker line (v22–v33) with its models, the pre-registered campaigns R7–R19 and their
+  papers, the milestone evidence, and now the option-brain code with its native sources and exam tooling
+  (`option_brain/`). **Not published:** the option-brain adapter weights, the executor networks, training data,
+  teacher labels and our own game logs.
 
 ---
+
+## The environment: DiabloGym
 
 **A fast, deterministic Diablo I reinforcement-learning environment** built on
 [DevilutionX](https://github.com/diasurgical/devilutionX), plus the training
@@ -407,8 +462,9 @@ this README describe the R7/R8 period; they now live in
 | `python/diablogym/` | Gymnasium environments (`env.py`; hierarchical `options_env.py` and `worker_env.py`) and the resource, loot and sustain protocol modules |
 | `train/` | Trainer, evaluators, BC and export tools, campaign drivers, leaderboards |
 | `train/models/` | Published v22-v29 manager and worker models with model cards |
+| `option_brain/` | The option-brain code that played the round-9 exam, the exam tooling, the replay tool, the bridge-r3 sources and the engine fix it ran on, with a provenance record ([README](option_brain/README.md)); no model weights |
 | `tests/` | Unit and contract tests, plus the shareware runtime probes that CI runs |
-| `docs/` | Design notes, pre-registrations, forensics, protocols, round papers and milestone evidence ([index](docs/README.md)) |
+| `docs/` | Design notes, pre-registrations, forensics, protocols, round papers (including the [round-9 exam](docs/rounds/round9-exam.md)) and milestone evidence ([index](docs/README.md)) |
 | `tools/check_private_terms.py` | Guard that keeps private terms out of every tracked file; the terms and their hashes are kept outside the repository |
 
 Run logs, raw evaluation dumps and raw event ledgers are not kept in git; see
@@ -423,6 +479,7 @@ Run logs, raw evaluation dumps and raw event ledgers are not kept in git; see
 | Hierarchy | `python/diablogym/options_env.py`, `worker_env.py` | A manager picks FARM / DIVE / RESUPPLY options (SMDP); the worker env trains the FARM policy under a frozen manager |
 | Training | `train/train_ppo.py`, `train/leashed_ppo.py` | SB3 (Maskable)PPO, subprocess vec-envs, per-episode JSONL metrics; `LeashedMaskablePPO` adds a cross-entropy leash toward a frozen BC teacher |
 | Evaluation | `train/evaluate.py`, `train/eval_assembled.py`, `train/eval_contract.py` | Frozen-seed deterministic protocol; evaluation archives are schema-validated and bound to the model, runtime and game-data identity |
+| Option brain | `option_brain/` | A 24B language model with a LoRA adapter picks one option per decision from a code-built menu, with code-computed fact lines; scripted hands execute it through the manual, lockstep interface of bridge-r3 (`option_brain/native/`) |
 | Monitoring | `train/dashboard.py` | stdlib-only live dashboard (SVG charts, 2s polling) |
 | Engine fixes | `patches/` | Registered headless/integration fixes, including town asset fallbacks and skipping Lazarus' movie without an SDL video subsystem; applied idempotently and drift-audited by `build.sh` |
 
@@ -458,6 +515,10 @@ quirks are documented in [train/evaluate.py](train/evaluate.py).
   greeting once crashed our headless engine (see patches/0003)
 - [x] The Skeleton King — killed on 2026-09-21 from a normal level-1 start
   ([evidence](docs/milestones/2026-09-21-skeleton-king/README.md))
+- [x] A local model that decides: both bosses killed on never-played seeds by a
+  fine-tuned 24B option brain (2026-09-23), then 13/16 Skeleton King and 10/16
+  Butcher kills in the round-9 exam ([report](docs/rounds/round9-exam.md))
+- [ ] Deeper than dungeon level 3; the bosses after the Skeleton King
 - [ ] Clear-rate objective
 - [ ] Cross-class generalization (Rogue / Sorcerer; the current contract rejects
   non-Warriors until class-specific action/stat semantics are implemented)
@@ -465,54 +526,48 @@ quirks are documented in [train/evaluate.py](train/evaluate.py).
 
 ## Related work
 
-[DevilutionX-AI](https://github.com/rouming/DevilutionX-AI) (Jan 2025)
-independently built an RL framework on the same engine with a different
-integration approach — an out-of-process shared-memory bridge driving a
-running game, with an imitation-learning + PPO pipeline. Its master branch
-documents a 0.98 success rate on level-1 goal-finding (sampling-mode
-evaluation; its author notes argmax scores lower); its develop branch goes
-much further — per-level descent episodes sampled across all 16 dungeon
-levels, with melee plus seven spells, potion and mana-shield management, a
-hierarchical manager/worker model (explorer and combat options) and a
-level-weighted curriculum, at ~71% mean training success (per its author,
-Jul 2026). DiabloGym differs in integration (engine embedded in-process
-via pybind11), in evaluation discipline (argmax-only on frozen seeds,
-pinned engine ref, idle machine), and in its product: the iteration ledger
-itself — twenty generations, every champion and every failed generation
-documented with the lesson it taught. The roguelike-RL canon
-([NLE](https://github.com/facebookresearch/nle),
-[MiniHack](https://github.com/facebookresearch/minihack)) offers
-turn-based, purpose-built research environments; DiabloGym instead wraps a
-commercial real-time ARPG engine with an explicitly documented monotonic-task
-adapter for the otherwise impossible Cain round trip.
+Machine-learning and bot work on the same game that we know of (as of 2026-09-24; corrections welcome):
 
-## 中文速览
+- **NiteKat's DAPI bot** is a rule-based expert system, by its author's description. Titles of viewer clips on
+  NiteKat's channel show a Skeleton King kill in 2018 ("DAPI bot drops Leoric with ease"), a 2021 single-player
+  Rogue completion described as having "some human intervention", and later clips a Diablo kill and Hell
+  difficulty. We rely on titles and metadata; we have not watched the videos. Rule-based bots reached both bosses
+  first, so our claim is limited to learned models.
+- **DeepDungeon** (lciesielski, 2026) is pure RL; its author reports about 13,500 Butcher kills accumulated
+  by 14 clients during training, with the Warrior's strong gear spawned by developer commands.
+- [DevilutionX-AI](https://github.com/rouming/DevilutionX-AI) (Jan 2025)
+  independently built an RL framework on the same engine with a different
+  integration approach — an out-of-process shared-memory bridge driving a
+  running game, with an imitation-learning + PPO pipeline. Its master branch
+  documents a 0.98 success rate on level-1 goal-finding (sampling-mode
+  evaluation; its author notes argmax scores lower); its develop branch goes
+  much further — per-level descent episodes sampled across all 16 dungeon
+  levels, with melee plus seven spells, potion and mana-shield management, a
+  hierarchical manager/worker model (explorer and combat options) and a
+  level-weighted curriculum, at ~71% mean training success (per its author,
+  Jul 2026). Its evaluation runs with the Butcher enabled but does not count
+  kills, so a Butcher kill there cannot be ruled out; its full-game supervisor
+  (since 2026-08-21) leaves town, stairs and gear to code and avoids the Butcher.
+- A tool-assisted speedrun (TASVideos 9396S, 2024) completes the game with hand-authored frame-by-frame inputs.
 
-基于 DevilutionX 的暗黑破坏神 I 强化学习环境:无头引擎裸跑 ~13,000 倍实时
-(引擎 tick 约 254k/秒;含完整观测的 env.step 在当前研究配置下约 300–500 步/秒/进程,
-瓶颈在 Python 侧观测抽取,2026-09-06 回执)、种子级确定性(评估跨进程
-位级可复现)、Gymnasium 接口、宏动作(交战/探索/主线推进/喝药/捡药)、零依赖训练
-监控面板。
-
-- **里程碑**:2026-09-13 击杀屠夫,2026-09-21 从正常 1 级开局击杀骷髅王。两次都是混合系统
-  (学到的策略加脚本或助手部件),证据、复放校验和局限说明见 `docs/milestones/`。
-  骷髅王那次的运行时代码(助手策略脑、Ministral 3 8B 开局、冻结 RL 工人、导航/目标执行)
-  不在本仓库;2026-09-22 之后的本地新实验(例如选项脑)也还没有放进来。
-- **第一章**:二十轮迭代把 PPO 从"面壁思过"练到"开门、砸桶、捡药续命、一路下杀"
-  (32 种子金标准均击杀 **35.2**;实喝纪律 0.5%→93.4%),留下十七课教训:奖励税、塑形归因、
-  动作时序、防磨刀、感知天花板、探索 option、宏退化吸引子、评估运气税、任务设计>架构、
-  能力住在动作空间、新动作也是新藏身处、纪律是观测的函数而藏身处守恒、奖励流是最后一位观察者、
-  塑形只放大不召唤、掩码移动概率不移动价值、买到的是你定价的行为、先审世界再调智能体。
-- **之后**:分层经理/工人(v22–v33),预注册战役 R7–R9(R8 认证 2026-07-28 通过),以及 R10–R19 各轮文书。
-  完整踩坑史见 [docs/design/DESIGN.md](docs/design/DESIGN.md),文档索引见 [docs/README.md](docs/README.md)。
+DiabloGym differs in integration (engine embedded in-process via pybind11), in evaluation discipline
+(argmax-only on frozen seeds, pinned engine ref, idle machine; pre-registered exams with replay verification),
+and in its product: the iteration ledger itself — every champion and every failed generation documented with the
+lesson it taught. The roguelike-RL canon ([NLE](https://github.com/facebookresearch/nle),
+[MiniHack](https://github.com/facebookresearch/minihack)) offers turn-based, purpose-built research environments;
+DiabloGym instead wraps a commercial real-time ARPG engine with an explicitly documented monotonic-task adapter for
+the otherwise impossible Cain round trip.
 
 ## Legal
 
 MIT for the code in this repository ([LICENSE](LICENSE); project notices in
-[NOTICE](NOTICE)). `patches/` contains derivative snippets of
-DevilutionX (Sustainable Use License — non-commercial); the build fetches
-DevilutionX from upstream rather than vendoring it. **No copyrighted game assets
-are included**: bring your own `DIABDAT.MPQ` (GOG) or use Blizzard's freely
-available shareware `spawn.mpq`. Diablo® is a trademark of Blizzard
-Entertainment. This is an unofficial research project, unaffiliated with
-Blizzard Entertainment or DeepMind.
+[NOTICE](NOTICE)). `patches/` and `option_brain/native/engine-r11-loadmonster.patch`
+contain derivative snippets of DevilutionX (Sustainable Use License — non-commercial);
+the build fetches DevilutionX from upstream rather than vendoring it. No compiled engine
+or bridge binaries and no model weights are distributed; the option-brain base model,
+Mistral-Small-3.2-24B-Instruct-2506 (Apache-2.0), is downloaded from Hugging Face.
+**No copyrighted game assets are included**: bring your own `DIABDAT.MPQ` (GOG) or use
+Blizzard's freely available shareware `spawn.mpq`. Diablo® is a trademark of Blizzard
+Entertainment. The videos are replay renders of the game and show Blizzard's artwork.
+This is an unofficial research project, unaffiliated with Blizzard Entertainment,
+DeepMind, Mistral AI, Anthropic or OpenAI.
