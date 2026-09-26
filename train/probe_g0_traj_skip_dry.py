@@ -1,18 +1,18 @@
-"""G0-恒等 轨迹位级探针 · skip_dry=True 端点(内容案课⑤x④乙 E0;基线/重放两用)。
+"""G0-identity bit-level trajectory probe, skip_dry=True endpoint (v33 content case E0; for both baseline and replay).
 
-Rig 与 train/probe_g0_traj.py 逐字同型(全栈工人路径:WorkerWindowEnv +
-king/throne npz argmax 逐拍),**唯一差异 = WorkerWindowEnv 构造显式传
-skip_dry=True**(干层复访窗脚本内环代跑端点,G0-1 之 p≡1.0 对应端)。
-skip_dry=False 端点仍由原脚本 + 原基线档(g0v32_traj_baseline*.json)承担;
-本脚本零触碰原件(E0 铁律:变更前基线,禁改现存文件)。
+The rig has exactly the same shape as train/probe_g0_traj.py (full-stack worker path: WorkerWindowEnv +
+king/throne npz argmax beat by beat); **the only difference = the WorkerWindowEnv constructor explicitly passes
+skip_dry=True** (the endpoint where the script's inner loop runs dry-level revisit windows, the p==1.0 side of G0-1).
+The skip_dry=False endpoint is still covered by the original script + the original baseline files (g0v32_traj_baseline*.json);
+this script touches the originals not at all (E0 hard rule: baseline before the change, never modify existing files).
 
-常量(SEEDS/H_NPZ/KING_NPZ/THRONE_NPZ/f2hex)直接 import 原脚本,防镜像漂移;
-episode_digest 系原文镜像,仅 env 构造行加 skip_dry=True。
+Constants (SEEDS/H_NPZ/KING_NPZ/THRONE_NPZ/f2hex) are imported directly from the original script to prevent mirror drift;
+episode_digest mirrors the original text, adding only skip_dry=True to the env constructor line.
 
-用法:
-  基线(E 施工前):.venv/bin/python train/probe_g0_traj_skip_dry.py baseline [throne]
-  重放(E 施工后):.venv/bin/python train/probe_g0_traj_skip_dry.py replay [throne]
-重放模式逐种子对比基线档,任何一位不同 → 退出码 1(G0 失败)。
+Usage:
+  baseline (before the E work): .venv/bin/python train/probe_g0_traj_skip_dry.py baseline [throne]
+  replay (after the E work): .venv/bin/python train/probe_g0_traj_skip_dry.py replay [throne]
+Replay mode compares the baseline file seed by seed; any bit that differs -> exit code 1 (G0 fails).
 """
 import hashlib
 import json
@@ -22,7 +22,7 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "train"))
 
-from probe_g0_traj import (  # noqa: E402  原脚本常量单一真源
+from probe_g0_traj import (  # noqa: E402  single source of truth for the original script's constants
     H_NPZ, KING_NPZ, SEEDS, THRONE_NPZ, f2hex)
 from diablogym.worker_env import NumpyManager, WorkerWindowEnv  # noqa: E402
 
@@ -36,7 +36,7 @@ def episode_digest(seed: int, npz=None) -> dict:
     net.require_worker_contract()
     env = WorkerWindowEnv(str(H_NPZ), max_steps=3000, rng_seed=0,
                           seed_scope="replay",
-                          log_windows=True, skip_dry=True)   # ← 与原脚本唯一差异
+                          log_windows=True, skip_dry=True)   # <- the only difference from the original script
     h = hashlib.sha256()
     wages = 0.0
     steps = 0
@@ -58,7 +58,7 @@ def episode_digest(seed: int, npz=None) -> dict:
             ex = info.get("option_extra")
             if ex is not None:
                 assert abs(ex["W"] - (ex["R"] - ex["bonus"])) < 1e-6, (
-                    f"工资恒等式破裂:seed {seed} W={ex['W']} "
+                    f"wage identity broken: seed {seed} W={ex['W']} "
                     f"R={ex['R']} bonus={ex['bonus']}")
             h.update(b"|WIN|")
             obs = env.next_window()
@@ -67,7 +67,7 @@ def episode_digest(seed: int, npz=None) -> dict:
     tot = env.window_log
     assert abs(sum(w["W"] for w in tot)
                - (sum(w["R"] for w in tot) - sum(w["bonus"] for w in tot))) < 1e-5, \
-        f"逐局工资恒等式破裂:seed {seed}"
+        f"per-episode wage identity broken: seed {seed}"
     raw = env.oe.env._raw
     final = (f"d{raw['dungeon_level']},dead{int(raw['dead'])},"
              f"hp{raw['hp']},xp{raw.get('experience', raw.get('xp', 0))}")
@@ -89,16 +89,16 @@ def main():
               f"wages {r['wages']}", flush=True)
     if mode == "baseline":
         out.write_text(json.dumps(rows, ensure_ascii=False, indent=1))
-        print(f"基线已存 {out}")
+        print(f"baseline saved to {out}")
         return 0
     base = {r["seed"]: r for r in json.loads(out.read_text())}
     bad = [r["seed"] for r in rows
            if r["sha"] != base[r["seed"]]["sha"]
            or r["steps"] != base[r["seed"]]["steps"]]
     if bad:
-        print(f"G0-恒等 skip_dry=True 失败({'throne' if throne else 'king'}):失配种子 {bad}")
+        print(f"G0-identity skip_dry=True FAIL ({'throne' if throne else 'king'}): mismatched seeds {bad}")
         return 1
-    print(f"G0-恒等 skip_dry=True PASS({'throne' if throne else 'king'}):{len(rows)} 种子逐位相同")
+    print(f"G0-identity skip_dry=True PASS ({'throne' if throne else 'king'}): {len(rows)} seeds bit-identical")
     return 0
 
 

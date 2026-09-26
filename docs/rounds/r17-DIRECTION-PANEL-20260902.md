@@ -1,261 +1,352 @@
-# R17 方向合议庭裁决书(2026-09-02)
+# R17 direction review (2026-09-02)
 
-呈:主席。案卷:R16 判决书 r16-VERDICT-20260902.md(台账 VERDICT_R16 行);四份 R17 提案
-(① 资源通道 / ② L2 后勤生存课 / ③ 战备表 v0.3 / ④ 战备教师经理),每份各附三份对抗性批评
-(可行性 / 科学性 / 目标对齐,共 12 份);四份勘察(城镇经济、装备与战备、RESUPPLY 与经理路径、
-L2 死亡法医)。本庭裁决规则:致命缺陷重于优点;结构性推进「打穿」重于打磨 L2;主席原则
-「只有刷到数值以上才可以前往下一层」不可被定义式满足;不再无休止拧工资旋钮;工程与日历成本如实报。
-本文件为新立档案,不改动任何既有文件;引用一律 file:line(仓库 /home/user/AlphaDiablo/diablogym)。
+Dossier: the R16 verdict [r16-VERDICT-20260902.md](r16-VERDICT-20260902.md) (ledger row VERDICT_R16); four
+R17 proposals (1 resource channel / 2 L2 logistics and survival course / 3 readiness table v0.3 / 4
+readiness-teacher manager), each with three adversarial critiques (feasibility / science / goal alignment,
+12 in total); four surveys (town economy, gear and readiness, RESUPPLY and the manager path, L2 death
+forensics). Review rules: a fatal defect outweighs strengths; structural progress toward "breaking
+through" outweighs polishing L2; the readiness principle (descend only once the power value is reached)
+must not be satisfied by definition; no more endless turning of wage knobs; engineering and calendar costs
+are reported honestly.
+This is a new file and changes no existing file; all references are file:line, relative to the repository.
 
-## 一、案由
+## 1. Rationale
 
-### 1. R16 结论(不再复述数字以外的部分)
-史上首次四门全过(A/B/C/D 对新法锚);部署 16 种子:臂存活 5/16 vs 认证工人 10/16,L2 到达 10/16 vs 1/16,
-clvl 3.06 vs 2.25;臂在 L2 阵亡 8/10(死时 AC 7,7,7,7,7,8,9,16;L2 花名册 114–162 只;死亡中位 3885 拍);
-训练课堂 244 次下楼,战备托管 vested 0 / unready_denied 6,441。依预注册不加冕。R16 判决书将下一层根因命名为
-「清空却未达标的死局」(cleared-but-unready):教练在楼层清空时不论战备即开 DIVE,而 AC 9 只能靠护甲掉落,
-金币恒 100 无处可花。
+### 1. The R16 conclusion (only the numbers are repeated)
+Four gates passed for the first time ever (A/B/C/D against the new-rule anchor); deployment on 16 seeds:
+arm survival 5/16 vs certified worker 10/16, L2 reached 10/16 vs 1/16, clvl 3.06 vs 2.25; the arm died on
+L2 in 8/10 cases (AC at death 7,7,7,7,7,8,9,16; L2 roster 114-162 monsters; median step of death 3885);
+training classroom 244 descents, readiness escrow vested 0 / unready_denied 6,441. No crown, as
+pre-registered. The R16 verdict named the next layer of root cause "the dead end of cleared but unready":
+the coach opens DIVE when the level is cleared regardless of readiness, while AC 9 can come only from an
+armour drop and gold stays at 100 with nowhere to spend it.
 
-### 2. 合议庭对案由的三处更正(12 份批评中 ≥9 份独立坐实)
-**更正一:死局的真名是「榨干旗强制下楼」,不是「清空即下潜」。**
-- 教练规则确为 `want = DIVE if (ready or cleared) else FARM`(python/diablogym/worker_env.py:1128-1130;
-  部署探针镜像 train/runs/r10-staging/probe_r15_deployment.py:215-224)。
-- 但部署中 L1 从未在 6000 拍内清空:三个 L1 存活种子终局仍剩 18/13/35 只怪(r16-deploy-arm.json 行 2114001/002/007),
-  锚的露营者剩 9–45 只。`cleared`(击杀比 1.0,worker_env.py:169-180)在部署里几乎从不触发。
-- 真正拍板下楼的是冻结掩码法:`forced_dive = _farm_handoff(...) or (self.exhausted and m[DIVE]); m[FARM] = not forced_dive`
-  (python/diablogym/options_env.py:739-741)。`exhausted` 在 FARM 窗无进展满 KILL_PATIENCE=140 微拍**或**
-  farm_scene_steps ≥ farm_scene_cap(3600)时置位(options_env.py:63, :1022-1027;`_mark_exhausted` :542-549),
-  `reset_layer_clock_on_window` 只清 layer_clock 不清旗(:770-774)。
-- 证据:R16 训练收窗原因 exhausted 284 ≈ descend 244(r16-arm-a-constitution/sentinel.jsonl 终行);
-  1614 个 live DIVE 窗仅 244 次下楼(r13_dive_audit.jsonl 终行);部署 L2 死亡拍 3768/3869/3885 ≈ 场景预算 3600 + 路程。
-- 推论:任何只改教练 want 的方案(③、④)在这条路径上至多推迟一个窗(≤140–600 拍),
-  R15 判决书早已写明「教练的任何 want 都被掩码回退覆盖」(r15-VERDICT-20260901.md §二.1)。
-  要让主席原则在清空/榨干楼层上**可满足**,必须同时具备:(a)一条非下潜的成长通道,使「达标」可达;
-  (b)榨干逃生口对战备可见并记账(强制未达标下楼 = 不付托管、单独统计)。
+### 2. Three corrections to the rationale (each confirmed independently by ≥9 of the 12 critiques)
+**Correction 1: the real name of the dead end is "the exhaustion flag forces the descent", not "dive when
+cleared".**
+- The coach rule is indeed `want = DIVE if (ready or cleared) else FARM`
+  (python/diablogym/worker_env.py:1128-1130; mirrored in the deployment probe
+  train/runs/r10-staging/probe_r15_deployment.py:215-224).
+- But in deployment L1 was never cleared within 6000 steps: the three L1 survivor seeds still had 18/13/35
+  monsters at the end (r16-deploy-arm.json rows 2114001/002/007), and the anchor's campers had 9-45 left.
+  `cleared` (kill ratio 1.0, worker_env.py:169-180) almost never triggers in deployment.
+- What really decides the descent is the frozen mask rule: `forced_dive = _farm_handoff(...) or
+  (self.exhausted and m[DIVE]); m[FARM] = not forced_dive` (python/diablogym/options_env.py:739-741).
+  `exhausted` is set when a FARM window has no progress for KILL_PATIENCE=140 micro-steps **or**
+  farm_scene_steps ≥ farm_scene_cap (3600) (options_env.py:63, :1022-1027; `_mark_exhausted` :542-549), and
+  `reset_layer_clock_on_window` clears only layer_clock, not the flag (:770-774).
+- Evidence: in R16 training, window closures for exhausted 284 ≈ descend 244
+  (r16-arm-a-constitution/sentinel.jsonl, last row); 1614 live DIVE windows gave only 244 descents
+  (r13_dive_audit.jsonl, last row); L2 death steps in deployment 3768/3869/3885 ≈ the scene budget of 3600
+  + travel.
+- Corollary: any option that changes only the coach's want (3, 4) delays the descent by at most one window
+  on this path (≤140-600 steps); the R15 verdict already said that "every want of the coach is overridden by
+  the mask fallback" (r15-VERDICT-20260901.md §2.1). To make the readiness principle **satisfiable** on
+  cleared / exhausted levels, both of these are needed: (a) a growth channel other than diving, so that
+  "ready" is reachable; (b) the exhaustion escape hatch made visible to readiness and accounted for (a
+  forced unready descent = no escrow payment, counted separately).
 
-**更正二:三处潜伏缺陷,任何方向都必须先修。**
-1. 托管战备门用的是 v0.1 尺:`_descend_escrow_settlement` 在 worker_env.py:1866-1877 调 `readiness_power_ratio`
-   (v0.1 表 :197-205,L2 需 clvl3/HP90/AC15/dmg8),而教练用 `readiness_power_ratio_v2`(:1128 → v0.2 表 :139-141,
-   L2 = clvl2/AC9/dmg6)。vested 0 / denied 6,441 是结构必然;R16 判决书「244 次下楼无一达标」一句部分是尺子伪影
-   (部署 10 次 L2 到达中 4 次 AC ≥ 9,按 v0.2 应当 vest)。
-2. leashed_ppo 收据地雷:超时零记分支要求 `float(reward) == worker_wage`(train/leashed_ppo.py:4746),
-   死亡等价分支要求 `== worker_wage + timeout_total`(:4785);而 worker_env 终局 policy_reward 另加
-   `_escrow_vest + _hp_econ + 深度塑形`(worker_env.py:2113-2121, :2207-2214)。R16 每腿 78 次超时未触雷
-   只因 vest 恒 0;托管一旦真的 vest,第一次与超时同窗即 RuntimeError 炸腿。
-3. 仪表缺失:没有任何档案记录下楼拍、下楼时腰带/AC/HP、强制还是自愿(探针面板 probe_r15_deployment.py:102-114
-   无 hp/belt/下楼拍)。「AC 在下楼时 vs 死亡时」「行程太长 vs a11 失速」全部只能推断。
+**Correction 2: three latent defects that must be fixed whatever the direction.**
+1. The escrow readiness gate uses the v0.1 ruler: `_descend_escrow_settlement` at worker_env.py:1866-1877
+   calls `readiness_power_ratio` (v0.1 table :197-205, L2 needs clvl3/HP90/AC15/dmg8), while the coach uses
+   `readiness_power_ratio_v2` (:1128 → v0.2 table :139-141, L2 = clvl2/AC9/dmg6). vested 0 / denied 6,441 is
+   a structural necessity; the R16 verdict's "none of 244 descents met the bar" is partly a ruler artefact
+   (in 4 of the 10 L2 arrivals in deployment AC ≥ 9, which under v0.2 should vest).
+2. A landmine in the leashed_ppo receipt: the zero-timeout branch requires `float(reward) == worker_wage`
+   (train/leashed_ppo.py:4746), and the death-equivalent branch requires `== worker_wage + timeout_total`
+   (:4785); but worker_env's end-of-episode policy_reward also adds `_escrow_vest + _hp_econ + depth
+   shaping` (worker_env.py:2113-2121, :2207-2214). The 78 timeouts per leg in R16 did not trigger it only
+   because vest was always 0; the first time escrow really vests in the same window as a timeout, a
+   RuntimeError blows up the leg.
+3. Missing instrumentation: no archive records the descent step, belt/AC/HP at descent, or whether the
+   descent was forced or voluntary (the probe panel probe_r15_deployment.py:102-114 has no hp/belt/descent
+   step). "AC at descent vs at death" and "trip too long vs a11 stall" can only be inferred.
 
-**更正三:几条被四份提案共同引用的"证据"不成立。**
-- 「所有死亡行 belt=0」是脑干反射的同义反复:`_drain` 在 2*hp<max_hp ∧ belt>0 时逐拍灌药
-  (options_env.py:1144-1157;谓词 env.py:956-962),L2 单击最高 15 HP 不足以跳过反射,任何策略死时 belt 必为 0。
-  锚同样 41/41、47/47(r16-anchor-xdevil-a / -xm29-a.json)。它不证明「工人不会用药」,
-  只证明「药被喝光后才死」——即**供给**是约束(这一点反而支持 ①)。
-- 金币算术:引擎 RndItemForMonsterLevel 掉落率 = P(GenerateRnd(100) ≤ 40) × P(第二次 > 25) ≈ 0.41 × 0.74 ≈ 30%/杀
-  (engine Source/items.cpp:3257-3266),不是提案的 45%;100 杀 L1 清场 ≈ 285 金而非 420。
-  且引擎 AutoPickup 只在一步走完时扫 8 邻格(Source/player.cpp:442;Source/qol/autopickup.cpp:93-110),
-  原地 a9 砍死的怪脚下的金堆需要后续走位才会被捡。覆盖率**未量**。
-- 「DEVIL 经理让存活多 29/128」(④ 的核心论据)是到达伪影:DEVIL×7e31dc54 在 3000 拍考卷里 L2 到达仅 4/128、0/128
-  (eval-assembled/r16-arm-a-constitution-xdevil-{a,b}.json),M29 到达 45/128 且在 L2 死 27——差的是谁到了 L2,不是决策质量。
-- 「α2 证明本策略族能学会生存」(②):α2 的 devil 卷深度直方 {1:128}/{1:127,2:1}
-  (r13-arm-a2-shaping-xdevil-{a,b}.json)——α2 靠罢潜活下来,从未在 L2 生存过。
+**Correction 3: several pieces of "evidence" cited by all four proposals do not hold.**
+- "Every death row has belt=0" is a tautology of the brainstem reflex: `_drain` pours potions every step
+  when 2*hp<max_hp ∧ belt>0 (options_env.py:1144-1157; predicate env.py:956-962), and the largest single hit
+  on L2, 15 HP, is not enough to skip the reflex, so under any policy the belt must be 0 at death. The anchor
+  shows the same 41/41 and 47/47 (r16-anchor-xdevil-a / -xm29-a.json). It does not prove that "the worker
+  cannot use potions", only that "it dies after the potions are gone", i.e. **supply** is the constraint
+  (which actually supports option 1).
+- Gold arithmetic: the engine's RndItemForMonsterLevel drop rate = P(GenerateRnd(100) ≤ 40) × P(second roll
+  > 25) ≈ 0.41 × 0.74 ≈ 30% per kill (engine Source/items.cpp:3257-3266), not the proposal's 45%; a 100-kill
+  L1 clear ≈ 285 gold, not 420. And the engine's AutoPickup scans the 8 neighbouring cells only when a step
+  completes (Source/player.cpp:442; Source/qol/autopickup.cpp:93-110), so gold under a monster killed in
+  place with a9 is picked up only by later movement. Coverage was **not measured**.
+- "The DEVIL manager keeps 29/128 more alive" (the core argument of option 4) is an arrival artefact:
+  DEVIL×7e31dc54 reaches L2 in only 4/128 and 0/128 on the 3000-step exam sheets
+  (eval-assembled/r16-arm-a-constitution-xdevil-{a,b}.json), while M29 reaches it in 45/128 and dies on L2
+  27 times: the difference is who reaches L2, not the quality of decisions.
+- "α2 proves this policy family can learn to survive" (option 2): α2's devil-sheet depth histograms are
+  {1:128}/{1:127,2:1} (r13-arm-a2-shaping-xdevil-{a,b}.json): α2 survived by refusing to dive and never
+  survived on L2.
 
-## 二、四条路:方案摘要与陪审团评分
+## 2. Four routes: summaries and panel scores
 
-### 方案摘要
-| 路 | 一句话 | 改动面 | 自报成本 |
+### Summaries
+| Route | In one sentence | Change surface | Self-reported cost |
 |---|---|---|---|
-| ① 资源通道 | 自动拾金 + 上楼回城 + UI-free 买甲/买药/Pepin 免费治疗 + readiness-v4 教练(清空/榨干且未达标 → 回城一次,不下潜);RESUPPLY 窗口(Discrete(3) 不变)承载回城脚本 | 桥 ~280 行 C++(拾金/上楼/商店观测/买卖事务)+ env/options/worker/train/eval ~630 行 Python + 新探针/测试/驱动 | 95–110 h,3 周;首次 C++ 轮 |
-| ② L2 后勤生存课 | 工人侧深起点课程(p=0.5 到 L2)+ 红区失血计价 ×3 + a12 喝药先验 + 托管尺 v0.2;零引擎/env/options 改动 | worker_env/leashed_ppo/train_ppo ~300 行 + 新探针/驱动 | 30–36 h,3–4 天 |
-| ③ 战备表 v0.3 | 表 v0.3(L2/L3 AC 改 7,新增腰带列 belt≥2)+ cleared∧ready 才开 DIVE + 托管门换 v0.3 尺 + 腰带下限 RESUPPLY 教练规则 + 收据地雷修补 | worker_env/leashed_ppo/train_ppo ~200 行 + 新探针/测试 | 14–20 h,3–4 天 |
-| ④ 战备教师经理 | 用 readiness-v3 脚本 BC 初始化 Discrete(3) 经理,再 MaskablePPO 微调(工人 7e31dc54 驱动 FARM+DIVE);训练侧目标 r' = R − 48·[自愿未达标下楼] + 存活深度时间积分 | train_ppo options 路径 ~240 行 + BC/探针/驱动 ~1000 行新文件 | 48–64 h,2 周;训练 12–20 h |
+| 1 Resource channel | automatic gold pick-up + going upstairs back to town + UI-free buying of armour / potions / free healing at Pepin + a readiness-v4 coach (cleared/exhausted and not ready → one town trip, no dive); the RESUPPLY window (Discrete(3) unchanged) carries the town script | bridge ~280 lines of C++ (gold pick-up / going upstairs / shop observation / buy-sell transactions) + ~630 lines of Python in env/options/worker/train/eval + new probes/tests/drivers | 95-110 h, 3 weeks; the first C++ round |
+| 2 L2 logistics and survival course | worker-side deep-start curriculum (p=0.5 to L2) + red-zone HP-loss pricing ×3 + an a12 drinking prior + escrow ruler v0.2; no engine/env/options change | ~300 lines in worker_env/leashed_ppo/train_ppo + new probes/drivers | 30-36 h, 3-4 days |
+| 3 Readiness table v0.3 | table v0.3 (L2/L3 AC changed to 7, a new belt column belt≥2) + DIVE only when cleared∧ready + the escrow gate switched to the v0.3 ruler + a belt-floor RESUPPLY coach rule + a fix for the receipt landmine | ~200 lines in worker_env/leashed_ppo/train_ppo + new probes/tests | 14-20 h, 3-4 days |
+| 4 Readiness-teacher manager | initialise the Discrete(3) manager by BC from the readiness-v3 script, then fine-tune with MaskablePPO (worker 7e31dc54 drives FARM+DIVE); training-side objective r' = R − 48·[voluntary unready descent] + a time integral of surviving depth | ~240 lines in the options path of train_ppo + ~1000 lines of new files for BC/probes/drivers | 48-64 h, 2 weeks; 12-20 h of training |
 
-### 陪审团评分表(可行性 / 科学性 / 目标对齐;10 分制;裁定 = recommend_with_fixes / reject)
-| 路 | 可行 | 科学 | 对齐 | 合计 | 裁定分布 | 致命缺陷(裁定 reject 或"按预注册即致命") | 可修缺陷要点 |
+### Panel scores (feasibility / science / alignment; out of 10; verdict = recommend_with_fixes / reject)
+| Route | Feas. | Sci. | Align. | Total | Verdicts | Fatal defects (a reject verdict or "fatal as pre-registered") | Main fixable defects |
 |---|---|---|---|---|---|---|---|
-| ① 资源通道 | 6 | 5 | 5 | **16** | 3× recommend_with_fixes | 无 reject。科学性判三条"按预注册即致命但可修":(F1)主指标 alive/16@6000 可被行程截断曝光时间白得(回城 600 拍即可把 3/8 个 L2 死亡推出地平线);(F2)16 种子无功效(5/16 vs 11/16 才 p<0.05);(F3)行程触发含 `self.oe.exhausted` 即重开 R15 白嫖榨干旗漏洞并叠加 v0.2 托管 24 单位赏金 | 金币算术 ×1.5 高估、拾取覆盖未量;来回上下楼被 `_reward` 重复付 +40/层(env.py:4784-4801);工人观测含 gold/1000(env.py:5012,5110)→ T0 的 OOD 混杂;TOWN_CAP 1000 > TAU_CAP 600 窗法冲突;金币计入 positive_progress(options_env.py:912)改变 FARM 窗法;nav.walk_to 绕过 env.step 不计拍(nav.py:36-49);门槛数值与 analyze_arm_gates.py:53-55 不符却自称"verbatim";重建管线自 7 月 27 日后从未跑过;`_town_trip_legal` 未含 (cleared∨cap)∧¬ready,M29 锚从出生金 100 起就能回城 1000 拍;'T0 配置加冕'越过四门;Lazarus 论据已被 AutoTurnInBetrayerStaffForMonotonicTask(src/diablogym.cpp:2085-2098)废掉 |
-| ② 生存课 | 6 | 3 | 5 | 14 | 1× reject(科学)+ 2× with_fixes(对齐一份判"作为方向致命") | 科学 F1 belt=0 同义反复、锚零主动喝药却更能活;F2 工资算术差 ~4×(实测失血 2.09 HP/杀 → −0.21/杀,×3 也只到收支平衡),红区罚只在 belt=0 状态累积 = 第二份死亡罚金,R14 已证价格轴无解;F3 托管在任何非死亡收窗即 vest(worker_env.py:1826-1848,含 'end'/'stall'/'cap'),最优策略是罢潜到 ~5800 拍再下楼领 24;F4 课程/非课程回合混算 kill-switch;F5 不碰死局。对齐:训练工人去"活过违反主席原则的下楼",且完全成功也只是 L2 打磨 | worker_env 属协议文件须六锚全重烤(eval_contract.py:55-63);a12 波段在主权下已由 options_env.py:1776-1800 强制(每窗一次、反射后禁)故 a12 先验前提错;"63% 步在 L1"混淆窗类型与楼层;12 窗课程可超 6000 拍;续训候选 zip 并无禁令(R-6 反向高估) |
-| ③ 表 v0.3 | 7 | 5 | 3 | 15 | 1× reject(对齐)+ 2× with_fixes(科学判"对因果主张致命") | 对齐:**尺子倒挂**——L2/L3 AC 改 7 = 出生 AC,连续第三次下调(人类攻略表 L2 AC 15–25、L3 30–40,r15-READINESS-TABLE-draft.md:15-17),「达标」被定义式满足;无任何降低 h(2) 的机理(R14: h 靠技能不靠尺子);cleared∧ready 门在榨干旗路径上是空操作;再度推迟关键路径工程。科学:belt≥2 = 起始装备,clvl≥3 已被 206/220 到达者持有,机制不可能产出 0.80→0.55–0.65;榨干口被误述为"3600 才开";RESUPPLY-first 把控制交给不攻击的脚本且在 L2 带怪时也触发 | 三处代码事实与两处地雷(托管尺、收据)全部属实且最先由本案发现;规模自报 100–200 行实为 ~520–590 行;G0-A(2) 精确复现须显式 far_tiles=0;托管门在收窗评估而教练在开窗评估,腰带列会因反射灌药错位 |
-| ④ 教师经理 | 6 | 3 | 3 | 12 | 2× reject(科学、对齐)+ 1× with_fixes | 科学 F1 机理与自引数据矛盾(DEVIL 从不离开 L1);F2 目标不计生存(−48 恰抵消 +48 下楼奖,存活项 ≤24/局,J 差 O(10–30) ≈ 0.2–0.4 σ,R9 塌缩前提未变);F3 G5(died ≤ DEVIL+5)与 G2(L2 到达 ≥0.8×)互斥,唯一同时满足者是"FARM 到场景上限被迫下楼" = const-FARM → 撞 G4。对齐:把主席"告诉经理一个数值"的硬规则改成可用 140 拍闲置绕过的软罚(经理级白嫖);init-source checkpoint 全 state_dict 精确匹配(train_ppo.py:7241-7255)不能种到 Discrete(4) TOWN 经理;不在呈主席候选名单;R9/R12 两次证伪 | "无需重烤"不实(train_ppo 属五文件重烤法,r13_ledger.jsonl:4);教练的 cleared 分支在 303 维观测中不可表(可见∧可达怪 vs 全花名册;本层击杀 /50 饱和);BC 接线比自述重 40–60 行;吞吐估计 8 envs 6–8 h 无实测 |
+| 1 Resource channel | 6 | 5 | 5 | **16** | 3× recommend_with_fixes | No reject. The science critique found three "fatal as pre-registered but fixable" items: (F1) the main metric alive/16@6000 can be gamed for free by trips truncating exposure time (a 600-step town trip pushes 3 of 8 L2 deaths past the horizon); (F2) 16 seeds have no power (only 5/16 vs 11/16 gives p<0.05); (F3) a trip trigger that includes `self.oe.exhausted` reopens R15's free-riding of the exhaustion flag and stacks it with the 24-unit v0.2 escrow bounty | Gold arithmetic overestimated ×1.5, pick-up coverage not measured; going up and down stairs pays +40 per level repeatedly through `_reward` (env.py:4784-4801); the worker observation contains gold/1000 (env.py:5012,5110) → OOD confound in T0; TOWN_CAP 1000 > TAU_CAP 600 conflicts with the window rules; counting gold as positive_progress (options_env.py:912) changes the FARM window rules; nav.walk_to bypasses env.step and does not count steps (nav.py:36-49); the threshold numbers differ from analyze_arm_gates.py:53-55 while claiming to be "verbatim"; the rebuild pipeline has not run since 27 July; `_town_trip_legal` lacks (cleared∨cap)∧¬ready, so the M29 anchor could go to town for 1000 steps from its starting 100 gold; "crowning the T0 configuration" bypasses the four gates; the Lazarus argument was already voided by AutoTurnInBetrayerStaffForMonotonicTask (src/diablogym.cpp:2085-2098) |
+| 2 Survival course | 6 | 3 | 5 | 14 | 1× reject (science) + 2× with_fixes (the alignment critique judged it "fatal as a direction") | Science F1: the belt=0 tautology, and the anchor never drinks actively yet survives better; F2: the wage arithmetic is off by ~4× (measured HP loss 2.09 HP per kill → −0.21 per kill; even ×3 only breaks even), and the red-zone penalty accumulates only in the belt=0 state = a second death penalty, while R14 already showed the price axis has no solution; F3: escrow vests on any non-death window closure (worker_env.py:1826-1848, including 'end'/'stall'/'cap'), so the optimal policy is to refuse to dive until ~5800 steps and then descend to collect 24; F4: the kill-switch mixes curriculum and non-curriculum episodes; F5: it does not touch the dead end. Alignment: it trains the worker to "survive descents that violate the readiness principle", and even full success is only L2 polishing | worker_env is a protocol file, so all six anchors must be re-baked (eval_contract.py:55-63); under autonomy the a12 band is already enforced by options_env.py:1776-1800 (once per window, forbidden after the reflex), so the premise of an a12 prior is wrong; "63% of steps on L1" confuses window type with level; a 12-window curriculum can exceed 6000 steps; continued-training candidate zips are not actually forbidden (R-6 overestimated in the other direction) |
+| 3 Table v0.3 | 7 | 5 | 3 | 15 | 1× reject (alignment) + 2× with_fixes (the science critique judged it "fatal to the causal claim") | Alignment: an **inverted ruler**. Changing the L2/L3 AC to 7 = the starting AC, the third downward revision in a row (the human guide table has L2 AC 15-25, L3 30-40, r15-READINESS-TABLE-draft.md:15-17), so "ready" is satisfied by definition; there is no mechanism that lowers h(2) (R14: h comes from skill, not from the ruler); the cleared∧ready gate is a no-op on the exhaustion-flag path; it again delays the engineering on the critical path. Science: belt≥2 = the starting equipment, and clvl≥3 is already held by 206/220 arrivals, so the mechanism cannot produce 0.80→0.55-0.65; the exhaustion exit is misdescribed as "opening only at 3600"; RESUPPLY-first hands control to a script that does not attack, and it also triggers on L2 with monsters around | The three code facts and the two landmines (escrow ruler, receipt) are all true and were first found by this proposal; the self-reported size of 100-200 lines is really ~520-590; an exact reproduction of G0-A(2) needs an explicit far_tiles=0; the escrow gate is evaluated at window close while the coach evaluates at window open, so the belt column would be misaligned by reflex drinking |
+| 4 Teacher manager | 6 | 3 | 3 | 12 | 2× reject (science, alignment) + 1× with_fixes | Science F1: the mechanism contradicts its own cited data (DEVIL never leaves L1); F2: the objective does not count survival (−48 exactly cancels the +48 descent bonus, the survival term is ≤24 per episode, the J difference O(10-30) ≈ 0.2-0.4 σ, and the premise of R9's collapse is unchanged); F3: G5 (died ≤ DEVIL+5) and G2 (L2 reached ≥0.8×) are mutually exclusive, and the only way to satisfy both is "FARM until the scene cap forces the descent" = const-FARM → hits G4. Alignment: it turns the hard rule of "give the manager a power value" into a soft penalty that 140 idle steps can bypass (free-riding at manager level); the init-source checkpoint's full state_dict exact match (train_ppo.py:7241-7255) cannot seed a Discrete(4) TOWN manager; not on the list of candidates for decision; falsified twice, in R9 and R12 | "No re-bake needed" is false (train_ppo is under the five-file re-bake rule, r13_ledger.jsonl:4); the coach's cleared branch cannot be represented in the 303-dim observation (visible ∧ reachable monsters vs the whole roster; kills on the current level /50 saturate); the BC wiring is 40-60 lines heavier than stated; the throughput estimate of 6-8 h with 8 envs is unmeasured |
 
-### 可移植的零件(裁决中已嫁接)
-- 自 ③:托管尺 v0.1→v0.2 修正;leashed_ppo 收据修补;战备表加**腰带列**(但 AC 不下调);逐次下楼遥测;
-  「前任工人在新形态零训练消融」作为决策点。
-- 自 ④:G0-M1 脚本反事实经理(readiness-v3-strict / const-FARM / const-DIVE)量出自由边缘份额与强制下楼份额
-  ——这是 R16 之后最值钱的一项缺失测量,且不需要动 train_ppo(~20 行探针扩展);行为同一性前检文化。
-- 自 ②:工人侧深起点课程(移交 R18);探针逐拍 hp/belt/block 轨迹;红区计价与 a12 先验**不采纳**。
+### Transplantable parts (already grafted into the decision)
+- From 3: the escrow ruler fix v0.1→v0.2; the leashed_ppo receipt fix; a **belt column** in the readiness
+  table (but AC not lowered); per-descent telemetry; "a zero-training ablation of the previous worker in the
+  new form" as a decision point.
+- From 4: the G0-M1 scripted counterfactual managers (readiness-v3-strict / const-FARM / const-DIVE) that
+  measure the free-margin share and the forced-descent share: the most valuable missing measurement since
+  R16, and it needs no change to train_ppo (~20 lines of probe extension); the culture of behavioural
+  identity pre-checks.
+- From 2: the worker-side deep-start curriculum (handed to R18); per-step hp/belt/block trajectories in the
+  probe; red-zone pricing and the a12 prior are **not adopted**.
 
-## 三、裁决
+## 3. Decision
 
-### 方向:① 资源通道(拾金 → 回城买甲买药 → 达标才下楼),作为 R17 主线;以 R17.0「尺子与仪表」为强制前奏;
-### 次选:③(仅其零件);② 移交 R18;④ 关闭。
+### Direction: 1, the resource channel (pick up gold → town trip to buy armour and potions → descend only when ready), as the main line of R17, with R17.0 "ruler and instrumentation" as a mandatory prelude;
+### Second choice: 3 (its parts only); 2 handed to R18; 4 closed.
 
-**理由(按本庭规则逐条):**
-1. 致命缺陷重于优点:①是唯一没有 reject 裁定的方向;②③④各至少一份 reject,且 reject 的都是机理层
-   (②工资算术与 vest 时机、③尺子倒挂与空操作门、④到达伪影与目标不计生存),不是措辞层。
-   ①的三条"按预注册即致命"全是**度量与预注册写法**问题(曝光归一化、种子数、触发子句),用本裁决的修订即可消除。
-2. 结构性推进「打穿」:只有 ① 建立成长通道。人类表 L3+ 需 AC 30–110 与抗性,v0.2 表也要求 AC 每层递增
-   (worker_env.py:140),没有非彩票的装备/药品来源,同一死局会在 L3(h(3)=0.67)、L4… 逐层重演。
-   ① 落地的桥原语(上楼转场、城镇导航、NPC 事务、商店观测)是 L5/9/13 城镇传送、传送门卷轴、深层补药必需的;
-   本庭**不采信** Lazarus→Cain 论据(桥已绕过,src/diablogym.cpp:2085-2098)。
-3. 主席原则:在清空/榨干楼层上,今天「达标」是 ~2%/杀的护甲彩票且 3–12 击即碎(审计 C9)。
-   ① 让「刷到数值以上」在每个种子上**可达**而不是**定义式成立**(③)或**软罚可绕**(④)。
-   榨干逃生口保留为逃生口,但改为**记账可见**:强制未达标下楼不付托管、单独统计、作为止损指标。
-4. 反旋钮:① 是环境可供性(affordance)改动,不是价格;②③④ 的主体都是工资/尺子/教练常数。
-   ① 中新增常数只保留三个(TOWN_CAP、TOWN_MIN_GOLD、腰带列阈值),各有引擎算术依据,不设网格。
-5. 成本如实:① 是自 2026-07-27 二进制以来第一次动桥,重建管线(build/CMakeCache.txt 指向已消失的
-   /tmp/alphadiablo-dev)从未跑过——**这才是日历风险**,不是行数。所以 R17.0 把"未改动桥重建逐位证明"
-   排在任何 C++ 之前,并把零训练的 T0 因子探针作为发射训练臂的唯一判据,避免在坏通道上烧三周。
+**Reasons (rule by rule):**
+1. A fatal defect outweighs strengths: 1 is the only direction without a reject verdict; 2, 3 and 4 each have
+   at least one reject, and the rejects are all at the level of mechanism (2: wage arithmetic and vest
+   timing; 3: inverted ruler and a no-op gate; 4: arrival artefact and an objective that ignores
+   survival), not wording. The three "fatal as pre-registered" items of 1 are all about **metrics and how
+   the pre-registration is written** (exposure normalisation, seed count, trigger clause), and the revisions
+   in this decision remove them.
+2. Structural progress toward "breaking through": only 1 builds a growth channel. The human table needs AC
+   30-110 and resistances from L3 on, and the v0.2 table also requires AC to rise per level
+   (worker_env.py:140); without a non-lottery source of gear and potions, the same dead end repeats on L3
+   (h(3)=0.67), L4 and so on. The bridge primitives that 1 lands (going upstairs, town navigation, NPC
+   transactions, shop observation) are required for the town portals at L5/9/13, town portal scrolls and
+   resupplying potions at depth; this review **does not accept** the Lazarus→Cain argument (the bridge
+   already bypasses it, src/diablogym.cpp:2085-2098).
+3. The readiness principle: on cleared / exhausted levels, "ready" today is an armour lottery of ~2% per kill,
+   and the armour breaks in 3-12 hits (audit C9). Option 1 makes "reach the power value" **reachable** on
+   every seed, instead of **true by definition** (3) or **a soft penalty that can be bypassed** (4). The
+   exhaustion escape hatch stays as an escape hatch, but becomes **visible in the accounts**: a forced
+   unready descent pays no escrow, is counted separately and serves as a stop-loss metric.
+4. Against knob-turning: 1 is a change to environment affordances, not to prices; the bulk of 2, 3 and 4 are
+   wage / ruler / coach constants. Option 1 adds only three new constants (TOWN_CAP, TOWN_MIN_GOLD, the belt
+   column threshold), each grounded in engine arithmetic, with no grid.
+5. Honest costs: 1 is the first change to the bridge since the binary of 2026-07-27, and the rebuild
+   pipeline (build/CMakeCache.txt points at a temporary directory that no longer exists) has never been
+   run: **that is the calendar risk**, not the line count. So R17.0 puts "a bit-level proof of rebuilding the
+   unchanged bridge" before any C++, and makes the zero-training T0 factorial probe the only criterion for
+   launching a training arm, so that three weeks are not burned on a broken channel.
 
-### 序列
-**R17.0 尺子与仪表(2–3 天,零训练,零 C++ 改动;可与 ① 桥施工并行)**
-- (a) 新档案 train/runs/r10-staging/probe_r17_deployment.py(克隆 probe_r15,后者字节不动):每次下楼记
-  {beat, belt_heals, hp, AC, clvl, ratio_v2, forced = ¬mask[FARM], 触发原因 cleared/cap/idle-clock},
-  死亡时 belt 与本层可见地面药,L2 停留拍,分层击杀;经理:readiness-v3(其 2114000-015 十六行须与
-  r16-deploy-arm.json 逐位相等)、readiness-v3-strict、const-FARM、const-DIVE;工人:7e31dc54 与认证工人;
-  48 种子 2114000-2114047 × 6000 拍(≈ 4.5 min/组合,按台账 87 s/16 种子)。产出 = R17 基线行 A0′ 与
-  **强制下楼份额**(决定榨干口是否需要修宪)。
-- (b) 修正案一(默认关;worker_env/leashed_ppo 属协议文件 → 旧法 4×128 + 六卷 r16-anchor 全部逐位重烤):
-  `--worker-descend-escrow-readiness-table {v1,v2}`(worker_env.py:1872 换 `readiness_power_ratio_v2`);
-  leashed_ppo 收据改为对照 `worker_wage + vest + hp_econ + shaping`(缺键 = 0,旧法字节等价)。
-  G0 行:8192 步冒烟证明 vested > 0 且零 RuntimeError。
-- (c) G0-0a:以**未改动**的 src/diablogym.cpp 从 ~/alphadiablo-dev/devilutionX(sha 34c4cfc2,-DDEVILUTIONX_SRC)
-  重建,证明 4×128 旧法锚逐位——把工具链漂移与代码漂移分开。此步不过,① 不动一行 C++。
+### Sequence
+**R17.0 ruler and instrumentation (2-3 days, zero training, zero C++ changes; can run in parallel with the
+bridge construction of option 1)**
+- (a) New file train/runs/r10-staging/probe_r17_deployment.py (a clone of probe_r15, whose bytes stay
+  unchanged): for every descent record {beat, belt_heals, hp, AC, clvl, ratio_v2, forced = ¬mask[FARM],
+  trigger reason cleared/cap/idle-clock}; at death, the belt and the visible floor potions on the level;
+  steps spent on L2; kills by level; managers: readiness-v3 (its sixteen rows 2114000-015 must be
+  bit-identical to r16-deploy-arm.json), readiness-v3-strict, const-FARM, const-DIVE; workers: 7e31dc54 and
+  the certified worker; 48 seeds 2114000-2114047 × 6000 steps (≈ 4.5 min per combination, at the ledger's
+  87 s per 16 seeds). Output = the R17 baseline row A0′ and the **forced-descent share** (which decides
+  whether the exhaustion exit needs a constitutional change).
+- (b) Amendment 1 (off by default; worker_env/leashed_ppo are protocol files → the old-rule 4×128 + all six
+  r16-anchor sheets re-baked bit for bit): `--worker-descend-escrow-readiness-table {v1,v2}`
+  (worker_env.py:1872 switched to `readiness_power_ratio_v2`); the leashed_ppo receipt checks against
+  `worker_wage + vest + hp_econ + shaping` (a missing key = 0, byte-equivalent under the old rules). G0 row:
+  an 8192-step smoke test proving vested > 0 and zero RuntimeError.
+- (c) G0-0a: rebuild the **unchanged** src/diablogym.cpp from a local DevilutionX checkout (sha 34c4cfc2,
+  -DDEVILUTIONX_SRC) and prove the 4×128 old-rule anchors bit for bit, separating toolchain drift from code
+  drift. If this step fails, not a single line of C++ is changed for option 1.
 
-**R17.1 资源通道施工(第 1–3 周)——① 原案 + 本庭强制修订**
-- 行程合法性写在 OptionsEnv `_town_trip_legal`,**经理无关**:dlvl == 1(R17 仅 L1 起程)∧ WM_DIABPREVLVL 触发点存在
-  ∧ (cleared ∨ farm_scene_steps ≥ farm_scene_cap) ∧ ¬ready ∧ trips_this_floor == 0 ∧ gold ≥ 50。
-  **绝不使用 `self.oe.exhausted`**(140 拍闲置门);触发原因逐次记账,idle-clock 触发 = 硬止损。
-- TOWN_CAP = 600(≤ TAU_CAP),城镇窗规置于通用 cap 规之前;RESUPPLY 脚本在 a13 可执行时仍先拾药,该窗不计"空跑"。
-- 城镇宏阶段 0 = **脚本扫金**(act_pickup_gold_at:CMD_GOTOAGETITEM → AutoGetItem → GoldAutoPlace,inv.cpp:1739-1758)
-  扫清可见金堆,不依赖偶然走位;autoGoldPickup 同时开。
-- 金币**不计** positive_progress(options_env.py:912 增加排除)——不改 FARM 窗法。
-- `_reward` 在城镇窗内仅当 cur > `_econ_episode_max_depth` 才付 dl 项(来回净零),`_econ_steps_on_level` 冻结
-  (env.py:4784-4801, :4923-4929);默认关逐位证明。
-- SHOP/DOWN 阶段用**按拍记账的步行者**(a11 触发点步行者参数化 msg),不用 nav.walk_to(绕过 env.step/反射/保险丝)。
-- 购买规划器:护甲要求耐久 ≥ 15(Cloak 40 金/耐久 18,Quilted 200/30;**永不买 Rags**),AC 目标按表;
-  余额尽数买药至腰带上限;Pepin 免费满血。
-- 战备表 **v0.3 = v0.2 + BELT 列**(L2 ≥ 4;依据:RestorePartialLife 均 ≈ 40 HP@86,一瓶 ≈ +19 击承受,
-  四瓶 ≈ ×2.9;经济上 100 + ≥140 拾金 − 40 Cloak ≥ 4 瓶);**AC 保持 9**。readiness-v4 教练:
-  ready_v03 → DIVE;(cleared ∨ cap) ∧ ¬ready ∧ 行程合法 → RESUPPLY(城镇);否则 FARM;行程用尽后榨干口照旧,
-  但记为 forced-unready、不付托管。
-- 工人观测 gold/1000(env.py:5012, :5110):T0 设"拾金开/回城关"对照行;若该行 |Δalive| > 2/48,
-  训练臂加默认关旗把工人视图 gold 钳制为 0.1。
-- 门槛按 analyze_arm_gates.py:53-55 原文(A: UCB95 < 0 ∧ died ≤ 110;B: LCB > −0.10;C: ≥ 0.95×),不再自称 verbatim 却改数。
-- **T0 不加冕**:环境改动加冕须主席另立法;T0 只做机理证明与训练臂发射判据。
-- "楼梯口虚拟商店"回退**只能由主席裁定**,不得由工程师替换。
+**R17.1 resource channel construction (weeks 1-3): the original option 1 + the mandatory revisions of this
+review**
+- Trip legality lives in OptionsEnv `_town_trip_legal` and is **manager-independent**: dlvl == 1 (R17 starts
+  trips only from L1) ∧ the WM_DIABPREVLVL trigger exists ∧ (cleared ∨ farm_scene_steps ≥ farm_scene_cap) ∧
+  ¬ready ∧ trips_this_floor == 0 ∧ gold ≥ 50. **Never use `self.oe.exhausted`** (the 140-step idle gate);
+  the trigger reason is recorded per trip, and an idle-clock trigger = a hard stop-loss.
+- TOWN_CAP = 600 (≤ TAU_CAP), with the town window rule placed before the general cap rule; the RESUPPLY
+  script still picks up potions first when a13 is executable, and such a window does not count as an "empty
+  run".
+- Town macro phase 0 = **scripted gold sweep** (act_pickup_gold_at: CMD_GOTOAGETITEM → AutoGetItem →
+  GoldAutoPlace, inv.cpp:1739-1758) that clears the visible gold piles without relying on incidental
+  movement; autoGoldPickup is switched on as well.
+- Gold is **not** counted as positive_progress (an exclusion added at options_env.py:912), so the FARM
+  window rules do not change.
+- Inside town windows, `_reward` pays the dl term only when cur > `_econ_episode_max_depth` (round trips net
+  to zero), and `_econ_steps_on_level` is frozen (env.py:4784-4801, :4923-4929); bit-level proof with the
+  default off.
+- The SHOP/DOWN phases use **a walker that accounts per step** (the a11 trigger walker with a parameterised
+  msg), not nav.walk_to (which bypasses env.step / the reflex / the fuse).
+- Purchase planner: armour must have durability ≥ 15 (Cloak 40 gold / durability 18, Quilted 200/30;
+  **never buy Rags**), with the AC target from the table; spend the remaining money on potions up to the belt
+  limit; Pepin heals to full for free.
+- Readiness table **v0.3 = v0.2 + a BELT column** (L2 ≥ 4; basis: RestorePartialLife averages ≈ 40 HP at 86,
+  one potion ≈ +19 hits absorbed, four potions ≈ ×2.9; economically 100 + ≥140 gold picked up − 40 for a
+  Cloak ≥ 4 potions); **AC stays at 9**. readiness-v4 coach: ready_v03 → DIVE; (cleared ∨ cap) ∧ ¬ready ∧ trip
+  legal → RESUPPLY (town); otherwise FARM; once the trips are used up the exhaustion exit works as before,
+  but is recorded as forced-unready and pays no escrow.
+- Worker observation gold/1000 (env.py:5012, :5110): T0 gets a "gold pick-up on / town trips off" control
+  row; if that row shows |Δalive| > 2/48, the training arm adds a default-off flag that clamps gold in the
+  worker view to 0.1.
+- Thresholds exactly as in analyze_arm_gates.py:53-55 (A: UCB95 < 0 ∧ died ≤ 110; B: LCB > −0.10; C: ≥
+  0.95×); no more claiming "verbatim" while changing the numbers.
+- **T0 crowns nothing**: crowning an environment change would need its own rule; T0 only proves the
+  mechanism and serves as the launch criterion for a training arm.
+- The fallback of a "virtual shop at the stairs" can be adopted **only by a separate decision**, not
+  substituted by an engineer.
 
-**Gate T0 四行零训练因子探针**(R16 工人 7e31dc54,48 种子):(a)拾金开/回城关;(b)只买药;(c)只买甲;(d)全通道。
-判据见 §四。
+**Gate T0, a four-row zero-training factorial probe** (R16 worker 7e31dc54, 48 seeds): (a) gold pick-up on /
+town trips off; (b) potions only; (c) armour only; (d) the full channel. Criteria in §4.
 
-**R17.1 训练臂**(仅当 T0 过):续训 7e31dc54,readiness-v4,托管尺 v2,T = round2048(266240/(1−s));
-四门对重铸 r17-anchor;部署对 A1 = T0(d) 与 A2 = 认证工人/R17 环境。
+**R17.1 training arm** (only if T0 passes): continue training 7e31dc54, readiness-v4, escrow ruler v2, T =
+round2048(266240/(1−s)); four gates against the recast r17-anchor; deployment against A1 = T0(d) and A2 =
+certified worker / R17 environment.
 
-**R18**:② 的可用零件——工人侧深起点课程 + 撤退宏——在"有药有甲"的前提下开课(R17 遥测决定是后勤墙还是战术墙);
-卖/修/传送门经济供 L3+;路线图修正案(R17 商店内核 → R18 卖修/传送门 + L2 生存课 → R19 L3–L5 课程)。
-④ 仅在 TOWN/RESUPPLY 成为值得切换的选项后重开(Mark-I)。
+**R18**: the usable parts of option 2 (the worker-side deep-start curriculum + a retreat macro) open as a
+course once "potions and armour are available" (R17 telemetry decides whether the wall is logistics or
+tactics); a sell / repair / town portal economy for L3+; roadmap amendment (R17 shop core → R18 sell /
+repair / portal + L2 survival course → R19 L3-L5 curriculum).
+Option 4 reopens only once TOWN/RESUPPLY become options worth switching to (Mark-I).
 
-## 四、建议的 R17 预注册骨架
+## 4. Suggested skeleton of the R17 pre-registration
 
-### 1. 主指标(部署探针 r17 形态:readiness-v4 / 主权开 / v4 / hunt / cap 3600 / clock reset / 6000 拍 / 采样;≥48 种子,优先 128)
-- **主-1 存活(曝光归一化)**:L2 每千拍风险率 = L2 死亡 / Σ L2 停留拍;以及「首次下楼拍 + 1800 时存活」
-  (固定下楼后曝光)。臂/T0 对 A1、A2 比较;成对 McNemar(analyze_arm_gates.py:23-31 估计量)。
-- **主-2 成长保持**:L2 到达 ≥ 0.8 × A0′;clvl 均值 ≥ A0′ − 0.1;L1 每千**地牢拍**(扣除城镇拍)击杀 ≥ 0.85 × A0′。
-- 帕累托计数 alive ∧ L2。
-- 机制子指标(信息量,禁用同义反复):行程触发原因分布(cleared / cap / idle-clock,后者须为 0);行程拍中位;
-  购入 AC 与耐久;购入药数;空跑次数;下楼时 belt/AC;每次 L1 清场拾金;forced-unready 下楼份额(T0(d) ≤ 25%)。
-- 加冕规则:仅经四门(对 r17-anchor)+ 部署「存活不劣于 A2 且成长显著优于 A2」(R16 措辞,锚定 A2 而非常数)。
+### 1. Main metrics (deployment probe in r17 form: readiness-v4 / autonomy on / v4 / hunt / cap 3600 / clock reset / 6000 steps / sampled; ≥48 seeds, 128 preferred)
+- **Main-1 survival (exposure-normalised)**: L2 hazard per thousand steps = L2 deaths / Σ steps spent on L2;
+  plus "survival at first descent step + 1800" (fixed post-descent exposure). The arm/T0 compared with
+  A1 and A2; paired McNemar (the estimator of analyze_arm_gates.py:23-31).
+- **Main-2 growth retention**: L2 reached ≥ 0.8 × A0′; mean clvl ≥ A0′ − 0.1; L1 kills per thousand
+  **dungeon steps** (town steps excluded) ≥ 0.85 × A0′.
+- Pareto count alive ∧ L2.
+- Mechanism sub-metrics (informational, tautologies forbidden): distribution of trip trigger reasons
+  (cleared / cap / idle-clock, the last must be 0); median trip steps; AC and durability bought; potions
+  bought; empty runs; belt/AC at descent; gold picked up per L1 clear; forced-unready descent share (T0(d) ≤
+  25%).
+- Crowning rule: only through the four gates (against r17-anchor) + deployment "survival not worse than A2
+  and growth significantly better than A2" (the R16 wording, anchored on A2 rather than a constant).
 
-### 2. Gate T0(零训练;发射训练臂的唯一判据)
-(d) 对 A0′:成对 saved − lost ≥ +6/48 且 UCB95 < 0;L2 到达 ≥ 0.8 × A0′;L2 每千拍风险率 ≤ 0.7 × A0′;
-(d) − (a) 存活 ≥ +4/48(通道效应而非观测漂移);(b) 与 (c) 各自报告,判决书须点名承重杠杆。
-任一不满足 → 不发射训练臂;R17 判决 = 通道未坐实/不可归因。
+### 2. Gate T0 (zero training; the only criterion for launching a training arm)
+(d) against A0′: paired saved − lost ≥ +6/48 and UCB95 < 0; L2 reached ≥ 0.8 × A0′; L2 hazard per thousand
+steps ≤ 0.7 × A0′; (d) − (a) survival ≥ +4/48 (a channel effect rather than observation drift); (b) and (c)
+reported separately, and the verdict must name the load-bearing lever. Any unmet → no training arm; R17
+verdict = channel not confirmed / not attributable.
 
-### 3. 四门与部署门
-- A/B 对 r17-anchor-devil-{a,b}(认证工人,R17 旗重铸):A UCB95 < 0 ∧ died ≤ 110;B LCB > −0.10。
-- C 对 r17-anchor-m29-{a,b}:ret 与 kills ≥ 0.95×(文件规则);≥ 1.0 作信息报告。
-- D:D1 FARM argmax 一致 < 0.99 对续训前 7e31dc54,**同时**在 R16 环境观测与 R17 环境观测上报告;D2 DIVE 对脚本 < 0.99。
-- 部署门(臂 vs T0(d)):存活 ≥ T0(d) − 2/48 ∧ 风险率 ≤ T0(d) ∧ (clvl 或每千地牢拍击杀) ≥ 1.05×;否则不加冕且不"加冕 T0"。
-- 训练腿门(r13_dive_audit 终行):descends/10 live DIVE 窗 ≥ 1.0;stall 份额 ≤ 25%;vested > 0;零收据 RuntimeError。
+### 3. Four gates and the deployment gate
+- A/B against r17-anchor-devil-{a,b} (certified worker, recast with the R17 flags): A UCB95 < 0 ∧ died ≤ 110;
+  B LCB > −0.10.
+- C against r17-anchor-m29-{a,b}: ret and kills ≥ 0.95× (the file rule); ≥ 1.0 reported for information.
+- D: D1 FARM argmax agreement < 0.99 against 7e31dc54 before continued training, reported **both** on R16
+  environment observations and on R17 environment observations; D2 DIVE against the script < 0.99.
+- Deployment gate (arm vs T0(d)): survival ≥ T0(d) − 2/48 ∧ hazard ≤ T0(d) ∧ (clvl or kills per thousand
+  dungeon steps) ≥ 1.05×; otherwise no crown, and no "crowning of T0".
+- Training-leg gate (last row of r13_dive_audit): descends per 10 live DIVE windows ≥ 1.0; stall share ≤
+  25%; vested > 0; zero receipt RuntimeErrors.
 
-### 4. 锚法
-- 默认关零漂移:旧法 r10-cand/r10-anchor 4×128 逐位(run_r13_rebake.py);六卷 r16-anchor-* 旗全关逐位;
-  probe_r15_deployment 旗全关 16 行逐位等于 r16-deploy-arm/anchor.json(新 bundle 下)。
-- G0-0a:未改动桥重建 → 4×128 逐位(任何 C++ 之前)。
-- 重铸:r17-anchor-{devil,m29,m29full}-{a,b},认证工人,R17 旗,128 种子 × 3000 拍(新档案;拾金改变每条轨迹,
-  且 `_town_trip_legal` 经理无关保证 M29 不会从出生就回城)。
-- 部署锚:A0′(R16 工人/R16 环境,新 bundle 下 48 种子重探,前 16 行逐位等于 R16 行);A1 = T0(d);A2 = 认证工人/R17 环境。
-- 冻结:实现 bundle + 桥 .so + 引擎 .so + 预注册 sha256 入 r13_ledger.jsonl;冻结后改配方一律修正案另立文件。
+### 4. Anchoring method
+- Default off, zero drift: old-rule r10-cand/r10-anchor 4×128 bit for bit (run_r13_rebake.py); the six
+  r16-anchor-* sheets bit for bit with all flags off; probe_r15_deployment with all flags off, 16 rows
+  bit-identical to r16-deploy-arm/anchor.json (under the new bundle).
+- G0-0a: rebuild the unchanged bridge → 4×128 bit for bit (before any C++).
+- Recast: r17-anchor-{devil,m29,m29full}-{a,b}, certified worker, R17 flags, 128 seeds × 3000 steps (new
+  archives; gold pick-up changes every trajectory, and the manager-independent `_town_trip_legal` guarantees
+  that M29 will not go to town from spawn).
+- Deployment anchors: A0′ (R16 worker / R16 environment, re-probed on 48 seeds under the new bundle, the first
+  16 rows bit-identical to the R16 rows); A1 = T0(d); A2 = certified worker / R17 environment.
+- Freeze: implementation bundle + bridge .so + engine .so + pre-registration sha256 into r13_ledger.jsonl;
+  after freezing, any recipe change needs an amendment in a separate file.
 
-### 5. G0 验收
-| 项 | 内容 | 通过线 |
+### 5. G0 acceptance
+| Item | Content | Pass line |
 |---|---|---|
-| G0-0a | 未改动桥重建,4×128 旧法 | 逐位(硬止损) |
-| G0-0 | 新 C++ 重建 + 套件(876 + 新) | 全绿 |
-| G0-1 | 无头城镇往返冒烟 16 种子(L1 起程) | 0 崩溃/挂起;窗内守卫不抛、窗外必抛;返程存活 ≥ 15/16;行程中位 ≤ 400 拍、最大 ≤ 600;L1 花名册/地面物往返前后一致 |
-| G0-2 | 同种子两跑(含商店库存/购买/金币) | 逐位(硬止损) |
-| G0-3 | 经济 16 种子 | 拾金覆盖率(生成堆 vs 拾取堆)≥ 60% 且每次 L1 清场 ≥ 150 金;行程后 AC ≥ 9 且耐久 ≥ 15 者 ≥ 12/16;belt ≥ 4 者 ≥ 12/16;空跑 ≤ 2/16 |
-| G0-4 | 反白嫖 | idle-clock 触发行程 = 0;每层 ≤ 1 次;readiness-v4 下 L1 每千地牢拍击杀 ≥ 0.85 × readiness-v3 同种子 |
-| G0-5 | 定标(run_r17_g0.py,R16 配方 + 修正案一) | descends/10 窗 ≥ 1.0;stall ≤ 25%;vested > 0;零 RuntimeError;s → T |
+| G0-0a | rebuild the unchanged bridge, 4×128 old rules | bit for bit (hard stop-loss) |
+| G0-0 | rebuild with the new C++ + suite (876 + new) | all green |
+| G0-1 | headless town round-trip smoke test, 16 seeds (starting from L1) | 0 crashes/hangs; guards do not throw inside windows and must throw outside; return survival ≥ 15/16; median trip ≤ 400 steps, maximum ≤ 600; L1 roster / floor items identical before and after the trip |
+| G0-2 | two runs on the same seeds (including shop stock / purchases / gold) | bit for bit (hard stop-loss) |
+| G0-3 | economy, 16 seeds | gold pick-up coverage (piles generated vs piles picked up) ≥ 60% and ≥ 150 gold per L1 clear; ≥ 12/16 with AC ≥ 9 and durability ≥ 15 after the trip; ≥ 12/16 with belt ≥ 4; empty runs ≤ 2/16 |
+| G0-4 | anti-free-riding | trips triggered by idle-clock = 0; ≤ 1 per level; L1 kills per thousand dungeon steps under readiness-v4 ≥ 0.85 × readiness-v3 on the same seeds |
+| G0-5 | calibration (run_r17_g0.py, the R16 recipe + amendment 1) | descends per 10 windows ≥ 1.0; stall ≤ 25%; vested > 0; zero RuntimeError; s → T |
 
-### 6. 数值止损(预注册,触发即动作,不得事后改阈)
-| 触发 | 动作 |
+### 6. Numeric stop-losses (pre-registered; triggering means acting, and thresholds may not be changed afterwards)
+| Trigger | Action |
 |---|---|
-| G0-0a 不逐位 | 停;按旧 CMakeCache 钉编译器/旗标重试;仍不过 → 呈主席(桥 sha 法) |
-| G0-1 崩溃/挂起或返程存活 < 15/16 | 停;回退方案须主席裁定 |
-| G0-2 不逐位 | 硬止损 |
-| G0-3 覆盖 < 60% 或拾金 < 150 | 药品子指标改为按实测收益条件化;仍 < 150 → L1 经济学证伪,如实报 |
-| G0-4 idle-clock 行程 > 0 或击杀 < 0.85× | 去掉 cap 子句(仅 cleared)重跑;仍触 → 停 |
-| T0 (d) − (a) < +4/48 | 观测漂移而非通道 → 不发射训练臂 |
-| T0 L2 到达 < 0.8 × A0′ | 用下楼面板区分"行程太长"与"a11 失速",不调阈值 |
-| 门 C 两卷均 < 0.95× | 反遗忘失败,不放宽 |
-| 日历:第 2 周末未过 G0-0a…G0-2 | 呈主席复核;总期 > 4 周 → 冻结范围,剩余转 R18 |
+| G0-0a not bit-identical | stop; retry pinning the compiler / flags from the old CMakeCache; still failing → escalate for a decision (bridge sha rule) |
+| G0-1 crash/hang or return survival < 15/16 | stop; a fallback needs a separate decision |
+| G0-2 not bit-identical | hard stop-loss |
+| G0-3 coverage < 60% or gold < 150 | condition the potion sub-metrics on the measured income; still < 150 → L1 economics falsified, reported as is |
+| G0-4 idle-clock trips > 0 or kills < 0.85× | drop the cap clause (cleared only) and rerun; still triggered → stop |
+| T0 (d) − (a) < +4/48 | observation drift rather than the channel → no training arm |
+| T0 L2 reached < 0.8 × A0′ | use the descent panel to tell "trip too long" from "a11 stall"; do not adjust thresholds |
+| Gate C < 0.95× on both sheets | anti-forgetting failed; not relaxed |
+| Calendar: G0-0a…G0-2 not passed by the end of week 2 | escalate for review; total > 4 weeks → freeze the scope and move the rest to R18 |
 
-## 五、工程与日历成本(如实)
-| 项 | 估计 | 依据 |
+## 5. Engineering and calendar costs (honest)
+| Item | Estimate | Basis |
 |---|---|---|
-| R17.0 探针(新文件) | ~150 行,4–6 h;运行 6 组合 × 4.5 min ≈ 30 min | 台账 87 s/16 种子 |
-| R17.0 修正案一(托管尺 + 收据) | ~20 行 + 测试 4–6 h;重烤 4×128 ≈ 17 min + 六卷 ≈ 50 min | r13_ledger 02:31-02:48;02:22-03:11 |
-| G0-0a 未改动桥重建 | 4–8 h(管线未验证;CMakeCache 指向已消失路径) | build/CMakeCache.txt:380;.so mtime 2026-07-27 |
-| ① 桥 | 280–340 行 C++,32–40 h | 提案 ~280 + 拾金扫金宏 |
-| ① env.py(城镇宏 + 按拍步行者 + 规划器 + 奖励来回净零) | 28–34 h | 提案 20–24 h + 批评 +80–150 行 |
-| ① options_env/worker_env/train_ppo/eval 接线 | 16–18 h | 提案 |
-| ① 测试 + G0 探针 | 16–20 h | 提案 14–16 + 覆盖率/奖励测试 |
-| 预注册/批评面板/判决 | 12–14 h | R16 同款 |
-| 缓冲(无头城镇中途加载未验证) | 8–12 h | 勘察缺口 |
-| **合计** | **~125–150 h;日历 3–4 周**(R17.0 在第 1 周内完成;T0 在第 2 周末可达 = 最早 go/no-go) | |
-| 算力 | < 12 h:探针 48 种子 ≈ 4.5 min/组合;六锚 ≈ 50 min;重烤 ≈ 1.5 h;训练腿 ≈ 1 h(R16 325,632 步 2,709 s);六卷 ≈ 45 min | 台账 |
+| R17.0 probe (new file) | ~150 lines, 4-6 h; running 6 combinations × 4.5 min ≈ 30 min | ledger: 87 s per 16 seeds |
+| R17.0 amendment 1 (escrow ruler + receipt) | ~20 lines + tests, 4-6 h; re-bake 4×128 ≈ 17 min + six sheets ≈ 50 min | ledger timings of the R16 re-bake and the six sheets |
+| G0-0a rebuild of the unchanged bridge | 4-8 h (pipeline unverified; CMakeCache points at a path that no longer exists) | build/CMakeCache.txt:380; .so mtime 2026-07-27 |
+| Option 1 bridge | 280-340 lines of C++, 32-40 h | proposal ~280 + the gold-sweep macro |
+| Option 1 env.py (town macro + per-step walker + planner + round trips netting to zero in the reward) | 28-34 h | proposal 20-24 h + critiques +80-150 lines |
+| Option 1 wiring in options_env/worker_env/train_ppo/eval | 16-18 h | proposal |
+| Option 1 tests + G0 probes | 16-20 h | proposal 14-16 + coverage/reward tests |
+| Pre-registration / critic panel / verdict | 12-14 h | same as R16 |
+| Buffer (headless loading of town mid-game unverified) | 8-12 h | survey gap |
+| **Total** | **~125-150 h; 3-4 weeks of calendar time** (R17.0 done within week 1; T0 reachable at the end of week 2 = the earliest go/no-go) | |
+| Compute | < 12 h: probe 48 seeds ≈ 4.5 min per combination; six anchors ≈ 50 min; re-bake ≈ 1.5 h; training leg ≈ 1 h (R16 325,632 steps in 2,709 s); six sheets ≈ 45 min | ledger |
 
-对照:R16 从修宪批准到判决 ≈ 9 h,因为全在 Python;R17 是第一次动桥,约束在重建与无头城镇两处未知,不在行数。
-② 的 3–4 天与 ③ 的 3–4 天便宜,但两者都不改变下一层要面对的同一死局。
+For comparison: R16 took ≈ 9 h from approval of the constitutional repair to the verdict, because it was all
+Python; R17 is the first change to the bridge, and the constraints are the two unknowns of rebuilding and
+headless town, not the line count. The 3-4 days of option 2 and the 3-4 days of option 3 are cheap, but
+neither changes the dead end that the next layer has to face.
 
-## 六、风险与止损(补充 §四.6)
-- **范围蔓延**:卖/修/传送门、L2 起程、经理学习一律 R18+;R17 只做 L1 起程一次往返。
-- **契约漂移**:env/options/worker 改动旋转实现 bundle 与协议 bundle → 全锚重烤(已计入日历);冻结物新档案只增不改。
-- **"T0 加冕"诱惑**:T0 是机理证明;加冕只走四门 + 部署门;若主席欲为环境改动另设加冕程序,须先立法。
-- **回退方案空心化**:楼梯口虚拟商店会删除所有面向打穿的原语,只剩 L2 打磨——只能由主席裁定采用。
-- **耐久侵蚀**:购入 Rags 会在 3–5 击碎裂;规划器耐久 ≥ 15 过滤写进基础配方而非应急项;止损:T0 中 L2 死者
-  死时 AC 回落到 7 者 > 50% → 判决书标注 AC 杠杆失效,R18 评估修理事务。
-- **曝光混杂**:行程消耗拍数会机械抬高 6000 拍存活——主指标已改为曝光归一化;任何"延长 TOWN_CAP"的应急项
-  只有在归一化指标下才合法。
-- **锚压缩**:M29 锚在拾金后 RESUPPLY 更常合法,门 C 可能向 1.0 压缩——按法执行,不事后放宽。
+## 6. Risks and stop-losses (supplementing §4.6)
+- **Scope creep**: sell / repair / town portals, starting from L2, and manager learning all go to R18+; R17
+  does only one round trip starting from L1.
+- **Contract drift**: changes to env/options/worker rotate the implementation bundle and the protocol
+  bundle → all anchors re-baked (already in the calendar); frozen artefacts only get new files, never edits.
+- **The temptation of "crowning T0"**: T0 is a proof of mechanism; crowning goes only through the four
+  gates + the deployment gate; a separate crowning procedure for environment changes would first need its
+  own rule.
+- **A hollow fallback**: a virtual shop at the stairs would remove every primitive aimed at breaking
+  through, leaving only L2 polishing; it can be adopted only by a separate decision.
+- **Durability erosion**: bought Rags break in 3-5 hits; the planner's durability ≥ 15 filter is written into
+  the base recipe rather than kept as a contingency; stop-loss: if in T0 more than 50% of L2 deaths have AC
+  back at 7 at death → the verdict marks the AC lever as failed, and R18 evaluates repair transactions.
+- **Exposure confounding**: steps spent on trips mechanically raise survival at 6000 steps, so the main
+  metric is now exposure-normalised; any contingency that "extends TOWN_CAP" is legitimate only under the
+  normalised metric.
+- **Anchor compression**: after gold pick-up, RESUPPLY becomes legal more often for the M29 anchor, so gate C
+  may compress toward 1.0; enforced as written, not relaxed afterwards.
 
-## 七、对主席的一句话
-R17 走资源通道:先用两三天把尺子(托管 v0.2)、保险丝(收据地雷)和仪表(下楼遥测、强制份额)修好并量出基线,
-再动第一刀 C++,让「只有刷到数值以上才下楼」在每个种子上有路可走——不再拧工资旋钮;
-零训练的 T0 因子探针决定是否发射训练臂,通道坐实与否两周末即见分晓。
+## 7. In one sentence
+R17 takes the resource channel: first spend two or three days fixing the ruler (escrow v0.2), the fuse (the
+receipt landmine) and the instruments (descent telemetry, forced share) and measuring the baseline, then
+make the first C++ cut, so that "descend only once the power value is reached" has a way forward on every
+seed, with no more wage-knob turning; the zero-training T0 factorial probe decides whether a training arm
+launches, and whether the channel is confirmed will be known by the end of week 2.
 
-## 附:关键引用索引
-- 教练规则 worker_env.py:1128-1130,回退顺序 :1141-1150;探针镜像 probe_r15_deployment.py:215-235。
-- 掩码逃生口 options_env.py:739-741;榨干置位 :63, :542-549, :1022-1027;时钟清零不清旗 :770-774;positive_progress :902-912。
-- 托管尺错位 worker_env.py:1866-1877(v0.1 表 :197-205)vs :1128(v0.2 表 :139-141);vest/forfeit :1826-1848。
-- 收据地雷 leashed_ppo.py:4746, :4785 vs worker_env.py:2113-2121, :2207-2214。
-- 反射灌药 options_env.py:1144-1157,env.py:956-962;a12 主权波段 options_env.py:1776-1800。
-- 金币:obs src/diablogym.cpp:1258;autoGoldPickup=false :1825;地面物无价值字段 :1477-1499;工人视图 env.py:5012, :5110;
-  引擎掉率 items.cpp:3257-3266;AutoPickup player.cpp:442 / autopickup.cpp:93-110。
-- 城镇转场:SyncLoad WM_DIABPREVLVL src/diablogym.cpp:1132-1138;DisableLevelBacktracking :1878;patches/0005;
-  env 守卫 env.py:2190-2205;StartNewLvl 先例 :3356-3361;商店 SetupTownStores stores.cpp:2162-2181;
-  买卖内核 stores.cpp:2861-2864 / 2658-2671 / 2102-2120;HealPlayer :1018-1029。
-- 来回下楼重复付酬 env.py:4784-4801, :4923-4929;a14 原子换装 src/diablogym.cpp:2795-2872。
-- 门槛 analyze_arm_gates.py:53-55, :66-68;协议文件表 eval_contract.py:54-64;实现 bundle train_ppo.py:798-809。
-- 部署行 r16-deploy-arm.json / r16-deploy-anchor.json;训练终行 sentinel.jsonl / r13_dive_audit.jsonl;
-  台账 r13_ledger.jsonl(VERDICT_R16、探针计时 04:16-04:19、重烤 02:31-02:48)。
+## Appendix: index of key references
+- Coach rule worker_env.py:1128-1130, fallback order :1141-1150; probe mirror probe_r15_deployment.py:215-235.
+- Mask escape hatch options_env.py:739-741; exhaustion set at :63, :542-549, :1022-1027; clock reset does not
+  clear the flag :770-774; positive_progress :902-912.
+- Escrow ruler mismatch worker_env.py:1866-1877 (v0.1 table :197-205) vs :1128 (v0.2 table :139-141);
+  vest/forfeit :1826-1848.
+- Receipt landmine leashed_ppo.py:4746, :4785 vs worker_env.py:2113-2121, :2207-2214.
+- Reflex drinking options_env.py:1144-1157, env.py:956-962; a12 autonomy band options_env.py:1776-1800.
+- Gold: obs src/diablogym.cpp:1258; autoGoldPickup=false :1825; floor items have no value field :1477-1499;
+  worker view env.py:5012, :5110; engine drop rate items.cpp:3257-3266; AutoPickup player.cpp:442 /
+  autopickup.cpp:93-110.
+- Town transition: SyncLoad WM_DIABPREVLVL src/diablogym.cpp:1132-1138; DisableLevelBacktracking :1878;
+  patches/0005; env guard env.py:2190-2205; StartNewLvl precedent :3356-3361; shops SetupTownStores
+  stores.cpp:2162-2181; buy/sell kernel stores.cpp:2861-2864 / 2658-2671 / 2102-2120; HealPlayer :1018-1029.
+- Repeated payment for going up and down env.py:4784-4801, :4923-4929; a14 atomic gear swap
+  src/diablogym.cpp:2795-2872.
+- Thresholds analyze_arm_gates.py:53-55, :66-68; protocol file table eval_contract.py:54-64; implementation
+  bundle train_ppo.py:798-809.
+- Deployment rows r16-deploy-arm.json / r16-deploy-anchor.json; last training rows sentinel.jsonl /
+  r13_dive_audit.jsonl; ledger r13_ledger.jsonl (VERDICT_R16, probe timing, re-bake timing).

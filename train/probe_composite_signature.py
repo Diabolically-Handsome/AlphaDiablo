@@ -1,31 +1,31 @@
-"""B1-E5:F-lock 复合签名判别脚本 + 经理不变式判别器 v2(PREREG-B1 E5/D3)。
+"""B1-E5: F-lock composite-signature script + manager-invariant discriminator v2 (PREREG-B1 E5/D3).
 
-复合签名(常量照 PREREG-B1 D3 逐字,案中禁调):种子 s 判"F-lock 候选" iff
-  (i)   s ∈ 同池 king×H 参照 depth≥2 种子集;
-  (ii)  腿×H 档案该种子 D 窗数 = 0(D 窗数 := mode_seq 中 "D" 计数);
-  (iii) 该种子 F 窗 τ 中位 ∈ [25, 40] 地板区(闭区间;τ 中位来自 B1-E4
-        重放报告 per_seed.farm_tau_median——档案不存逐窗 τ,重放系唯一通道)。
-(ii)∧(iii) 合取强制——健康王座 τ==25 亦达 71.4%(P5 ②),τ 地板单用禁作判据。
+Composite signature (constants verbatim from PREREG-B1 D3, frozen for the case): seed s is an "F-lock candidate" iff
+  (i)   s is in the depth>=2 seed set of the same-pool king x H reference;
+  (ii)  the leg x H archive has 0 D windows for that seed (D windows := count of "D" in mode_seq);
+  (iii) the seed's median F-window tau is in the floor band [25, 40] (closed; the tau median comes from the B1-E4
+        replay report per_seed.farm_tau_median -- archives do not store per-window tau, replay is the only source).
+(ii) AND (iii) are both required -- a healthy throne also reaches tau==25 in 71.4% (P5 (2)), so the tau floor alone is not a criterion.
 
-分诊后件:∧ 判别器 v2 判"轨迹可变" → F-lock 型;判"不变(含近失)" →
-工人损伤候选,且携 E5 语义收窄限定。
+Post-hit triage: AND discriminator v2 says "trajectory variable" -> F-lock type; "invariant (incl. near miss)" ->
+worker-damage candidate, carrying the E5 semantic-narrowing caveat.
 
-判别器 v2(docs/assets/manager_invariant_registry.json v2 同口径):
-  - strict_invariant:13 字段(含 mode_seq 逐字符)精确相等(v1 判据);
-  - near_miss(P4:7017 型勘正):结局字段 {ret, depth, died, kills} 相等
-    ∧ 轨迹字段 {farm_n, farm_tau_mean, farm_tau_sum, farm_descend, windows,
-    beats, overrides, cap, mode_seq} 至少一项可变;
-  - variable:结局字段即不相等(轨迹可变)。
+Discriminator v2 (same definition as docs/assets/manager_invariant_registry.json v2):
+  - strict_invariant: all 13 fields (incl. mode_seq character by character) equal (the v1 criterion);
+  - near_miss (P4: correction for the 7017 type): outcome fields {ret, depth, died, kills} equal
+    AND at least one trajectory field {farm_n, farm_tau_mean, farm_tau_sum, farm_descend, windows,
+    beats, overrides, cap, mode_seq} differs;
+  - variable: the outcome fields already differ (trajectory variable).
 
-强制限定(随一切判词,PREREG-B1 D3):
-  - 签名特异性未标定(案内无健康腿对照,假阳性率未知;转化条款见 D3);
-  - 判别器语义收窄:"经理不变式"只证"换考官无效",不证"损失不可回收";
-  - horizon 限定:一切签名条件于 max-steps 3000 评测协议,本案禁调 horizon。
+Mandatory caveats (attached to every verdict, PREREG-B1 D3):
+  - signature specificity is uncalibrated (no healthy-leg control in the case, false-positive rate unknown; conversion clause in D3);
+  - narrowed discriminator semantics: "manager invariant" only shows "swapping the examiner does not help", not "the loss is unrecoverable";
+  - horizon caveat: all signature conditions hold under the max-steps 3000 evaluation protocol; this case may not change the horizon.
 
-用法:
+Usage:
   .venv/bin/python train/probe_composite_signature.py \
-      --ref-archive <king×H 同池参照.json> --leg-h-archive <腿×H.json> \
-      --leg-m29-archive <腿×M29.json> --leg-replay <B1-E4 报告.json> \
+      --ref-archive <king x H same-pool reference.json> --leg-h-archive <leg x H.json> \
+      --leg-m29-archive <leg x M29.json> --leg-replay <B1-E4 report.json> \
       --out <report.json>
 """
 from __future__ import annotations
@@ -40,31 +40,31 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "python"))
 sys.path.insert(0, str(ROOT / "train"))
 
-# ---- D3 常量(预登记,案中禁调) ----
+# ---- D3 constants (pre-registered, frozen for the case) ----
 TAU_FLOOR_LO = 25.0
-TAU_FLOOR_HI = 40.0            # 闭区间 [25, 40]
+TAU_FLOOR_HI = 40.0            # closed interval [25, 40]
 OUTCOME_FIELDS = ("ret", "depth", "died", "kills")
 TRAJECTORY_FIELDS = ("farm_n", "farm_tau_mean", "farm_tau_sum",
                      "farm_descend", "windows", "beats", "overrides",
                      "cap", "mode_seq")
-INVARIANT_FIELDS_V1 = OUTCOME_FIELDS + TRAJECTORY_FIELDS   # 13 字段
+INVARIANT_FIELDS_V1 = OUTCOME_FIELDS + TRAJECTORY_FIELDS   # 13 fields
 MANDATORY_CAVEATS = (
-    "签名特异性未标定:案内无健康腿对照,假阳性率未知(PREREG-B1 D3 残余⑬;"
-    "转化条款:RB.4 落'不复现'时 P8 腿命中率升格为假阳性率首实测)",
-    "判别器语义收窄(承 P7 裁定三):'经理不变式'只证'换考官无效',"
-    "不证'损失不可回收'",
-    "horizon 限定:签名条件于评测协议 horizon(max-steps 3000);"
-    "'D 窗 = 0'系 horizon 内陈述(sov_7029 距过零仅 8 窗先例)",
+    "signature specificity uncalibrated: no healthy-leg control in the case, false-positive rate unknown (PREREG-B1 D3 residual 13; "
+    "conversion clause: if RB.4 lands on 'not reproduced', the P8 leg hit rate becomes the first measured false-positive rate)",
+    "narrowed discriminator semantics (from P7 ruling 3): 'manager invariant' only shows 'swapping the examiner does not help', "
+    "not 'the loss is unrecoverable'",
+    "horizon caveat: signature conditions hold under the evaluation-protocol horizon (max-steps 3000); "
+    "'D windows = 0' is a statement within the horizon (precedent: sov_7029 was only 8 windows from crossing zero)",
 )
 
 
 def d_window_count(row: dict) -> int:
-    """D 窗数 := mode_seq 中 'D' 计数(†死亡符不影响 'D' 字符本身)。"""
+    """D windows := count of 'D' in mode_seq (the death mark does not affect the 'D' character itself)."""
     return str(row["mode_seq"]).count("D")
 
 
 def invariant_class_v2(row_h: dict, row_m29: dict) -> str:
-    """同工人异经理两行 → strict_invariant / near_miss / variable。"""
+    """Two rows, same worker, different manager -> strict_invariant / near_miss / variable."""
     if all(row_h[f] == row_m29[f] for f in INVARIANT_FIELDS_V1):
         return "strict_invariant"
     if (all(row_h[f] == row_m29[f] for f in OUTCOME_FIELDS)
@@ -75,12 +75,12 @@ def invariant_class_v2(row_h: dict, row_m29: dict) -> str:
 
 def composite_signature(ref_rows: dict[int, dict], leg_rows: dict[int, dict],
                         tau_median_by_seed: dict[int, float | None]) -> dict:
-    """逐种子复合签名判定。输入均为 {seed: row};τ 中位来自 E4 重放报告。"""
+    """Per-seed composite-signature verdict. Inputs are {seed: row}; tau median from the E4 replay report."""
     ref_d2 = sorted(s for s, r in ref_rows.items() if r["depth"] >= 2)
     per_seed = {}
     for s in ref_d2:
         if s not in leg_rows:
-            raise ValueError(f"腿档案缺参照 depth≥2 种子 {s}")
+            raise ValueError(f"leg archive lacks reference depth>=2 seed {s}")
         leg_d = d_window_count(leg_rows[s])
         tau_med = tau_median_by_seed.get(s)
         cond_ii = leg_d == 0
@@ -101,18 +101,18 @@ def composite_signature(ref_rows: dict[int, dict], leg_rows: dict[int, dict],
 
 def triage(signature: dict, leg_h_rows: dict[int, dict],
            leg_m29_rows: dict[int, dict]) -> dict:
-    """签名命中后件分诊:轨迹可变 → F-lock 型;不变(含近失)→ 工人损伤候选。"""
+    """Post-hit triage: trajectory variable -> F-lock type; invariant (incl. near miss) -> worker-damage candidate."""
     out = {}
     for s in signature["hits"]:
         if s not in leg_m29_rows:
-            raise ValueError(f"M29 侧档案缺种子 {s},分诊不可判")
+            raise ValueError(f"M29-side archive lacks seed {s}; triage undecidable")
         cls = invariant_class_v2(leg_h_rows[s], leg_m29_rows[s])
         out[s] = {
             "invariant_class_v2": cls,
-            "verdict": ("F-lock 型" if cls == "variable"
-                        else "工人损伤候选(携 E5 语义收窄限定)"),
+            "verdict": ("F-lock type" if cls == "variable"
+                        else "worker-damage candidate (with the E5 semantic-narrowing caveat)"),
         }
-    n_flock = sum(1 for v in out.values() if v["verdict"] == "F-lock 型")
+    n_flock = sum(1 for v in out.values() if v["verdict"] == "F-lock type")
     return {"per_seed": out, "n_flock_type": n_flock,
             "n_worker_damage_candidate": len(out) - n_flock}
 
@@ -120,7 +120,7 @@ def triage(signature: dict, leg_h_rows: dict[int, dict],
 def rows_by_seed(doc: dict) -> dict[int, dict]:
     rows = {int(r["seed"]): r for r in doc["rows"]}
     if len(rows) != len(doc["rows"]):
-        raise ValueError("档案含重复 seed")
+        raise ValueError("archive contains duplicate seed")
     return rows
 
 
@@ -129,11 +129,11 @@ def main() -> int:
 
     ap = argparse.ArgumentParser()
     ap.add_argument("--ref-archive", required=True,
-                    help="同池 king×H 参照档案(depth≥2 种子集来源)")
-    ap.add_argument("--leg-h-archive", required=True, help="腿×H 档案")
-    ap.add_argument("--leg-m29-archive", required=True, help="腿×M29 档案")
+                    help="same-pool king x H reference archive (source of the depth>=2 seed set)")
+    ap.add_argument("--leg-h-archive", required=True, help="leg x H archive")
+    ap.add_argument("--leg-m29-archive", required=True, help="leg x M29 archive")
     ap.add_argument("--leg-replay", required=True,
-                    help="腿×H 之 B1-E4 重放报告(farm_tau_median 来源)")
+                    help="B1-E4 replay report for leg x H (source of farm_tau_median)")
     ap.add_argument("--out", required=True)
     args = ap.parse_args()
 
@@ -145,7 +145,7 @@ def main() -> int:
     leg_m29 = rows_by_seed(strict_json_loads(payloads["leg_m29_archive"]))
     replay = strict_json_loads(payloads["leg_replay"])
     if not replay.get("fidelity_ok", False):
-        raise ValueError("E4 重放报告保真未过,τ 中位不可采信")
+        raise ValueError("E4 replay report failed fidelity; tau median not usable")
     tau = {int(s): v.get("farm_tau_median")
            for s, v in replay.get("per_seed", {}).items()}
 
@@ -165,9 +165,9 @@ def main() -> int:
     out = pathlib.Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(report, ensure_ascii=False, indent=1))
-    print(f"复合签名:命中 {sig['n_hits']}/{sig['n_ref_depth2']};"
-          f"F-lock 型 {tri['n_flock_type']},工人损伤候选 "
-          f"{tri['n_worker_damage_candidate']};报告已存 {out}")
+    print(f"composite signature: hits {sig['n_hits']}/{sig['n_ref_depth2']}; "
+          f"F-lock type {tri['n_flock_type']}, worker-damage candidates "
+          f"{tri['n_worker_damage_candidate']}; report saved to {out}")
     return 0
 
 

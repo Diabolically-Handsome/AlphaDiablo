@@ -235,7 +235,7 @@ potions left in the belt at the end, and whether the game was replayed from its 
   identifying. The executor may not drink.
 - **Where the labels came from.** The adapters were trained by imitation learning on labels from Claude-based
   teacher workflows (two independent teacher runs per state and a third to adjudicate, over several DAgger
-  rounds; the teachers also read written guidance the student never sees, `option_brain/TEACHER.md`) and on
+  rounds; the teachers also read written guidance the student never sees, `option_brain/option-brain-20260922/TEACHER.md`) and on
   earlier demonstrations by an OpenAI Codex agent ("Astra") that had played two worlds through the same executor.
   No reinforcement learning or reward signal was used for the adapters.
 

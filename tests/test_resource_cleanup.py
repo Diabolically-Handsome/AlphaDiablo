@@ -1,4 +1,4 @@
-"""不启动游戏的资源所有权/崩溃回收回归。"""
+"""Resource-ownership / crash-cleanup regressions that do not start the game."""
 
 from __future__ import annotations
 
@@ -69,7 +69,7 @@ class TempSaveCleanupTests(unittest.TestCase):
                 self.assertFalse(stale.exists())
                 self.assertFalse(crashed_publish.exists())
                 self.assertTrue(live.exists())
-                # 无 owner marker 的旧版目录没有可靠所有权证据，必须保留。
+                # A legacy directory without an owner marker has no reliable ownership evidence and must be kept.
                 self.assertTrue(legacy.exists())
             finally:
                 fcntl.flock(owner.fileno(), fcntl.LOCK_UN)

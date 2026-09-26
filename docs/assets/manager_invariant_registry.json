@@ -5,18 +5,18 @@
  "updated_utc": "2026-07-17",
  "provenance": {
   "source_archives_dir": "train/runs/eval-assembled",
-  "forensics_ref": "docs/FORENSICS-F2-重训连带劣化.md",
+  "forensics_ref": "docs/forensics/FORENSICS-F2-retraining-regression.md",
   "task": "P4",
-  "v2_change": "B1-E5 工具箱 v2:增设 near_miss 近失判据(P4 之 7017-ctrl 型'分数不变、轨迹可变'漏检勘正)+ 判别器语义收窄条款;v1 严格判据与全部登记行原样保留;机器判别器 = train/probe_composite_signature.py(invariant_class_v2)"
+  "v2_change": "B1-E5 toolbox v2: adds the near_miss criterion (correction of the P4 miss on the 7017-ctrl type, 'same score, variable trajectory') + the discriminator semantic-narrowing clause; the strict v1 criterion and every registered row are kept unchanged; machine discriminator = train/probe_composite_signature.py (invariant_class_v2)"
  },
  "criterion": {
   "name": "manager_invariant_row",
   "preconditions": [
-   "两档案 worker sha256 逐字节相同",
-   "两档案 manager sha256 不同(H=0f2264… vs M29=894413…)",
-   "协议 deterministic=true 且 seeds 集合相同(eval_assembled v3, argmax_with_action_masks)"
+   "worker sha256 byte-identical in both archives",
+   "manager sha256 differs between the archives (H=0f2264… vs M29=894413…)",
+   "protocol deterministic=true and identical seed sets (eval_assembled v3, argmax_with_action_masks)"
   ],
-  "rule": "同一 seed 的两行在下列全部 13 字段上精确相等(数值按存档面值,不做容差)",
+  "rule": "the two rows of the same seed are exactly equal on all 13 fields below (numbers at their archived face value, no tolerance)",
   "fields": [
    "ret",
    "depth",
@@ -32,13 +32,13 @@
    "cap",
    "mode_seq"
   ],
-  "semantics": "确定性评测下 13 字段(含 mode_seq 逐字符与 overrides)全同 ⇒ 两经理在该种子产出同一决策序列 ⇒ 该种子结果对经理交换不敏感;若其中低分,则失败归因于工人/环境层,与经理无关(纯工人级失效判别,单向:不变≠经理无责的逆命题不成立)",
-  "one_sided_warning": "非不变 ⇏ 经理主因;不变 ⇏ 工人健康(仅指经理不背锅)"
+  "semantics": "under deterministic evaluation, all 13 fields equal (incl. mode_seq character by character and overrides) ⇒ both managers produced the same decision sequence on that seed ⇒ the seed's result is insensitive to swapping the manager; if the score is low, the failure lies in the worker/environment layer, not the manager (a pure worker-level failure test, one-sided: the converse 'not invariant ⇒ the manager is to blame' does not hold)",
+  "one_sided_warning": "not invariant ⇏ manager is the main cause; invariant ⇏ healthy worker (it only clears the manager)"
  },
  "near_miss_criterion": {
   "name": "manager_invariant_near_miss_v2",
   "since_version": 2,
-  "prereg_ref": "docs/PREREG-B1-捆绑评测基建.md E5(承 P4:7017-ctrl 型漏检勘正)",
+  "prereg_ref": "docs/prereg/PREREG-B1-bundled-eval-infra.md E5 (from P4: correction of the missed 7017-ctrl type)",
   "outcome_fields": [
    "ret",
    "depth",
@@ -56,24 +56,24 @@
    "cap",
    "mode_seq"
   ],
-  "rule": "结局字段(outcome_fields)逐项精确相等 ∧ 轨迹字段(trajectory_fields)至少一项可变 ⇒ near_miss('分数不变、轨迹可变'近失级);13 字段全等仍判 strict_invariant(v1 判据不变);结局字段即不等 ⇒ variable(轨迹可变)",
-  "exemplar": "7017-ctrl:两经理 ret 同为 58.3 但 farm_tau/windows/mode_seq 等 4 个轨迹字段不同(P4 residual_seed_checks 在册)",
-  "triage_semantics": "复合签名分诊后件(PREREG-B1 D3):判'variable(轨迹可变)'→ F-lock 型;判'strict_invariant 或 near_miss(不变,含近失)'→ 工人损伤候选",
+  "rule": "outcome fields (outcome_fields) exactly equal ∧ at least one trajectory field (trajectory_fields) differs ⇒ near_miss (near miss: 'same score, variable trajectory'); all 13 fields equal still gives strict_invariant (v1 criterion unchanged); outcome fields already differ ⇒ variable (trajectory variable)",
+  "exemplar": "7017-ctrl: both managers have ret 58.3 but 4 trajectory fields such as farm_tau/windows/mode_seq differ (recorded in P4 residual_seed_checks)",
+  "triage_semantics": "post-hit triage of the composite signature (PREREG-B1 D3): 'variable (trajectory variable)' → F-lock type; 'strict_invariant or near_miss (invariant, incl. near miss)' → worker-damage candidate",
   "discriminator": "train/probe_composite_signature.py::invariant_class_v2"
  },
- "semantic_narrowing_clause": "判别器语义收窄条款(承 P7 裁定三,B1-E5 立法):'经理不变式'只证'换考官无效',不证'损失不可回收'——一切引用判词强制携此限定",
+ "semantic_narrowing_clause": "discriminator semantic-narrowing clause (from P7 ruling 3, enacted in B1-E5): 'manager invariant' only shows 'swapping the examiner does not help', not 'the loss is unrecoverable' -- every verdict that cites it must carry this caveat",
  "low_score_rule": {
   "low_abs": {
    "rule": "ret < 50.0",
-   "rationale": "王座-H 参照 (v32-ref-launch) ret Q1=55.19,取整 50 为登记阈"
+   "rationale": "throne-H reference (v32-ref-launch) ret Q1=55.19, rounded to 50 as the registered threshold"
   },
   "regression": {
-   "rule": "ret − ref_H(seed) <= -30.0(仅 7000 池,参照 v32-ref-launch 同种子)",
-   "rationale": "排除王座慢性种子;Δ≤−30 视为超噪声回归"
+   "rule": "ret − ref_H(seed) <= -30.0 (7000 pool only, reference = same seed in v32-ref-launch)",
+   "rationale": "excludes the throne's chronic seeds; Δ≤−30 counts as a regression beyond noise"
   },
   "classification": {
-   "pure_worker_regression": "invariant ∧ (regression 成立)",
-   "chronic_seed": "invariant ∧ low_abs ∧ ¬regression(王座参照同样低,血统慢性)",
+   "pure_worker_regression": "invariant ∧ (regression holds)",
+   "chronic_seed": "invariant ∧ low_abs ∧ ¬regression (the throne reference is equally low: a chronic seed inherited from the lineage)",
    "benign_invariant": "invariant ∧ ¬low_abs ∧ ¬regression"
   }
  },
@@ -392,18 +392,18 @@
   },
   "match": true,
   "residual_seed_checks": {
-   "7013": "sov 不变式且 ret=-2.88(Δ=-91.75)⇒ 纯工人级,sov 特有 ✓;ctrl 侧 7013 经理敏感(H 23.1 vs M29 225.6),不入 ctrl 名单 ✓",
-   "7021": "ctrl 不变式且 ret=-1.12(Δ=-75.22)⇒ 纯工人级,ctrl 特有 ✓;sov 侧 7021 非不变式(72.1 vs 72.3)✓",
-   "7017": "严格不变式判据未捕获:sov 两经理 9 字段不同;ctrl 两经理 ret 同为 58.3 但 4 个轨迹字段(farm_tau/windows/mode_seq)不同 ⇒ 属'分数不变、轨迹可变'近失级;四配置全低分(55.9-63.0 vs 参照 258.6)仍支持工人级结论,但需经近失判据或 P5 重放确认",
-   "7007": "sov 不变式 ret=85.46 Δ=-64.04 ⇒ 纯工人级回归,与 FORENSICS'sov 名单外大额损失 7007 −64'吻合 ✓",
-   "v31_ref_vs_v32_ref": "launch/science 各 32 行逐字段同一,证实 FORENSICS'重标签'认定 ✓"
+   "7013": "sov invariant with ret=-2.88 (Δ=-91.75) ⇒ pure worker level, specific to sov ✓; on the ctrl side 7013 is manager-sensitive (H 23.1 vs M29 225.6), not on the ctrl list ✓",
+   "7021": "ctrl invariant with ret=-1.12 (Δ=-75.22) ⇒ pure worker level, specific to ctrl ✓; on the sov side 7021 is not invariant (72.1 vs 72.3) ✓",
+   "7017": "not caught by the strict invariant criterion: the two sov managers differ on 9 fields; the two ctrl managers both have ret 58.3 but 4 trajectory fields (farm_tau/windows/mode_seq) differ ⇒ a 'same score, variable trajectory' near miss; all four configurations score low (55.9-63.0 vs reference 258.6), which still supports a worker-level conclusion, but it needs the near-miss criterion or a P5 replay to confirm",
+   "7007": "sov invariant, ret=85.46, Δ=-64.04 ⇒ pure worker-level regression, matching the FORENSICS finding 'large loss outside the sov list, 7007 −64' ✓",
+   "v31_ref_vs_v32_ref": "launch/science: all 32 rows identical field by field, confirming the FORENSICS 'relabel' finding ✓"
   }
  },
  "caveats": [
-  "7022(7000 池)与 9001(9000 池)为死种子:行对经理且对工人(sov/ctrl/王座逐字段同一)全不变,ret≈-5.7、0 kills、全 F——属环境级坏种子,任何名单统计应剔除或单列",
-  "9009(9000 池)为高分不变式(ret=215.08, depth=2, died=true):不变式≠低分,判别器只对低分子集给'纯工人级'标签",
-  "近失判据(建议入工具箱 v2):ret 及 depth/died/kills 相等但轨迹字段不同 ⇒ '分数不变行',7017-ctrl 属此类",
-  "判据依赖 deterministic=true 与 argmax;任何采样评测下不可用",
-  "s16 池只有 H 经理,无成对档案,不在本名单库范围"
+  "7022 (7000 pool) and 9001 (9000 pool) are dead seeds: the rows are invariant to both the manager and the worker (sov/ctrl/throne identical field by field), ret≈-5.7, 0 kills, all F -- environment-level bad seeds; any list statistic should exclude them or report them separately",
+  "9009 (9000 pool) is a high-score invariant (ret=215.08, depth=2, died=true): invariant ≠ low score; the discriminator only labels the low-score subset 'pure worker level'",
+  "near-miss criterion (proposed for toolbox v2): ret and depth/died/kills equal but trajectory fields differ ⇒ a 'same-score row'; 7017-ctrl is of this kind",
+  "the criterion depends on deterministic=true and argmax; it cannot be used under any sampled evaluation",
+  "the s16 pool has only the H manager and no paired archives, so it is outside this registry"
  ]
 }

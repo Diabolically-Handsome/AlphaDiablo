@@ -1,13 +1,13 @@
-"""R18-H identify-v1 (2026-09-07) 凯恩鉴定: Cain identifies the loot before it
+"""R18-H identify-v1 (2026-09-07) Cain identify: Cain identifies the loot before it
 is sold.
 
-主席 2026-09-07 14:00 裁定:城镇行程只用铁匠、医者、女巫;未鉴定的魔法物品
-只能按 ``_ivalue`` 的四分之一卖出,并且装备时不带任何词缀。凯恩(TOWN_STORY)
-以固定 100 金币鉴定一件物品(``stores.h`` ``StorytellerIdentifyPrice``),之后
-同一件物品按 ``_iIvalue`` 的四分之一卖出(``stores.cpp`` ``NormalStoreSellPrice``),
-词缀也随 ``CalcPlrInv`` 生效。
+Design review (2026-09-07): the town trip used only the smith, the healer and the witch; an unidentified
+magic item sells for only a quarter of ``_ivalue`` and gives no affixes when equipped. Cain (TOWN_STORY)
+identifies one item for a fixed 100 gold (``stores.h`` ``StorytellerIdentifyPrice``); after that
+the same item sells for a quarter of ``_iIvalue`` (``stores.cpp`` ``NormalStoreSellPrice``),
+and its affixes take effect through ``CalcPlrInv``.
 
-The law this script executes, per that ruling:
+The law this script executes, per that design decision:
 
 * it runs during EVERY town trip, at the earliest town phase, strictly BEFORE
   the loot service's ``sell_idle`` stage sells anything;
@@ -17,7 +17,7 @@ The law this script executes, per that ruling:
   readiness budget the town itinerary needs for potions (and, when the shop
   quotes happen to be observable, armour) -- the potion buy is never starved;
   R18-F portal-v1's 200-gold Scroll of Town Portal, bought later in the same
-  trip, is measured next to that budget and binds only under the chairman
+  trip, is measured next to that budget and binds only under the configuration
   switch ``IDENTIFY_RESERVE_PORTAL_SCROLL``;
 * it is bounded by the town trip's OWN microstep clock as well as its own cap,
   so the beats it spends can never push the itinerary into
@@ -32,8 +32,8 @@ stays exact and the economy audit raises nothing.
 ``resource_identify="off"`` (the default) constructs no service, makes no native
 call, adds no env kwarg and leaves every frozen path byte-identical.
 
-UI 独立性:引擎侧 ``TryIdentifyItem`` 不读任何商店状态,bridge 也从不为凯恩
-开店,所以本脚本只需要真的走到凯恩身边(和真人一样),没有 talk/store 这一步。
+UI independence: the engine-side ``TryIdentifyItem`` reads no store state and the bridge never opens a store
+for Cain, so this script only has to actually walk up to Cain (as a human would); there is no talk/store step.
 """
 from copy import deepcopy
 from dataclasses import dataclass, field
@@ -54,8 +54,8 @@ IDENTIFY_TRIP_MARGIN = 1500       # microsteps of the town trip reserved for the
 # Town Portal LATER in the same town trip, and refuses outright below that
 # price, so the Cain fee can leave that purchase unaffordable at the moment the
 # witch leg runs. Whether the scroll therefore belongs in the readiness reserve
-# is a THRESHOLD ruling (it decides how much gold the leg may spend), so it is
-# the chairman's, not mine: the amount is ALWAYS computed and ALWAYS reported
+# is a THRESHOLD decision (it decides how much gold the leg may spend), so it is
+# a configuration switch, not a script choice: the amount is ALWAYS computed and ALWAYS reported
 # (``portal_scroll_reserve``), and this switch decides whether it BINDS.
 # False = the behaviour the H2 smoke measured. True was measured too: on all
 # four smoke seeds it defers every leg and the on-arm becomes identical to the
@@ -197,7 +197,7 @@ def identify_reserve(raw):
 def identify_candidates(raw):
     """Every quote Cain would list, best expected sale gain first.
 
-    The ruling is "identify every unidentified magic item carried", so there is
+    The rule is "identify every unidentified magic item carried", so there is
     NO profitability filter here -- identification also turns the affixes on for
     the gear plan. The ordering only decides who gets identified first when the
     readiness reserve cuts the leg short."""

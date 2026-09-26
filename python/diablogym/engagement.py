@@ -1,6 +1,6 @@
 """R18-E engagement selection (threat-v1): which monster action 9 should hit.
 
-Chairman's order (2026-09-07 01:05): "择敌要做,优先攻击血量少、威胁大的怪".
+Design requirement (2026-09-07): choose targets, preferring monsters with low HP and a high threat.
 Today action 9 binds the wire-canonical first engageable row (nearest, then id).
 Under ``engagement_priority="threat-v1"`` the selector ranks the same candidate
 set by (ranged first, threat weight, runtime damage, lowest HP, distance, id).

@@ -279,7 +279,7 @@ class ResourceWarmStartTests(unittest.TestCase):
             training._validate_args(args)
             self.assertIsNone(args.manager_npz)
             args.seed = 2124000  # reserved eval bank; never a game training seed
-            with self.assertRaisesRegex(ValueError, "种子纪律"):
+            with self.assertRaisesRegex(ValueError, "seed discipline"):
                 training._validate_args(args)
             args.seed = 2164000
         for policy in ("sustain-v2", "sustain-v3", "sustain-v4"):

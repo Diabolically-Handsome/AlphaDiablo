@@ -133,7 +133,7 @@ def settle(fake, d_before, reason):
 
 
 class RetreatEscrowForfeitureTests(unittest.TestCase):
-    """(e) R18-B 撤退触发的窗不发托管 —— retreat_trigger is death-equivalent."""
+    """(e) R18-B: windows triggered by a retreat pay no escrow; retreat_trigger is death-equivalent."""
 
     def test_retreat_trigger_forfeits_exactly_like_death_when_the_law_is_on(self):
         for reason in ("death", "retreat_trigger"):

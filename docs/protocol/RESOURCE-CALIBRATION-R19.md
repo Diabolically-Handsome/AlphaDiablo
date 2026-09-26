@@ -1,32 +1,32 @@
-# R19：补给时间与经济可达性校准
+# R19: calibrating resupply time and economic reachability
 
-本批按 2026-09-04 实施报告的下一步推进：先测清正常补给的完整耗时及资源缺口，再形成参数建议。它是零训练的诊断批次，不是五臂效果试验，也不替代 L2 生存验证。
+This batch follows the next step of the 2026-09-04 implementation report: first measure the complete duration and resource shortfalls of a normal resupply, then form parameter recommendations. It is a zero-training diagnostic batch, not the five-arm effect trial, and it does not replace the L2 survival check.
 
-## 固定边界
+## Fixed boundaries
 
-- 继续使用冻结 R16 与认证工人，动作和观测尺寸不变；原生库直接复用 R18 的最终 V4，不重建、不替换现用库。
-- 原生战备门完全不变，生产协议默认仍为补给 600 微拍、FARM 3600 微拍。
-- 诊断对象为 `ResourceCalibration`，仅 `OptionsEnv` 接受，训练 Worker 拒绝。诊断记录显式包含 `formal_metric_eligible=False`。
-- 延长的补给观察最多 2400 微拍，整个诊断最多 10000 微拍；第一次实际从城镇返回 L1 即停止。达标、未达标都记录真实往返完成时间。死亡、未触发服务、路径错误与达到观察上限分别记录，不把未完成样本当作已完成。
-- 工人开始时仍看到原 6000 微拍预算。只有服务已开始、即将执行纯脚本动作后，才允许把底层环境的停止上限扩到 10000；工人观测时钟不改，服务开始后任何策略调用均为工程错误。若角色无需回城已达标或提前抵达 L2，则单列记录，不混入补给耗时样本。
-- 两种触发时机都保留工人观测中 FARM 进度的生产分母 3600，只有控制阈值变化；共同前 1800 微拍轨迹必须一致。出发前死亡与已出发后死亡分别统计。
+- The frozen R16 and the certified worker are kept, with unchanged action and observation sizes; the native library directly reuses R18's final V4 and is not rebuilt, and the library in use is not replaced.
+- The native readiness gate is completely unchanged; the production protocol still defaults to 600 micro ticks for resupply and 3600 for FARM.
+- The diagnostic object is `ResourceCalibration`, which only `OptionsEnv` accepts and the training Worker rejects. The diagnostic records explicitly carry `formal_metric_eligible=False`.
+- The extended resupply observation lasts at most 2400 micro ticks and the whole diagnostic at most 10000; it stops at the first actual return from town to L1. The real round-trip completion time is recorded whether readiness was met or not. Deaths, services never triggered, path errors and reaching the observation cap are recorded separately, and unfinished samples are never treated as finished.
+- At the start the worker still sees the original budget of 6000 micro ticks. Only after the service has started and is about to execute purely scripted actions may the underlying environment's stop limit be raised to 10000; the worker's observation clock is unchanged, and any policy call after the service has started is an engineering error. If the character meets readiness without a town trip or reaches L2 early, this is recorded separately and not mixed into the resupply duration samples.
+- Both trigger timings keep the production denominator 3600 of the FARM progress in the worker observation; only the control threshold changes, and the shared first 1800 micro ticks of trajectory must be identical. Deaths before and after departure are counted separately.
 
-## 对照设计
+## Comparison design
 
-1. 用诊断接口的 600/3600 配置核对原 V4 的 16 个 R16 种子及 16 个认证种子的轨迹与关键结果，验证默认兼容性。
-2. 对 R16 的同 16 种子延长到 2400，做同种子跨局重放，并对认证模型独立复核 16 局；与旧轨迹在原终止时刻的前缀逐项比较。
-3. 工程检查通过后，对冻结 R16 的 2114000–2114047 做 FARM 触发 3600 与 1800 的配对校准。两组均使用相同的诊断服务上限与工人观测时钟；可以复用完全相同身份和配置下已经产生的 3600 组记录。认证模型另复核 16 个提前触发样本。
+1. Using the diagnostic interface's 600/3600 configuration, check the trajectories and key results of the original V4 on the 16 R16 seeds and the 16 certified seeds, verifying default compatibility.
+2. Extend R16 on the same 16 seeds to 2400, replay the same seeds across games, and independently re-check the certified model on 16 games; compare item by item with the prefix of the old trajectories up to the original termination time.
+3. Once the engineering checks pass, run a paired calibration of FARM triggers at 3600 and 1800 on the frozen R16 for 2114000–2114047. Both groups use the same diagnostic service cap and worker observation clock; the 3600-group records already produced under exactly the same identity and configuration can be reused. The certified model re-checks 16 early-trigger samples separately.
 
-独立局允许使用最多三个隔离进程，每个进程的 PyTorch 线程数为 1。模型逐局重设种子，按固定种子顺序写出结果；进程数进入配置。16 局重放使用串行执行并逐行比较，以检查并行进程是否影响确定性。工程错误停止后续排队。
+Independent games may use at most three isolated processes, each with one PyTorch thread. The model re-seeds per game and writes results in the fixed seed order; the process count goes into the configuration. The 16-game replay runs serially and is compared row by row, to check whether parallel processes affect determinism. An engineering error stops the rest of the queue.
 
-这些都是已消费的开发种子。用于查明机制与选择下一版待验证参数，不作为未见种子泛化或通关认证。若有工程错误立即停下定位；诊断时限不足则右删失，不能把“已完成者”的最大值冒充整个总体所需上限。
+These are all consumed development seeds. They are used to understand the mechanism and pick the next version's parameters to be verified, not as unseen-seed generalization or clearing certification. On an engineering error stop immediately and locate it; if the diagnostic time limit is too short the samples are right-censored, and the maximum of the "finished" ones must not be passed off as the cap the whole population needs.
 
-## 记录与解释
+## Records and interpretation
 
-逐微拍核对真实时间、层级切换、原生门槛回执及轨迹。经济快照在服务开始、进城、首次访问商人、报价或装备/金币/腰带变化、交易前后和服务结束时保存；复用已获得的 raw，不额外查询或刷新商店。重复快照可去重，交易记录引用快照及真实回执。
+Real time, level changes, native gate receipts and trajectories are checked per micro tick. Economic snapshots are saved at the start of the service, on entering town, on the first visit to a merchant, on quotes or equipment/gold/belt changes, before and after trades and at the end of the service; already obtained raw data is reused, and the shop is not queried or refreshed in addition. Duplicate snapshots may be de-duplicated, and trade records reference snapshots and real receipts.
 
-经济分析仅使用已经实际观测到的报价与角色状态，区分未知报价、物品/属性限制、有限库存、无容量、最大耐久不足和现金不足。正常可购买/可维修的候选费用不等于全游戏的最优解；没有访问商人时，不能猜其库存或售价。买药高于硬门最低四瓶的费用单列，不能据此直接断言先前一定买得起甲。
+The economic analysis only uses quotes and character states actually observed, distinguishing unknown quotes, item/attribute restrictions, limited stock, no capacity, insufficient maximum durability and insufficient cash. The cost of normally buyable/repairable candidates is not the optimum of the whole game; without a merchant visit its stock or prices cannot be guessed. The cost of buying potions beyond the hard gate's minimum of four is listed separately and cannot be used directly to assert that armor would have been affordable earlier.
 
-报告应同时给出：每个触发时机的服务触发率、真实开始时刻、完成/死亡/右删失数、分阶段耗时、原 600 与候选观察预算内的返层覆盖、返层达标率、原 6000 总预算内的返层人数、以及可解释的资源缺口。不会把返层达标冒充到达 L2 或存活 1800 微拍。
+The report should give, for each trigger timing: the service trigger rate, the real start time, the numbers of completions/deaths/right-censored samples, per-stage durations, return-to-level coverage within the original 600 and the candidate observation budget, the readiness rate on return, the number returning within the original total budget of 6000, and explainable resource shortfalls. Meeting readiness on return is never passed off as reaching L2 or surviving 1800 micro ticks.
 
-当前工作目录为 `/home/user/r19_calibration_20260904/`。开工快照保存于 `snapshot/`，冻结诊断镜像与原始记录分别单独建立。最终结果由本批交付报告登记。
+The work ran in a separate local work directory (not published), with a start snapshot, a frozen diagnostic mirror and the raw records kept separately. The final results are registered in this batch's delivery report.

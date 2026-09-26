@@ -3,7 +3,7 @@
 **一级战士从城镇出发，最终升到七级，击杀骷髅王，以96/96生命存活结束。**
 原生击杀计数为1、骷髅王任务完成、角色未死亡，三项同时成立后立即停止。
 
-时间：2026年9月21日多伦多20:11／9月22日UTC00:11。
+时间：2026年9月22日UTC00:11。
 [英文完整说明](README.md) · [结果数据](result.json)
 
 [![最后一战的原生画面](media/poster.png)](https://github.com/Diabolically-Handsome/AlphaDiablo/releases/download/skeleton-king-first-kill-20260921/skeleton-king-final-fight-60fps.mp4)
@@ -43,7 +43,7 @@ Morning Star of zest晨星锤（武器基础伤害1—10、+7体力），配小�
 
 ## 这是谁的成绩
 
-这是**当前任务中的策略助手＋冻结RL工人＋明确的导航与服务执行**的成绩。
+这是**OpenAI Codex 智能体担任的策略助手＋冻结RL工人＋明确的导航与服务执行**的成绩。
 开头曾由Ministral 3 8B操作，累计1624次请求；之后8850条执行记录分别标明了
 工人攻击、导航头、助手服务和等待。游戏允许暂停思考，不是“真人实时反应”成绩。
 

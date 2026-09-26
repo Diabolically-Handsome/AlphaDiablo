@@ -4,7 +4,7 @@
 // Ordinary-armor recipes opt in; old one-argument configuration stays chest-only.
 bool gResourceOrdinaryArmorScope = false;
 bool gResourcePreserveEquipmentReadiness = false;
-// R17.1 chairman ruling 3 (2026-09-06): "coach-v03" law. When set, the L1->L2
+// R17.1 readiness rule 3 (2026-09-06): "coach-v03" law. When set, the L1->L2
 // transition guard only RECORDS the readiness verdict (advisory) instead of
 // vetoing, the deeper-floor wall is lifted (Python per-floor tables govern L3+),
 // and the receipt carries the six-condition law verdict (health excluded).
@@ -40,7 +40,7 @@ bool gResourcePortalEnabled = false;
 bool gPortalAuthorized = false;
 int gResourcePortalsStarted = 0;
 constexpr int MaxResourcePortals = 2;
-// R18-H identify-v1 (2026-09-07) 凯恩鉴定: Cain identifies carried/worn magic
+// R18-H identify-v1 (2026-09-07) Cain identify: Cain identifies carried/worn magic
 // items for the engine's fixed StorytellerIdentifyPrice, so the town itinerary
 // can sell them at _iIvalue/4 instead of _ivalue/4 (stores.cpp
 // NormalStoreSellPrice) and the gear plan can read their real affixes. The
@@ -72,7 +72,7 @@ struct ResourceTransitionReceipt {
 	uint64_t sequence = 0;
 	bool accepted = false;
 	bool ready = false;
-	bool readyLaw = false; // six-condition law (health excluded), R17.1 ruling 3
+	bool readyLaw = false; // six-condition law (health excluded), R17.1 readiness rule 3
 	bool sourceIsSet = false;
 	bool targetIsSet = false;
 	int source = 0;
@@ -93,7 +93,7 @@ struct ResourceReadiness {
 	bool weapon = false;
 	std::vector<std::string> failures;
 	bool ready() const { return failures.empty(); }
-	// Six-condition readiness law (R17.1 ruling 3): clvl/AC/dmg/belt/durability/weapon,
+	// Six-condition readiness law (R17.1 readiness rule 3): clvl/AC/dmg/belt/durability/weapon,
 	// HP deliberately excluded (HP belongs to the drink reflex and the town-trip trigger).
 	bool readyExcludingHealth() const
 	{

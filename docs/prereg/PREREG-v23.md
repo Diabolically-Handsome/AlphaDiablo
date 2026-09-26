@@ -1,137 +1,204 @@
-# v23-IS「单缝在位」预注册文档
+# v23-IS "single seam in place": pre-registration
 
-**冻结时间:2026-07-10 00:15(本文件 commit 时间戳即公证)。夜间任何偏离须援引预注册条款,否则按违规入册。**
+**Frozen: 2026-07-10 (the commit timestamp of this file is the notarization). Any deviation during the run must cite a pre-registration clause; otherwise it is recorded as a violation.**
 
-> 来源:设计panel wf_8ed0e980(3 设计先验 × 6 批评 × 1 可行性审计 × 1 合成,11 agent)。
-> 总设计师授夜间全权("全拜托您了",2026-07-09 深夜);四个拍板点由值夜者按授权定案,记录见第五节。
-> 两条铁律:① 冻结 v22-H 的 303 维经理观测契约一个字节不动;② 金种子 9000-9031 全文只出现一次——最终判决。
+> Source: a design panel (3 design proposals x 6 critiques x 1 feasibility audit x 1 synthesis). The four open
+> decisions were settled before launch; the record is in section 5.
+> Two hard rules: (1) the 303-dim manager observation contract of the frozen v22-H does not change by a single byte;
+> (2) the gold seeds 9000-9031 appear exactly once in the whole run: the final verdict.
 
-## 〇、考题
+## 0. The question
 
-在冻结 v22-H 经理之下,把 FARM 操作脑换成可学习工人。今晚只证明一件事:**操作脑可以被学出来**。
-这是可替换性主张,不是超越主张——平手即胜利(线见 P1)。
+Under the frozen v22-H manager, replace the FARM operating brain with a learnable worker. This run proves one thing
+only: **the operating brain can be learned**. It is a substitutability claim, not a claim of surpassing: a tie is a
+win (the line is in P1).
 
-## 一、架构裁决(D1-D6)
+## 1. Architecture decisions (D1-D6)
 
-- **D1 工人范围:只做 FARM。** DIVE/RESUPPLY/脑干反射/B4 保险丝原样冻结。DIVE 在位吞吐 4-10 万步/时,一夜不够一次像样 PPO;bridge 无快照 API,深层出生不可得;RESUPPLY 是一行 `return 13`。DIVE 工人 = v24 独立处方。
-- **D2 训练体制:在位训练,冻结 H 经理在环(numpy 前向,argmax+经理掩码),窗口即 episode。** 不用课程经理(其覆盖主张方向反了),不用技能健身房(快照 API 不存在)。窗口循环逐拍簿记(反射/保险丝/终止阶梯)抽成共享方法,OptionsEnv 与 WorkerWindowEnv 同一段代码。**重构后 G0 六项必须先全绿,再测任何基线。** 训练种子:显式采样器,拒采 [7000,7032)∪[9000,9032)。
-- **D3 工资单:窗口内原始环境奖励,唯一剥除项 = 换层奖金(Δdlvl⁺ 的 8×Σlevel 项);γ_worker=1.0;自然窗口终止 terminated,仅基础局 3000 步截断 truncated。**
-  - 下潜套利修复(全panel唯一双确认 fatal flaw):掩 11 号键封不住(1-8 走格与 10 号探索宏都能踩楼梯格),必须剥薪。账本恒等式 **Σw_t ≡ 窗口R − 8×ΣΔdlvl⁺** 写进 G0' 逐窗口断言。经理账本一字不动,差额由经理独收。
-  - 修复后 EV:榨干层走楼梯≈等钟归还(中性,不背叛 BC 锚);有怪农怪严格占优。死亡罚 −8×dlvl 保留。
-  - 已知边界激励(入册不设闸):levelup 终止没收窗内余薪 → 推迟升级刀/囤伤害的排序激励;量级审计:损失即时击杀 EV ~2.35 > 可囤增益;τ̄ 哨兵监控。
-  - 备用补丁(**至多一个**,失败签名预注册,现场不许换):死时腰带有药 → **B1** 死亡重定价(−8×dlvl 改固定 −40);死时腰带空 → **B2** 捡药塑形(+0.3×Δbelt⁺,上界 1.5/层 < 单怪 2.35,存量守恒不可刷)。
-- **D4 工人:298 维 =295 + τ/TAU_CAP + layer_clock/KILL_PATIENCE + exhausted 旗;Discrete(15) 恒掩 11(下楼归经理)与 12(喝药归脑干),14 沿用基础掩码。** 298 是 v22-R5 尸检(榨干旗不可从停滞钟恢复)的直接落实与复审对象(R2)。
-  - 反射所有权:工人永不观测"反射待发"态——窗口开始与每步之后由包装器排水(逐拍过保险丝/时钟/终止阶梯;喝药拍可跨 exhausted/CAP/死亡,逐拍检查)。logged ≡ executed,PPO buffer 无污染。
-  - BC:克隆 bc_flat 管线,在位采集(种子 100-227,只录 FARM 窗口,保险丝强制拍整拍剔除),PiHead(298→64→64→15),held-out top-1 ≥0.95,样本≥300 类召回 ≥0.85(不达标类加权 CE 重训一次,BC 唯一重试)。
-  - 防 HBC 塌缩:--freeze-policy-steps 200000(价值头热身;HBC 尸检:无冻结+value 从零+3247:1 类不平衡)、--ent-coef 0.005(F 先例)、塌缩报警器:每 500k 步动作份额 top-1>90% 且回报<BC 线 → 停机走 P2,不许"再训一会儿"。
-- **D5 平手线 0.95×**(0.90 判词过松,批评者意见采纳)。
-- **D6 单位纪律:"步"一律指 SB3 worker 步**(status sps 口径);降档线同单位。
+- **D1 Worker scope: FARM only.** DIVE/RESUPPLY/brainstem reflexes/the B4 fuse stay frozen as they are. In-place
+  DIVE throughput is 40-100k steps/hour, not enough for a decent PPO within one run; the bridge has no snapshot API,
+  so deep-level spawns are unavailable; RESUPPLY is a single line, `return 13`. A DIVE worker is a separate v24
+  prescription.
+- **D2 Training regime: in-place training, frozen H manager in the loop (numpy forward, argmax + manager mask),
+  window = episode.** No curriculum manager (its coverage claim points the wrong way) and no skill gym (the snapshot
+  API does not exist). The per-beat bookkeeping of the window loop (reflex/fuse/termination ladder) is extracted into
+  a shared method, so OptionsEnv and WorkerWindowEnv run the same code. **After the refactor all six G0 items must be
+  green before any baseline is measured.** Training seeds: an explicit sampler that rejects
+  [7000,7032) union [9000,9032).
+- **D3 Wage: the raw environment reward inside the window, with exactly one item stripped = the level-change bonus
+  (the 8 x sum-of-levels term of delta-dlvl+); gamma_worker=1.0; a natural window end is terminated, and only the
+  3000-step cut of the base episode is truncated.**
+  - Dive-arbitrage fix (the only fatal flaw confirmed twice across the whole panel): masking key 11 cannot seal it
+    (the 1-8 moves and the 10 explore macro can both step on stair tiles), so the wage must be stripped. The ledger
+    identity **sum w_t == window R - 8 x sum delta-dlvl+** is written into G0' as a per-window assertion. The
+    manager's ledger does not change by a single character; the difference goes to the manager alone.
+  - EV after the fix: taking the stairs on a drained level ~ returning the clock (neutral, no betrayal of the BC
+    anchor); farming monsters where there are monsters strictly dominates. The death penalty -8 x dlvl is kept.
+  - Known boundary incentive (recorded, no gate): a levelup terminates the window and forfeits the remaining wage in
+    it, which gives an ordering incentive to delay the level-up kill / hoard damage; magnitude audit: the lost
+    immediate-kill EV ~2.35 > the hoardable gain; the tau-bar sentinel monitors it.
+  - Standby patches (**at most one**, failure signatures pre-registered, no swapping on site): if the belt had
+    potions at death -> **B1** death repricing (-8 x dlvl becomes a fixed -40); if the belt was empty at death ->
+    **B2** potion-pickup shaping (+0.3 x delta-belt+, capped at 1.5/level < 2.35 for a single monster, stock is
+    conserved and cannot be farmed).
+- **D4 Worker: 298 dims = 295 + tau/TAU_CAP + layer_clock/KILL_PATIENCE + the exhausted flag; Discrete(15) with 11
+  always masked (descending belongs to the manager) and 12 (drinking belongs to the brainstem), 14 keeps the base
+  mask.** 298 is the direct implementation of the v22-R5 autopsy (the drained flag cannot be recovered from the stall
+  clock) and the object of re-review (R2).
+  - Reflex ownership: the worker never observes a "reflex pending" state; at window start and after every step the
+    wrapper drains it (beat by beat through the fuse/clock/termination ladder; a drinking beat may cross
+    exhausted/CAP/death, checked beat by beat). logged == executed, so the PPO buffer is not polluted.
+  - BC: clone the bc_flat pipeline, collect in place (seeds 100-227, record FARM windows only, drop whole beats forced
+    by the fuse), PiHead (298->64->64->15), held-out top-1 >=0.95, per-class recall >=0.85 for classes with >=300
+    samples (a class below the bar gets one weighted-CE retrain, the only BC retry).
+  - Guarding against an HBC collapse: --freeze-policy-steps 200000 (value-head warm-up; the HBC autopsy: no freeze +
+    value from scratch + a 3247:1 class imbalance), --ent-coef 0.005 (the F precedent), a collapse alarm: every 500k
+    steps, if the top-1 action share >90% and the return < the BC line -> stop and go to P2; "train a bit longer" is
+    not allowed.
+- **D5 Tie line 0.95x** (0.90 was too loose a verdict; the critics' view was adopted).
+- **D6 Unit discipline: "steps" always means SB3 worker steps** (the status sps definition); the downgrade line uses
+  the same unit.
 
-## 二、闸门
+## 2. Gates
 
-- **G0**:重构后 `pytest tests/test_options_env.py` 六项全绿(先于一切基线)。
-- **G0'**:`pytest tests/test_worker_env.py`——(a) 脚本工人驱动 WorkerWindowEnv ≡ OptionsEnv+冻结H 直跑,种子 7000-7007 窗口序列/τ/逐窗R/mode_seq 逐位一致;(b) 掩码单元;(c) 工资恒等式逐窗断言 + override 入 info;(d) numpy 经理 ≡ SB3 predict(1000 obs);(e) truncated 确实走 SB3 bootstrap 分支。任一不过=不发车。
-- **G0''(本地新增,严于panel)**:重构后脚本路径对 2026-07-09 探针存档(scratchpad window_econ.json,argmax,种子 7000-7031)**逐种子回报/深度/死亡回归一致**——重构不许改变 v22 行为的位级证据。
-- **G-H7**:`eval_assembled --seeds 7000-7031 --worker script` → H7 基线实测(金池 93.9 不得当探针基线)。
-- **G1**:BC 闸——held-out+召回达标;`eval_assembled --worker bc` ≥ 0.85×H7。一次重试;两败走 P2。
-- **G2(~4M 步)**:最新 ckpt 组装 16 种子整局回报 ≥ G1 的 BC 值;报警器无警。
-- **G3(金种子唯一触发器)**:末 2-3 ckpt 各 16 种子初筛 → 胜者满 32:均值 ≥0.95×H7 且 战死 ≤H7+2 且 R4 哨兵全过。重试上限 2 轮,每轮动且仅动一个预注册旋钮(续训 3M / B1或B2 / 换 ckpt)。
+- **G0**: after the refactor, all six items of `pytest tests/test_options_env.py` are green (before any baseline).
+- **G0'**: `pytest tests/test_worker_env.py`: (a) the script worker driving WorkerWindowEnv == OptionsEnv + frozen H
+  run directly, with the window sequence/tau/per-window R/mode_seq bit-identical on seeds 7000-7007; (b) mask units;
+  (c) the wage identity asserted per window + override in info; (d) numpy manager == SB3 predict (1000 obs);
+  (e) truncated really takes the SB3 bootstrap branch. Any failure = no launch.
+- **G0'' (added locally, stricter than the panel)**: after the refactor, the script path reproduces the 2026-07-09
+  probe archive (docs/assets/window_econ_v23_probe.json, argmax, seeds 7000-7031) **seed by seed in return, depth and
+  death**: bit-level evidence that the refactor did not change v22 behavior.
+- **G-H7**: `eval_assembled --seeds 7000-7031 --worker script` -> the measured H7 baseline (the gold-pool 93.9 must
+  not serve as the probe baseline).
+- **G1**: BC gate: held-out + recall meet the bar; `eval_assembled --worker bc` >= 0.85 x H7. One retry; two
+  failures go to P2.
+- **G2 (~4M steps)**: the latest ckpt, assembled, full-episode return on 16 seeds >= the BC value of G1; no alarm.
+- **G3 (the only trigger of the gold seeds)**: the last 2-3 ckpts each screened on 16 seeds -> the winner on the full
+  32: mean >=0.95 x H7 and deaths <=H7+2 and all R4 sentinels pass. At most 2 retry rounds; each round changes
+  exactly one pre-registered knob (continue training 3M / B1 or B2 / switch ckpt).
 
-## 三、R 线(可证伪预测)与 P 线(判决)
+## 3. R lines (falsifiable predictions) and P lines (verdicts)
 
-| # | 预测 | 数字 |
+| # | Prediction | Number |
 |---|---|---|
-| R1 | H7 落金池同族带 | ∈[85,105],点预测 95 —— **附录 A 预警:值夜者实测 78.3,R1 大概率脱靶,开牌对账** |
-| R2 | 298 维 BC 在位重放比 | ∈[0.85,1.05]×H7,点 0.92;<0.85 则"观测缺陷是 R5 根因"假说被杀死 |
-| R3 主 | 8M 步组装体(7000 段) | ∈[0.95,1.10]×H7,主观命中 ~55% |
-| R4 哨兵 | FARM 换层率 ≤脚本+2pp;override<3%;cap<5%;τ̄∈脚本±25%;战死≤H7+2 | 走廊封死:换层率∈(基线+2pp,3×基线] → 该 ckpt 失金评资格;>3×基线且战死>6/32 → run 作废(P3);override≥8% → 数据作废 |
-| R5 | 金种子(若触发) | ∈[85,105],点 92 |
+| R1 | H7 lands in the same band as the gold pool | in [85,105], point prediction 95. **Appendix A warning: measured 78.3, R1 will very likely miss; reconcile when the gold is opened** |
+| R2 | 298-dim BC in-place replay ratio | in [0.85,1.05] x H7, point 0.92; <0.85 kills the hypothesis "the observation defect is the root cause of R5" |
+| R3 main | 8M-step assembled agent (7000 range) | in [0.95,1.10] x H7, subjective hit rate ~55% |
+| R4 sentinels | FARM level-change rate <= script + 2pp; override <3%; cap <5%; tau-bar within script +/-25%; deaths <= H7+2 | Corridor sealed: level-change rate in (baseline+2pp, 3 x baseline] -> that ckpt loses gold-evaluation eligibility; >3 x baseline and deaths >6/32 -> run void (P3); override >=8% -> data void |
+| R5 | Gold seeds (if triggered) | in [85,105], point 92 |
 
-- **P1-强胜**:金均 ≥93.9 且战死 ≤4/32 →"学习工人达到 H 水平"。
-- **P1-胜(主线)**:金均 ≥89.2 且战死 ≤4/32 且 G 线全过 →"FARM 操作脑可被学出并平替脚本内环"。
-- **P1-弱通过**:[84.5,89.2) 且战死 ≤4/32 →"存在性证明,平替带 5-10% 折价",不得写成"达到 H 水平"。
-- 判词纪律:n=32、SE≈4,平手判决自带 ±1SE 噪声,功效限制写进判决书。
-- **P2-投降**:BC 两败 → 从零 PPO 臂(ent 0.02);go/no-go <0.8×H7 → 不烧金种子,判决"一夜预算内在位工人学习不足"。**08:30 金评最迟启动线;08:00 后只写判决不再训。**
-- **P3-硬止损**:R4 作废线 → 回退上一 ckpt 不粉饰;塌缩报警 → 停机走 P2。
+- **P1-strong win**: gold mean >=93.9 and deaths <=4/32 -> "the learned worker reaches H level".
+- **P1-win (main line)**: gold mean >=89.2 and deaths <=4/32 and all G lines pass -> "the FARM operating brain can be
+  learned and can replace the script's inner loop".
+- **P1-weak pass**: [84.5,89.2) and deaths <=4/32 -> "an existence proof, replacement at a 5-10% discount"; it must
+  not be written as "reaches H level".
+- Verdict discipline: n=32, SE~4, a tie verdict carries +/-1 SE of noise; the power limitation is written into the
+  verdict.
+- **P2-surrender**: BC fails twice -> a from-scratch PPO arm (ent 0.02); go/no-go <0.8 x H7 -> no gold seeds spent,
+  verdict "in-place worker learning insufficient within the budget of one run". **The gold-standard evaluation has a
+  latest start point in the schedule (section 4); past the cut-off only the verdict is written, with no further
+  training.**
+- **P3-hard stop**: the R4 void line -> fall back to the previous ckpt without embellishment; collapse alarm -> stop
+  and go to P2.
 
-## 四、时刻表(00:15 实际发车版)
+## 4. Schedule (as launched)
 
-| 时段 | 内容 |
-|---|---|
-| 00:15-01:45 | 写码六件套(含 options_env 共享窗口核重构) |
-| 01:45-02:30 | G0 → G0' → G0'' → H7 基线 |
-| 02:30-03:30 | BC 采集+训练+G1(含一次重试档) |
-| 03:30-07:00 | PPO 主训 8M worker 步 @4env(γ1.0,ent 0.005,freeze 200k,500k/ckpt+报警器);**05:00 sps 检查:<1.8M/h 砍至 6M** |
-| 07:00-07:45 | G3 初筛+满 32 → go/no-go |
-| 07:45-08:15 | 金种子一次性开牌(仅当 G3 过;单臂不回炉)+ R 线对账 |
-| 08:15-10:00 | 重试余量 / 判决书 / DESIGN.md v23 章 |
+| Phase | Budget | Content |
+|---|---|---|
+| 1 | ~1.5 h | write the six code pieces (including the refactor of options_env into a shared window core) |
+| 2 | ~0.75 h | G0 -> G0' -> G0'' -> H7 baseline |
+| 3 | ~1 h | BC collection + training + G1 (including one retry slot) |
+| 4 | ~3.5 h | PPO main training, 8M worker steps @4env (gamma 1.0, ent 0.005, freeze 200k, 500k/ckpt + alarm); **sps check ~1.5 h in: <1.8M/h cuts to 6M** |
+| 5 | ~0.75 h | G3 screen + full 32 -> go/no-go |
+| 6 | ~0.5 h | one-time opening of the gold seeds (only if G3 passes; single arm, no re-education) + R-line reconciliation |
+| 7 | ~1.75 h | retry slack / verdict / the v23 chapter of DESIGN.md |
 
-## 五、拍板记录(值夜者按总设计师授权,2026-07-10 00:10)
+## 5. Decision record (2026-07-10)
 
-1. **窗口自然终止 = terminated**(采合成者,驳审计员异议):SMDP 契约本身就是"窗口即工人的世界,跨窗口信用归经理";自举 V(s′) 会把经理职权泄漏回工人账本。"工人把窗口结束学成世界终结"是契约,不是 bug。
-2. **P1 主胜线 = 89.2**(0.95×93.9),弱通过档保留、判词降级。
-3. **夜间补丁授权:准**(B1/B2 按失败签名二选一、至多一个、启用即入册)。
-4. **主训 8M 步**(余量比步数值钱)。
+1. **A natural window end = terminated** (the synthesis's position, over the auditor's objection): the SMDP contract
+   itself says "the window is the worker's world; credit across windows belongs to the manager"; bootstrapping V(s')
+   would leak the manager's authority back into the worker's ledger. "The worker learns the end of a window as the
+   end of the world" is the contract, not a bug.
+2. **P1 main win line = 89.2** (0.95 x 93.9); the weak-pass tier is kept, with a downgraded verdict.
+3. **Mid-run patches: allowed** (B1/B2 chosen by failure signature, at most one, recorded when enabled).
+4. **Main training 8M steps** (slack is worth more than steps).
 
-## 六、残余不确定性(合成后无人敢拍胸脯,如实入册)
+## 6. Residual uncertainty (after the synthesis nobody could vouch for these; recorded as is)
 
-1. 经理观测分布漂移容忍度(τ/停滞钟分布随学习工人漂移,冻结 H off-distribution;G3 落差大则判决书双归因,漂移过大=v24 联合微调立项证据)。
-2. 保险丝 override 真实污染率(<3% 是估;8% 作废线是兜底不是保证)。
-3. γ=1+冻结 200k 的价值头质量(窗口回报小应好学,无先例)。
-4. 快进税实测值(~15% 是估;05:00 sps 检查是唯一防线)。
-5. 剥薪后榨干层收尾风格漂移(τ̄±25% 哨兵监控,根治留 v24)。
+1. Tolerance of the manager's observation-distribution drift (tau/stall-clock distributions drift with the learned
+   worker, putting the frozen H off-distribution; a large G3 drop means a dual attribution in the verdict, and
+   excessive drift = evidence for opening a v24 joint fine-tuning case).
+2. The real contamination rate of fuse overrides (<3% is an estimate; the 8% void line is a backstop, not a
+   guarantee).
+3. Value-head quality with gamma=1 + 200k frozen steps (small window returns should be easy to learn; no precedent).
+4. The measured fast-forward tax (~15% is an estimate; the sps check in phase 4 is the only line of defence).
+5. Style drift at the end of drained levels after wage stripping (monitored by the tau-bar +/-25% sentinel; the root
+   fix is left to v24).
 
-## 附录 A:窗口经济学探针(2026-07-10 00:00 实测,先于本预注册)
+## Appendix A: window-economics probe (measured 2026-07-10, before this pre-registration)
 
-冻结 H+脚本工人,7000-7031,存档 scratchpad/window_econ.json:
+Frozen H + script worker, 7000-7031, archived as docs/assets/window_econ_v23_probe.json:
 
-- **argmax**(终评分布):80.7 窗/局,DIVE 0.12/局(28/32 局零 DIVE),局均 R **78.3**,死 4/32,深度直方 {L1:26, L2:4, L0:2}。FARM 窗口构成:exhausted 干层窗 2205 个(τ中位 26,薪中位 −0.03)对 levelup 窗 22 个(薪均 38.7)——**干层垃圾窗占比 ~97.6%(按窗数)**,训练数据配比哨兵入册:训练日志按 500k 步记录鲜层/干层窗占比。
-- **sampled**(参考):35.6 窗/局,DIVE 3.0/局,局均 147.1 但死 21/32;D/stall 占 DIVE 窗 44%(=v24 DIVE 工人的肥肉,存档备用)。
-- 直接推论:① R1 点预测 95 与实测 78.3 冲突,开牌对账;② 组装体金评对 DIVE 工人不敏感(0.12/局),FARM 工人独扛综合分——两块记分板分开判,不许冒功(已并入 P 线判词纪律)。
+- **argmax** (the final-evaluation distribution): 80.7 windows/episode, DIVE 0.12/episode (28/32 episodes with zero
+  DIVE), mean episode R **78.3**, deaths 4/32, depth histogram {L1:26, L2:4, L0:2}. FARM window composition: 2205
+  exhausted dry-level windows (median tau 26, median wage -0.03) vs 22 levelup windows (mean wage 38.7): **dry-level
+  junk windows make up ~97.6% (by window count)**. A training-data mix sentinel is recorded: the training log records
+  the fresh-level/dry-level window shares every 500k steps.
+- **sampled** (reference): 35.6 windows/episode, DIVE 3.0/episode, mean episode 147.1 but deaths 21/32; D/stall make
+  up 44% of DIVE windows (= the meat for a v24 DIVE worker, archived for later).
+- Direct inferences: (1) the R1 point prediction 95 conflicts with the measured 78.3; reconcile at the opening;
+  (2) the assembled agent's gold evaluation is insensitive to a DIVE worker (0.12/episode), so the FARM worker alone
+  carries the composite score: the two scoreboards are judged separately and credit must not be borrowed (merged into
+  the P-line verdict discipline).
 
-*预注册人:值夜 Claude(Fable 5),依 2026-07-09 深夜总设计师全权授权。*
+## Appendix B: interpretation of the R4 corridor (2026-07-10, before any training numbers)
 
-## 附录 B:R4 走廊的值夜解释(2026-07-10 00:37,先于一切训练数字)
+The measured H7 (78.5, deaths 4/32; G0'' 32/32 regression PASS) gives a script level-change-rate baseline of
+**0.04%**. The "3 x baseline" clause degenerates when the baseline is ~0 (3 x 0.04% = 0.12% < baseline+2pp = 2.04%,
+so the corridor is empty). Recorded interpretation: **loss of gold-evaluation eligibility = level-change rate >2.04%
+(baseline+2pp, original text unchanged); run void line = >6% (= 3 x (baseline+2pp), keeping the spirit of "x3") and
+deaths >6/32**. The measured override baseline is 2.63%; the sentinel line <3% and the void line >=8% are unchanged.
+Derived gate numbers anchored on H7: G1 >=66.7, G3 >=74.6 with deaths <=6/32, P2 surrender line <62.8. The R1
+prediction band [85,105] misses the measured 78.5; this goes into the R-line scorecard at the opening.
 
-H7 实测(78.5,死 4/32;G0'' 32/32 回归 PASS)给出脚本换层率基线 **0.04%**——
-"3×基线"条款在基线≈0 时退化(3×0.04%=0.12% < 基线+2pp=2.04%,走廊为空集)。
-解释入册:**丧失金评资格线 = 换层率 >2.04%(基线+2pp,原文不变);run 作废线 =
->6%(=3×(基线+2pp),保留"×3"精神)且战死 >6/32**。override 基线实测 2.63%,
-哨兵线 <3% 与作废线 ≥8% 原文不变。由 H7 锚定的衍生闸门数字:G1 ≥66.7,
-G3 ≥74.6 且死 ≤6/32,P2 投降线 <62.8。R1 预测带 [85,105] 对实测 78.5 脱靶,
-开牌对账时入 R 线记分卡。
+**Interpretation of the collapse alarm (2026-07-10, before the main training launch)**: the measured BC demonstration
+class distribution is {9: 97.1%, 10: 2.9%} (the locked room means even dry levels "always have monsters", so the
+first dispatch branch is always true); the "top-1 >90%" criterion is inherently useless for the worker (the teacher
+itself is over the line). New criterion: **at two checkpoints, ~2M and ~4M (G2), run an assembled 16-seed replay;
+< 0.8 x G1 (= 62.8) means collapse, stop and go to P2**; a sustained decline of ep_rew_mean (wage definition, BC
+expectation ~1.0/window) is an early-warning signal. Measured G1: BC assembled 78.5 = 1.00 x H7 (seed by seed identical
+to the script). R2 hit ([0.85,1.05], point 0.92).
 
-**塌缩报警器解释(2026-07-10 00:46,先于主训发车)**:BC 示范类分布实测
-{9: 97.1%, 10: 2.9%}(锁定房间使干层也"永远有怪",dispatch 首分支恒真)——
-"top-1>90%"判据对工人天然失效(教师自己就超线)。改判据:**~2M 与 ~4M(G2)
-两个检查点各做 16 种子组装重放,< 0.8×G1(=62.8)即判塌缩,停机走 P2**;
-ep_rew_mean(工资口径,BC 期望 ≈1.0/窗)持续走低为预警信号。
-G1 实测:BC 组装 78.5 = 1.00×H7(逐种子与脚本一致)。R2 命中([0.85,1.05],点 0.92)。
+## Appendix C: pre-launch review panel record (2026-07-10)
 
-## 附录 C:发车前审查团记录(2026-07-10 00:55)
+The review panel (4 lenses x item-by-item adversarial falsification) confirmed 15 items and rejected 4. Actions:
 
-审查团(4 镜头 × 逐条对抗证伪,23 agent)确认 15 项、驳回 4 项。处置:
-
-- **哨兵接线(blocker/major 族)**:WorkerSentinelCallback 落地(每 500k 步经
-  get_attr 汇总子进程 stats:干/鲜层窗配比、终止原因谱、滚局数、累计动作份额
-  → sentinel.jsonl)。**首次发车(00:48,PID 25362,~0.3M 步)因此作废重启**——
-  没有仪表的车不上路;时刻表余量吃下 45 分钟成本。
-- **超参护栏**:--worker 断言 mppo/γ1.0/3000 微步;--seed 邻域拒撞 7000/9000 段。
-  (首次发车命令本身合规,护栏防未来。)
-- **种子纪律**:reset 兜底滚局计入 stats["reseeds"];bc_worker 断言
-  episodes==128 且 reseeds==0。今晚已采示范的滚局风险评估≈0(argmax H 首决策
-  恒 FARM),且滚局采样器本就拒采 7000/9000 段——**BC 不重采**,断言防未来。
-- **测试增强**:option_extra 增 dlvl0/dlvl_end/dry;G0'(c) 增剥薪公式独立对账
-  (bonus ≡ DESCEND_UNIT×Σrange(dlvl0,dlvl_end)),复绿。
-- **BC 召回闸定义修正**:门槛类按全集 ≥300 筛(审查团:held-out 内筛稀释十倍)。
-  今晚结果不受影响(两类召回均 1.0)。
-- **PPO 回报口径说明(入册不改码)**:开窗排水(工人首动作前的反射拍)工资不进
-  PPO episode 回报——工人不可控前缀不记入工人的账,此为正确语义而非缺陷;
-  账本恒等式(G0'.c)与经理账本不受影响。尾部排水(工人动作触发的反射)照常计入当步。
-- **G1 判词限定(2026-07-10 深夜,总设计师侧法证会审结论采纳)**:G1 与 H7 位级
-  一致经独立会审证实为真结果(worker 分支实际接管,32 种子 42,048 次调用,BC 网
-  在全部到访状态与 dispatch 零分歧,重建 JSON 逐字节相等)。限定:**G1 只证明
-  BC 能在教师自己的轨迹分布上复刻教师,从未被迫在脚本轨迹之外做决策——
-  "学习工人可平替脚本"的真考题落在 G2/G3 的 PPO 检查点上**,判决书须原文携带。
-  后续:eval_assembled 已加 worker 参与度取证(调用数/动作直方/与脚本分歧率),
-  G2/G3 起评测文件自带出处。
+- **Sentinel wiring (blocker/major family)**: WorkerSentinelCallback implemented (every 500k steps it aggregates the
+  subprocess stats via get_attr: dry/fresh-level window mix, termination-reason spectrum, reroll count, cumulative
+  action shares -> sentinel.jsonl). **The first launch (~0.3M steps) was voided and restarted because of this**: no
+  vehicle goes on the road without instruments; the schedule's slack absorbed the 45-minute cost.
+- **Hyperparameter guard rails**: --worker asserts mppo/gamma 1.0/3000 micro-steps; --seed rejects neighbourhoods that
+  collide with the 7000/9000 ranges. (The first launch command was itself compliant; the guard rails protect the
+  future.)
+- **Seed discipline**: fallback rerolls in reset are counted in stats["reseeds"]; bc_worker asserts episodes==128 and
+  reseeds==0. The reroll risk of the demonstrations already collected in this run is ~0 (the first argmax H decision
+  is always FARM), and the reroll sampler already rejects the 7000/9000 ranges: **BC is not re-collected**; the
+  assertion protects the future.
+- **Test additions**: option_extra adds dlvl0/dlvl_end/dry; G0'(c) adds an independent reconciliation of the
+  wage-stripping formula (bonus == DESCEND_UNIT x sum range(dlvl0, dlvl_end)); green again.
+- **BC recall gate definition fix**: the classes under the bar are filtered on the full set >=300 (review panel:
+  filtering inside held-out dilutes it tenfold). This run's results are unaffected (both class recalls are 1.0).
+- **Note on the PPO return definition (recorded, no code change)**: the wage of the opening drain (reflex beats
+  before the worker's first action) does not enter the PPO episode return: the worker's uncontrollable prefix is not
+  booked to the worker, which is the correct semantics and not a defect; the ledger identity (G0'.c) and the
+  manager's ledger are unaffected. The tail drain (reflexes triggered by a worker action) is booked to that step as
+  usual.
+- **G1 verdict qualification (2026-07-10, adopting the conclusion of an independent forensic review)**: the
+  bit-level agreement of G1 with H7 was confirmed by the independent review as a real result (the worker branch
+  actually took over: 42,048 calls over 32 seeds, the BC net had zero divergence from dispatch on every visited state,
+  and the rebuilt JSON is byte-identical). Qualification: **G1 only proves that BC can copy the teacher on the
+  teacher's own trajectory distribution; it was never forced to decide outside the script's trajectories. The real
+  exam of "a learned worker can replace the script" falls on the PPO checkpoints of G2/G3**, and the verdict must carry
+  this text. Follow-up: eval_assembled now records worker engagement evidence (call count/action histogram/divergence
+  rate from the script), so from G2/G3 on the evaluation files carry their own provenance.

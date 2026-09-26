@@ -14,7 +14,7 @@ in place of machine-specific values (see PROVENANCE.md):
 
 This script copies the tree to OUT and substitutes the placeholders; it never
 edits the files in place.  Substituting the original values reproduces the
-original bytes of every file except the two whose edits are listed in
+original bytes of every file except the files whose edits are listed in
 PROVENANCE.md.
 
     python localize.py OUT --workspace /path/to/AlphaDiablo --root /path/to/run-root \

@@ -14,7 +14,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 AUDIT_PATH = ROOT / "cmake" / "audit_macos_minos.py"
 SPEC = importlib.util.spec_from_file_location("audit_macos_minos", AUDIT_PATH)
 if SPEC is None or SPEC.loader is None:
-    raise RuntimeError(f"无法载入 {AUDIT_PATH}")
+    raise RuntimeError(f"Cannot load {AUDIT_PATH}")
 AUDIT = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(AUDIT)
 
@@ -91,7 +91,7 @@ Load command 4
                 return loads[(flag, pathlib.Path(path).resolve())]
 
             with mock.patch.object(AUDIT, "_otool", side_effect=fake_otool):
-                with self.assertRaisesRegex(RuntimeError, "高于产物目标"):
+                with self.assertRaisesRegex(RuntimeError, "is newer than the build target"):
                     AUDIT.audit([root], "15.0", [pathlib.Path(tmp)])
 
 

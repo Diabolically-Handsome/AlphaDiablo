@@ -1,23 +1,24 @@
-# v24-worker-leg7 — 皮筋工人(首个金牌超越脚本系统的可学习操作脑)
+# v24-worker-leg7 — The leashed worker (the first learnable operator brain to beat the scripted system on gold)
 
-**金种子 97.2(中位 93.8,死 2/32)对 v22-H 脚本系统的 93.9 —— P1-强胜,
-可替换性主张获证。** 同案双判决:P-拐杖-伪("仍拄拐":胜者带 β=0.0156 轻锚训成;
-β=0 的腿 8 撒手即崩 55.6/79% 分歧)。金牌分歧率 0.66% → 判词"贴锚续航"。
-全案:docs/prereg/PREREG-v24.md + docs/design/DESIGN.md v24 章 + gate_ledger.jsonl(八腿全录;原始台账,2026-09-23 起不在主干,见提交 c1ffced)。
+**Gold seeds 97.2 (median 93.8, 2/32 deaths) against 93.9 for the v22-H scripted system: a strong P1 win, and the
+replaceability claim is confirmed.** The same case has a second verdict, P-crutch-false ("still on the crutch"):
+the winner was trained with a light anchor of β=0.0156, and leg 8 with β=0 collapsed as soon as it let go
+(55.6, 79% divergence). Gold divergence rate 0.66%, verdict "continuing close to the anchor".
+Full case: docs/prereg/PREREG-v24.md + the v24 chapter of docs/design/DESIGN.md + gate_ledger.jsonl (all eight legs recorded; raw ledger, not published).
 
-| 项 | 值 |
+| Item | Value |
 |---|---|
-| 架构 | LeashedMaskablePPO MlpPolicy(64,64),γ=1.0,观测 298 维,Discrete(15) 掩 11/12 |
-| 训练 | 7 腿累计 ~7.01M 步在位(冻结 v22-H 经理),β 日程 0.5→0.015625(腿 6 软绊冻结),CE 皮筋对冻结 BC 教师 |
-| 世界 | v20 规则;工资 = 原始奖励 − 换层奖金(全程换层率 ≤0.05%) |
-| SHA-256 前缀 | `fb9cd6f58c5e2122`(2026-09-23 重新保存:仅 zip 内 `data` 元数据里的本机路径换成中性路径,权重与优化器状态逐字节不变;原始文件见提交 c1ffced,原前缀 `ac65d4eb91fdb678`) |
-| 总设计师处方 | "先给操作脑一个拐杖,再让它慢慢扔掉"(2026-07-10)——前半句获证,后半句被诚实证伪:退火终点不是零,是一羽之重(教训十九草案) |
+| Architecture | LeashedMaskablePPO MlpPolicy (64,64), γ=1.0, 298-dim observation, Discrete(15) with 11/12 masked |
+| Training | 7 legs, ~7.01M steps in total, on-policy (frozen v22-H manager); β schedule 0.5→0.015625 (frozen after a soft trip in leg 6); CE leash to the frozen BC teacher |
+| World | v20 rules; wage = raw reward − level-change bonus (level-change rate ≤0.05% throughout) |
+| SHA-256 prefix | `fb9cd6f58c5e2122` (re-saved on 2026-09-23 with a neutral path in the zip metadata; weights and optimizer state unchanged; previous SHA-256 prefix `ac65d4eb91fdb678`) |
+| Design note | The worker was first trained with a scripted crutch (a KL anchor to the frozen BC teacher) that was meant to be annealed away (design, 2026-07-10). The first half was confirmed; the second half was honestly falsified: the annealing end point is not zero but a feather's weight (draft lesson 19) |
 
-## 复现
+## Reproduce
 
 ```bash
 .venv/bin/python train/eval_assembled.py --worker train/models/v24-worker-leg7/model --seeds 9000-9031
 ```
 
-经理必须是 `train/models/v22-h-manager`(numpy 前向);观测契约见
-`python/diablogym/options_env.py::_worker_obs`;皮筋实现 `train/leashed_ppo.py`。
+The manager must be `train/models/v22-h-manager` (numpy forward pass); the observation contract is in
+`python/diablogym/options_env.py::_worker_obs`; the leash is implemented in `train/leashed_ppo.py`.

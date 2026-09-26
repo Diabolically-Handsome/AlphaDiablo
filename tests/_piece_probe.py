@@ -1,4 +1,4 @@
-"""对比 ep1/ep2 城镇同一批格子的 dPiece 与 walkable:定位是地块还是属性表坏了。"""
+"""Compare dPiece and walkable of the same town tiles in ep1/ep2: is it the tile map or the property table that broke?"""
 import pathlib
 import sys
 
@@ -19,15 +19,15 @@ from descend_seed_test import walk_to_target
 
 obs = bridge.reset(seed=1001)
 ep1 = sample()
-# 下到地牢 1 层再回来重开,复现污染路径
+# Go down to dungeon level 1 and come back to restart, reproducing the contamination path
 stairs = [t for t in obs["triggers"] if t["msg"] == bridge.WM_DIABNEXTLVL][0]
 obs, _ = walk_to_target(stairs["x"], stairs["y"])
-assert obs["dungeon_level"] == 1, "先决条件:ep1 要成功下到 L1"
-print(f"(ep1 已下到 L1,怪物 {len(obs['monsters'])} 只;现在重开 ep2)\n")
+assert obs["dungeon_level"] == 1, "precondition: ep1 must reach L1"
+print(f"(ep1 reached L1 with {len(obs['monsters'])} monsters; now restarting ep2)\n")
 bridge.reset(seed=1001)
 ep2 = sample()
 
-print(f"{'tile':>10} | {'ep1 piece/walk':>15} | {'ep2 piece/walk':>15} | 一致?")
+print(f"{'tile':>10} | {'ep1 piece/walk':>15} | {'ep2 piece/walk':>15} | same?")
 for t in TILES:
     p1, w1 = ep1[t]
     p2, w2 = ep2[t]
@@ -36,10 +36,10 @@ for t in TILES:
 
 same_piece = all(ep1[t][0] == ep2[t][0] for t in TILES)
 same_walk = all(ep1[t][1] == ep2[t][1] for t in TILES)
-print(f"\ndPiece 全部一致: {same_piece}   walkable 全部一致: {same_walk}")
+print(f"\ndPiece all equal: {same_piece}   walkable all equal: {same_walk}")
 if same_piece and not same_walk:
-    print("→ 地块相同但通行性不同:坏的是『地块属性表』(SOLData / TileProperties)")
+    print("→ same pieces but different passability: the broken part is the tile property table (SOLData / TileProperties)")
 elif not same_piece:
-    print("→ 地块本身不同:坏的是『城镇地图创建』(dPiece/dungeon 数据)")
+    print("→ the pieces themselves differ: the broken part is town map creation (dPiece/dungeon data)")
 if not (same_piece and same_walk):
-    raise AssertionError(f"下地牢后 reset 的城镇地块/通行性漂移: {ep1=}, {ep2=}")
+    raise AssertionError(f"town pieces/passability drifted on reset after entering the dungeon: {ep1=}, {ep2=}")

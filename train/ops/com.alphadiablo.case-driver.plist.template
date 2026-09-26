@@ -1,16 +1,16 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- B1-E6:launchd 直挂模板(孤儿化终极形:launchd 本身即父进程,PPID=1)。
-     用法:替换 __CASE__ / __REPO__ / __DRIVER__ 三个占位符后:
-       cp 本文件 ~/Library/LaunchAgents/com.alphadiablo.__CASE__.plist
+<!-- B1-E6: launchd template (the strongest orphaning form: launchd itself is the parent, PPID=1).
+     Usage: replace the three placeholders __CASE__ / __REPO__ / __DRIVER__, then:
+       cp this file ~/Library/LaunchAgents/com.alphadiablo.__CASE__.plist
        launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.alphadiablo.__CASE__.plist
-     卸载:
+     Unload:
        launchctl bootout gui/$(id -u)/com.alphadiablo.__CASE__
-     说明:
-     - ProcessType=Interactive + caffeinate -is 双保险防降频/防睡眠;
-     - KeepAlive=false:驱动器自带幂等续跑,崩溃后由值守按 P 线人工裁量重启,
-       不自动复活(防止无人值守时额度被自动重试烧穿——台账制额度是人裁的);
-     - RunAtLoad=true:bootstrap 即点火一次;
-     - 日志与心跳检查细则见 docs/protocol/OPS-launcher.md。 -->
+     Notes:
+     - ProcessType=Interactive + caffeinate -is: double protection against throttling and sleep;
+     - KeepAlive=false: the driver resumes idempotently by itself; after a crash the operator decides on a restart per the P lines,
+       with no automatic revival (so unattended auto-retries cannot burn through the budget; ledger budgets are decided by people);
+     - RunAtLoad=true: bootstrap launches it once;
+     - log and heartbeat check rules: see docs/protocol/OPS-launcher.md. -->
 <plist version="1.0">
 <dict>
   <key>Label</key>

@@ -36,7 +36,7 @@ def raw(*, depth=3, is_set=False, set_id=0, monsters=()):
 
 class SetLevelSemanticsTests(unittest.TestCase):
     def test_unsupported_hero_class_fails_before_native_init(self):
-        with self.assertRaisesRegex(ValueError, "只支持 hero_class=0"):
+        with self.assertRaisesRegex(ValueError, "only supports hero_class=0"):
             DiabloGymEnv(hero_class=1)
 
     def test_set_level_is_a_new_scene_but_not_a_depth_change(self):
@@ -76,7 +76,7 @@ class SetLevelSemanticsTests(unittest.TestCase):
         worker._advance_to_learning_window = lambda: _AdvanceOutcome(
             None, 0.0, True, False, ())
         worker._new_episode = lambda *args, **kwargs: None
-        with self.assertRaisesRegex(RuntimeError, "未产生 FARM"):
+        with self.assertRaisesRegex(RuntimeError, "produced no FARM window"):
             worker.reset()
         self.assertEqual(worker.stats["reseeds"], _MAX_EMPTY_FARM_EPISODES)
 
@@ -112,7 +112,7 @@ class SetLevelSemanticsTests(unittest.TestCase):
                 "exact": False,
             }],
         })
-        # 远处/门后的怪仍在全图列表时，FARM 必须先给机关宏一次机会。
+        # While distant monsters or monsters behind doors are still in the full-map list, FARM must first give the mechanism macro a chance.
         self.assertEqual(dispatch("farm", state, False), 11)
         self.assertEqual(dispatch("dive", state, False), 11)
 

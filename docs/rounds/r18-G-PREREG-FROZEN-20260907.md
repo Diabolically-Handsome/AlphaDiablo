@@ -1,30 +1,30 @@
-# R18-G 预注册:二层以上关闭全图求战(2026-09-07 02:15)
+# R18-G pre-registration: whole-map hunting off on level 2 and below (2026-09-07)
 
-## 〇、案由
+## 0. Background
 
-R18-D/E 判决:仇恨上限没有让撤退时身边的怪变少(6.18 vs 6.14),因为怪群是在上限生效之前就被拉来的——
-拉怪的机制是 a10 的**全图求战**(窗内没可见怪时,全图 BFS 朝最近的活怪走,穿过关着的门、朝未照亮的怪)。
-主席 01:05 的怀疑「一次招惹一整层」指向的正是这个机制。T0′ 判决书(2026-09-06)早已把「L2 关闭求战」列为便宜探针,今夜补上。
+The R18-D/E verdict: the aggro cap did not reduce the monsters nearby at retreat time (6.18 vs 6.14), because the crowd had been pulled before the cap took effect;
+the pulling mechanism is a10's **whole-map hunt** (when the window has no visible monster, a whole-map BFS walks toward the nearest live monster, through closed doors, toward unlit monsters).
+The suspicion raised in the design review, "it aggroes a whole level at once", points at exactly this mechanism. The T0′ verdict (2026-09-06) had already listed "hunting off on L2" as a cheap probe; it is added now.
 
-## 一、接口(默认 all = 逐位不变)
+## 1. Interface (default all = unchanged bit for bit)
 
-`DiabloGymEnv(hunt_scope="l1-only")`:主线 L2+ 上 a10 不再全图求战,只走局部边疆探索(与 R16 之前的旧法一致);
-L1 与任务副本保持冻结行为(L1 前缀与撤退臂逐位相同,配对只隔离 L2 效应)。实现:`env._hunt_allowed_here(raw)` 一处闸门。
+`DiabloGymEnv(hunt_scope="l1-only")`: on main-line L2+ a10 no longer hunts over the whole map and only does local frontier exploration (the same as the old rule before R16);
+L1 and quest set-levels keep the frozen behaviour (the L1 prefix is bit-identical to the retreat arm, so the pairing isolates only the L2 effect). Implementation: a single gate, `env._hunt_allowed_here(raw)`.
 
-## 二、探针
+## 2. Probe
 
-驱动 `r10-staging/run_r18g_probe.py`;池 2_133 同种子配对;工人 7e31dc54;时钟 completion-l2-r18c;经理 coach-v03;
-经济 sustain-loot-v1;撤退 retreat-v1;两臂:ctl `r18g-retreat`(= R18-C/R18-D/E 撤退臂配置重跑)与 G `r18g-retreat-hunt-l1`(+ hunt_scope=l1-only)。
+Driver `r10-staging/run_r18g_probe.py` (not published); pool 2_133 with same-seed pairs; worker 7e31dc54; clock completion-l2-r18c; manager coach-v03;
+economy sustain-loot-v1; retreat retreat-v1; two arms: ctl `r18g-retreat` (a re-run of the R18-C/R18-D/E retreat-arm configuration) and G `r18g-retreat-hunt-l1` (+ hunt_scope=l1-only).
 
-判据:回归(硬)——ctl 行与 R18-D/E 对照行逐位相同,两臂首次 L2 到达前缀逐局相同,否则 VOID。
-主假设(只报不判,方向事先写死):H1 G 的 L2 每千拍风险率低于 ctl;H2 配对 saved−lost > 0 且 UCB95 < 0;
-H3 撤退触发时身边活怪均值低于 ctl;H4 G 的 L2 每千拍击杀不高于 ctl(少拉怪 = 少打怪,预期代价);H5 L3+ 到达数与幸存者所在层。
+Criteria: regression (hard): the ctl rows are bit-identical to the R18-D/E control rows and the prefix up to the first L2 arrival is identical game by game in both arms, otherwise VOID.
+Main hypotheses (reported, not judged; directions fixed in advance): H1 G's L2 hazard per 1000 ticks is lower than ctl; H2 paired saved−lost > 0 with UCB95 < 0;
+H3 the mean number of live monsters nearby at the retreat trigger is lower than ctl; H4 G's L2 kills per 1000 ticks are not higher than ctl (pulling fewer = killing fewer, the expected cost); H5 L3+ arrivals and the level of the survivors.
 
-## 三、认证链
+## 3. Certification chain
 
-全套件 0 失败(含 `tests/test_hunt_scope.py`);探针回归相等;双向重烤(最终字节,与 R18-F 合并后一并做);本文件 sha256 记台账。
+Full suite with 0 failures (including `tests/test_hunt_scope.py`); probe regression equal; two-way re-bake (final bytes, done together after merging with R18-F); the sha256 of this file recorded in the ledger.
 
-## 四、种子与文件
+## 4. Seeds and files
 
-2_133 再消耗 2 组(累计 16 组);处女池零接触。新文件:本预注册、`run_r18g_probe.py`、`tests/test_hunt_scope.py`、`r18g-probe/`。
-改动协议文件:`env.py`(kwarg、闸门)、探针(键、遥测、版本 `r17-deployment-v3-r18g`)。
+2_133 consumes 2 more groups (16 in total); the virgin pools are untouched. New files: this pre-registration, `run_r18g_probe.py` and `r18g-probe/` (not published), `tests/test_hunt_scope.py`.
+Changed protocol files: `env.py` (kwarg, gate), the probe (key, telemetry, version `r17-deployment-v3-r18g`).

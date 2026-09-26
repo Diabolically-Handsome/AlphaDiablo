@@ -37,7 +37,6 @@
   "historical_ministral_requests": 1624,
   "method": "assistant strategist + frozen RL worker + explicit services/navigation; early Ministral segment",
   "result_utc": "2026-09-22T00:11:25Z",
-  "result_toronto": "2026-09-21T20:11:25-04:00",
   "normal_start": true,
   "normal_difficulty": true,
   "no_resource_injection": true,

@@ -1,16 +1,16 @@
-"""P5 重放探针(FORENSICS-F2 取证队列;总设计师 2026-07-17 批文排产)。
+"""P5 replay probe (FORENSICS-F2 forensics queue; scheduled 2026-07-17).
 
-对灾难种子(ctrl 视角 CAT11 ∪ sov 视角增补 ∪ 健康对照)× 三工人
-(king/v32-sov/v32-ctrl)× H 经理,复刻 eval_assembled.evaluate 的
-确定性协议逐窗重放,并在 mgr.choose 之前无副作用记录:经理 303 维
-观测、选项掩码、全选项 logits、所选选项;步后记录该窗 reason/tau/opt。
+For the catastrophe seeds (ctrl-view CAT11, plus sov-view additions, plus healthy controls) x three workers
+(king/v32-sov/v32-ctrl) x the H manager, re-run the deterministic protocol of eval_assembled.evaluate
+window by window and, before mgr.choose, record without side effects: the manager's 303-dim
+observation, option mask, all option logits and the chosen option; after the step, the window's reason/tau/opt.
 
-安全性:记录仅为 numpy 纯前向与数组拷贝,不消耗 RNG、不改环境状态;
-重放保真度以档案行(ret/depth/died/kills/mode_seq)逐字段对账自证。
-零评测档案写入——产物落 train/runs/probe-f2-replay/(gitignored),
-report.json 携运行时五 sha 与全部权重 sha。
+Safety: recording is pure numpy forward passes and array copies; it consumes no RNG and changes no env state.
+Replay fidelity is self-checked by reconciling archive rows (ret/depth/died/kills/mode_seq) field by field.
+No evaluation archive is written -- outputs go to train/runs/probe-f2-replay/ (gitignored);
+report.json carries the five runtime sha values and all weight sha values.
 
-用法:.venv/bin/python train/probe_f2_replay.py [--smoke]
+Usage: .venv/bin/python train/probe_f2_replay.py [--smoke]
 """
 import hashlib
 import json
@@ -61,7 +61,7 @@ def main():
     mgr = NumpyManager(str(H_NPZ))
     fidelity = {}
     report = {
-        "authorization": "总设计师 2026-07-17 批文:P5 排产",
+        "authorization": "FORENSICS-F2 queue, P5 (scheduled 2026-07-17)",
         "seeds": seeds, "manager_sha256": sha(H_NPZ),
         "workers_sha256": {k: sha(v) for k, v in WORKERS.items()},
         "runtime_five": None, "fidelity": fidelity,
@@ -90,7 +90,7 @@ def main():
                 seq = ""
                 while not (done or trunc):
                     m = env.action_masks()
-                    # ---- 无副作用记录(纯前向;不消耗 RNG,不改状态)----
+                    # ---- side-effect-free recording (pure forward; no RNG consumed, no state change) ----
                     obs_log.append(np.asarray(obs, dtype=np.float32).copy())
                     mask_log.append(np.asarray(m, dtype=bool).copy())
                     logit_log.append(
@@ -125,7 +125,7 @@ def main():
                        "beats": allw["beats"], "overrides": allw["overrides"],
                        "cap": allw["cap"], "mode_seq": seq}
                 ok = all(row[f] == ref_rows[seed][f] for f in ROW_FIELDS)
-                fidelity[f"{wname}-{seed}"] = "位级同一" if ok else {
+                fidelity[f"{wname}-{seed}"] = "bit-identical" if ok else {
                     "MISMATCH": {f: [row[f], ref_rows[seed][f]]
                                  for f in ROW_FIELDS
                                  if row[f] != ref_rows[seed][f]}}
@@ -138,15 +138,15 @@ def main():
                     json.dumps({"row": row, "extras": extras},
                                ensure_ascii=False))
                 print(f"  {wname} seed {seed}: ret {R:.1f} windows {allw['n']}"
-                      f" 对账 {'OK' if ok else 'MISMATCH!'}", flush=True)
+                      f" reconcile {'OK' if ok else 'MISMATCH!'}", flush=True)
         finally:
             env.close()
             workers.clear()
     (OUT / "report.json").write_text(
         json.dumps(report, ensure_ascii=False, indent=1))
-    bad = [k for k, v in fidelity.items() if v != "位级同一"]
-    print(f"重放保真:{len(fidelity) - len(bad)}/{len(fidelity)} 位级同一;"
-          f"失配 {bad if bad else '无'}")
+    bad = [k for k, v in fidelity.items() if v != "bit-identical"]
+    print(f"replay fidelity: {len(fidelity) - len(bad)}/{len(fidelity)} bit-identical; "
+          f"mismatches {bad if bad else 'none'}")
     return 1 if bad else 0
 
 

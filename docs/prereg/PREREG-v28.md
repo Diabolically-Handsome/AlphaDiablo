@@ -1,181 +1,196 @@
-# v28「绿洲续航」预注册文档(终稿 v2,批评者面板 24 项裁决全落地后冻结)
+# v28 "oasis endurance": pre-registration (final text v2, frozen after all 24 decisions of the critic panel were implemented)
 
-**考题**:v26 的宽度病(配对赢 11/32)是**欠训**还是**配方内禀**?
-**唯一处方:续航——v26-leg6 检查点 + β 恒 0.015625(永不撒手)+ skip-dry
-原封,再训 8 腿。** 零环境改动;病理依据 docs/AUTOPSY-v26-宽度病.md。
-对照:王座 v24-golden 97.2;发射锚 v24-G3-leg7(92.0 逐种子,历版同锚,
-**sha256₁₆=22d9442257d3a3c7 钉死,驱动发车断言**);宽度基线 leg6 = 5/16
-(对锚前 16)、11/32(满 32);锚前 16 均值 110.1 / 后 16 均值 73.8(两半池
-不可交换,半池幻影四案在册:−29.7/−12.8/−6.3/−13.4)。
+**The question**: is v26's width problem (paired wins 11/32) **under-training** or **intrinsic to the recipe**?
+**The single prescription: endurance: the v26-leg6 checkpoint + beta constant at 0.015625 (never let go) + skip-dry
+unchanged, trained for 8 more legs.** Zero environment changes; pathology basis:
+[AUTOPSY-v26-width](../forensics/AUTOPSY-v26-width.md). Controls: the throne v24-golden 97.2; the launch anchor
+v24-G3-leg7 (92.0 per seed, the same anchor as in earlier versions, **sha256_16=22d9442257d3a3c7 pinned and asserted
+by the driver at launch**); width baseline leg6 = 5/16 (against the first 16 of the anchor), 11/32 (full 32); the
+anchor's first-16 mean 110.1 / back-16 mean 73.8 (the two half pools are not exchangeable; four half-pool phantom cases
+on record: -29.7/-12.8/-6.3/-13.4).
 
-## D1 机制(零环境改动;train 侧改动全部入册)
+## D1 Mechanism (zero environment changes; all train-side changes recorded)
 
-- 起点 = `train/runs/v26-leg6/model_final.zip`(满 32 = 108.2,分歧 41.5%),
-  `--resume-from` 通路(v24 建,封-5 断言),禁 --bc-init/--freeze;
-  **START = 2,998,272**(zip num_timesteps,= 6×499,712;发车断言相等;
-  status.json 计数器实测滞后 268 步,由崩溃互锁 ±2048 slack 覆盖,计步单一化
-  以 SB3 真链 nt_chain 为源)。
-- **β 恒 0.015625**,教师 = 原 BC 教师 sd 不动(锚不随王走——自锚是新机制,
-  留给下一版)。拉力量级论证:∂CE/∂z = π_θ−π_T 逐分量有界,故 CE 对每个 logit
-  的拉力上界 = β = 0.0156,**与分歧幅度无关**;直接证据 = v26 腿 6 在
-  β=0.015625、分歧升至 41.5% 的同一工作点完成 112.2→114.5;单调性佐证 =
-  腿 4-5 在更紧的 0.0625/0.03125 档完成 98.6→112.2(面板 minor 改引落地)。
-- skip-dry 原封;干层锚哨兵只记不裁,**预期带 [55,90]%,点 70**(发车冒烟实测
-  起点即 63%——v26 判词的 32% 系腿 6 开腿读数,腿 6 训程内继续漂移;带于发车前
-  按实测重注册,修正记录入册)。
-  **哨兵口径如实注册**:500k 整点采样对 499,712 腿长错拍,每腿仅 1 点、落在
-  腿起点后 ~2k 步(≈上一腿末态);终腿末态无在训读数,判词措辞为「逐腿 8 点
-  曲线(腿起点口径)」。**入册事故**:v26 的 G-绿洲闸门因腿 1 无哨兵行被
-  `if lines:` 静默跳过,从未实弹执行;v28 腿 1 跨 3.0M 整点保证有行,闸门
-  升格为「无行即 STOP」。
-- **G-CAL 重定义(面板双 blocker 修正)**:v26 的 20% 分歧绊线标定于近锚态
-  (腿 1 实测 0.0),其绊后动作(β₀×4 重标定回 BC 冷启)与续航前提矛盾。
-  **口径澄清(发车冒烟实测)**:探针的 teacher_diverge 在训练分布上起点仅
-  3-6%(41.5% 系评测口径的脚本分歧,两把不同的尺);20% 绊线未必秒杀,但
-  其阈值从未对定居点续航标定过,绊后动作亦无定义——v28 全案降为**只记不裁**
-  (保守选择,修正记录入册):`--calib-record-only`
-  (train_ppo/leashed_ppo 新旗,tripped 位照记入 calib.jsonl,旗不武装,
-  哨兵回调不杀腿);recalibrate 分支物理删除。探针改为**绝对步公式**
-  nt_chain+250k / +450k(每腿由驱动计算传参;短腿不可达部分裁掉入账);
-  probes_ok 接线闸(g_ce>0 且 distill_ce>0)**每腿执行**;崩溃尝试 calib
-  轮转 .void 每腿执行。
-- 腿种子 **seed_k = 281_000 + 1_000×(k−1)**(腿 1=281000…腿 8=288000;
-  与历版训练种子 101000-108000 段、探针/金段零交叠;cmd 与日志同一变量,
-  杜绝双位点漂移)。
+- Start = `train/runs/v26-leg6/model_final.zip` (a training artifact, not published; full 32 = 108.2, divergence 41.5%), via the `--resume-from` path
+  (built in v24, seal-5 assertions), --bc-init/--freeze forbidden; **START = 2,998,272** (zip num_timesteps,
+  = 6x499,712; asserted equal at launch; the status.json counter measured 268 steps behind, covered by the +/-2048
+  slack of the crash interlock; step counting is unified with the real SB3 chain nt_chain as the source).
+- **beta constant at 0.015625**, the teacher = the original BC teacher sd, unchanged (the anchor does not follow the
+  king: a self-anchor is a new mechanism, left for the next version). Magnitude argument for the pull: dCE/dz =
+  pi_theta - pi_T is bounded per component, so the upper bound of CE's pull on each logit = beta = 0.0156,
+  **independent of the divergence size**; direct evidence = v26 leg 6 went 112.2->114.5 at the same operating point
+  of beta=0.015625 with divergence rising to 41.5%; monotonicity corroboration = legs 4-5 went 98.6->112.2 at the
+  tighter 0.0625/0.03125 steps (the panel's minor citation fix implemented).
+- skip-dry unchanged; the dry-level anchor sentinel is recorded only, not judged, **expected band [55,90]%, point
+  70** (the launch smoke test measured 63% at the start already: the 32% in the v26 verdict was the leg-6 opening
+  reading, and it kept drifting during leg 6's training; the band was re-registered on the measurement before launch,
+  and the correction is recorded).
+  **Sentinel definition registered as is**: sampling at round 500k points is out of phase with the 499,712 leg length,
+  so each leg gets only 1 point, ~2k steps after the leg start (~ the previous leg's end state); the final leg's end
+  state has no in-training reading, so the verdict wording is "an 8-point per-leg curve (leg-start definition)".
+  **Recorded incident**: v26's G-oasis gate was silently skipped by `if lines:` because leg 1 had no sentinel row, so it
+  never actually ran; v28's leg 1 crosses the round 3.0M point and is guaranteed a row, and the gate is promoted to "no
+  row = STOP".
+- **G-CAL redefined (fix for two panel blockers)**: v26's 20% divergence trip line was calibrated near the anchor
+  (measured 0.0 on leg 1), and its post-trip action (beta0 x4 recalibration back to a BC cold start) contradicts the
+  endurance premise. **Definition clarified (launch smoke test)**: the probe's teacher_diverge on the training
+  distribution starts at only 3-6% (the 41.5% is the script divergence of the evaluation definition, a different
+  ruler); the 20% trip line would not necessarily fire at once, but its threshold was never calibrated for endurance
+  from a settled point and the post-trip action is undefined, so for the whole of v28 it is downgraded to **recorded
+  only, not judged** (a conservative choice, the correction recorded): `--calib-record-only` (a new flag of
+  train_ppo/leashed_ppo; the tripped bit is still written to calib.jsonl, the flag is not armed, and the sentinel
+  callback does not kill the leg); the recalibrate branch is physically removed. Probes switch to an **absolute-step
+  formula** nt_chain+250k / +450k (computed by the driver per leg and passed as arguments; parts unreachable on a short
+  leg are trimmed and booked); the probes_ok wiring gate (g_ce>0 and distill_ce>0) **runs every leg**; calib rotation
+  to .void on crashed attempts runs every leg.
+- Leg seeds **seed_k = 281_000 + 1_000 x (k-1)** (leg 1=281000 ... leg 8=288000; zero overlap with the earlier
+  training seed range 101000-108000 and with the probe/gold ranges; cmd and log use the same variable, ruling out drift
+  between two definition points).
 
-## D2 配方与预算 + 克隆差异表
+## D2 Recipe and budget + clone difference table
 
-- **8 腿 × 499,712(244×2048)**,新步硬预算 8×499,712≈4.0M(废止 8M 字样);
-  全链路速率锚 ~111 sps:~75 分钟/腿,8 腿 + 考试 + G3 ≈ 11h,夜航窗。
-  崩溃互锁与烧步照 v26 语义(烧步从腿 8 扣,末腿 = min(cap, LEG−burned))。
-  **运维护栏(非判决输入,如实注册)**:重试上限 4 次/腿系运维自护而非预注册
-  闸门,触发即训练止步、已完成腿照常进 G3;训练子进程挂死护栏 timeout 3h
-  (>2h 健全线)、评测 30 分钟,超时按崩溃互锁落账;评测 stdout 留档
-  runs/v28/*.eval.*.log;崩溃重试进场先轮转陈旧 calib/sentinel(闸门不许被
-  上一次尝试的记录假通过);驱动顶层异常兜底入册(DRIVER_EXCEPTION 事件 +
-  NEEDS_ATTENTION)。
-- **绊线(重定义,伪码入册)**:硬绊 score<62.8 → 训练永久终止,**已完成腿
-  照常进入 G3 候选池**(与 v26 break 语义逐字对齐);
-  `consec = consec+1 if score<103.1 else 0`(仅干净收官腿计入,崩溃尝试
-  不计不清零,首腿可计第一腿),consec≥2 → 提前收官进 G3(预算保护非惩罚);
-  健全性 2h/腿 → **收官进 G3**(v26 裸 STOP 之修正,预算保护哲学统一);
-  硬绊优先于收官判定。103.1=round(0.9×114.5,1),**16 种子腿考口径**
-  (与满 32 口径的 103/108.2 判词线严格区分,见 D3)。
-  接受的残余风险入册:单腿落 [62.8,103.1) 不触发动作、下一腿链式 resume
-  (设计选择);交替缓蚀(104/102/104…)由 8 腿预算上限兜底。
-- **腿考**(7000-7015)+ **宽度探针**:腿考 JSON rows 对锚前 16 按 **seed 键**
-  配对计赢(`ret_leg(seed)>ret_anchor(seed)`,并列/缺行不计赢),纯后处理
-  零额外评测,入 ledger(基线 5/16)。
-- **克隆差异表(run_v26_legs.py → run_v28_legs.py,面板 blocker 落地)**:
-  ① 全 8 腿 resume,腿 1 起点 = v26-leg6;bc-init/freeze 分支物理删除;
-  ② BETA_SCHED/sched_idx/软绊 0.97×P*/SCRIPT_SUBSET/recalibrate/tail_cut
-  全删,β 恒 0.015625;③ 账本 runs/v28/gate_ledger.jsonl,前缀 v28-leg;
-  ④ 腿考 tag v28-leg{k}、G3 tag v28-G3-leg{kk}(**v26/v27 驱动腿考 tag 均
-  硬编码 v24-leg{k},已两轮覆写 v24 与 v26 的逐种子腿考档案——含 114.5 的
-  per-seed rows——永久灭失,事故入册**);⑤ exam() 拒绝覆写已存在档案
-  (档案不可变性升格为全案条款),半截档案轮转 .void;⑥ 发车断言:START、
-  锚 sha 22d9442257d3a3c7、宽度基线档 v26-G3-leg6.json sha 24a905a7baf0f70a、
-  目标档案不存在;⑦ 配对按 seed 键 join 并断言种子集合 = {7000..7031};
-  ⑧ 一切非常规路径写 runs/v28/NEEDS_ATTENTION;⑨ GOLDEN_AUTHORIZED 事件
-  补 model_sha 与满 32 档案 _sha,并预注册金评命令原文(见 D3);
-  ⑩ eval-assembled 锚/金牌/基线档案随本预注册入 git(灭失事故的止血)。
-- train 侧代码改动:train_ppo.py(+--calib-record-only 旗,resume/fresh 两处
-  接线)、leashed_ppo.py(_calib_probe 旗武装受 calib_record_only 守卫;
-  calib_record_only 入 _excluded_save_params 防偷渡)、run_v28_legs.py(新)。
+- **8 legs x 499,712 (244x2048)**, hard budget of new steps 8x499,712 ~ 4.0M (the "8M" wording is abolished);
+  full-chain rate anchor ~111 sps: ~75 minutes/leg, 8 legs + exams + G3 ~ 11h, a long run window. Crash interlock and
+  burned steps follow the v26 semantics (burned steps come out of leg 8, the last leg = min(cap, LEG-burned)).
+  **Operational guard rails (not verdict inputs, registered as is)**: the retry limit of 4/leg is operational
+  self-protection, not a pre-registered gate; when it triggers, training stops and completed legs enter G3 as usual;
+  training subprocess hang guard timeout 3h (> the 2h sanity line), evaluation 30 minutes, timeouts booked through the
+  crash interlock; evaluation stdout archived to runs/v28/*.eval.*.log; a crash retry first rotates stale
+  calib/sentinel files on entry (a gate must not be fake-passed by a previous attempt's records); the driver's
+  top-level exception catch-all is recorded (DRIVER_EXCEPTION event + NEEDS_ATTENTION).
+- **Trip lines (redefined, pseudo-code recorded)**: hard trip score<62.8 -> training permanently stopped, **completed
+  legs enter the G3 candidate pool as usual** (verbatim aligned with v26's break semantics);
+  `consec = consec+1 if score<103.1 else 0` (only clean-close legs count; crashed attempts neither count nor reset; the
+  first leg can count as the first), consec>=2 -> early close into G3 (budget protection, not punishment); sanity
+  2h/leg -> **close into G3** (the fix for v26's bare STOP, unifying the budget-protection philosophy); the hard trip
+  takes precedence over the close decision. 103.1=round(0.9x114.5,1), **the 16-seed leg-exam definition** (strictly
+  distinct from the verdict lines 103/108.2 of the full-32 definition, see D3). Accepted residual risks, recorded: a
+  single leg landing in [62.8,103.1) triggers no action and the next leg chain-resumes (a design choice); alternating
+  slow erosion (104/102/104...) is backstopped by the 8-leg budget cap.
+- **Leg exam** (7000-7015) + **width probe**: the leg-exam JSON rows are paired with the first 16 of the anchor by
+  **seed key** to count wins (`ret_leg(seed)>ret_anchor(seed)`, ties/missing rows do not count as wins), pure
+  post-processing with zero extra evaluation, booked in the ledger (baseline 5/16).
+- **Clone difference table (run_v26_legs.py -> run_v28_legs.py, panel blocker implemented)**: (1) all 8 legs
+  resume, leg 1 starts from v26-leg6; the bc-init/freeze branches are physically removed; (2)
+  BETA_SCHED/sched_idx/soft trip 0.97xP*/SCRIPT_SUBSET/recalibrate/tail_cut all removed, beta constant 0.015625; (3)
+  ledger runs/v28/gate_ledger.jsonl, prefix v28-leg; (4) leg exam tag v28-leg{k}, G3 tag v28-G3-leg{kk} (**the v26/v27
+  drivers hard-coded the leg exam tag v24-leg{k} and overwrote the per-seed leg-exam archives of v24 and v26 over two
+  rounds, including the per-seed rows of 114.5, which are lost permanently; incident recorded**); (5) exam() refuses to
+  overwrite an existing archive (archive immutability promoted to a case-wide clause), half-written archives are
+  rotated to .void; (6) launch assertions: START, anchor sha 22d9442257d3a3c7, width baseline archive v26-G3-leg6.json
+  sha 24a905a7baf0f70a, target archives absent; (7) pairing joins on the seed key and asserts the seed set =
+  {7000..7031}; (8) every non-routine path writes runs/v28/NEEDS_ATTENTION; (9) the GOLDEN_AUTHORIZED event adds
+  model_sha and the full-32 archive _sha, and the gold-evaluation command is pre-registered verbatim (see D3); (10) the
+  eval-assembled anchor/gold/baseline archives are checked into git with this pre-registration (stopping the bleeding
+  of the loss incident).
+- Train-side code changes: train_ppo.py (+ the --calib-record-only flag, wired on both the resume and fresh paths),
+  leashed_ppo.py (arming of the _calib_probe flag guarded by calib_record_only; calib_record_only in
+  _excluded_save_params against smuggling), run_v28_legs.py (new).
 
-## D3 裁决与发射
+## D3 Verdict and launch
 
-- **G3 候选**:腿末 16 种子均值 top-2 ∪ 宽度探针赢数 top-1(去重,≤3 名),
-  全部满 32。并列规则:均值并列取更早腿;宽度并列先比 16 种子均值再取更早腿。
-  **起点 v26-leg6 本尊不入池**(其满 32 档案仅作对照,防欠训假说自我循环)。
-  时钟注记:满 32 考 ≈96 秒/名,3 名合计 <10 分钟。
-- **发射线(历版同锚)**:满 32 对锚配对均差 ≥+4 且赢 ≥18/32 且死 ≤6 且哨兵
-  (换层 ≤2.04% / cap <5% / override <3% 为闸、≥8% 数据作废;τ̄ 带 [27.8,46.4];
-  满 32 均值 ≥74.6)。**出样本副线(面板选择膨胀修正)**:仅经宽度通道入池的
-  候选,另须满 32 后 16(7016-7031)配对赢 ≥8/16 方可发射(同一次 G3 考试
-  免费导出;基线 6/16,零假设 P(≥8)≈16%);判词纪律携带量化注记:宽度 top-1
-  系 max-of-8 顺序统计量,零假设下选择膨胀约 +2~3 赢。
-- **胜者裁决**:发射合格者按满 32 均值降序;±0.05 平分带内先比配对赢数、
-  再取更早腿(v26 的 min(β) 规则在恒 β 下失义,废止)。
-- **P 线(对王座 97.2,穷尽划分)**:死 >6 → 回退;金 ≥101.2 且死 ≤4 →
-  **P28-登基**;∈(97.2,101.2) 且死 ≤4 → 点估增益(王座不动);>97.2 且
-  死 ∈{5,6} → 持平(安全性限定);∈[93.9,97.2] → 持平;<93.9 → 回退。
-  **金池开牌史(面板序数勘误)**:实际开牌 v22/v23/v24 三次;v25/v26/v27
-  均被发射线拦截未开;**本案若发射为第 4 次实际开牌**(不含 v22 口径第 3 次),
-  固定池选择偏置随判词。金评命令预注册原文:
-  `.venv/bin/python train/eval_assembled.py --worker <胜者路径去.zip>
-  --seeds 9000-9031 --tag v28-golden --board`;值夜开牌后须向 gate_ledger
-  回写 golden_result{mean,died,_sha,model_sha} 事件。
-- **不发射档三键穷尽分派(winner=非作废候选中满 32 均值最高者;作废腿数字
-  不得担任胜者,全作废落「无胜者」档)**:
-  ① 资格拦截(死>6/哨兵/均值资格)→「资格失败,宽度考题未答(功效外)」,
-  禁用内禀/退化措辞(算术注记:胜者满 32≥103 ⇒ 对锚均差 ≥+11 ⇒ 均差条款
-  不可能是拦截原因);② 赢≥18 且均差≥4 但副线未过 →「选择膨胀防线生效,
-  不烧牌」;③ 赢≥18 且均差<4 →「宽度达标而幅度未达,点估宽度改进,不烧牌」;
-  ④ 赢<18 且满 32 ≥108.2(起点本尊)→「**宽度病确认内禀(功效内)**,
-  欠训假说否定,机制处方升格工作站」;⑤ 赢<18 且 ∈[103,108.2) →
-  「续航无均值增益,宽度考题未答」(不判内禀不判退化);⑥ <103 →
-  「续航退化,leg-6 为该配方局部峰」。
+- **G3 candidates**: the top-2 by end-of-leg 16-seed mean union the top-1 by width-probe wins (deduplicated, <=3),
+  all on the full 32. Tie rules: a mean tie takes the earlier leg; a width tie first compares the 16-seed mean, then
+  takes the earlier leg. **The starting v26-leg6 itself is not in the pool** (its full-32 archive is a control only,
+  guarding against the under-training hypothesis feeding on itself). Clock note: a full-32 exam ~96 seconds/candidate,
+  <10 minutes for 3.
+- **Launch line (the same anchor as earlier versions)**: full-32 paired mean difference against the anchor >=+4 and
+  wins >=18/32 and deaths <=6 and the sentinels (level change <=2.04% / cap <5% / override <3% are gates, >=8% voids
+  the data; tau-bar band [27.8,46.4]; full-32 mean >=74.6). **Out-of-sample side line (the panel's
+  selection-inflation fix)**: a candidate that entered the pool only through the width channel must also have paired
+  wins >=8/16 on the back 16 of the full 32 (7016-7031) to launch (exported for free from the same G3 exam; baseline
+  6/16, null hypothesis P(>=8)~16%); the verdict discipline carries a quantitative note: the width top-1 is a max-of-8
+  order statistic, with a selection inflation of about +2~3 wins under the null.
+- **Winner decision**: launch-eligible candidates sorted by full-32 mean, descending; within the +/-0.05 tie band
+  first compare paired wins, then take the earlier leg (v26's min(beta) rule loses its meaning under constant beta and
+  is abolished).
+- **P lines (against the throne 97.2, an exhaustive partition)**: deaths >6 -> revert; gold >=101.2 and deaths <=4 ->
+  **P28 takes the throne**; in (97.2,101.2) and deaths <=4 -> point-estimate gain (the throne does not move); >97.2
+  and deaths in {5,6} -> tie (safety qualified); in [93.9,97.2] -> tie; <93.9 -> revert. **Gold-pool opening history
+  (the panel's ordinal correction)**: actually opened three times, v22/v23/v24; v25/v26/v27 were all intercepted by the
+  launch line and never opened; **if this case launches, it is the 4th actual opening** (not counting the 3rd by the
+  v22 definition), and the fixed-pool selection bias goes with the verdict. The gold-evaluation command, pre-registered
+  verbatim: `.venv/bin/python train/eval_assembled.py --worker <winner path without .zip> --seeds 9000-9031 --tag
+  v28-golden --board`; after the opening a golden_result{mean,died,_sha,model_sha} event must be written back to
+  gate_ledger.
+- **No-launch tiers, an exhaustive three-key dispatch (winner = the highest full-32 mean among the non-void
+  candidates; the numbers of a void leg may not serve as the winner, and all void falls into the "no winner" tier)**:
+  (1) eligibility block (deaths>6/sentinels/mean eligibility) -> "eligibility failed, width question unanswered
+  (outside statistical power)", with intrinsic/degradation wording forbidden (arithmetic note: a winner full 32 >=103
+  => a mean difference against the anchor >=+11 => the mean-difference clause cannot be the blocking reason); (2) wins
+  >=18 and mean diff >=4 but the side line not passed -> "the guard against selection inflation worked, does not spend
+  the gold run"; (3) wins >=18 and mean diff <4 -> "width reached but magnitude not, point-estimate width improvement,
+  does not spend the gold run"; (4) wins <18 and full 32 >=108.2 (the starting checkpoint itself) -> "**width problem
+  confirmed intrinsic (within statistical power)**, the under-training hypothesis is rejected, the mechanism
+  prescriptions are promoted to the workstation line"; (5) wins <18 and in [103,108.2) -> "endurance without mean
+  gain, width question unanswered" (neither intrinsic nor degradation is judged); (6) <103 -> "endurance degraded,
+  leg 6 is a local peak for this recipe".
 
-## R 线
+## R lines
 
-| # | 预测 | 数字 |
+| # | Prediction | Number |
 |---|---|---|
-| R28.1 | 峰值腿考(7000-7015) | ∈[105,130],点 118 |
-| R28.2 | 防塌缩(可证伪化) | 全腿 ≥62.8;<103.1 的腿数 ∈[0,2];点预测:提前收官不触发 |
-| R28.3 | 宽度探针(**全 8 腿中位数**,防 max-of-8 膨胀;终选腿单值另 record) | ∈[6,12]/16,点 9(基线 5;零假设下中位数入带概率低,可证伪) |
-| R28.4 | G3 胜者满 32 配对赢 | ∈[12,22]/32,点 17(线=18,预测带跨线如实注册:二项 sd≈2.7 下 P(≥18)≈43%,五五开) |
-| R28.5 | 金牌(若发射) | ∈[100,118],点 108 |
-| R28.6 | 深度分布(record) | 对基线 {0:2,1:26,2:4} 不动;若动,入册不叙事 |
+| R28.1 | peak leg exam (7000-7015) | in [105,130], point 118 |
+| R28.2 | anti-collapse (made falsifiable) | all legs >=62.8; number of legs <103.1 in [0,2]; point prediction: the early close does not trigger |
+| R28.3 | width probe (**median over all 8 legs**, guarding against max-of-8 inflation; the single value of the final selected leg is recorded separately) | in [6,12]/16, point 9 (baseline 5; under the null the median has a low probability of landing in the band, so it is falsifiable) |
+| R28.4 | paired wins of the G3 winner on the full 32 | in [12,22]/32, point 17 (line = 18, the prediction band straddles the line and is registered as is: with a binomial sd~2.7, P(>=18)~43%, a coin flip) |
+| R28.5 | gold (if launched) | in [100,118], point 108 |
+| R28.6 | depth distribution (recorded) | unchanged from the baseline {0:2,1:26,2:4}; if it moves, recorded without narrative |
 
-「终选腿」唯一定义 = 进入 G3 的宽度 top-1 腿(不发射时亦然)。
-判词纪律:携带 DIVE 份额、mode_seq 摘要、farm τ̄、干层锚失配 8 点曲线
-(腿起点口径)、宽度探针全程曲线、选择膨胀注记、入窗分布混杂注记
-(PREREG-v26 入册偏差②继承)、半池幻影四案对照。
+The "final selected leg" has one definition = the width top-1 leg that enters G3 (also when there is no launch).
+Verdict discipline: carry the DIVE share, a mode_seq summary, the farm tau-bar, the 8-point dry-level anchor mismatch
+curve (leg-start definition), the full width-probe curve, the selection-inflation note, the entry-distribution
+confound note (inherited from PREREG-v26 recorded deviation 2) and the comparison with the four half-pool phantom
+cases.
 
-## 残余不确定性
+## Residual uncertainty
 
-0. **驱动重启协议**:preflight 的档案不存在断言使战役中途驱动重启必然被拒
-   ——设计意图(档案不可变性优先)。中途重启须人工:已产档案逐一 .void 轮转
-   + **runs/v28-leg* 运行目录整体归档移除(preflight 断言目录不存在)** +
-   ledger 追加 restart 事件注明缘由,再行发车;值夜执行,凌晨无人则搁浅至晨。
-1. 恒 β 下 8 腿 4M 续训的侵蚀形态无先例;绊线覆盖的两处盲区(单腿重伤链式
-   传导、交替缓蚀)已作为接受的残余风险入册。
-2. 起点检查点系「腿 6 幸存者」——若 v26 腿 6 峰本身部分是 16 种子幻影
-   (满 32 已证 108.2,幻影 −6.3),续航天花板相应折减。
-3. v24/v26 逐种子腿考档案灭失(标签碰撞事故),历版腿谱对照仅余 agg 口径。
-4. 金池第 4 次实际开牌(若发射)的固定池偏置,判词携带。
+0. **Driver restart protocol**: the archive-absent assertion of preflight means a mid-campaign driver restart is
+   necessarily refused, by design (archive immutability first). A mid-campaign restart must be done by hand: rotate
+   each produced archive to .void + **archive and remove the runs/v28-leg\* run directories as a whole (preflight
+   asserts the directories are absent)** + append a restart event with the reason to the ledger, then relaunch.
+1. The erosion pattern of 4M of continued training over 8 legs under constant beta has no precedent; the two blind
+   spots of the trip lines (a single badly hurt leg propagating down the chain, alternating slow erosion) are recorded
+   as accepted residual risks.
+2. The starting checkpoint is a "leg 6 survivor": if the v26 leg-6 peak is itself partly a 16-seed phantom (full 32
+   proved 108.2, phantom -6.3), the endurance ceiling is reduced accordingly.
+3. The per-seed leg-exam archives of v24/v26 were lost (the tag collision incident), so comparisons with the leg
+   curves of earlier versions only have the agg definition left.
+4. The fixed-pool bias of the 4th actual gold-pool opening (if launched) is carried by the verdict.
 
-*终稿 v2 冻结:2026-07-11。批评者面板一审(3 镜头 24 项:5 blocker/8 major/
-11 minor)+ 发车前验收二审(条款对账/代码对抗/续训语义,13 项:1 blocker/
-5 major/7 minor,含冒烟实测两处口径修正)全落地;commit 时间戳即公证。*
+*Final text v2 frozen: 2026-07-11. The critic panel's first review (3 lenses, 24 items: 5 blocker/8 major/11 minor)
++ the pre-launch acceptance second review (clause reconciliation/adversarial code review/continued-training
+semantics, 13 items: 1 blocker/5 major/7 minor, including two definition fixes from the smoke-test measurements) are
+all implemented; the commit timestamp is the notarization.*
 
-## 附录:判决记录(2026-07-11 21:16:44 落账,值夜代录)
+## Appendix: verdict record (booked 2026-07-11)
 
-腿谱:105.5(死0,分歧54.8%,宽度6)→ 85.4(死0,29.3%,宽度4)→ 90.4(死3,
-16.1%,宽度5)→ **提前收官条款首战首开**(连续两腿<103.1),烧步 0,省 5 腿预算。
-G3 候选:腿1+腿3(宽度 top-1=腿1,去重后 2 名)。
-**腿 1 满 32 = 112.4(项目史高),死 0,配对 +20.42,赢 16/32(线 18,差 2),
-后 16 赢 10/16,R4 全绿——半池幻影四案之后史上首次反向**(前 16 = 105.5,
-后 16 = 119.3);腿 3 满 32 = 72.5 死 4(资格失败)。**金牌不烧,王座
-v24-golden 97.2 四度连任。**
+Leg curve: 105.5 (0 deaths, divergence 54.8%, width 6) -> 85.4 (0 deaths, 29.3%, width 4) -> 90.4 (3 deaths,
+16.1%, width 5) -> **the first use of the early-close clause** (two consecutive legs <103.1), 0 burned steps, 5 legs of
+budget saved. G3 candidates: leg 1 + leg 3 (width top-1 = leg 1, 2 after deduplication).
+**Leg 1 full 32 = 112.4 (a project record), 0 deaths, paired +20.42, 16/32 wins (line 18, 2 short), back 16 wins
+10/16, R4 all green: after four half-pool phantom cases, the first reversal ever** (first 16 = 105.5, back 16 = 119.3);
+leg 3 full 32 = 72.5, 4 deaths (eligibility failed). **The gold run not spent; the throne v24-golden 97.2 stays for the
+fourth time.**
 
-驱动判词(④ 档,按冻结条款机器正确):"宽度病确认内禀(功效内)……欠训假说
-否定,机制处方升格工作站"。**划分盲区如实入册**:④ 档把"宽度未达线"与
-"宽度未动"混为一档,实况是 11→16 赢(+5)的真实移动——判词的"内禀确认"
-力度按此折减阅读(判词纪律先例:孤证降半档);下版 P 线须为 wins∈(基线,18)
-增设"宽度点估改进"档。此注记不改判决,只改叙事权重。
+Driver verdict (tier 4, machine-correct under the frozen clauses): "width problem confirmed intrinsic (within
+statistical power) ... the under-training hypothesis is rejected, the mechanism prescriptions are promoted to the
+workstation line". **A partition blind spot, recorded as is**: tier 4 lumps "width did not reach the line" together
+with "width did not move", while the reality was a real move from 11 to 16 wins (+5); the strength of the verdict's
+"intrinsic confirmed" is to be read discounted accordingly (verdict discipline precedent: a lone proof is downgraded
+half a tier); the next version's P lines must add a "point-estimate width improvement" tier for wins in (baseline, 18).
+This note does not change the verdict, only the narrative weight.
 
-R 对账:R28.1 ✓ 贴带下缘(峰 105.5,点 118 偏离);R28.2 带 ✓(全腿 ≥62.8;
-<103.1 腿数=2 在带)/点预测 ✗(提前收官触发);R28.3 ✗(3 腿中位数 5 <带,
-战役 3 腿即收官、样本折半入册);**R28.4 ✓✓(实 16 对点 17,几乎钉靶)**;
-R28.5 未触发;R28.6 动了、入册不叙事:深度 {0:2,1:23,2:7}(基线 {0:2,1:26,2:4})。
+R reconciliation: R28.1 hit, at the lower edge of the band (peak 105.5, off the point 118); R28.2 band hit (all legs
+>=62.8; number of legs <103.1 = 2, in the band) / point prediction missed (the early close triggered); R28.3 missed
+(median of 3 legs = 5 < band; the campaign closed after 3 legs, the sample halved, recorded); **R28.4 hit (actual 16
+vs point 17, almost on target)**; R28.5 not triggered; R28.6 moved, recorded without narrative: depth {0:2,1:23,2:7}
+(baseline {0:2,1:26,2:4}).
 
-机制观察(事后叙事标签,与 v27 连读):远锚起点 + 恒小 β 长航 = **一腿收割
-(+4.2 满 32)后回锚侵蚀**(分歧 54.8→29.3→16.1 单调回缩,分数坍向教师水平)
-——教师锚对已远锚的强者是慢性毒。"锚随王走"由候选处方升格工作站首选
-(v27"不可定居"+ 本案"不可久系"双重证据)。新家底:v28-worker-leg1 归档
-(train/models/,满 32 = 112.4/死 0 现役最强广池模型),后续训练一律以它为起点。
-
-*(去重注记:另一值守会话与本会话并行补写判决附录,保留上方丰满版——含
-④ 档划分盲区注记与"宽度点估改进"补档指令;本会话的简版已删,内容无冲突。)*
+Mechanism observation (a post-hoc narrative label, read together with v27): a start far from the anchor + a long run
+at a constant small beta = **one leg of harvest (+4.2 on the full 32), then erosion back toward the anchor** (divergence
+54.8->29.3->16.1, shrinking monotonically, scores collapsing toward the teacher's level): the teacher anchor is a slow
+poison for a strong model that is already far from it. "The anchor follows the king" is promoted from a candidate
+prescription to the first choice of the workstation line (double evidence: v27's "cannot settle" + this case's "cannot
+stay tethered for long"). New base: v28-worker-leg1 archived (train/models/, full 32 = 112.4/0 deaths, the strongest
+active wide-pool model); all later training starts from it.

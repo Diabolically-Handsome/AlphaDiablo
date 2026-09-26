@@ -1,7 +1,7 @@
-"""E-fix 执行修理案 KAT(2026-07-31,批文:甲形态/全集口径)。
-端到端证据(旧端点 8/8 位级复现官方档案、新端点停滞率 75%→0%、
-首潜前缀分域一致)在 train/runs/efix-g0-evidence/ 案卷;本文件钉住
-可单元化的决策逻辑与旋钮契约。"""
+"""KATs for the E-fix execution-repair case (2026-07-31; design: form A, full-set criterion).
+The end-to-end evidence (the old endpoint reproduces the official archives bit for bit, 8/8; the new endpoint's
+stall rate 75% -> 0%; the first-dive prefix agrees per domain) is in a case folder that is not published; this file
+pins the decision logic and knob contract that can be unit-tested."""
 from __future__ import annotations
 
 import pathlib
@@ -49,10 +49,10 @@ class DiveStallProtocolTests(unittest.TestCase):
             self._term_reason("tau-v3", KILL_PATIENCE - 1, 0))
 
     def test_new_protocol_counts_from_last_progress(self):
-        # τ 已超旧限,但最近一次进展在 10 拍前 → 续命
+        # tau is past the old limit, but the last progress was 10 ticks ago -> keep the window alive
         self.assertIsNone(self._term_reason(
             "no-progress-v1", KILL_PATIENCE + 60, KILL_PATIENCE - 70))
-        # 无进展满 KILL_PATIENCE → 收窗(极限环仍被正确枪毙)
+        # no progress for KILL_PATIENCE -> close the window (limit cycles are still correctly killed)
         self.assertEqual(self._term_reason(
             "no-progress-v1", KILL_PATIENCE, 0), "stall")
         self.assertEqual(self._term_reason(
@@ -60,7 +60,7 @@ class DiveStallProtocolTests(unittest.TestCase):
 
     def test_unconfigured_shell_defaults_to_old_semantics(self):
         shell = _shell("tau-v3")
-        del shell.dive_stall_protocol  # 桩/壳未配置 → 旧语义
+        del shell.dive_stall_protocol  # stub/shell not configured -> old semantics
         shell2 = shell
         self.assertEqual(
             getattr(shell2, "dive_stall_protocol", "tau-v3"), "tau-v3")

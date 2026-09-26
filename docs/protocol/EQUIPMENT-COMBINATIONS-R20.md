@@ -1,31 +1,31 @@
-# R20 真实装备组合与可选药品余量
+# R20 real equipment combinations and an optional potion reserve
 
-## 目的与接线
+## Purpose and wiring
 
-`SustainCombinationService` 是单独的实验补给类，继承 `SustainCompletionService`。原有训练 CLI 与旧补给工厂仍选旧服务。本次固定模型评测在创建环境前显式替换 completion 服务类，逐局另存 `experimental-runtime.json`，记录新代码、桥、引擎、组合分组与药品余量目标；不能据旧的 `sustain-v6` 工厂参数把新分组解释成旧协议，不能声称固定模型曾在新服务下训练。
+`SustainCombinationService` is a separate experimental resupply class that inherits from `SustainCompletionService`. The existing training CLI and the old resupply factory still select the old service. This fixed-model evaluation explicitly replaces the completion service class before the environment is created, and saves an `experimental-runtime.json` per game recording the new code, bridge, engine, combination groups and potion reserve target. The new groups must not be read as the old protocol on the strength of the old `sustain-v6` factory parameters, and it must not be claimed that the fixed model was ever trained under the new service.
 
-服务使用原来的拾金、步行、交谈、关闭剧情对话、实际购买、装备、卸装、维修和返层动作。每个真实命令仍经过统一微拍结算，往返奖励和实时下楼守卫不变。组合规划改善属于补给工程，不等同于神经网络学会下楼。
+The service uses the original gold pickup, walking, talking, closing story dialogue, real buying, equipping, unequipping, repair and level-return actions. Every real command still goes through the unified micro-tick settlement, and the round-trip rewards and the live descent guard are unchanged. Better combination planning is resupply engineering; it is not the neural network learning to descend.
 
-## 原生预览与正常交易
+## Native preview and normal trades
 
-`preview_resource_equipment_combinations(sequences, max_gold_cost)` 仅接受当前合法城镇补给行程里实际看过的普通 Smith 商品和当前自有物品身份。最多 256 个方案，每方案最多 8 个意图；未知身份、超界输入、过时库存、非法价格预算会拒绝。可用意图为购买并装备、自有物品装备、卸装和最终保留装备维修。
+`preview_resource_equipment_combinations(sequences, max_gold_cost)` only accepts ordinary Smith items actually seen during the current legal town resupply trip and the identities of items currently owned. At most 256 plans with at most 8 intents each; unknown identities, out-of-range input, stale stock and invalid price budgets are rejected. The available intents are buy-and-equip, equip an owned item, unequip, and repair of the finally kept equipment.
 
-预览复制角色，按真实存放、扣钱、换装及属性连锁规则顺序模拟；同时检查实际背包格、旧装备存放、固定点生命、武器/护甲耐久与四瓶即时药的最低现金余量。`Source/stores.cpp` 抽取显式 Player 的正常存放、扣钱函数，GUI 与正常购买保留原入口。失败方案不提供可执行首命令或完整投影，不产生金币、物品、RNG 或网络操作。预览重算可以触发既有生命/法力绘制刷新标记，因此不声称所有 GUI 标志逐位不变。
+The preview copies the character and simulates in order with the real storage, payment, swap and attribute-cascade rules; it also checks the actual backpack cells, where the old equipment is stored, fixed-point life, weapon/armor durability and the minimum cash reserve for four instant potions. `Source/stores.cpp` factors out the normal storage and payment functions for an explicit Player; the GUI and normal buying keep their original entry points. A failed plan provides no executable first command or full projection and produces no gold, item, RNG or network operation. Re-computing the preview can set the existing life/mana redraw flags, so it is not claimed that every GUI flag stays bit-identical.
 
-返回的 `valid` 只表示模拟交易合法；服务仍须检查最终原生战备缺项。真实执行一次命令后重新预览剩余组合，付款后按物品身份重新定位背包索引，保留承诺的余案，避免反复买回刚卸下的坏装备。余案在真实投入后失效时明确结束补给并报告原因。
+The returned `valid` only means the simulated trade is legal; the service must still check the final native readiness shortfalls. After one real command it re-previews the remaining combination, re-locates backpack indices by item identity after payment and keeps the committed remainder of the plan, so it does not keep buying back the bad equipment it just took off. If the remainder becomes invalid after real spending, the resupply ends explicitly and reports why.
 
-Python 的候选目录有边界：最多 16 件已观测商店物品、12 件自有普通护甲，枚举单件、双件、单件加最多两次卸装及最终维修；超出 256 个方案会报告截断。没有找到方案只能说明这个已观察、有限目录没有方案，不能当成游戏经济无解的证明。
+The Python candidate catalogue is bounded: at most 16 observed shop items and 12 owned ordinary armor pieces, enumerating single items, pairs, a single item plus at most two unequips, and a final repair; more than 256 plans is reported as truncation. Finding no plan only shows that this observed, finite catalogue has none; it is not proof that the game economy has no solution.
 
-## 药品余量对照
+## Potion reserve comparison
 
-`reserve_belt_target=0` 默认关闭额外买药；6 或 8 为独立实验设置。最低战备门槛仍为腰带即时药不少于 4。只有装备、维修、免费治疗、最低四瓶药等真实原生门槛全部满足后，才以剩余金币、真实腰带空位和当前 Pepin 商品补到余量目标。钱不足或腰带已满时结束额外购买；不会注入资源、提前花掉最低装备预算或修改门槛。
+`reserve_belt_target=0` turns extra potion buying off by default; 6 or 8 are separate experimental settings. The minimum readiness threshold is still at least 4 instant potions in the belt. Only after every real native threshold (equipment, repair, free healing, the minimum four potions) is met does it top up to the reserve target with the remaining gold, the real free belt slots and Pepin's current stock. Extra buying ends when money is short or the belt is full; no resources are injected, the minimum equipment budget is not spent early and no threshold is changed.
 
-## 时间的含义
+## What the time limits mean
 
-本候选沿用 `completion-l2-v1`：首次主 L2 抵达预算 12000 微拍，实际抵层后完整观察 1800 微拍；拾金命令窗口 900，补给总预算 3000，FARM 触发累计 3600。总预算是当前有界实验的截止线，不是最终 16 层通关时限，也不要求速通。主指标保留以便比较，同时单列死亡、仍存活但到达预算、补给失败和外部中断。后续根据有无真实成长判断是否增加观察时间，不把到期等同于战斗力不足。
+This candidate keeps `completion-l2-v1`: a budget of 12000 micro ticks to first reach main L2, then a full 1800-micro-tick observation after the actual arrival; a gold-pickup command window of 900, a total resupply budget of 3000 and a cumulative FARM trigger of 3600. The total budget is the cut-off of the current bounded experiment, not the time limit of a final 16-level clear, and it does not require speed-running. The primary metric is kept for comparison, while deaths, alive-but-out-of-budget, resupply failures and external interruptions are listed separately. Whether to extend the observation time is decided later from whether real growth occurs; running out of time is not equated with insufficient combat power.
 
-冻结模型输入尺寸 13012、动作数 15 不变；旧时间观测仍按 6000 归一，6000 后为零，这是待后续迁移处理的兼容限制。当前学习 gamma=1 且无每微拍统一固定扣分，但保留旧奖励中超过 300 个无击杀微拍的 FARM 正奖励衰减等语义，不能声称时间完全不影响模型。长时成长、停滞判定与更深课程需分别评估。
+The frozen model's input size 13012 and 15 actions are unchanged; the old time observation is still normalized by 6000 and is zero after 6000, a compatibility limit to be handled by a later migration. Learning currently uses gamma=1 and no uniform fixed per-micro-tick penalty, but the old reward's semantics such as the decay of positive FARM reward after more than 300 micro ticks without a kill are kept, so it cannot be claimed that time has no effect on the model. Long-horizon growth, stall detection and deeper courses need separate evaluation.
 
-## 本批验证
+## Checks in this batch
 
-首先验证新组合和相关旧原生交易、护甲、装备保全测试。再运行 2 个固定模型旧服务控制局，要求除冻结身份标签外完整行与动作轨迹相同。控制通过后，在同一批 8 个开发种子上比较组合服务、组合加八瓶目标；固定模型、相同硬门和时间协议，最多 18 局、两进程、总 360 秒、零训练、无自动重试。效果出现工程错误立即停止；结果另存于 `reports/equipment-combinations-v1`，源文件冻结不是效果通过证明。
+First the new combination code and the related old native trade, armor and equipment-preservation tests are verified. Then 2 fixed-model control games with the old service are run, which must match in full rows and action traces apart from the frozen identity labels. Once the controls pass, the combination service and the combination plus an eight-potion target are compared on the same batch of 8 development seeds: fixed model, the same hard gates and time protocol, at most 18 games, two processes, 360 seconds in total, zero training, no automatic retries. An engineering error in the effect run stops it immediately; the results are kept in a local report (not published), and freezing the source files is not proof that the effect passed.

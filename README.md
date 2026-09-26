@@ -69,9 +69,9 @@ published; its sha256 is `1d3b24942f1a2a5825f5aa8ab7a000b1d5cb27639c33ee889e4ce1
   Codex agent; the model was trained by imitation learning (with DAgger), not reinforcement learning, and the
   teachers read written guidance the model never sees.
 - **The exam compared the released model with a new candidate, which was not adopted** (8/16 vs 12/16 on the
-  paired half). The project owner stopped the exam after 3 of its 4 waves; that affects only the candidate's
-  arm (its second half was stopped about 10 minutes in and is not a result). The candidate had not passed all of
-  its own offline criteria, and the owner approved the exam start anyway.
+  paired half). The exam was stopped after 3 of its 4 waves; that affects only the candidate's arm (its second
+  half was stopped about 10 minutes in and is not a result). The candidate had not passed all of its own offline
+  criteria, and the exam start was approved anyway.
 - **6 deaths in the released model's 32 exam games** (1 in the first half, 5 in the second), all with no healing
   potion left in the belt or the pack, five of them on dungeon level 2 at character level 2–4.
 - **Limits**: no full-game clear; bosses only up to the Skeleton King; the bridge used here refuses dungeon
@@ -80,6 +80,20 @@ published; its sha256 is `1d3b24942f1a2a5825f5aa8ab7a000b1d5cb27639c33ee889e4ce1
   frozen by sha256 before the first game, without an external timestamp.
 
 Details, tables and the verification evidence: [docs/rounds/round9-exam.md](docs/rounds/round9-exam.md).
+
+## Contents
+
+- [Milestones](#milestones)
+- [Where the project stands](#where-the-project-stands-september-2026)
+- [The environment: DiabloGym](#the-environment-diablogym)
+- [Early chapter (July 2026)](#early-chapter-july-2026-32-seed-deterministic-gold-standard): results and
+  [seventeen lessons](#seventeen-lessons-from-twenty-runs-short-version)
+- [Quickstart](#quickstart)
+- [Repository layout](#repository-layout)
+- [How it works](#how-it-works)
+- [Roadmap](#roadmap)
+- [Related work](#related-work)
+- [Legal](#legal)
 
 ## Milestones
 
@@ -90,7 +104,7 @@ Details, tables and the verification evidence: [docs/rounds/round9-exam.md](docs
   bosses in training worlds and then, on 30 never-played seeds (a held-out check, not pre-registered), the Skeleton
   King in 9/14 and the Butcher in 8/16 games; all 50 games of the day were later replayed from their journals. Published with this release (numbers in
   the table above and in the exam report).
-- **2026-09-21 — First Skeleton King kill, with an online strategist.** The Codex assistant of the project task as
+- **2026-09-21 — First Skeleton King kill, with an online strategist.** An OpenAI Codex agent acting as
   strategist (after an opening played with Ministral 3 8B), a frozen RL worker and explicit navigation/service
   execution, in one paused, segmented world with surviving retries (the first two King encounters ended in living
   retreats); hero alive at 96/96 HP, no weights updated. The released videos cover the opening and the final fight,
@@ -131,21 +145,21 @@ mode eliminated (or one hypothesis falsified) per run — followed by a
 hierarchical manager/worker line (v22-v33) and the pre-registered campaigns
 R7-R19.
 
-- 🚀 **~13,000× realtime engine tick rate**: full game logic, headless — ~254k raw
+- **~13,000× realtime engine tick rate**: full game logic, headless — ~254k raw
   engine ticks/s (M-series MacBook, July 2026; ~270k/s marginal on a Threadripper
   7970X, 2026-09-06 receipt). Per-step cost is dominated by Python-side observation
   extraction: the current research configuration (`include_raw=True`, full monster
   and item rosters) runs ~300–500 `env.step()`/s per process; the July figure of
   ~7,500 steps/s predates the R10–R17 raw-state exports and no longer reproduces
-- 🎲 **Deterministic**: `reset(seed)` owns the dungeon seeds *and* the global RNG
+- **Deterministic**: `reset(seed)` owns the dungeon seeds *and* the global RNG
   stream; evaluations are bit-reproducible across processes (verified per-seed,
   see protocol notes in [train/evaluate.py](train/evaluate.py)); engine source
   pinned to an exact upstream commit by [bootstrap.sh](bootstrap.sh)
-- 🧩 **Gymnasium API**: structured observations (entity features + 11×11 local
+- **Gymnasium API**: structured observations (entity features + 11×11 local
   map + potion/gear preconditions), macro-actions (engage / explore / advance /
   drink / pick-up-potion / pick-up-gear)
-- 📊 **Zero-dependency live dashboard** for training runs
-- 🩹 Ships registered, reproducible **DevilutionX integration patches** — asset
+- **Zero-dependency live dashboard** for training runs
+- Ships registered, reproducible **DevilutionX integration patches** — asset
   fallbacks, monster-missile anims (a bat swoop was the first crash), unloaded
   SFX handling, and headless in-game-movie suppression (Lazarus was another
   deterministic crash) — in `patches/`
@@ -155,9 +169,9 @@ R7-R19.
 *Left: training-time kills (sampled policy, rolling 100) across the six
 iterations that built the champion. Right: the gold standard — deterministic
 (argmax) evaluation on 32 fixed seeds. Full run-by-run post-mortems in
-[docs/design/DESIGN.md](docs/design/DESIGN.md) (Chinese; lesson summaries below).*
+[docs/design/DESIGN.md](docs/design/DESIGN.md) (lesson summaries below).*
 
-## Results (32-seed deterministic gold standard)
+## Early chapter (July 2026): 32-seed deterministic gold standard
 
 | model | params | mean kills | median | max | zero-kill | reached L2 |
 |---|---|---|---|---|---|---|
@@ -453,6 +467,13 @@ work. The launcher, checkpoint, BC-gate and protocol-v4 notes that used to be in
 this README describe the R7/R8 period; they now live in
 [docs/protocol/PROTOCOL-V4-NOTES.md](docs/protocol/PROTOCOL-V4-NOTES.md).
 
+Code comments, messages and documents were translated into English in
+September 2026. Evaluation archives and training checkpoints bind the SHA-256
+of the Python sources (`PROTOCOL_SOURCE_FILES` in `train/eval_contract.py`,
+`_IMPLEMENTATION_SOURCE_FILES` in `train/train_ppo.py`), and the drivers pin
+inputs recorded before the translation, so artifacts produced before it
+re-verify or resume only against the sources they were produced with.
+
 ## Repository layout
 
 | Path | What |
@@ -461,14 +482,14 @@ this README describe the R7/R8 period; they now live in
 | `patches/` | Registered DevilutionX patches, applied and drift-checked by `build.sh` |
 | `python/diablogym/` | Gymnasium environments (`env.py`; hierarchical `options_env.py` and `worker_env.py`) and the resource, loot and sustain protocol modules |
 | `train/` | Trainer, evaluators, BC and export tools, campaign drivers, leaderboards |
-| `train/models/` | Published v22-v29 manager and worker models with model cards |
+| `train/models/` | Published v22-v29 manager and worker models (model cards for v22, v23, v24 and v28) |
 | `option_brain/` | The option-brain code that played the round-9 exam, the exam tooling, the replay tool, the bridge-r3 sources and the engine fix it ran on, with a provenance record ([README](option_brain/README.md)); no model weights |
 | `tests/` | Unit and contract tests, plus the shareware runtime probes that CI runs |
 | `docs/` | Design notes, pre-registrations, forensics, protocols, round papers (including the [round-9 exam](docs/rounds/round9-exam.md)) and milestone evidence ([index](docs/README.md)) |
-| `tools/check_private_terms.py` | Guard that keeps private terms out of every tracked file; the terms and their hashes are kept outside the repository |
+| `tools/check_private_terms.py` | Local pre-push check that keeps private terms out of every tracked file (CI does not run it); the terms and their hashes are kept outside the repository |
 
-Run logs, raw evaluation dumps and raw event ledgers are not kept in git; see
-[docs/README.md](docs/README.md) for what moved where on 2026-09-23.
+Run logs, raw evaluation dumps, raw event ledgers and internal planning notes
+are not kept in git; see [docs/README.md](docs/README.md).
 
 ## How it works
 
@@ -510,7 +531,7 @@ quirks are documented in [train/evaluate.py](train/evaluate.py).
   shaping could not summon the rare equip event, masking moved probability
   but not value, and the deep-water ladder priced rushing over surviving. The
   Butcher milestone equips gear through scripted equipment management.
-- [x] The Butcher 🥩 — killed on 2026-09-13 by a hybrid system
+- [x] The Butcher — killed on 2026-09-13 by a hybrid system
   ([evidence](docs/milestones/2026-09-13-butcher-first-kill/README.md)); his
   greeting once crashed our headless engine (see patches/0003)
 - [x] The Skeleton King — killed on 2026-09-21 from a normal level-1 start

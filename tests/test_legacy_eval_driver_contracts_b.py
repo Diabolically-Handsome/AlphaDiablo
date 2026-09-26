@@ -1,4 +1,4 @@
-"""v27/v28/v30-relay 新评测入口的 schema-v2 身份契约测试。"""
+"""Schema-v2 identity contract tests for the new evaluation entry points of v27/v28/v30-relay."""
 
 from __future__ import annotations
 

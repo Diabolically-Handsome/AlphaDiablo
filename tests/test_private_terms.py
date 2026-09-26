@@ -1,10 +1,10 @@
 """Private-term guard: the repository stays clean and the scanner still bites.
 
 The real terms are not stored in the repository, not even as hashes.  The
-guard reads their SHA-256 from $PRIVATE_TERM_SHA256 (a CI secret) or from
-the file named by $PRIVATE_TERMS_FILE; without either, the repository scan
-below is skipped (reported as a skip, not a pass).  All other tests use
-random stand-in terms generated at run time.
+guard reads their SHA-256 from $PRIVATE_TERM_SHA256 (an environment variable)
+or from the file named by $PRIVATE_TERMS_FILE; without
+either, the repository scan below is skipped (reported as a skip, not a pass).
+All other tests use random stand-in terms generated at run time.
 """
 from __future__ import annotations
 

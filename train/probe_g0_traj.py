@@ -1,16 +1,16 @@
-"""G0-恒等 轨迹位级探针(PREREG-v32 W-G0;基线/重放两用)。
+"""G0-identity bit-level trajectory probe (PREREG-v32 W-G0; for both baseline and replay).
 
-Rig = 全栈工人路径:WorkerWindowEnv(H 经理 npz)驱动窗口,king npz 工人
-argmax(经 _worker_masks)逐拍执行——恰是 E1 触碰的掩码路径。seeds
-7000-7015 各一局;哈希 = sha256(逐拍 [动作, 工资 hex, term, trunc] +
-逐窗边界 + 终局摘要);工资恒等式 W ≡ R − bonus 逐窗断言 + 逐局合账断言
-(快进窗一并入账,log_windows 全窗序)。基线档随冻结 commit 入库
-(docs/assets,gitignore 之外)。
+Rig = the full-stack worker path: WorkerWindowEnv (H manager npz) drives the windows, and the king npz worker
+runs argmax (via _worker_masks) beat by beat: exactly the mask path E1 touches. seeds
+7000-7015, one episode each; hash = sha256(per beat [action, wage hex, term, trunc] +
+per-window boundaries + terminal summary); the wage identity W == R - bonus is asserted per window, plus a per-episode ledger assertion
+(fast-forward windows are booked too; log_windows keeps the full window order). The baseline file is checked in with the frozen commit
+(docs/assets, outside gitignore).
 
-用法:
-  基线(E1 施工前):.venv/bin/python train/probe_g0_traj.py baseline
-  重放(E1 施工后):.venv/bin/python train/probe_g0_traj.py replay
-重放模式逐种子对比 baseline.json,任何一位不同 → 退出码 1(G0 失败)。
+Usage:
+  baseline (before the E1 work): .venv/bin/python train/probe_g0_traj.py baseline
+  replay (after the E1 work): .venv/bin/python train/probe_g0_traj.py replay
+Replay mode compares baseline.json seed by seed; any bit that differs -> exit code 1 (G0 fails).
 """
 import hashlib
 import json
@@ -64,7 +64,7 @@ def episode_digest(seed: int, npz=None) -> dict:
             ex = info.get("option_extra")
             if ex is not None:
                 assert abs(ex["W"] - (ex["R"] - ex["bonus"])) < 1e-6, (
-                    f"工资恒等式破裂:seed {seed} W={ex['W']} "
+                    f"wage identity broken: seed {seed} W={ex['W']} "
                     f"R={ex['R']} bonus={ex['bonus']}")
             h.update(b"|WIN|")
             obs = env.next_window()
@@ -73,7 +73,7 @@ def episode_digest(seed: int, npz=None) -> dict:
     tot = env.window_log
     assert abs(sum(w["W"] for w in tot)
                - (sum(w["R"] for w in tot) - sum(w["bonus"] for w in tot))) < 1e-5, \
-        f"逐局工资恒等式破裂:seed {seed}"
+        f"per-episode wage identity broken: seed {seed}"
     raw = env.oe.env._raw
     final = (f"d{raw['dungeon_level']},dead{int(raw['dead'])},"
              f"hp{raw['hp']},xp{raw.get('experience', raw.get('xp', 0))}")
@@ -95,16 +95,16 @@ def main():
               f"wages {r['wages']}", flush=True)
     if mode == "baseline":
         out.write_text(json.dumps(rows, ensure_ascii=False, indent=1))
-        print(f"基线已存 {out}")
+        print(f"baseline saved to {out}")
         return 0
     base = {r["seed"]: r for r in json.loads(out.read_text())}
     bad = [r["seed"] for r in rows
            if r["sha"] != base[r["seed"]]["sha"]
            or r["steps"] != base[r["seed"]]["steps"]]
     if bad:
-        print(f"G0-恒等 失败({'throne' if throne else 'king'}):失配种子 {bad}")
+        print(f"G0-identity FAIL ({'throne' if throne else 'king'}): mismatched seeds {bad}")
         return 1
-    print(f"G0-恒等 PASS({'throne' if throne else 'king'}):{len(rows)} 种子逐位相同")
+    print(f"G0-identity PASS ({'throne' if throne else 'king'}): {len(rows)} seeds bit-identical")
     return 0
 
 

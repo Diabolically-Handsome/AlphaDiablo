@@ -1,16 +1,16 @@
-"""v29「经理再教育」驱动(docs/prereg/PREREG-v29.md 条款唯一执行者;run_v25_election.py 定向改造)。
+"""v29 "manager re-education" driver (sole executor of the clauses of docs/prereg/PREREG-v29.md; a targeted rework of run_v25_election.py).
 
-克隆差异表(PREREG-v29 D2 逐条对应):
-- 班底:工人 = v28-worker-leg1(zip+npz);锚 = v28-G3-leg1.json(112.4,sha 钉死)
-- M-warm 臂与 warm-sd 导出段物理删除;两臂 = fresh(ent .02)/explore(ent .08),160k 决策
-- FLOOR_REPRO 85→103.9(面板勘误终值);标签 v29-*;配对按 seed 键 join + 集合断言
-- v28 运维护栏全套:顶层异常兜底、训练 4h/评测 30min 超时、exam 拒覆写+.void 轮转
-  +评测日志、preflight(锚 sha/工人在位/目标档案含 v29-golden 不存在)、NEEDS_ATTENTION
-- 满 32 事件新增深度仪表:depth≥2 种子数 / DIVE/局 / 下楼奖金兑现/局
-- 不发射档穷尽(v28 学费):资格外档+递补、点估增益档(≥+4 且 <18 赢)、探针级、连任
-- GOLDEN_AUTHORIZED 带金评命令原文(含 --manager-npz)+ 双 sha
-金牌不在此发射(值夜者手启,单臂一次)。账本:train/runs/v29/gate_ledger.jsonl。
-用法:.venv/bin/python train/run_v29_relection.py
+Clone difference table (maps clause by clause to PREREG-v29 D2):
+- Cast: worker = v28-worker-leg1 (zip+npz); anchor = v28-G3-leg1.json (112.4, sha pinned)
+- The M-warm arm and the warm-sd export stage are physically removed; two arms = fresh (ent .02) / explore (ent .08), 160k decisions
+- FLOOR_REPRO 85->103.9 (the panel's corrected final value); tags v29-*; pairing joined on the seed key + set assertion
+- The full v28 operational guard set: top-level exception catch-all, training 4h/evaluation 30min timeouts, exam refuses to overwrite + .void rotation
+  + evaluation logs, preflight (anchor sha/worker in place/target archives including v29-golden absent), NEEDS_ATTENTION
+- Full-32 events gain depth instrumentation: seeds with depth>=2 / DIVE per episode / descent bonus paid per episode
+- No-launch tiers are exhaustive (the v28 lesson): ineligible tier + substitution, point-estimate gain tier (>=+4 and <18 wins), probe level, incumbent stays
+- GOLDEN_AUTHORIZED carries the exact gold-standard evaluation command (with --manager-npz) + both shas
+The gold-standard evaluation is not launched here (started manually, single arm, once). Ledger: train/runs/v29/gate_ledger.jsonl.
+Usage: .venv/bin/python train/run_v29_relection.py
 """
 from __future__ import annotations
 
@@ -37,20 +37,20 @@ V29.mkdir(parents=True, exist_ok=True)
 LEDGER = V29 / "gate_ledger.jsonl"
 EVAL = RUNS / "eval-assembled"
 
-W_ZIP = str(ROOT / "train" / "models" / "v28-worker-leg1" / "model_final")  # eval 侧自动补 .zip
+W_ZIP = str(ROOT / "train" / "models" / "v28-worker-leg1" / "model_final")  # the eval side appends .zip automatically
 W_NPZ = ROOT / "train" / "models" / "v28-worker-leg1" / "policy.npz"
-ARCHIVE = EVAL / "v28-G3-leg1.json"        # 参考行 112.4(现任 v22-H × 同一工人,逐种子)
+ARCHIVE = EVAL / "v28-G3-leg1.json"        # reference row 112.4 (incumbent v22-H x the same worker, per seed)
 ARCHIVE_SHA = "6fc6a44c7862424ab5f71ff3a5031adfd34a3e33f9f4f2f8aee781a07711e59d"
 # 2026-09-23: re-saved with neutral local paths (content otherwise unchanged); was 2f7bc9dd810956c3
 W_ZIP_SHA = "0c6f014da19c3bf27b208d55adc76be13fcad8bc5f744b95f4f743be97426434"
 W_NPZ_SHA = "976b6c05edaa0a32bb30bd372782e1201c72b029cedcbb3a5bf2361d34f27f8a"
 
-STEPS = 160_000       # 4× v22-H 自身预算(时钟锚 27.5 决策/s ≈ 97 分钟/臂)
-ABANDON = 75.0        # 提前放弃闸(双臂 16 种子均 < 此值)
-PAIRED_DIFF = 4.0     # 发射线:配对均差 ≥ +4
-PAIRED_WINS = 18      # 且配对赢 ≥ 18/32
+STEPS = 160_000       # 4x v22-H's own budget (clock anchor 27.5 decisions/s ~ 97 minutes/arm)
+ABANDON = 75.0        # early abandonment gate (both arms' 16-seed means < this value)
+PAIRED_DIFF = 4.0     # launch line: paired mean difference >= +4
+PAIRED_WINS = 18      # and paired wins >= 18/32
 DEATHS_MAX = 6
-FLOOR_REPRO = 103.9   # 胜者 < 此值 → "重训未复现参考水平,命题未考"(=0.9239×112.4,严格沿 v25 比例 85/92)
+FLOOR_REPRO = 103.9   # winner < this value -> "retraining did not reproduce the reference level, proposition not examined" (=0.9239x112.4, strictly following the v25 ratio 85/92)
 R4 = {"descend": 0.0204, "override_sentinel": 0.03, "override_void": 0.08, "cap": 0.05}
 CALIBRATED_PROTOCOL_VERSION = 2
 
@@ -88,13 +88,13 @@ def require(condition: bool, message: str) -> None:
 def require_calibrated_protocol() -> None:
     if PROTOCOL_VERSION != CALIBRATED_PROTOCOL_VERSION:
         raise OperationalFailure(
-            "v29 的 ABANDON/资格/R4 等裁决线仅在 pre-v3 环境语义标定；"
-            "必须先重跑 protocol-v3 基线并人工更新预注册，禁止混用旧阈值"
+            "v29 ABANDON/eligibility/R4 and other verdict lines are calibrated only under pre-v3 environment semantics; "
+            "re-run the protocol-v3 baseline and update the pre-registration by hand first; mixing in the old thresholds is forbidden"
         )
 
 
 def read_comparable_anchor() -> dict:
-    """v28 现任锚只在固定 worker/default-manager 与当前运行时下可比较。"""
+    """The v28 incumbent anchor is comparable only with the fixed worker/default manager under the current runtime."""
     try:
         snapshot = freeze_eval_identity(ROOT, W_ZIP, None)
         expected = expected_eval_identity(
@@ -104,8 +104,8 @@ def read_comparable_anchor() -> dict:
         return document
     except (OSError, KeyError, TypeError, ValueError, RuntimeError) as exc:
         raise OperationalFailure(
-            "v28-G3-leg1 不满足当前 schema-v2 可比性契约；"
-            "环境语义变更后须用固定 v28 leg1 worker + 默认 manager 重跑基线"
+            "v28-G3-leg1 does not satisfy the current schema-v2 comparability contract; "
+            "after an environment-semantics change, re-run the baseline with the fixed v28 leg1 worker + default manager"
         ) from exc
 
 
@@ -117,15 +117,15 @@ def run(cmd, logfile, timeout) -> int:
             return proc.wait(timeout=timeout)
         except subprocess.TimeoutExpired:
             try:
-                os.killpg(proc.pid, signal.SIGKILL)   # 连锅端:SubprocVecEnv 孙进程防孤儿
+                os.killpg(proc.pid, signal.SIGKILL)   # kill the whole group: keeps SubprocVecEnv grandchildren from being orphaned
             except ProcessLookupError:
                 pass
             proc.wait()
-            return 124    # 挂死护栏:按崩溃/失败落账(运维护栏,非判决输入)
+            return 124    # hang guard: booked as crash/failure (operational guard, not a verdict input)
 
 
 def zip_steps(p: pathlib.Path) -> int:
-    """SB3 真链读数(面板 blocker 修正:160000 整除 256,status 节流计数必滞后)。"""
+    """Real SB3 chain reading (panel blocker fix: 160000 is divisible by 256, the throttled status count always lags)."""
     try:
         with zipfile.ZipFile(p) as z:
             return int(json.loads(z.read("data"))["num_timesteps"])
@@ -135,10 +135,10 @@ def zip_steps(p: pathlib.Path) -> int:
 
 def exam(worker, tag, seeds, manager_npz=None):
     out = EVAL / f"{tag}.json"
-    require(not out.exists(), f"档案不可变性:{out} 已存在,拒绝覆写")
+    require(not out.exists(), f"archive immutability: {out} already exists, refusing to overwrite")
     lo, hi = (int(x) for x in seeds.split("-", 1))
     seed_values = list(range(lo, hi + 1))
-    require(seed_values and lo >= 0, f"非法 seed 范围:{seeds}")
+    require(seed_values and lo >= 0, f"illegal seed range: {seeds}")
     snapshot = freeze_eval_identity(ROOT, worker, manager_npz)
     expected = expected_eval_identity(snapshot, tag=tag, seeds=seed_values)
     worker_arg = (worker if snapshot["worker"]["kind"] in {"script", "bc"}
@@ -147,7 +147,7 @@ def exam(worker, tag, seeds, manager_npz=None):
            "--manager-npz", snapshot["manager"]["path"],
            "--seeds", seeds, "--tag", tag]
     if run(cmd, f"exam-{tag}.{time.time_ns()}.log", timeout=1_800) != 0:
-        if out.exists():    # 半截档案轮转,给重考让路
+        if out.exists():    # rotate a half-written archive to make way for the retake
             out.rename(out.with_suffix(f".{time.time_ns()}.void"))
         return None
     try:
@@ -164,7 +164,7 @@ def exam(worker, tag, seeds, manager_npz=None):
 def exam_retry(worker, tag, seeds, manager_npz=None):
     d = exam(worker, tag, seeds, manager_npz)
     if d is None:
-        log({"event": "exam_crash", "tag": tag, "note": "评测失败,按崩溃条款重考一次"})
+        log({"event": "exam_crash", "tag": tag, "note": "evaluation failed; retaking once under the crash clause"})
         d = exam(worker, tag, seeds, manager_npz)
     return d
 
@@ -178,14 +178,14 @@ def depth2_count(rows) -> int:
 
 
 def bonus_per_ep(rows) -> float:
-    # 下楼奖金兑现:depth=d 兑现 8×(1+2+…+(d−1));d≤1 为 0
+    # Descent bonus payout: depth=d pays 8x(1+2+...+(d-1)); 0 for d<=1
     return sum(8 * sum(range(1, r["depth"])) for r in rows) / max(1, len(rows))
 
 
 def by_seed(rows) -> dict:
     m = {r["seed"]: r for r in rows}
-    require(len(rows) == len(m), "种子集合异常(含重复 seed)")
-    require(set(m) == set(range(7000, 7032)), "种子集合异常(须为 7000-7031)")
+    require(len(rows) == len(m), "seed set is malformed (contains a duplicate seed)")
+    require(set(m) == set(range(7000, 7032)), "seed set is malformed (must be 7000-7031)")
     return m
 
 
@@ -193,30 +193,30 @@ def preflight():
     require_calibrated_protocol()
     worker_zip = pathlib.Path(W_ZIP + ".zip")
     require(worker_zip.exists() and sha256(worker_zip) == W_ZIP_SHA,
-            "工人 zip 缺失或 sha 漂移")
+            "worker zip missing or sha drift")
     require(W_NPZ.exists() and sha256(W_NPZ) == W_NPZ_SHA,
-            "工人 npz 缺失或 sha 漂移(发车日 parity 0/1000 导出件)")
+            "worker npz missing or sha drift (the item exported on launch day with parity 0/1000)")
     read_comparable_anchor()
     tags = ["v29-GA0", "v29-golden"] + [f"{a}-{s}" for a in ARMS for s in ("s16", "full32")]
     for t in tags:
-        require(not (EVAL / f"{t}.json").exists(), f"目标档案已存在:{t}(重启协议:先 .void)")
+        require(not (EVAL / f"{t}.json").exists(), f"target archive already exists: {t} (restart protocol: .void it first)")
     for a in ARMS:
-        require(not (RUNS / a).exists(), f"运行目录残留:{a}(重启协议:先归档)")
+        require(not (RUNS / a).exists(), f"leftover run directory: {a} (restart protocol: archive it first)")
     log({"event": "preflight_ok", "archive_sha": sha16(ARCHIVE),
          "worker_npz_sha": sha16(W_NPZ)})
 
 
 def main():
     try:
-        with exclusive_lock(V29 / ".driver.lock", "v29 驱动"):
+        with exclusive_lock(V29 / ".driver.lock", "v29 driver"):
             _main()
     except (OperationalFailure, OutputReservationError) as e:
         log({"event": "OPERATIONAL_FAILURE", "why": str(e)})
-        attention("运维失败:\n" + str(e))
+        attention("operational failure:\n" + str(e))
         raise SystemExit(2) from e
-    except Exception as e:   # 条款兜底:任何未预期异常必须入册,不许无声死亡
+    except Exception as e:   # catch-all clause: every unexpected exception must be recorded; no silent death
         log({"event": "DRIVER_EXCEPTION", "why": repr(e)})
-        attention("驱动异常死亡:\n" + traceback.format_exc())
+        attention("driver died with an exception:\n" + traceback.format_exc())
         raise
 
 
@@ -229,10 +229,10 @@ def _main():
          "floor": floor_repro})
     ref_rows = by_seed(ref["rows"])
 
-    # ---- G-A0:仪器回归(npz 工人 + 默认经理 ≡ 112.4 锚,32/32)----
+    # ---- G-A0: instrument regression (npz worker + default manager == the 112.4 anchor, 32/32) ----
     ga0 = exam_retry(str(W_NPZ), "v29-GA0", "7000-7031")
     if ga0 is None:
-        why = "G-A0 考试进程连败"
+        why = "G-A0 exam process failed repeatedly"
         log({"event": "STOP", "why": why})
         attention(why)
         raise OperationalFailure(why)
@@ -243,12 +243,12 @@ def _main():
                or r["mode_seq"] != ref_rows[s]["mode_seq"])]
     log({"event": "g_a0", "mismatch_seeds": bad, "n_ok": 32 - len(bad)})
     if bad:
-        why = "G-A0 位级回归失配——按预注册回退条款人工重锚"
+        why = "G-A0 bit-level regression mismatch: re-anchor by hand under the pre-registered fallback clause"
         log({"event": "STOP", "why": why})
-        attention(f"G-A0 失配种子:{bad}")
+        attention(f"G-A0 mismatched seeds: {bad}")
         raise OperationalFailure(why)
 
-    # ---- 两臂串行训练 ----
+    # ---- train the two arms in series ----
     npz = {}
     for name, extra in ARMS.items():
         cmd = [PY, "train/train_ppo.py", "--options", "--algo", "mppo", "--gamma", "1.0",
@@ -257,18 +257,18 @@ def _main():
                "--run-name", name] + extra
         log({"event": "arm_start", "arm": name, "cmd_extra": extra})
         t0 = time.time()
-        rc = run(cmd, f"train-{name}.log", timeout=14_400)   # 4h 挂死护栏
+        rc = run(cmd, f"train-{name}.log", timeout=14_400)   # 4h hang guard
         sp = RUNS / name / "status.json"
         try:
             steps = json.loads(sp.read_text())["total_steps"] if sp.exists() else 0
         except Exception:
             steps = 0
-        nt = zip_steps(RUNS / name / "model_final.zip")   # 达标闸唯一计步源(SB3 真链)
+        nt = zip_steps(RUNS / name / "model_final.zip")   # the single step-count source for the target gate (real SB3 chain)
         log({"event": "arm_done", "arm": name, "rc": rc, "nt_zip": nt,
              "steps_status": steps, "dt_min": round((time.time() - t0) / 60, 1)})
         if rc != 0 or nt != STEPS:
-            why = (f"{name} 训练未达标(rc={rc}, nt_zip={nt}, "
-                   f"status={steps})——命题未考,本版不追加重训(v25 条款)")
+            why = (f"{name} training did not reach its target (rc={rc}, nt_zip={nt}, "
+                   f"status={steps}): proposition not examined; this version adds no retraining (v25 clause)")
             log({"event": "STOP", "why": why})
             attention(why)
             raise OperationalFailure(why)
@@ -276,19 +276,19 @@ def _main():
         if run([PY, "train/export_manager_npz.py",
                 str(RUNS / name / "model_final.zip"), str(out)],
                f"export-{name}.log", timeout=600) != 0 or not out.exists():
-            why = f"{name} npz 导出/parity 失败"
+            why = f"{name} npz export/parity failed"
             log({"event": "STOP", "why": why})
             attention(why)
             raise OperationalFailure(why)
         npz[name] = str(out)
         log({"event": "g_a0m", "arm": name, "npz_sha": sha16(out)})
 
-    # ---- 提前放弃闸(16 种子)----
+    # ---- early abandonment gate (16 seeds) ----
     s16 = {}
     for name in ARMS:
         d = exam_retry(W_ZIP, f"{name}-s16", "7000-7015", manager_npz=npz[name])
         if d is None:
-            why = f"{name} 初筛考试连败"
+            why = f"{name} screen exam failed repeatedly"
             log({"event": "STOP", "why": why})
             attention(why)
             raise OperationalFailure(why)
@@ -297,16 +297,16 @@ def _main():
              "died": d["agg"]["died"]})
     if all(v < ABANDON for v in s16.values()):
         log({"event": "VERDICT_PATH", "golden_authorized": False,
-             "why": f"双臂初筛均 <{ABANDON}——训练失败,再教育命题未考(免满 32)"})
-        attention("判决:训练失败,命题未考")
+             "why": f"both arms' screens < {ABANDON}: training failed, the re-education proposition was not examined (full 32 skipped)"})
+        attention("verdict: training failed, proposition not examined")
         return
 
-    # ---- 两臂满 32(深度仪表随行)----
+    # ---- both arms full 32 (with depth instrumentation) ----
     full = {}
     for name in ARMS:
         d = exam_retry(W_ZIP, f"{name}-full32", "7000-7031", manager_npz=npz[name])
         if d is None:
-            why = f"{name} 满 32 考试连败"
+            why = f"{name} full-32 exam failed repeatedly"
             log({"event": "STOP", "why": why})
             attention(why)
             raise OperationalFailure(why)
@@ -324,7 +324,7 @@ def _main():
     r29_2 = sum(ex[s]["ret"] - fr[s]["ret"] for s in fr) / 32
     log({"event": "r29_2", "paired_explore_minus_fresh_mean": round(r29_2, 2)})
 
-    # ---- 逐臂资格判定(面板 blocker 修正:胜者只从过资格臂中取)----
+    # ---- per-arm eligibility (panel blocker fix: the winner is taken only from eligible arms) ----
     def qual_of(d):
         a = d["agg"]
         dpe_ = dive_per_ep(d["rows"])
@@ -332,7 +332,7 @@ def _main():
                  or (dpe_ > 1 and a["died"] > 6))
         hard_ok_ = a["farm_descend_rate"] <= R4["descend"] and a["cap_rate"] < R4["cap"]
         override_ok_ = a["override_rate"] < R4["override_sentinel"]
-        dual_ = dpe_ > 1 and hard_ok_ and not override_ok_   # v25 双归因条款
+        dual_ = dpe_ > 1 and hard_ok_ and not override_ok_   # v25 dual-attribution clause
         ok_ = (a["died"] <= DEATHS_MAX and not void_
                and ((hard_ok_ and override_ok_) or dual_))
         return {"qual_ok": ok_, "void": void_, "dual_attr": dual_}
@@ -342,15 +342,15 @@ def _main():
     pool = [n for n in ARMS if quals[n]["qual_ok"]]
     if not pool:
         log({"event": "VERDICT_PATH", "golden_authorized": False,
-             "verdict": "双臂资格失败(死/哨兵/作废)——无胜者,再教育命题未答(功效外)",
+             "verdict": "both arms ineligible (deaths/sentinel/void): no winner, the re-education proposition unanswered (outside statistical power)",
              "arms": {n: {"mean": full[n]["agg"]["ret_mean"],
                           "died": full[n]["agg"]["died"], **quals[n]} for n in ARMS}})
-        attention("判决:双臂资格失败,无胜者(深度仪表已随 full32 事件入册)")
+        attention("verdict: both arms ineligible, no winner (depth instrumentation recorded with the full32 events)")
         return
     prelim = max(ARMS, key=lambda n: full[n]["agg"]["ret_mean"])
     if prelim not in pool:
         log({"event": "substitution", "blocked": prelim, "why": quals[prelim],
-             "note": "均值胜者资格拦截,按 D3-2 由过资格臂递补"})
+             "note": "the mean winner was blocked by eligibility; per D3-2 the eligible arm takes its place"})
     ms = {n: full[n]["agg"]["ret_mean"] for n in pool}
     band = [n for n in pool if max(ms.values()) - ms[n] <= 0.05]
     if len(band) > 1:
@@ -366,31 +366,31 @@ def _main():
     log({"event": "winner", "arm": winner, "mean": wa["ret_mean"], "died": wa["died"],
          "substituted": winner != prelim})
 
-    # ---- 深度副判(科学结论,不动王座;PREREG-v29 D3-7)----
+    # ---- depth side verdict (a scientific conclusion that does not move the throne; PREREG-v29 D3-7) ----
     d2, dpe = depth2_count(W["rows"]), dive_per_ep(W["rows"])
     if d2 >= 12 and 0.5 <= dpe <= 3 and wa["died"] <= DEATHS_MAX:
-        depth_verdict = "深度经济已学(≥12 图摸 2 层,DIVE 份额入带)"
+        depth_verdict = "depth economy learned (>=12 maps reach level 2, DIVE share within the band)"
     elif d2 <= 7:
-        depth_verdict = "再教育未解锁深度(≤基线 7)"
+        depth_verdict = "re-education did not unlock depth (<= baseline 7)"
     else:
-        depth_verdict = (f"带外(depth2={d2}, dive={dpe:.2f}, died={wa['died']}),"
-                         "入册不叙事")
+        depth_verdict = (f"out of band (depth2={d2}, dive={dpe:.2f}, died={wa['died']}),"
+                         " recorded, no narrative")
     log({"event": "depth_verdict", "depth2_seeds": d2, "dive_per_ep": round(dpe, 2),
          "bonus_per_ep": round(bonus_per_ep(W["rows"]), 2), "verdict": depth_verdict,
-         "note": "副判;王座与 Mark-I 认定另按 D3-6 与 ROADMAP 条款(防过度叙事)"})
+         "note": "side verdict; the throne and Mark-I determinations follow D3-6 and the roadmap clause (docs/design/ROADMAP-course-plan.md) (guarding against over-narration)"})
 
-    # ---- 复现地板 ----
+    # ---- reproduction floor ----
     ref = read_comparable_anchor()
     ref_rows = by_seed(ref["rows"])
     floor_repro = round(ref["agg"]["ret_mean"] * 85.0 / 92.0, 1)
     if wa["ret_mean"] < floor_repro:
         log({"event": "VERDICT_PATH", "golden_authorized": False,
-             "why": f"胜者 {wa['ret_mean']} < {floor_repro}——重训未复现参考水平,"
-                    f"再教育命题未考;深度副判:{depth_verdict}"})
-        attention("判决:未复现参考水平")
+             "why": f"winner {wa['ret_mean']} < {floor_repro}: retraining did not reproduce the reference level,"
+                    f" the re-education proposition not examined; depth side verdict: {depth_verdict}"})
+        attention("verdict: reference level not reproduced")
         return
 
-    # ---- 发射判据(配对 vs 112.4 锚,按 seed 键;胜者资格已由 pool 保证)----
+    # ---- launch criterion (paired vs the 112.4 anchor, keyed by seed; the winner's eligibility is guaranteed by pool) ----
     diffs = [wrows[s]["ret"] - ref_rows[s]["ret"] for s in sorted(ref_rows)]
     pd_mean = sum(diffs) / 32
     pd_wins = sum(d > 0 for d in diffs)
@@ -399,43 +399,43 @@ def _main():
          "died": wa["died"], "dive_per_ep": round(dpe, 2),
          "dual_attribution": dual_attr, "tau_note": wa["farm_tau_mean"]})
 
-    P_LINE = ("P线速查(按序判定):死>6→回退;金≥101.2且死≤4→P29-登基;"
-              "∈(97.2,101.2)且死≤4→点估增益王座不动;>97.2且死5-6→持平(安全性);"
-              "∈[93.9,97.2]→持平;<93.9→回退")
+    P_LINE = ("P line quick reference (decided in order): deaths>6 -> revert; gold>=101.2 and deaths<=4 -> P29 takes the throne;"
+              " in (97.2,101.2) and deaths<=4 -> point-estimate gain, throne unchanged; >97.2 and deaths 5-6 -> tie (safety);"
+              " in [93.9,97.2] -> tie; <93.9 -> revert")
     if launch:
         golden_cmd = (f"{PY} {ROOT / 'train' / 'eval_assembled.py'} --worker {W_ZIP} "
                       f"--manager-npz {npz[winner]} --seeds 9000-9031 "
                       f"--tag v29-golden --board")
-        dual_note = ("【双归因未裁】override 触线经双归因路径放行——烧牌前须人工完成"
-                     "配比漂移 vs 真退化裁定并回写 dual_attr_ruling 事件,先裁后烧;"
+        dual_note = ("[dual attribution undecided] override crossed its line and was let through on the dual-attribution path; before spending the gold run a human must decide"
+                     " mix drift vs real degradation and write back a dual_attr_ruling event; decide first, then spend; "
                      if dual_attr else "")
         log({"event": "GOLDEN_AUTHORIZED", "arm": winner, "probe32_mean": wa["ret_mean"],
              "died": wa["died"], "wins": pd_wins, "mean_diff": round(pd_mean, 2),
              "manager_npz": npz[winner], "manager_npz_sha": sha16(npz[winner]),
              "full32_sha": wa["_sha"], "golden_cmd": golden_cmd, "p_line": P_LINE,
-             "note": dual_note + "金牌由值夜者手启,单臂一次;败臂/未发射臂永不见"
-                     " 9000 段;开牌后回写 golden_result 事件"})
-        attention(dual_note + f"金牌待手启:{winner}(命令与 P 线速查见 ledger);"
-                  f"深度副判:{depth_verdict}")
+             "note": dual_note + "the gold-standard evaluation is started manually, single arm, once; losing/non-launched arms never see"
+                     " the 9000 range; write back a golden_result event after the opening"})
+        attention(dual_note + f"gold-standard evaluation awaiting manual launch: {winner} (command and P line quick reference in the ledger);"
+                  f" depth side verdict: {depth_verdict}")
         return
 
-    # ---- 不发射:穷尽分派(胜者已过资格;无胜者档在前;宽度移动注记随行)----
-    wins_note = (f"(宽度移动注记:赢 {pd_wins}/32 ≥14,不改判档)"
+    # ---- no launch: exhaustive dispatch (the winner is eligible; the no-winner tier comes first; the width-shift note goes along) ----
+    wins_note = (f" (width-shift note: won {pd_wins}/32 >=14, the tier does not change)"
                  if pd_wins >= 14 else "")
     if pd_mean >= PAIRED_DIFF and pd_wins < PAIRED_WINS:
-        verdict = (f"均值增益 +{pd_mean:.2f} 而宽度未达(赢 {pd_wins}/32 < 18)"
-                   "——点估增益,不烧牌,留工作站复赛")
+        verdict = (f"mean gain +{pd_mean:.2f} but width not reached (won {pd_wins}/32 < 18)"
+                   ": a point-estimate gain, does not spend the gold run; rematch deferred to the workstation line")
     elif pd_mean >= 2.0:
-        verdict = (f"配对均差 {pd_mean:.2f} ∈[+2,+4)——探针级改进,不烧牌"
-                   f"(赢 {pd_wins}/32){wins_note}")
+        verdict = (f"paired mean diff {pd_mean:.2f} in [+2,+4): a probe-level improvement, does not spend the gold run"
+                   f" (won {pd_wins}/32){wins_note}")
     else:
-        verdict = (f"配对均差 {pd_mean:.2f} <+2——现任连任,再教育无增益(功效限定)"
-                   f"(赢 {pd_wins}/32){wins_note}")
+        verdict = (f"paired mean diff {pd_mean:.2f} <+2: the incumbent stays, re-education brings no gain (power-limited)"
+                   f" (won {pd_wins}/32){wins_note}")
     log({"event": "VERDICT_PATH", "golden_authorized": False,
          "verdict": verdict, "depth_verdict": depth_verdict,
          "winner": winner, "winner_mean": wa["ret_mean"],
          "paired_mean": round(pd_mean, 2), "paired_wins": pd_wins})
-    attention(f"判决(不发射):{verdict};深度副判:{depth_verdict}")
+    attention(f"verdict (no launch): {verdict}; depth side verdict: {depth_verdict}")
 
 
 if __name__ == "__main__":

@@ -1,4 +1,4 @@
-"""v24/v26 分腿驱动的新评测必须绑定 schema-v2 身份。"""
+"""New evaluations of the v24/v26 per-leg drivers must bind a schema-v2 identity."""
 
 from __future__ import annotations
 

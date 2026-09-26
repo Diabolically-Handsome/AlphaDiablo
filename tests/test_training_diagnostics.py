@@ -147,9 +147,9 @@ def test_nested_structure_hashes_real_readers_and_no_input_rng_mutation(tmp_path
         assert json.loads(outer.read("completion_failure.json")) == report
         assert json.loads(outer.read("receipts.json")) == model._worker_onpolicy_pg_rollout_receipts
         assert _validate_checkpoint_bytes(outer.read("checkpoint/model.sb3.zip"), "inner", True)["num_timesteps"] == 8
-    with pytest.raises(ValueError, match="缺关键成员"):
+    with pytest.raises(ValueError, match="missing key members"):
         _validate_checkpoint_bytes(payload, "outer", True)
-    with pytest.raises(EvalContractError, match="不可读"):
+    with pytest.raises(EvalContractError, match="unreadable"):
         checkpoint_num_timesteps_bytes(payload, "outer")
     assert model.save_calls == model.contract_calls == 1
     assert calls == [(id(item), 4) for item in model._worker_onpolicy_pg_rollout_receipts]
@@ -222,7 +222,7 @@ def test_nan_tensors_rejected_by_original_validator_before_disk(tmp_path, attrib
 def test_duplicate_inner_members_rejected(tmp_path):
     model = SyntheticSaver()
     model.duplicate_member = True
-    with pytest.warns(UserWarning, match="Duplicate name"), pytest.raises(ValueError, match="重复"):
+    with pytest.warns(UserWarning, match="Duplicate name"), pytest.raises(ValueError, match="duplicate"):
         archive(model, tmp_path)
     assert list(tmp_path.iterdir()) == []
 

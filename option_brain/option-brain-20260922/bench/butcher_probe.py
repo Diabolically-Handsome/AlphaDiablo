@@ -1,5 +1,5 @@
-# Round-9 exam seed check (PREREG-ROUND9.md decision 6; PREREG-ROUND9-REVIEW.md "屠夫任务核对"), copied 2026-09-23
-# from the session scratchpad (butcher_probe.py, sha256 27217e40829414441d39f4acf2bde9c8c95d633c8b37203c264e467461c6bc98;
+# Round-9 exam seed check (PREREG-ROUND9.md decision 6; PREREG-ROUND9-REVIEW.md "Butcher quest check"), copied 2026-09-23
+# from a local work directory (butcher_probe.py, sha256 27217e40829414441d39f4acf2bde9c8c95d633c8b37203c264e467461c6bc98;
 # its 80-seed output run1.json sha256 ce223b1afbfd72731f630a89ef03e596127af367735d3ee54a2742b79a7d7868: the 16 Butcher
 # exam seeds 16/16 have the quest, engine and quest_lottery.py agree on 80/80 seeds). One change from the scratch copy:
 # the throwaway save directory is created next to the output file (was: next to this script), so that a run from

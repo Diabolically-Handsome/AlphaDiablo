@@ -1,7 +1,7 @@
-"""DiabloGym v0 冒烟测试:随机 agent + 确定性验证。
+"""DiabloGym v0 smoke test: random agent + determinism check.
 
-验证链:引擎初始化 → reset(seed) → 随机动作 N 步 → 观测在变 → 同种子可复现。
-用法(仓库根目录):  .venv/bin/python tests/smoke_random_agent.py
+Chain checked: engine init → reset(seed) → N random steps → the observation changes → the same seed reproduces.
+Usage (repository root):  .venv/bin/python tests/smoke_random_agent.py
 """
 
 import os
@@ -18,32 +18,32 @@ from diablogym import DiabloGymEnv, bridge
 
 
 def snapshot(raw):
-    """取观测中的确定性指纹:玩家位置 + 前 5 个怪物的位置/血量。"""
+    """Deterministic fingerprint of the observation: player position + position/HP of the first 5 monsters."""
     mons = [(m["id"], m["x"], m["y"], m["hp"]) for m in raw["monsters"][:5]]
     return (raw["player_x"], raw["player_y"], raw["dungeon_level"], tuple(mons))
 
 
 def main():
-    print("== DiabloGym v0 冒烟测试 ==")
+    print("== DiabloGym v0 smoke test ==")
     env = DiabloGymEnv(ticks_per_step=4, max_steps=1000)
 
-    # --- 1. reset 与初始观测 ---
+    # --- 1. reset and the initial observation ---
     obs, info = env.reset(seed=42)
     raw = info["raw"]
     assert info["episode_seed"] == 42
-    print(f"reset(seed=42): 城镇位置 ({raw['player_x']},{raw['player_y']}) "
-          f"HP {raw['hp']}/{raw['max_hp']} 金币 {raw['gold']} "
-          f"层 {raw['dungeon_level']} 怪物数 {len(raw['monsters'])}")
-    assert obs.shape == env.observation_space.shape, "观测向量形状不对"
+    print(f"reset(seed=42): town position ({raw['player_x']},{raw['player_y']}) "
+          f"HP {raw['hp']}/{raw['max_hp']} gold {raw['gold']} "
+          f"level {raw['dungeon_level']} monsters {len(raw['monsters'])}")
+    assert obs.shape == env.observation_space.shape, "wrong observation vector shape"
     assert obs.dtype == np.float32 and env.observation_space.contains(obs)
 
-    # info 是调用方所有的快照，修改它不得篡改环境内部奖励基线。
+    # info is a snapshot owned by the caller; modifying it must not tamper with the environment's internal reward baseline.
     real_x = env._raw["player_x"]
     raw["player_x"] = 999
     raw["monsters"].clear()
-    assert env._raw["player_x"] == real_x, "info['raw'] 泄露了内部可变状态"
+    assert env._raw["player_x"] == real_x, "info['raw'] leaked internal mutable state"
 
-    # --- 2. 随机走 300 步 ---
+    # --- 2. 300 random steps ---
     rng = np.random.default_rng(0)
     t0 = time.time()
     total_reward, positions = 0.0, set()
@@ -55,53 +55,53 @@ def main():
         positions.add((raw["player_x"], raw["player_y"]))
         if step % 100 == 0:
             print(f"  step {step:4d}: pos ({raw['player_x']},{raw['player_y']}) "
-                  f"HP {raw['hp']} XP {raw['xp']} 层 {raw['dungeon_level']}")
+                  f"HP {raw['hp']} XP {raw['xp']} level {raw['dungeon_level']}")
         if terminated:
-            print(f"  episode 终止于 step {step}(dead={raw['dead']})")
+            print(f"  episode terminated at step {step} (dead={raw['dead']})")
             break
     dt = time.time() - t0
     ticks = (step + 1) * env.ticks_per_step
-    print(f"随机 {step + 1} 步({ticks} tick)耗时 {dt:.2f}s "
-          f"≈ {ticks / dt:.0f} tick/s(实时为 20 tick/s,加速 {ticks / dt / 20:.0f}x)")
-    assert len(positions) > 3, f"玩家几乎没动过(只到过 {len(positions)} 个格子)—— 动作注入可能失效"
-    print(f"PASS: 玩家移动过 {len(positions)} 个格子,动作注入有效")
+    print(f"{step + 1} random steps ({ticks} tick) took {dt:.2f}s "
+          f"≈ {ticks / dt:.0f} tick/s (real time is 20 tick/s, {ticks / dt / 20:.0f}x speed-up)")
+    assert len(positions) > 3, f"the player barely moved (only {len(positions)} tiles visited); action injection may be broken"
+    print(f"PASS: the player visited {len(positions)} tiles; action injection works")
 
-    # --- 2b. 宏动作定向冒烟(11 下楼 / 12 喝药 / 13 捡药 / 14 捡装备):每个
-    # 新引擎代码路径都可能埋着无头雷(教训:蝙蝠俯冲/屠夫台词),CI 必须真踩一遍 ---
+    # --- 2b. targeted smoke of the macro actions (11 descend / 12 drink / 13 potion pickup / 14 gear pickup): every
+    # new engine code path may hide a headless mine (lessons: bat dive/Butcher dialogue), so CI must really step on each ---
     if not terminated:
         for macro in (11, 12, 13, 14):
             obs, reward, terminated, truncated, info = env.step(macro)
             if terminated or truncated:
                 break
-        print("PASS: 宏动作 11/12/13/14 定向冒烟无崩溃")
+        print("PASS: targeted smoke of macro actions 11/12/13/14 without crashes")
 
-    # --- 3. 确定性:同种子同世界,异种子异世界 ---
+    # --- 3. determinism: same seed same world, different seed different world ---
     _, info_a = env.reset(seed=123)
     snap_a = snapshot(info_a["raw"])
     _, info_b = env.reset(seed=123)
     snap_b = snapshot(info_b["raw"])
     _, info_c = env.reset(seed=456)
     snap_c = snapshot(info_c["raw"])
-    assert snap_a == snap_b, f"同种子初始世界不一致!\n{snap_a}\n{snap_b}"
-    print("PASS: seed=123 两次 reset 初始世界一致(确定性成立)")
+    assert snap_a == snap_b, f"initial world differs for the same seed!\n{snap_a}\n{snap_b}"
+    print("PASS: two resets with seed=123 give the same initial world (determinism holds)")
     if snap_a == snap_c:
-        print("WARN: seed=123 与 seed=456 初始世界相同(城镇布局本就固定,属正常;下地牢后才分化)")
+        print("WARN: seed=123 and seed=456 give the same initial world (normal: the town layout is fixed; worlds diverge after entering the dungeon)")
     else:
-        print("PASS: 不同种子初始世界不同")
+        print("PASS: different seeds give different initial worlds")
 
-    # --- 4. Gym/原生边界与精确截断 ---
+    # --- 4. Gym/native boundaries and exact truncation ---
     short = DiabloGymEnv(ticks_per_step=4, max_steps=1, include_raw=False)
     short.reset(seed=7)
     try:
         env.step(0)
     except RuntimeError as exc:
-        assert "交错" in str(exc)
+        assert "interleaved" in str(exc)
     else:
-        raise AssertionError("同进程全局引擎被多环境静默交错使用")
+        raise AssertionError("the in-process global engine was silently interleaved by several environments")
     _, _, terminated, truncated, cap_info = short.step(10)
-    # 最长 12 拍的宏也只能用剩余 1 拍。若这一拍停在 295 维未编码的
-    # walk/future/mode 中间态，必须 fail-closed terminal，不能让 SB3
-    # 把别名 terminal_observation 当成安全 TimeLimit 状态 bootstrap。
+    # A macro of up to 12 ticks can only use the 1 remaining tick. If that tick stops in a walk/future/mode
+    # intermediate state not encoded in the 295 dims, it must be a fail-closed terminal; SB3 must not
+    # bootstrap the aliased terminal_observation as a safe TimeLimit state.
     assert (terminated or truncated) and not (terminated and truncated)
     assert short._steps == short.max_steps == 1
     if cap_info["decision_idle"]:
@@ -116,7 +116,7 @@ def main():
     except Exception as exc:
         assert exc.__class__.__name__ == "ResetNeeded"
     else:
-        raise AssertionError("episode 截断后仍可继续 step")
+        raise AssertionError("step still possible after the episode was truncated")
     short.reset(seed=8)
     for bad_call in (
         lambda: bridge.step(ticks=0),
@@ -128,21 +128,21 @@ def main():
         except (ValueError, IndexError):
             pass
         else:
-            raise AssertionError("原生边界未拒绝非法参数")
+            raise AssertionError("the native boundary did not refuse invalid arguments")
 
-    # 普通 step 现在会在返回前结算拍尾换层事件，因此用
-    # 探针直接排队 StartNewLvl，继续验证"待处理事件后立即
-    # reset" 不会把上局换层泄漏给新英雄。
+    # Ordinary step now settles the end-of-tick level-change event before returning, so the
+    # probe queues StartNewLvl directly to keep verifying that "reset right after a pending
+    # event" does not leak the previous game's level change to the new hero.
     bridge.reset(seed=81)
     bridge.probe_warp_main_level(1)
     pending = bridge.observe()
     assert (pending["player_mode"] == bridge.PM_NEWLVL
-            and pending["dungeon_level"] == 0), "探针未排队换层事件"
+            and pending["dungeon_level"] == 0), "the probe did not queue a level-change event"
     bridge.reset(seed=82)
-    assert bridge.step(ticks=1)["dungeon_level"] == 0, "上局换层事件泄漏到新局"
+    assert bridge.step(ticks=1)["dungeon_level"] == 0, "the previous game's level-change event leaked into the new game"
 
-    # 任务只允许向下推进。历史上 FARM 的 explore 会在 seed 7023
-    # 误踩 L1 上楼格回城，使余下整局变成 depth=0 的空耗样本。
+    # The task only allows progressing downward. Historically FARM's explore on seed 7023
+    # stepped on the L1 up-stairs by mistake and returned to town, turning the rest of the game into wasted depth=0 samples.
     env.start_in_dungeon = True
     _, backtrack_info = env.reset(seed=7023)
     upstairs = next(t for t in backtrack_info["raw"]["triggers"]
@@ -152,14 +152,14 @@ def main():
     assert any((r["player_x"], r["player_y"])
                == (upstairs["x"], upstairs["y"]) for r in backtrack_trace)
     assert min(r["dungeon_level"] for r in backtrack_trace) == 1, \
-        "地牢上楼/回城触发未被封住，训练轨迹退回 depth=0"
+        "dungeon up-stairs/town-return trigger not sealed; training trajectory fell back to depth=0"
 
-    # fork 会复制已经启动线程的 SDL/network/Lua 内存，却不会复制那些线程。
-    # 子进程必须拒绝一切继承状态，并在普通 interpreter exit 时跳过原生析构；
-    # 父进程随后仍须可用。
+    # fork copies the memory of SDL/network/Lua threads already started, but not the threads themselves.
+    # The child must refuse all inherited state and skip native destructors on a normal interpreter exit;
+    # the parent must stay usable afterwards.
     if hasattr(os, "fork"):
         scratch = pathlib.Path(DiabloGymEnv._engine_config[1])
-        assert scratch.is_dir(), "父进程 scratch 在 fork 前已丢失"
+        assert scratch.is_dir(), "the parent's scratch was already lost before fork"
         sys.stdout.flush()
         child = os.fork()
         if child == 0:
@@ -177,12 +177,12 @@ def main():
                         if "fork" in str(exc):
                             rejected += 1
                 if rejected != 4:
-                    raise RuntimeError(f"fork 子进程只拒绝了 {rejected}/4 个入口")
-                env.close()  # 只清 wrapper，绝不能进入继承的原生析构
+                    raise RuntimeError(f"the fork child refused only {rejected}/4 entry points")
+                env.close()  # only clears the wrapper; must never enter the inherited native destructors
             except BaseException as exc:
                 print(f"fork child failure: {exc}", file=sys.stderr, flush=True)
                 os._exit(3)
-            os._exit(0)  # fork child 的唯一安全终点（另一条是 exec）
+            os._exit(0)  # the only safe end point of a fork child (the other is exec)
 
         deadline = time.monotonic() + 10.0
         status = None
@@ -195,23 +195,23 @@ def main():
         if status is None:
             os.kill(child, signal.SIGKILL)
             os.waitpid(child, 0)
-            raise AssertionError("fork 子进程 os._exit 死锁")
+            raise AssertionError("fork child deadlocked in os._exit")
         assert os.waitstatus_to_exitcode(status) == 0, status
-        assert scratch.is_dir(), "fork child 清除了父进程仍在使用的 scratch"
+        assert scratch.is_dir(), "the fork child removed the scratch still used by the parent"
 
-        # 防御性验证：误用 SystemExit/普通 exit 不能继续跑继承来的 C++ 静态
-        # 析构（Lua cross-TU UAF）；原生 atexit 必须 fail-closed 为失败码。
+        # Defensive check: a mistaken SystemExit/normal exit must not go on to run the inherited C++ static
+        # destructors (Lua cross-TU UAF); the native atexit must fail closed with a failure code.
         sys.stdout.flush()
         unsafe_child = os.fork()
         if unsafe_child == 0:
             raise SystemExit(0)
         _, unsafe_status = os.waitpid(unsafe_child, 0)
         assert os.waitstatus_to_exitcode(unsafe_status) == 1, unsafe_status
-        assert scratch.is_dir(), "普通退出的 fork child 清除了父 scratch"
+        assert scratch.is_dir(), "a normally exiting fork child removed the parent's scratch"
 
         env.reset(seed=7024)
         bridge.step(ticks=1)
-        print("PASS: fork 子进程拒绝继承引擎，os._exit/普通退出均不析构父状态")
+        print("PASS: the fork child refuses the inherited engine; os._exit/normal exit destroy no parent state")
     env.close()
 
     short.close()
@@ -220,10 +220,10 @@ def main():
     except RuntimeError:
         pass
     else:
-        raise AssertionError("end_game 后 observe 未拒绝无效状态")
-    print("PASS: 观测隔离、精确截断、原生边界/生命周期守卫成立")
+        raise AssertionError("observe did not refuse the invalid state after end_game")
+    print("PASS: observation isolation, exact truncation, native boundary/lifecycle guards hold")
 
-    print("\n== 全部通过:桥、动作、观测、确定性 OK ==")
+    print("\n== All passed: bridge, actions, observation, determinism OK ==")
 
 
 if __name__ == "__main__":

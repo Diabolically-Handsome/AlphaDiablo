@@ -1,4 +1,4 @@
-"""真实引擎 + SB3 VecEnv 的时间上限 bootstrap 语义回归测试。"""
+"""Regression tests for time-limit bootstrap semantics with the real engine + SB3 VecEnv."""
 from __future__ import annotations
 
 import pathlib
@@ -22,7 +22,7 @@ from stable_baselines3.common.vec_env import DummyVecEnv  # noqa: E402
 
 
 def _farm_manager(path: pathlib.Path) -> None:
-    """写一个确定性选择 FARM 的 303→3 numpy manager。"""
+    """Write a 303->3 numpy manager that deterministically chooses FARM."""
     np.savez_compressed(
         path,
         w0=np.zeros((64, 303), dtype=np.float32),
@@ -35,7 +35,7 @@ def _farm_manager(path: pathlib.Path) -> None:
 
 
 class _ArmOneBeatCap(gym.Wrapper):
-    """Worker reset 后把底层预算精确收紧到只剩一个 micro-step。"""
+    """After a Worker reset, tighten the underlying budget to exactly one remaining micro-step."""
 
     def reset(self, *, seed=None, options=None):
         obs, info = self.env.reset(seed=seed, options=options)
@@ -74,7 +74,7 @@ def _timeout_extra(*, timeout: bool) -> dict:
 
 
 class _SyntheticWorkerOptions:
-    """不启动原生引擎的 Worker 终局边界。"""
+    """Worker terminal boundaries without starting the native engine."""
 
     def __init__(self, *, direct_terminal: bool, timeout: bool):
         self._win = {"window_id": 1, "W": 0.0}
@@ -151,8 +151,8 @@ class TerminalBootstrapTests(unittest.TestCase):
             direct_terminal=True, timeout=True))
         _, direct_reward, terminated, truncated, direct_info = direct.step(9)
 
-        # depth=3 的 ladder 基础死亡等价项为 -24，配置额外项为 -3；
-        # 当前动作工资 +2.5，因此策略 transition 总回报为 -24.5。
+        # At depth=3 the ladder's base death-equivalent term is -24 and the configured extra term is -3;
+        # the current action wage is +2.5, so the policy transition's total return is -24.5.
         self.assertTrue(terminated)
         self.assertFalse(truncated)
         self.assertEqual(direct_reward, 2.5 - 24.0 - 3.0)
@@ -299,7 +299,7 @@ class TerminalBootstrapTests(unittest.TestCase):
         base_info = _timeout_base_info()
         base_info["time_limit_bootstrap_safe"] = False
         with self.assertRaisesRegex(
-                RuntimeError, "budget_boundary 与底层边界事实不闭合"):
+                RuntimeError, "budget_boundary inconsistent with the underlying boundary facts"):
             WorkerWindowEnv._worker_boundary(
                 False, True, extra, base_info)
 
@@ -311,7 +311,7 @@ class TerminalBootstrapTests(unittest.TestCase):
         base_info.pop("unsettled_budget_terminal")
 
         with self.assertRaisesRegex(
-                RuntimeError, "缺少显式安全 TimeLimit 证明"):
+                RuntimeError, "lacks an explicit safe TimeLimit certificate"):
             WorkerWindowEnv._worker_boundary(
                 False, True, extra, base_info)
 
@@ -319,19 +319,19 @@ class TerminalBootstrapTests(unittest.TestCase):
         base_info = _timeout_base_info()
         missing = _timeout_extra(timeout=True)
         del missing["timeout_without_progress"]
-        with self.assertRaisesRegex(RuntimeError, "缺字段"):
+        with self.assertRaisesRegex(RuntimeError, "missing fields"):
             WorkerWindowEnv._worker_boundary(
                 False, True, missing, base_info)
 
         false_negative = _timeout_extra(timeout=False)
         false_negative["no_progress_micro_steps"] = KILL_PATIENCE
-        with self.assertRaisesRegex(RuntimeError, "事实不闭合"):
+        with self.assertRaisesRegex(RuntimeError, "inconsistent with the.*facts"):
             WorkerWindowEnv._worker_boundary(
                 False, True, false_negative, base_info)
 
         false_positive = _timeout_extra(timeout=True)
         false_positive["no_progress_micro_steps"] = 0
-        with self.assertRaisesRegex(RuntimeError, "事实不闭合"):
+        with self.assertRaisesRegex(RuntimeError, "inconsistent with the.*facts"):
             WorkerWindowEnv._worker_boundary(
                 False, True, false_positive, base_info)
 
@@ -384,8 +384,8 @@ class TerminalBootstrapTests(unittest.TestCase):
             vec.close()
 
     def test_sb3_bootstraps_only_idle_base_time_limit(self):
-        # seed=0 的地牢出生点上，方向 1 在四 tick 后仍处于已提交走格；
-        # action 0 则是 idle 的标准 TimeLimit 边界。
+        # At the dungeon spawn point for seed=0, direction 1 is still in a committed tile move after four ticks;
+        # action 0 is the standard idle TimeLimit boundary.
         busy = self._base_vec_step(1)
         self.assertFalse(busy["TimeLimit.truncated"])
         self.assertFalse(busy["decision_idle"])
@@ -423,7 +423,7 @@ class TerminalBootstrapTests(unittest.TestCase):
             manager = pathlib.Path(td) / "farm-manager.npz"
             _farm_manager(manager)
 
-            # action10 在出生点提交探索走格；一拍预算不足以结清动画。
+            # action10 commits an exploration tile move at the spawn point; a one-tick budget is not enough to finish the animation.
             busy = self._worker_vec_step(manager, 10)
             self.assertFalse(busy["TimeLimit.truncated"])
             self.assertTrue(busy["unsettled_budget_terminal"])
@@ -431,8 +431,8 @@ class TerminalBootstrapTests(unittest.TestCase):
             self.assertTrue(
                 busy["terminal_base_info"]["unsettled_budget_terminal"])
 
-            # 显式 wait 在同一预算上限保持 idle，仍是可 bootstrap 的
-            # 298 维 TimeLimit terminal_observation。
+            # An explicit wait stays idle at the same budget limit and is still a bootstrappable
+            # 298-dim TimeLimit terminal_observation.
             idle = self._worker_vec_step(manager, 0)
             self.assertTrue(idle["TimeLimit.truncated"])
             self.assertFalse(idle["unsettled_budget_terminal"])

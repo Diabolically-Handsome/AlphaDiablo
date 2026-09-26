@@ -1,4 +1,4 @@
-"""分腿 driver 的纯状态机契约测试（不启动训练或评测）。"""
+"""Pure state-machine contract tests for the per-leg driver (no training or evaluation is started)."""
 
 from __future__ import annotations
 
@@ -36,7 +36,7 @@ class DriverContractTests(unittest.TestCase):
     def test_every_launch_is_bounded_by_remaining_budget(self):
         for module in ALL_DRIVERS:
             with self.subTest(module=module.__name__):
-                # 三次大幅失败足以让旧实现尚在前腿时就继续申请整腿并超额。
+                # Three large failures are enough for the old implementation to keep requesting whole legs and overrun while still on an earlier leg.
                 spent = 0
                 for fraction in (3, 3, 2):
                     allocated = module.budgeted_leg_steps(spent)
@@ -53,7 +53,7 @@ class DriverContractTests(unittest.TestCase):
                     module.budgeted_leg_steps(module.BUDGET_STEPS - 1), 0)
                 with self.assertRaises(module.OperationalFailure):
                     module.ensure_retry_budget(module.BUDGET_STEPS)
-                # 仍有一个量子时允许最后一次有界重试。
+                # One final bounded retry is allowed while a quantum remains.
                 module.ensure_retry_budget(module.BUDGET_STEPS - module.QUANTUM)
 
     def test_observed_attempt_delta_uses_status_and_rejects_overshoot(self):
@@ -72,7 +72,7 @@ class DriverContractTests(unittest.TestCase):
         with self.assertRaises(v30.OperationalFailure):
             v30.observed_attempt_steps(base, 0, base + allocated + 1, allocated)
 
-        # 续航/接力的历史 num_timesteps 起点不是新步预算的一部分。
+        # The historical num_timesteps start of a continuation/relay is not part of the new step budget.
         self.assertEqual(v28.observed_attempt_steps(
             v28.START,
             {"global_steps": 0, "status_steps": v28.START + allocated},
@@ -163,8 +163,8 @@ class DriverContractTests(unittest.TestCase):
             self.assertEqual(len(digest), 64)
             int(digest, 16)
 
-        # 旧的“只验文件 SHA 就放行 legacy JSON”入口必须物理删除；活动锚
-        # 统一由 schema/runtime/content 绑定的 read_comparable_* 读取。
+        # The old "check only the file SHA and admit a legacy JSON" entry point must be physically removed; active anchors
+        # are read only through read_comparable_*, bound to schema/runtime/content.
         for module in (v26, v27, v28, v30):
             self.assertFalse(hasattr(module, "read_sha_bound_json"))
 

@@ -1,42 +1,42 @@
-# R21：战利品变现与第二次补给
+# R21: selling loot and a second resupply trip
 
-本次授权为代码实现和工程验证。训练、固定模型效果试验、认证替换及 L3 以上课程扩展继续暂停。工程夹具中的造物、设金币或设耐久只用于核验边界，不能作为自然开局资源或通关成绩。
+This batch covers code implementation and engineering verification. Training, fixed-model effect trials, certification replacement and extending the course beyond L3 remain paused. Item creation, gold setting or durability setting in engineering fixtures is only used to check boundaries and cannot count as natural starting resources or as a clear.
 
-## 独立身份与恢复
+## Separate identity and recovery
 
-施工目录：`/home/user/r21_loot_economy_20260905/candidate`；引擎修改仅位于同级 `engine/`，隔离构建位于 `build-r*/`。原 WSL 工作源、其未提交改动、现用库、冻结 v7/v8 和模型没有被覆盖。
+The work was done in a separate local work directory (not published); engine changes live only in its `engine/` subdirectory and isolated builds in `build-r*/`. The original working source, its uncommitted changes, the library in use, the frozen v7/v8 and the models were not overwritten.
 
-同级 `snapshot/` 保存修改前工作源、冻结 v8 来源及原引擎未提交改动；`preparation.json` 和 `reports/preserved-artifacts.json` 记录身份。新实现以已完成的 v8 源码为隔离载体，但采购算法沿用 v7 的 `SustainCompletionService`；没有采用暂停中的 v9 战斗排序草稿，也没有把此前组合补给实验改成默认。
+A `snapshot/` directory next to it keeps the working source before the change, the frozen v8 source and the original engine's uncommitted changes; `preparation.json` and `reports/preserved-artifacts.json` record the identities. The new implementation uses the completed v8 source as an isolated carrier, but the purchasing algorithm keeps v7's `SustainCompletionService`; the paused v9 combat-ordering draft was not adopted, and the earlier combination resupply experiment was not made the default.
 
-## 显式开启，保留旧协议
+## Explicitly enabled, old protocol kept
 
-新服务名 `sustain-loot-v1`，要求 `l2-town-v1/full` 和 `worker_time_protocol="completion-l2-v1"`。OptionsEnv 自动匹配原生 `loot_economy=True`、普通护甲范围及装备战备保全。原生新标志默认关闭，旧服务仍保留旧行为。新环境身份不允许通过通用续训漂移选项混入旧检查点；本批不开放新训练配方。
+The new service is called `sustain-loot-v1` and requires `l2-town-v1/full` and `worker_time_protocol="completion-l2-v1"`. OptionsEnv automatically matches native `loot_economy=True`, the ordinary armor scope and equipment readiness preservation. The new native flag is off by default, and the old service keeps the old behaviour. The new environment identity cannot be mixed into old checkpoints through the generic resumed-training drift options; this batch opens no new training recipe.
 
-经理仍为 3 动作，工人为 15 动作、原 dual-v4 13012 维输入。完整库存、地面可售品、报价和收据仅进入资源状态及审计，不向冻结工人静默追加特征。拾装备、出售和回城仍是披露的脚本辅助，不代表神经网络已经学会经济管理。
+The manager still has 3 actions and the worker 15 actions with the original dual-v4 13,012-dim input. Full inventory, sellable floor items, quotes and receipts only enter the resource state and audits; no features are silently appended for the frozen worker. Picking up gear, selling and returning to town remain disclosed scripted helpers and do not mean the neural network has learned economic management.
 
-时间规则沿用已完成的 completion-l2-v1：首次 L2 截止 12000 实际微拍，之后 1800 完整观察；观测分母仍 6000。每次补给上限 3000，拾金与拾装备共同使用 900 微拍的新命令窗口，FARM 原累计预算 3600 不重置。第二次回城也消耗同一局剩余时间，不凭空延长整局。
+The time rules keep the completed completion-l2-v1: a deadline of 12000 real micro ticks for the first L2, then 1800 of complete observation; the observation denominator is still 6000. Each resupply trip is capped at 3000; gold pickup and gear pickup share a new 900-micro-tick command window, and the original cumulative FARM budget of 3600 is not reset. The second town trip also consumes the same game's remaining time and does not extend the game out of nowhere.
 
-## 实物与售卖规则
+## Item and selling rules
 
-- 新标志开启时，a14 换装必须将所有被替换旧件正常放入背包；矩形空间不足则候选和实际提交都拒绝。不会销毁旧件、加金币或补发物品来强行完成换装。
-- 首批额外拾取已观察到、当前非升级、可由 Smith 收购的非任务装备。到达目标后再次核验真实地面身份、位置、可见性及容量，正常放入背包，不自动穿戴。
-- 出售仅针对当前背包内的安全闲置装备。当前穿戴、任务物品、原生判为升级及已购买待穿的物品受保护。报价只在真实 Smith 交互中取得，每次绑定当前索引、完整身份和价格；一次卖出会压缩库存，下一次重新读取。
-- GUI 与 Gym 共用正常售卖价格和事务核心。使用原生四分之一价值、整数截断且最低 1 金规则；不为出售而自动付费维修或鉴定。成功收入进入个人金币库存，不使用仓库财富。
-- 无钱、无空间、错身份、过期报价等失败不改变交易资源、随机数或网络队列；脚本中实际拒绝后的等待单独计真实微拍。已无时间或已终局时，新命令不执行，也不虚计等待。
-- 出售收入 `gold_sold`、地面拾金 `gold_collected`、购买/维修支出及每程/累计账目分别保存。潜在卖价不计钱包。真实死亡和未能完整观察的现金变化单独记录，不补造收入。
+- With the new flag on, an a14 gear swap must put every replaced old item into the backpack normally; if the rectangular space is insufficient, both the candidate and the actual commit are refused. Old items are never destroyed, gold is never added and items are never re-issued to force a swap through.
+- The first trip additionally picks up observed, currently non-upgrade, non-quest equipment that the Smith would buy. On arrival the real floor identity, position, visibility and capacity are checked again; the item is put into the backpack normally and not worn automatically.
+- Selling only covers safe idle equipment currently in the backpack. Currently worn items, quest items, items natively judged to be upgrades and items bought but not yet worn are protected. Quotes are only obtained in a real Smith interaction, each bound to the current index, full identity and price; a sale compacts the inventory, and the next one reads it again.
+- The GUI and Gym share the normal selling price and transaction core. The native rule of a quarter of the value, truncated to an integer with a minimum of 1 gold, is used; no paid repair or identification is done automatically for a sale. Successful income goes into the personal gold inventory; stash wealth is not used.
+- Failures such as no money, no space, wrong identity or a stale quote do not change trade resources, random numbers or the network queue; the wait after a real refusal in the script counts separately as real micro ticks. With no time left or after the terminal state, new commands are not executed and no wait is counted.
+- Sale income `gold_sold`, floor gold pickup `gold_collected`, purchase/repair spending and per-trip/cumulative ledgers are kept separately. Potential sale prices do not count toward the wallet. Cash changes from real deaths and incomplete observations are recorded separately, and no income is fabricated.
 
-## 第二次补给
+## The second resupply trip
 
-首程保持原清场或累计 FARM 3600 且原生战备有缺项的触发条件。第二程限主地牢 L1，首程已真实返回并结算，角色存活且可决策，仍有原生缺项，并且返层后出现实际资源消耗、成长或新可变现战利品；也允许当前原生观察再次确认仍在地面、且实际装得下的已知剩余资源发起第二次搬运。血量真实下降并造成健康缺项可构成治疗需求；单纯闲置、位置改变或已饱和的 FARM 计数不能重复触发。
+The first trip keeps the original trigger: a cleared level or a cumulative FARM of 3600, with a native readiness shortfall. The second trip is limited to main dungeon L1: the first trip has really returned and settled, the character is alive and able to decide, a native shortfall remains, and after returning to the level there was actual resource consumption, growth or new sellable loot; a second haul is also allowed for known remaining resources that the current native observation reconfirms are still on the floor and actually fit. A real HP drop that causes a health shortfall can create a healing need; mere idling, a change of position or an already saturated FARM count cannot trigger it again.
 
-每局至多发起两程，原生同时限制实际授权出城次数。逐程重新读取商店和库存，保留原地牢怪物、掉落、探索、已拾金币和奖励账，不重新发放首次到达奖励。没有降低等级、AC、输出、80%生命、4瓶腰带药及耐久15的战备门；第二程失败或次数耗尽也不得强制放行。
+At most two trips are started per game, and native code also limits the number of actually authorized town exits. The shop and inventory are read again on each trip; the dungeon's monsters, drops, exploration, collected gold and reward ledger are kept, and the first-arrival reward is not paid again. No readiness gate is lowered (level, AC, damage, 80% life, 4 belt potions and durability 15); a failed second trip or exhausted trips must not force a release either.
 
-## 验证边界
+## Verification boundary
 
-工程检查覆盖真实保留/拾取/出售/可消费金币，背包容量、双手换装、身份及报价过期、失败原子性、默认关闭兼容、第二程条件与第三程拒绝、终局及微拍边界、每程现金账、原生未达标转层拒绝。执行结果以同级 `reports/` 下的构建和测试回执为准。
+The engineering checks cover real keeping/pickup/selling/spendable gold, backpack capacity, two-handed swaps, identity and quote expiry, failure atomicity, default-off compatibility, second-trip conditions and third-trip refusal, terminal and micro-tick boundaries, per-trip cash ledgers and native refusal of under-ready level changes. The build and test receipts of the local work directory (not published) are authoritative for the results.
 
-已知历史 2129887 的“旧剑30＋木棒5可补30金缺口”只作为工程金额反例。本批不重放该局，不宣称卖物或二次补给已提高自然开局到达率、生存率或通关能力。
+The known historical case 2129887, "old sword 30 + club 5 can cover a 30-gold shortfall", is used only as an engineering amount counterexample. This batch does not replay that game and does not claim that selling items or a second resupply has improved the arrival rate, survival rate or clearing ability from natural starts.
 
-## 本批完成记录
+## Record of this batch
 
-工程验证通过：192 个不重复用例、137 个子测试。最终原生构建 `build-r4`；详细分组、失败保留记录与边界见同级工作根目录 `reports/FINAL-REPORT.md` 和 `reports/FINAL-VALIDATION.json`。未启动训练或模型效果试验。
+Engineering verification passed: 192 unique cases, 137 subtests. The final native build is `build-r4`; the detailed groups, failure records and boundaries are in the final report and validation file of the local work directory (not published). No training or model effect trial was started.

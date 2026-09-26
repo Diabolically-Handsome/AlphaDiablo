@@ -1,60 +1,60 @@
-# 复核修复(2026-09-06):~/r17_work/review/R17-0-WP-ADVERSARIAL-REVIEW-20260906.md H2/H4/M2/L1
-"""R17.0 仪表探针(probe_r15_deployment.py v3 的超集;v3 文件字节不动)。
+# Review fixes (2026-09-06): findings H2/H4/M2/L1 of the adversarial review of R17-0 (not published)
+"""R17.0 instrumentation probe (a superset of probe_r15_deployment.py v3; the v3 file's bytes are untouched).
 
-argv 契约与 v3 完全相同:
+The argv contract is identical to v3:
   probe_r17_deployment.py <worker.zip> <lo-hi> <out.json> [max_steps=3000]
                           [argmax|stochastic|sample] [json-form]
-第 6 参数 JSON 键同 v3(_R16_ENV_KEYS + drink_sovereignty + manager);
-manager 扩为 readiness-v1 | readiness-v3 | readiness-v3-strict | const-FARM |
-const-DIVE。每种经理都走同一条掩码回退阶梯 FARM->DIVE->RESUPPLY,并记录
-强制下楼。
+Argument 6 JSON keys are the same as v3 (_R16_ENV_KEYS + drink_sovereignty + manager);
+manager is extended to readiness-v1 | readiness-v3 | readiness-v3-strict | const-FARM |
+const-DIVE. Every manager goes through the same mask fallback ladder FARM->DIVE->RESUPPLY and forced
+descents are recorded.
 
-逐位契约:manager=readiness-v3(或 readiness-v1)时,每行的 v3 列
-(V3_ROW_KEYS)与 probe_r15 v3 在同 zip/同种子/同形态下逐位相等——决策
-序列、快照钩子点(每个工人拍 + 每次存活收窗)、采样定种(局开始
-model.set_random_seed(seed);torch 单线程)全部同款;R17 新增仪表只读
-raw / OptionsEnv 状态,不触碰 RNG。rows_sha_v3(rows) 给出该限制列的
-sha256,驱动脚本用它对 r16-deploy-arm.json 做逐位回归。
+Bit-level contract: with manager=readiness-v3 (or readiness-v1), each row's v3 columns
+(V3_ROW_KEYS) are bit-identical to probe_r15 v3 under the same zip/seed/form: the decision
+sequence, the snapshot hook points (every worker beat + every surviving window close) and the sampling seeding (at episode start
+model.set_random_seed(seed); single-threaded torch) are all the same; the new R17 instrumentation only reads
+raw / OptionsEnv state and never touches the RNG. rows_sha_v3(rows) gives the sha256 of those restricted columns,
+which the driver script uses for a bit-level regression against r16-deploy-arm.json.
 
-R17.0 新增仪表(每行):
-  descents[]      每次 dungeon_level 增加(收窗 reason=descend 处观测):
+New R17.0 instrumentation (per row):
+  descents[]      every dungeon_level increase (observed at the window close with reason=descend):
                   {beat, from_dlvl, to_dlvl, belt_heals, hp, max_hp, armor_class,
                   char_level, hit_damage, ratio_v2(=readiness_power_ratio_v2(raw,
-                  to_dlvl)), ready(ratio_v2>=1), forced(决策时 ¬mask[FARM]),
+                  to_dlvl)), ready(ratio_v2>=1), forced(not mask[FARM] at decision time),
                   trigger, forced_reason, window_id, kills_so_far,
                   floor_kills_before_descent, floor_beats_before_descent,
                   monsters_left_prev_floor, potions_visible_prev_floor}
-                  monsters_left_prev_floor / potions_* 取自下楼前最后一次活体
-                  观测(同窗内最多早一拍)。
+                  monsters_left_prev_floor / potions_* come from the last live
+                  observation before the descent (at most one beat earlier within the same window).
   death           {beat, dlvl, belt_heals_last_live, belt_heals_post_death,
-                  floor_potions_total/visible/reachable(最后活体观测本层地面
-                  治疗药:全部 / visible / visible∧reachable),
+                  floor_potions_total/visible/reachable (healing potions on this floor's ground at the last live observation:
+                  all / visible / visible and reachable),
                   beats_on_current_floor, hp_last_live, max_hp_last_live,
                   last_live_beat, window_opt, window_trigger}
-  floors[]        每次楼层驻留:{dlvl, entry_beat, exit_beat, beats, kills,
+  floors[]        every floor stay: {dlvl, entry_beat, exit_beat, beats, kills,
                   monsters_left_at_exit, potions_visible_at_exit, exit_reason}
-  dive_windows[]  每个 DIVE 窗:{window_id, beat0, beat1, tau, end_reason,
+  dive_windows[]  every DIVE window: {window_id, beat0, beat1, tau, end_reason,
                   descended, trigger, forced, forced_reason, ratio_v2, cleared}
   windows         {total, farm, dive, resupply, forced_dive, mask_forced,
                   fallback, coach_dive_wants, coach_cleared_true}
-  first_descent_beat / alive_at_fd_plus_1800(None=从未下楼或观察被截断)/
-  fd_plus_1800_censored(存活截断早于首降+1800)/ beats_by_dlvl / l2_beats /
+  first_descent_beat / alive_at_fd_plus_1800 (None = never descended or observation truncated) /
+  fd_plus_1800_censored (survival truncated before first descent + 1800) / beats_by_dlvl / l2_beats /
   died_on_l2 / l2_death_beat
-trigger 口径(下楼所在窗的经理决策):
-  coach_ready    教练自愿 DIVE 且 ratio_v2>=1(readiness-v1 按 v0.1 尺 ready)
-  coach_cleared  教练自愿 DIVE 因清场子句
-  const_dive     const-DIVE 的无条件 DIVE(既不 ready 也不 cleared)
-  mask_forced    教练不想 DIVE,掩码 m[FARM]=False 经回退阶梯落到 DIVE
-  fallback       其余(如非 DIVE 窗内发生的换层)
-forced_reason(决策时 ¬mask[FARM] 的成因,按 options_env.py:739-741 掩码法
-反推):handoff(剧情目标交权 _farm_handoff)/ cap(farm_scene_steps>=cap)/
-idle_clock(layer_clock>=KILL_PATIENCE)/ exhausted_other / None。
-agg 在 v3 全部键之外追加 farm_masked_at_descent_share(下楼时 ¬mask[FARM]
-的份额,与教练意愿无关)/ mask_forced_descent_share(trigger=mask_forced,
-即真正「经理被推翻」的份额)/ descents_total / ready_descents /
-cleared_true_decisions(教练 cleared 子句为真的决策数)/
+trigger definition (the manager decision of the window in which the descent happened):
+  coach_ready    the coach chose DIVE voluntarily and ratio_v2>=1 (readiness-v1 is ready by the v0.1 table)
+  coach_cleared  the coach chose DIVE voluntarily because of the cleared clause
+  const_dive     the unconditional DIVE of const-DIVE (neither ready nor cleared)
+  mask_forced    the coach did not want DIVE; the mask m[FARM]=False fell through the fallback ladder to DIVE
+  fallback       everything else (e.g. a level change inside a non-DIVE window)
+forced_reason (the cause of not mask[FARM] at decision time, inferred from the mask law at options_env.py:739-741):
+handoff (story-goal handover _farm_handoff) / cap (farm_scene_steps>=cap) /
+idle_clock (layer_clock>=KILL_PATIENCE) / exhausted_other / None.
+Beyond all v3 keys, agg adds farm_masked_at_descent_share (share of descents with not mask[FARM],
+regardless of the coach's intent) / mask_forced_descent_share (trigger=mask_forced,
+i.e. the share where "the manager was really overruled") / descents_total / ready_descents /
+cleared_true_decisions (number of decisions where the coach's cleared clause was true) /
 mean_beat_first_descent / alive_at_first_descent_plus_1800 /
-l2_hazard_per_1k(L2 死亡数 / ΣL2 停留拍 × 1000)及下楼面板分布。
+l2_hazard_per_1k (L2 deaths / sum of L2 stay beats x 1000) and the descent panel distributions.
 """
 import hashlib
 import json
@@ -92,11 +92,11 @@ from diablogym.worker_env import (  # noqa: E402
 _R16_ENV_KEYS = ("explore_global_hunt", "explore_global_fallback",
                  "progress_far_tiles", "farm_scene_cap",
                  "reset_layer_clock_on_window", "reward_economy",
-                 # R17 T0(2026-09-06):资源通道臂的环境旗直通 OptionsEnv;
-                 # 不在 v3 行/agg 键内,readiness-v3 逐位路径不受影响。
+                 # R17 T0 (2026-09-06): the environment flags of the resource-channel arm pass straight through to OptionsEnv;
+                 # they are not v3 row/agg keys, so the readiness-v3 bit-level path is unaffected.
                  "resource_protocol", "resource_purchase_mode",
                  "resource_service_policy", "resource_readiness_law",
-                 # R17 T0′:sustain-loot-v1 要求显式 completion-l2-v1 时钟
+                 # R17 T0': sustain-loot-v1 requires an explicit completion-l2-v1 clock
                  "worker_time_protocol", "resource_retreat",
                  # R18-D/E (2026-09-07): aggro cap + engagement priority flags
                  "aggro_cap", "engagement_priority",
@@ -131,7 +131,7 @@ def _identify_field(env, name, default):
 
 _R17_MANAGERS = ("readiness-v1", "readiness-v3", "readiness-v3-strict",
                  "const-FARM", "const-DIVE",
-                 # R17 T0:协议开启时的脚本经理 = OptionsEnv.resource_option_choice
+                 # R17 T0: with the protocol on, the script manager = OptionsEnv.resource_option_choice
                  "resource")
 
 # R18-M2 (2026-09-07) conflict resolution K2b: k2b.patch stamped
@@ -141,7 +141,7 @@ _R17_MANAGERS = ("readiness-v1", "readiness-v3", "readiness-v3-strict",
 # gives it ONE new string naming this pass.
 PROBE_VERSION = "r17-deployment-v3-r18m2"
 V3_PROBE_VERSION = "r15-deployment-v3"
-# probe_r15 v3 的每行字段(逐位回归口径);R17 行是其超集。
+# The per-row fields of probe_r15 v3 (the bit-level regression definition); R17 rows are a superset.
 V3_ROW_KEYS = (
     "seed", "depth", "died", "victory", "micro_steps",
     "char_level", "armor_class", "max_hp", "gold", "xp", "kills", "hit_damage",
@@ -169,7 +169,7 @@ def source_identity(worker_zip):
 
 
 def rows_sha_v3(rows):
-    """限制到 v3 列的行 sha256(与 r16-deploy-*.json 行逐位回归口径)。"""
+    """Row sha256 restricted to the v3 columns (the bit-level regression definition against r16-deploy-*.json rows)."""
     payload = json.dumps(
         [{k: r[k] for k in V3_ROW_KEYS} for r in rows],
         sort_keys=True, ensure_ascii=False, separators=(",", ":"))
@@ -177,7 +177,7 @@ def rows_sha_v3(rows):
 
 
 def load_zip_policy(path, stochastic=False):
-    """与 v3 同款(采样定种 / 单线程 / on_beat 钩子)。"""
+    """Same as v3 (sampling seeding / single thread / on_beat hook)."""
     from leashed_ppo import LeashedMaskablePPO
     model = LeashedMaskablePPO.load(
         path, env=None, device="cpu",
@@ -203,7 +203,7 @@ def load_zip_policy(path, stochastic=False):
 
 
 def panel(raw):
-    """面板六件套 + xp(全部取自同一 raw 快照)。与 v3 逐字相同。"""
+    """The six panel values + xp (all taken from the same raw snapshot). Verbatim the same as v3."""
     return {
         "char_level": int(raw.get("char_level", 0)),
         "armor_class": int(raw.get("armor_class", 0)),
@@ -217,8 +217,8 @@ def panel(raw):
 
 
 def floor_potions(raw):
-    """本层地面治疗药计数(floor_items 的 heal 旗;visible/reachable 为桥侧
-    可见性/可达性标志,与 env._policy_floor_items(raw, "heal") 同口径)。"""
+    """Count of healing potions on this floor's ground (the heal flag of floor_items; visible/reachable are the bridge-side
+    visibility/reachability flags, same definition as env._policy_floor_items(raw, "heal"))."""
     items = raw.get("floor_items") or ()
     heal = [it for it in items if bool(it.get("heal"))]
     visible = [it for it in heal if bool(it.get("visible", True))]
@@ -250,10 +250,10 @@ def _hist(values):
 
 
 def coach_decide(manager, raw, floor_state):
-    """脚本经理的 want。返回 (want, ready, cleared, coach_reason, ratio)。
+    """The script manager's want. Returns (want, ready, cleared, coach_reason, ratio).
 
-    readiness-v1 / readiness-v3 分支与 probe_r15 v3 run_episode 内联逻辑逐字
-    等价(进层基数按 dungeon_level 变化重置)。"""
+    The readiness-v1 / readiness-v3 branches are verbatim equivalent to the inline logic of probe_r15 v3 run_episode
+    (the per-level baseline resets when dungeon_level changes)."""
     dlvl = int(raw["dungeon_level"])
     if manager == "readiness-v1":
         ratio = readiness_power_ratio(raw, dlvl + 1)
@@ -278,7 +278,7 @@ def coach_decide(manager, raw, floor_state):
         elif manager == "const-DIVE":
             want = DIVE
         else:
-            raise ValueError(f"未知 manager {manager!r}")
+            raise ValueError(f"unknown manager {manager!r}")
     if want == DIVE:
         coach_reason = ("ready" if ready
                         else ("cleared" if cleared else "const"))
@@ -288,7 +288,7 @@ def coach_decide(manager, raw, floor_state):
 
 
 def forced_reason(env, raw):
-    """决策时 m[FARM]=False 的成因(options_env.py:739-741 反推)。"""
+    """Cause of m[FARM]=False at decision time (inferred from options_env.py:739-741)."""
     if _farm_handoff(raw):
         return "handoff"
     cap = int(getattr(env, "farm_scene_cap", 0) or 0)
@@ -302,7 +302,7 @@ def forced_reason(env, raw):
 
 
 def aggregate(rows):
-    """v3 agg 全部键(逐字同款计算)+ R17 扩展键。"""
+    """All v3 agg keys (computed verbatim the same) + R17 extension keys."""
     n = len(rows)
     alive = [r for r in rows if not r["died"]]
     dead = [r for r in rows if r["died"]]
@@ -354,7 +354,7 @@ def aggregate(rows):
         key = str(r["depth"])
         agg["depth_hist"][key] = agg["depth_hist"].get(key, 0) + 1
 
-    # ---- R17.0 扩展 ----
+    # ---- R17.0 extensions ----
     descents = [d for r in rows for d in r["descents"]]
     dive_windows = [w for r in rows for w in r["dive_windows"]]
     with_fd = [r for r in rows if r["first_descent_beat"] is not None]
@@ -369,11 +369,11 @@ def aggregate(rows):
     agg.update({
         "descents_total": len(descents),
         "forced_descents": sum(1 for d in descents if d["forced"]),
-        # 决策时 FARM 被掩码(与教练意愿无关);旧名 forced_descent_share
+        # FARM was masked at decision time (regardless of the coach's intent); old name forced_descent_share
         "farm_masked_at_descent_share": (
             round(sum(1 for d in descents if d["forced"]) / len(descents), 4)
             if descents else None),
-        # 真正「经理被推翻」:教练不想 DIVE,靠回退阶梯落到 DIVE
+        # "The manager was really overruled": the coach did not want DIVE and the fallback ladder landed on DIVE
         "mask_forced_descent_share": (
             round(sum(1 for d in descents if d["trigger"] == "mask_forced")
                   / len(descents), 4)
@@ -441,8 +441,8 @@ def aggregate(rows):
             r["windows"]["mask_forced"] for r in rows),
         "forced_dive_windows_total": sum(
             r["windows"]["forced_dive"] for r in rows),
-        # L1:教练 cleared 子句为真的决策数(v3 与 v3-strict 的唯一分歧来源;
-        # 为 0 即「v3 ≡ strict」是经验巧合而非结构必然)
+        # L1: number of decisions where the coach's cleared clause was true (the only source of divergence between v3 and v3-strict;
+        # 0 means "v3 == strict" is an empirical coincidence, not a structural necessity)
         "cleared_true_decisions": sum(
             r["windows"]["coach_cleared_true"] for r in rows),
     })
@@ -459,10 +459,10 @@ def followup_status(first_descent_beat, final_beat, died):
 
 
 def run_episode(env, cb, seed, stochastic, manager="readiness-v1"):
-    """一局;返回 row(v3 列逐字同款 + R17 仪表)。"""
+    """One episode; returns a row (v3 columns verbatim the same + R17 instrumentation)."""
     snap = {"panel": None, "micro_step": None, "source": None}
     floor_state = {"dlvl": None, "kills_at_entry": 0}
-    # ---- R17 仪表状态(只读 raw / env 状态) ----
+    # ---- R17 instrumentation state (reads only raw / env state) ----
     tele = {"descents": [], "floors": [], "dive_windows": []}
     windows = {"total": 0, "farm": 0, "dive": 0, "resupply": 0,
                "forced_dive": 0, "mask_forced": 0, "fallback": 0,
@@ -505,7 +505,7 @@ def run_episode(env, cb, seed, stochastic, manager="readiness-v1"):
         return rec
 
     def observe():
-        """每个活体观测点(工人拍前 / 存活收窗后)刷新楼层与活体记录。"""
+        """At every live observation point (before a worker beat / after a surviving window close) refresh the floor and live records."""
         raw = env.env._raw
         if raw.get("dead"):
             return
@@ -569,8 +569,8 @@ def run_episode(env, cb, seed, stochastic, manager="readiness-v1"):
             raw = env.env._raw
             mask = np.asarray(env.action_masks(), dtype=bool)
             if manager == "resource":
-                # R17 T0:遥测用的 ready/cleared/ratio 沿用 v3-strict 口径,
-                # want 由资源协议的脚本经理决定(coach-v03 下按六条法)。
+                # R17 T0: the telemetry's ready/cleared/ratio keep the v3-strict definition;
+                # want is decided by the resource protocol's script manager (by the six laws under coach-v03).
                 _w, ready, cleared, _r, ratio = coach_decide(
                     "readiness-v3-strict", raw, floor_state)
                 want = int(env.resource_option_choice(mask))
@@ -653,7 +653,7 @@ def run_episode(env, cb, seed, stochastic, manager="readiness-v1"):
     else:
         live = final
         post_death = None
-    # ---- R17: 收尾楼层与死亡记录 ----
+    # ---- R17: closing floor and death records ----
     if cur_floor["dlvl"] is not None:
         close_floor(
             micro_steps,
@@ -690,7 +690,7 @@ def run_episode(env, cb, seed, stochastic, manager="readiness-v1"):
     alive_at_fd, censored = followup_status(
         first_descent_beat, micro_steps, died)
     died_on_l2 = bool(died and death["dlvl"] == 2)
-    # ---- R17 T0:资源通道遥测(协议关时为 None;不进 v3 行键) ----
+    # ---- R17 T0: resource-channel telemetry (None when the protocol is off; not a v3 row key) ----
     resource = None
     if getattr(env, "resource_protocol", "off") != "off":
         receipts = list(getattr(env.env, "_resource_transition_receipts", []))
@@ -791,7 +791,7 @@ def run_episode(env, cb, seed, stochastic, manager="readiness-v1"):
             snap["micro_step"] if died else micro_steps),
         "snapshot_source": snap["source"] if died else "final",
         "post_death": post_death,
-        # ---- R17.0 仪表 ----
+        # ---- R17.0 instrumentation ----
         "descents": tele["descents"],
         "floors": tele["floors"],
         "dive_windows": tele["dive_windows"],
@@ -813,16 +813,16 @@ def main():
     decoding_arg = sys.argv[5] if len(sys.argv) > 5 else "argmax"
     if decoding_arg not in ("argmax", "stochastic", "sample"):
         raise SystemExit(
-            f"第 5 参数只允许 argmax|stochastic|sample,收到 {decoding_arg!r}")
+            f"argument 5 only allows argmax|stochastic|sample, got {decoding_arg!r}")
     stochastic = decoding_arg in ("stochastic", "sample")
     overrides = json.loads(sys.argv[6]) if len(sys.argv) > 6 else {}
     unknown = set(overrides) - set(_R16_ENV_KEYS) - {"drink_sovereignty",
                                                      "manager"}
     if unknown:
-        raise SystemExit(f"第 6 参数含未知键: {sorted(unknown)}")
+        raise SystemExit(f"argument 6 has unknown keys: {sorted(unknown)}")
     manager = str(overrides.get("manager", "readiness-v1"))
     if manager not in _R17_MANAGERS:
-        raise SystemExit(f"manager 只允许 {_R17_MANAGERS},收到 {manager!r}")
+        raise SystemExit(f"manager only allows {_R17_MANAGERS}, got {manager!r}")
     drink_sovereignty = bool(overrides.get("drink_sovereignty", False))
     env_overrides = {k: overrides[k] for k in _R16_ENV_KEYS if k in overrides}
     lo, hi = (int(x) for x in seed_span.split("-"))
@@ -856,29 +856,29 @@ def main():
                          "rows_sha_v3": rows_sha_v3(rows)},
            "source_identity": identity_before,
            "source_changed_during_run": changed_during_run,
-           "note": ("法证探针,非考卷;R17.0 仪表形态(v3 超集:逐次下楼遥测 "
-                    "+ 脚本反事实经理)"),
+           "note": ("forensic probe, not an exam; R17.0 instrumentation form (v3 superset: per-descent telemetry "
+                    "+ scripted counterfactual managers)"),
            "row_semantics": (
-               "died 行主列 = 死亡前最后存活快照(工人拍/存活收窗),"
-               "post_death = 局末尸检值;存活行主列 = 局末值,post_death=None;"
-               "descents/floors/dive_windows/death/windows 为 R17 仪表列"
-               "(见模块 docstring)"),
+               "died row main columns = last alive snapshot before death (worker beat/surviving window close), "
+               "post_death = end-of-episode autopsy values; surviving row main columns = end-of-episode values, post_death=None; "
+               "descents/floors/dive_windows/death/windows are R17 instrumentation columns"
+               " (see the module docstring)"),
            "trigger_semantics": {
-               "coach_ready": "教练自愿 DIVE 且战备达标",
-               "coach_cleared": "教练自愿 DIVE 因清场子句",
-               "const_dive": "const-DIVE 无条件 DIVE(不 ready 不 cleared)",
-               "mask_forced": "教练不想 DIVE,掩码 m[FARM]=False 回退到 DIVE",
-               "fallback": "其余路径(非 DIVE 窗内换层)"},
+               "coach_ready": "the coach chose DIVE voluntarily and readiness was met",
+               "coach_cleared": "the coach chose DIVE voluntarily because of the cleared clause",
+               "const_dive": "const-DIVE unconditional DIVE (neither ready nor cleared)",
+               "mask_forced": "the coach did not want DIVE; mask m[FARM]=False fell back to DIVE",
+               "fallback": "other paths (level change inside a non-DIVE window)"},
            "forced_reason_semantics": {
-               "handoff": "_farm_handoff(剧情目标交权)",
+               "handoff": "_farm_handoff (story-goal handover)",
                "cap": "farm_scene_steps >= farm_scene_cap",
                "idle_clock": f"layer_clock >= KILL_PATIENCE({KILL_PATIENCE})",
-               "exhausted_other": "exhausted 旗在位但上两者皆否"},
+               "exhausted_other": "exhausted flag set but neither of the above"},
            "alive_at_fd_plus_1800_semantics": (
-               "首降拍+1800 时存活(死亡拍 > 首降拍+1800 或存活到局末);"
-               "存活但局末 < 首降拍+1800 者为右删失,记 "
-               "fd_plus_1800_censored=True 且 alive_at_fd_plus_1800=None,"
-               "不计存活、不进聚合分母(分母 = fd_plus_1800_observed_n)"),
+               "alive at first-descent beat + 1800 (death beat > first-descent beat + 1800, or alive at episode end); "
+               "alive but episode end < first-descent beat + 1800 is right-censored, recorded as "
+               "fd_plus_1800_censored=True and alive_at_fd_plus_1800=None, "
+               "not counted as alive and not in the aggregate denominator (denominator = fd_plus_1800_observed_n)"),
            "worker_zip": worker_zip, "seeds": seed_span,
            "max_steps": max_steps,
            "manager": manager,

@@ -1,11 +1,11 @@
 /**
  * @file diablogym.cpp
  *
- * DiabloGym v0 —— DevilutionX 无头嵌入桥(pybind11)。
+ * DiabloGym v0: headless DevilutionX embedding bridge (pybind11).
  *
- * 嵌入方式与上游 test/timedemo_test.cpp 同源:HeadlessMode + loopback 单机,
- * 由 Python 侧逐 tick 驱动主循环(复刻 RunGameLoop 循环体,去掉墙钟限速与绘制),
- * 动作走网络命令层(NetSendCmd*)—— 与多人协议同一条路,天然支持日后联机部署。
+ * Embedded the same way as upstream test/timedemo_test.cpp: HeadlessMode + loopback single player,
+ * with Python driving the main loop tick by tick (a copy of the RunGameLoop body without wall-clock throttling or drawing);
+ * actions go through the network command layer (NetSendCmd*), the same path as the multiplayer protocol, so online deployment is naturally possible later.
  */
 
 #include <algorithm>
@@ -49,8 +49,8 @@
 #include "engine/path.h"
 #include "engine/render/scrollrt.h" // CalcViewportGeometry
 #include "gmenu.h"
-#include "inv.h"     // v14:AutoEquip(背包打捞,PM_GOTHIT 时序窗修复)
-#include "options.h" // v14:自动穿装备选项(盔甲/头盔/首饰默认关)
+#include "inv.h"     // v14: AutoEquip (backpack salvage; fixes the PM_GOTHIT timing window)
+#include "options.h" // v14: auto-equip options (armor/helmet/jewelry off by default)
 #include "qol/monhealthbar.h"
 #include "qol/xpbar.h"
 #include "engine/assets.hpp"
@@ -78,7 +78,7 @@
 #include "msg.h"
 #include "multi.h"
 #include "nthread.h"
-#include "objects.h" // FindObjectAtPosition / isDoor(下楼宏的门感知)
+#include "objects.h" // FindObjectAtPosition / isDoor (door awareness for the descend macro)
 #include "options.h"
 #include "pfile.h"
 #include "player.h"
@@ -106,9 +106,9 @@ namespace {
 
 bool gEngineInited = false;
 bool gInGame = false;
-bool gStartupTick = true; // 对应 RunGameLoop 里的 gbGameLoopStartup
+bool gStartupTick = true; // corresponds to gbGameLoopStartup in RunGameLoop
 int gHeroClass = 0;       // HeroClass::Warrior
-int gStallPrints = 0;     // 逻辑失速诊断打印限额
+int gStallPrints = 0;     // print budget for logic-stall diagnostics
 std::string gAssetsDir;
 std::string gSaveDir;
 std::string gDataDir;
@@ -145,7 +145,7 @@ void EnsureEngineProcess(const char *operation)
 	if (gEngineInited && gEnginePid != CurrentProcessId())
 		throw std::runtime_error(
 		    std::string(operation)
-		    + ": 禁止在 fork 子进程复用父进程已初始化的 DevilutionX；请使用 spawn");
+		    + ": reusing a DevilutionX instance initialized by the parent process in a fork child is forbidden; use spawn");
 }
 
 void CleanupFailedEngineInit() noexcept
@@ -170,16 +170,16 @@ void EnsureInGame(const char *operation)
 {
 	EnsureEngineProcess(operation);
 	if (!gInGame || MyPlayer == nullptr)
-		throw std::runtime_error(std::string(operation) + ": 先调用 reset()");
+		throw std::runtime_error(std::string(operation) + ": call reset() first");
 }
 
 bool CanAcceptPlayerAction(const char *operation)
 {
 	EnsureInGame(operation);
-	// Step 正常会在返回 Python 前结算拍尾换层；这里仍做纵深防御，覆盖
-	// probe 直接排队、异常中断或未来新增入口留下的 PM_NEWLVL 窗口。
-	// 若此时向网络命令队列塞动作，SyncLoad 会先切到新地图，随后
-	// ProcessGameMessagePackets 就会把旧场景命令施加到新场景。
+	// Step normally settles an end-of-tick level change before returning to Python; this is still defense in depth, covering
+	// the PM_NEWLVL window left by a probe queuing directly, an exception, or a future new entry point.
+	// If an action were pushed onto the network command queue now, SyncLoad would switch to the new map first, and then
+	// ProcessGameMessagePackets would apply the old scene's command to the new scene.
 	return MyPlayer->_pmode != PM_NEWLVL && !MyPlayer->_pLvlChanging;
 }
 
@@ -190,16 +190,16 @@ int ConceptualDungeonDepth()
 	const int returnLevel = GetMapReturnLevel();
 	if (returnLevel <= 0)
 		throw std::runtime_error(
-		    "DiabloGym 遇到无法映射到主地牢深度的 set-level: "
+		    "DiabloGym hit a set-level that cannot be mapped to a main dungeon depth: "
 		    + std::to_string(static_cast<int>(setlvlnum)));
 	return returnLevel;
 }
 
 void DiscardPendingEvents()
 {
-	// 换层事件在 game_loop 的拍尾入 SDL 队列。若该拍恰好命中
-	// episode 截断，下一局 reset 会早于下一次 PumpSdlEvents；不清队列
-	// 就会把上局的 WM_DIABNEXTLVL 施加给新英雄，造成跨局状态泄漏。
+	// Level-change events enter the SDL queue at the end of a game_loop tick. If that tick happens to hit
+	// episode truncation, the next episode's reset comes before the next PumpSdlEvents; without clearing the queue
+	// the previous episode's WM_DIABNEXTLVL would be applied to the new hero, leaking state across episodes.
 	SDL_Event event;
 	while (SDL_PollEvent(&event)) {
 	}
@@ -210,13 +210,13 @@ bool DummyGetHeroInfo(_uiheroinfo * /*info*/)
 	return true;
 }
 
-int CountBeltHeals();            // 定义在动作区(v12);Observe 的 raw 字段也要用
-int CountLegacyBeltHeals();      // 冻结 v3 观测含 Healing 卷轴；只读兼容账
-int CountBeltFreeSlots();        // v4:捡药有效性不能用 heal 数反推，腰带还可能装别的物品
-int InstantHealKind(const Item &); // 0=非即时治疗；1..4 对应四种药水，保留腰带槽位顺序
-bool IsHealItem(const Item &);   // 定义在动作区(v13);floor_items 的 heal 标志也要用
-bool IsLegacyHealItem(const Item &); // 仅重建旧 policy view，绝不驱动 v4 动作
-bool IsWantedGear(const Item &); // 定义在动作区(v14);floor_items 的 gear 标志也要用
+int CountBeltHeals();            // defined in the action section (v12); Observe's raw fields also use it
+int CountLegacyBeltHeals();      // the frozen v3 observation counts Healing scrolls; read-only compatibility count
+int CountBeltFreeSlots();        // v4: potion-pickup validity cannot be inferred from the heal count; the belt may hold other items
+int InstantHealKind(const Item &); // 0 = not an instant heal; 1..4 = the four potions, keeping belt slot order
+bool IsHealItem(const Item &);   // defined in the action section (v13); the floor_items heal flag also uses it
+bool IsLegacyHealItem(const Item &); // only rebuilds the old policy view, never drives v4 actions
+bool IsWantedGear(const Item &); // defined in the action section (v14); the floor_items gear flag also uses it
 int ActPickupGearAt(
     int activeItemId, int x, int y, uint16_t seedHigh, uint16_t seedLow,
     uint16_t expectedCreateInfo, int expectedBaseId);
@@ -248,10 +248,10 @@ uint64_t MonsterKillTotal()
 		const int count = MonsterKillCounts[monsterType];
 		if (count < 0)
 			throw std::runtime_error(
-			    "MonsterKillCounts 含负数，拒绝发布损坏的累计击杀事实");
+			    "MonsterKillCounts contains a negative value; refusing to publish a corrupt cumulative kill fact");
 		const uint64_t unsignedCount = static_cast<uint64_t>(count);
 		if (unsignedCount > std::numeric_limits<uint64_t>::max() - total)
-			throw std::overflow_error("monster_kill_total uint64 汇总溢出");
+			throw std::overflow_error("monster_kill_total uint64 sum overflow");
 		total += unsignedCount;
 	}
 	return total;
@@ -1053,19 +1053,19 @@ std::string ExpectedMainArchivePath(const std::string &dataDir)
 		if (std::filesystem::is_regular_file(candidate, error) && !error)
 			return candidate.string();
 	}
-	throw std::runtime_error("data_dir 缺少 DIABDAT.MPQ/diabdat.mpq/spawn.mpq: " + dataDir);
+	throw std::runtime_error("data_dir is missing DIABDAT.MPQ/diabdat.mpq/spawn.mpq: " + dataDir);
 }
 
-// 空事件处理器:demo::FetchMessage 在 CurrentEventHandler==DisableInputEventHandler
-// 时拒绝吐出事件(demomode.cpp:727),必须装一个"游戏中"处理器才能解锁事件流。
-// 事件的实际分发在 PumpSdlEvents 里完成,这里无需处理。
+// Empty event handler: demo::FetchMessage refuses to emit events while CurrentEventHandler==DisableInputEventHandler
+// (demomode.cpp:727); an "in game" handler must be installed to unlock the event stream.
+// Events are actually dispatched in PumpSdlEvents; nothing to handle here.
 void GymEventHandler(const SDL_Event & /*event*/, uint16_t /*modState*/)
 {
 }
 
 void CreateFreshHeroSave()
 {
-	// 每个 episode 重建 0 号存档槽 → 每局都是全新 1 级英雄,可复现
+	// Rebuild save slot 0 every episode -> every episode is a brand-new level-1 hero, reproducibly
 	Players.resize(1);
 	MyPlayerId = 0;
 	MyPlayer = &Players[MyPlayerId];
@@ -1130,8 +1130,8 @@ void NormalizeStarterItemSeeds(Player &player, uint32_t episodeSeed)
 		normalize(item);
 }
 
-// 同步版关卡加载:复刻 interfac.cpp DoLoad 的各分支。
-// 无头模式不需要进度动画,因此绕开上游线程化的 ShowProgress,单线程完成加载。
+// Synchronous level loading: a copy of the branches of interfac.cpp DoLoad.
+// Headless mode needs no progress animation, so this bypasses upstream's threaded ShowProgress and loads on one thread.
 void SyncLoad(interface_mode uMsg)
 {
 	Player &myPlayer = *MyPlayer;
@@ -1205,37 +1205,37 @@ void SyncLoad(interface_mode uMsg)
 		loadResult = LoadGameLevel(false, ENTRY_MAIN);
 		break;
 	default:
-		throw std::runtime_error("SyncLoad: 未支持的 interface_mode " + std::to_string(static_cast<int>(uMsg)));
+		throw std::runtime_error("SyncLoad: unsupported interface_mode " + std::to_string(static_cast<int>(uMsg)));
 	}
 
 	if (!loadResult.has_value())
-		throw std::runtime_error("关卡加载失败: " + loadResult.error());
+		throw std::runtime_error("Level load failed: " + loadResult.error());
 
-	// ProgressEventHandler WM_DONE 分支的无头必需部分:宣告加入关卡
+	// The headless-required part of the ProgressEventHandler WM_DONE branch: announce joining the level
 	NetSendCmdLocParam2(true, CMD_PLAYER_JOINLEVEL, myPlayer.position.tile, myPlayer.plrlevel,
 	    myPlayer.plrIsOnSetLevel ? 1 : 0);
-	// 本桥固定是 loopback 单机；OnPlayerJoinLevel 对本地已激活玩家的
-	// 唯一同步效果就是清掉 _pLvlChanging。拍尾同步加载后会立即
-	// Observe，不能等到下一个 Python 动作后才处理 join 包，否则动作
-	// guard 会多吞一次新场景的合法动作。队列中的 join 包下拍再清一次
-	// 是幂等的，且仍保留与上游相同的消息路径。
+	// This bridge is always loopback single player; for an already active local player the only
+	// synchronizing effect of OnPlayerJoinLevel is clearing _pLvlChanging. After the end-of-tick synchronous load we
+	// Observe immediately and cannot wait until after the next Python action to process the join packet, or the action
+	// guard would swallow one more legal action in the new scene. Clearing the queued join packet again next tick
+	// is idempotent and still keeps the same message path as upstream.
 	if (!gbIsMultiplayer)
 		myPlayer._pLvlChanging = false;
-	// 复刻上游 WM_DONE 分支的 NewCursor(CURSOR_HAND)(interfac.cpp,无头下被
-	// skipRendering 跳过):拾取的到位判定要求 pcurs==CURSOR_HAND(player.cpp),
-	// 每次换层都重申,把这个隐性不变量钉死(v13 审查发现)
+	// Replicates upstream's NewCursor(CURSOR_HAND) in the WM_DONE branch (interfac.cpp; skipped under headless by
+	// skipRendering): the pickup arrival check requires pcurs==CURSOR_HAND (player.cpp);
+	// reasserting it on every level change pins this implicit invariant (found in the v13 review)
 	NewCursor(CURSOR_HAND);
 	gStartupTick = true;
 	ResourceAfterLoad();
 }
 
-// 复刻 GameEventHandler 的自定义事件分支(关卡切换等),改走同步加载
+// Replicates the custom-event branch of GameEventHandler (level changes etc.), using synchronous loading instead
 void PumpSdlEvents()
 {
 	SDL_Event event;
 	uint16_t modState;
-	// 注意必须是 devilution::FetchMessage(events.hpp 的真实事件泵);
-	// demo::FetchMessage 在非 demo 模式下会吞掉除 QUIT 外的一切事件
+	// Note this must be devilution::FetchMessage (the real event pump in events.hpp);
+	// demo::FetchMessage swallows every event except QUIT outside demo mode
 	while (FetchMessage(&event, &modState)) {
 		if (event.type == SDL_EVENT_QUIT) {
 			gbRunGame = false;
@@ -1252,7 +1252,7 @@ void PumpSdlEvents()
 			nthread_ignore_mutex(false);
 			continue;
 		}
-		// 无头环境不产生键鼠事件;动作全部经由网络命令层注入
+		// The headless environment produces no keyboard/mouse events; all actions are injected through the network command layer
 	}
 }
 
@@ -1271,8 +1271,8 @@ py::dict Observe()
 	obs["max_hp"] = player._pMaxHP >> 6;
 	obs["mana"] = player._pMana >> 6;
 	obs["max_mana"] = player._pMaxMana >> 6;
-	// 新 dual wire 需要保留 26.6 定点低位；旧整数 HP/Mana 字段继续冻结。
-	// 两个 uint16 word 各自可被 float32 精确表示，避免除以尺度后吞低位。
+	// The new dual wire needs to keep the low bits of the 26.6 fixed point; the old integer HP/Mana fields stay frozen.
+	// Each of the two uint16 words is exactly representable in float32, avoiding low-bit loss from dividing by the scale.
 	obs["hp_fixed_hi"] = HighWord(static_cast<uint32_t>(player._pHitPoints));
 	obs["hp_fixed_lo"] = LowWord(static_cast<uint32_t>(player._pHitPoints));
 	obs["max_hp_fixed_hi"] = HighWord(static_cast<uint32_t>(player._pMaxHP));
@@ -1284,10 +1284,10 @@ py::dict Observe()
 	obs["xp"] = static_cast<uint64_t>(player._pExperience);
 	obs["gold"] = player._pGold;
 	obs["char_level"] = static_cast<int>(player.getCharacterLevel());
-	// `currlevel` 在任务副本中会被复用为 `_setlevels` 枚举值（例如
-	// Vile Betrayer=5），绝不是主线深度。训练奖励、死亡定价和排行榜
-	// 深度必须使用该副本的返回主层；同时保留场景身份，避免进入/退出
-	// 任务副本时把整张旧地图的怪物消失误算成击杀。
+	// In quest set-levels `currlevel` is reused as a `_setlevels` enum value (e.g.
+	// Vile Betrayer=5) and is never the main-line depth. Training reward, death pricing and leaderboard
+	// depth must use the main level the set-level returns to; the scene identity is kept as well, so that entering/leaving
+	// a quest set-level does not count the disappearance of the whole old map's monsters as kills.
 	obs["dungeon_level"] = ConceptualDungeonDepth();
 	obs["engine_level"] = static_cast<int>(currlevel);
 	obs["is_set_level"] = setlevel;
@@ -1301,20 +1301,20 @@ py::dict Observe()
 	obs["dead"] = player._pmode == PM_DEATH || (player._pHitPoints >> 6) <= 0;
 	obs["game_over"] = !gbRunGame;
 	obs["victory"] = !IsDiabloAlive(false);
-	// ActiveMonsters 快照无法看见同一宏动作内“生成后又死亡”的怪物；
-	// 引擎的按类型永久击杀账才是 spawn→die 闭环事实源。用 uint64 安全
-	// 汇总并直接交给 Python int，避免长期训练中窄整数回绕。
+	// An ActiveMonsters snapshot cannot see monsters that "spawn and then die" within the same macro action;
+	// the engine's permanent per-type kill ledger is the source of truth for the spawn->die loop. Sum it safely as uint64
+	// and hand it straight to a Python int, avoiding narrow-integer wraparound in long training runs.
 	obs["monster_kill_total"] = MonsterKillTotal();
-	obs["belt_heals"] = CountBeltHeals(); // v12 起入 raw;v13 起由 env 写进观测向量(瓶盲修复)
-	// v3 曾把 Healing 卷轴误归为一按即用的治疗药。v4 动作必须继续排除
-	// 它，冻结网络的兼容视图却要逐字看到旧计数；两个事实源显式并存，
-	// 不能让 Python 从已修正的 bool 猜回已经丢失的旧分类。
+	obs["belt_heals"] = CountBeltHeals(); // in raw since v12; since v13 env writes it into the observation vector (bottle-blindness fix)
+	// v3 wrongly classed Healing scrolls as instant heal potions. v4 actions must keep excluding
+	// them, while the frozen network's compatibility view must still see the old count verbatim; both sources coexist explicitly,
+	// so Python never has to guess the lost old classification back from the corrected bool.
 	obs["legacy_belt_heals"] = CountLegacyBeltHeals();
-	obs["belt_free_slots"] = CountBeltFreeSlots(); // v4 raw-only:精确屏蔽“腰带满”的捡药空按
-	// action12 消耗“从左到右第一瓶即时治疗药”。只给总数会把
-	// [小红,大紫] 与 [大紫,小红] 伪装成同一状态，尽管下一次按键的治疗量
-	// 不同。逐槽公开 0..4 原始类别；Python 的新 Worker 线协议将其展开为
-	// 8×4 one-hot，旧 295/298 维兼容视图完全不变。
+	obs["belt_free_slots"] = CountBeltFreeSlots(); // v4 raw-only: exactly masks empty potion-pickup presses when the belt is full
+	// action12 consumes "the first instant heal potion from left to right". Publishing only the total would make
+	// [small red, large purple] and [large purple, small red] look like the same state, although the next press heals
+	// a different amount. Publish the raw class 0..4 per slot; the new Python Worker wire protocol expands it to
+	// 8x4 one-hot, and the old 295/298-dim compatibility views stay unchanged.
 	py::list beltHealKinds;
 	py::list beltSlotKinds;
 	for (int i = 0; i < MaxBeltItems; i++)
@@ -1322,18 +1322,18 @@ py::dict Observe()
 		const Item &beltItem = player.SpdList[i];
 		const int healKind = InstantHealKind(beltItem);
 		beltHealKinds.append(healKind);
-		// 六个互斥类:0 empty,1 other,2..5 对应即时治疗 1..4。
-		// 旧 heal_kinds 的 0 同时代表 empty/other，只给 free 总数仍无法
-		// 确定 a13 自动落入哪一槽以及随后 a12 会先喝哪瓶。
+		// Six mutually exclusive classes: 0 empty, 1 other, 2..5 = instant heal 1..4.
+		// In the old heal_kinds, 0 meant both empty and other, and the free total alone still cannot
+		// determine which slot a13 auto-fills and which potion a12 then drinks first.
 		beltSlotKinds.append(
 		    beltItem.isEmpty() ? 0 : (healKind == 0 ? 1 : healKind + 1));
 	}
 	obs["belt_heal_kinds"] = beltHealKinds;
 	obs["belt_slot_kinds"] = beltSlotKinds;
-	obs["armor_class"] = player.GetArmor(); // v14:护甲值(_pIBonusAC + _pIAC + 敏捷/5)
-	// a9 的真实转移由这些“已汇总、当前生效”的战斗量决定。只给 HP/AC
-	// 会把不同武器伤害、命中、抗性、格挡、攻速/吸血 flags 的角色压成
-	// 同一状态；dual Worker 以固定尺度编码标量并把两个 flags 展成 bit。
+	obs["armor_class"] = player.GetArmor(); // v14: armor class (_pIBonusAC + _pIAC + dexterity/5)
+	// a9's real transition is determined by these "aggregated, currently effective" combat values. Giving only HP/AC
+	// would collapse characters with different weapon damage, to-hit, resistances, blocking and attack-speed/life-steal flags into
+	// the same state; the dual Worker encodes the scalars at fixed scales and expands the two flag words into bits.
 	obs["hero_class"] = static_cast<int>(player._pClass);
 	obs["strength"] = player._pStrength;
 	obs["magic"] = player._pMagic;
@@ -1370,16 +1370,16 @@ py::dict Observe()
 		const Item &equipped = player.InvBody[bodyLocation];
 		py::dict entry;
 		entry["present"] = !equipped.isEmpty();
-		// active_id 仅属于地面数组；已穿槽以 0 作稳定占位，其余字段与
-		// floor gear 共用完整 CalcPlrInv/耐久转移协议。
+		// active_id belongs only to the floor array; equipped slots use 0 as a stable placeholder, and the other fields
+		// share the full CalcPlrInv/durability-transfer protocol with floor gear.
 		AppendItemCombatState(entry, equipped, 0);
 		equippedItems.append(entry);
 	}
 	obs["equipped_items"] = equippedItems;
-	// 单向训练任务不能回城找 Cain，但原版单机的 Lazarus 主线硬性要求
-	// “捡法杖→回城交给 Cain→再下 L15”。桥在拾取法杖后只自动执行这一次
-	// 等价交付（见 Step）；把任务状态与是否用过适配器留在 raw，便于探针和
-	// 轨迹审计。它们不进入策略向量，也不伪装成原版自然流程。
+	// A one-way training task cannot return to town to see Cain, but the original single-player Lazarus main quest strictly requires
+	// "pick up the staff -> return to town and give it to Cain -> go down to L15". After the staff is picked up the bridge automatically performs only this one
+	// equivalent hand-over (see Step); the quest state and whether the adapter was used stay in raw for probes and
+	// trajectory audits. They do not enter the policy vector and do not pretend to be the original natural flow.
 	const Quest &betrayerQuest = Quests[Q_BETRAYER];
 	obs["betrayer_quest_active"] = static_cast<int>(betrayerQuest._qactive);
 	obs["betrayer_quest_stage"] = static_cast<int>(betrayerQuest._qvar1);
@@ -1390,9 +1390,9 @@ py::dict Observe()
 	for (size_t i = 0; i < ActiveMonsterCount; i++) {
 		const unsigned monsterId = ActiveMonsters[i];
 		const Monster &monster = Monsters[monsterId];
-		// 引擎以定点 HP 的整数部分判死(hasNoLife)。只比较 raw
-		// hitPoints<=0 会把 0<HP<1 的已死怪以 hp=0 多暴露一拍，使 Python
-		// 侧在它下拍消失时丢掉击杀奖励。
+		// The engine judges death by the integer part of the fixed-point HP (hasNoLife). Comparing only raw
+		// hitPoints<=0 would expose a dead monster with 0<HP<1 as hp=0 for one extra tick, making the Python
+		// side lose the kill reward when it disappears on the next tick.
 		if (monster.hasNoLife())
 			continue;
 		py::dict m;
@@ -1400,9 +1400,9 @@ py::dict Observe()
 		m["type"] = static_cast<int>(monster.type().type);
 		m["x"] = static_cast<int>(monster.position.tile.x);
 		m["y"] = static_cast<int>(monster.position.tile.y);
-		// CMD_ATTACKID/MakePlrPath 与 reachable 都以 future（动画提交后的
-		// 占位格）为准；tile 只是当前渲染格。两者在走路动画期间会连续
-		// 多个 tick 不同，宏的止损几何必须与引擎采用同一坐标。
+		// CMD_ATTACKID/MakePlrPath and reachable both use future (the occupied tile after the animation
+		// commits); tile is only the current render tile. The two differ for several consecutive ticks during a walk
+		// animation, so the macro's stop-loss geometry must use the same coordinate as the engine.
 		m["future_x"] = static_cast<int>(monster.position.future.x);
 		m["future_y"] = static_cast<int>(monster.position.future.y);
 		m["hp"] = monster.hitPoints >> 6;
@@ -1411,9 +1411,9 @@ py::dict Observe()
 		m["hp_fixed_lo"] = LowWord(static_cast<uint32_t>(monster.hitPoints));
 		m["max_hp_fixed_hi"] = HighWord(static_cast<uint32_t>(monster.maxHitPoints));
 		m["max_hp_fixed_lo"] = LowWord(static_cast<uint32_t>(monster.maxHitPoints));
-		// 同 type/HP/坐标的怪物若处于攻击伤害帧前与 idle，下一拍伤亡
-		// 分布完全不同。公开驱动 MonsterMode/AI 与当前动画推进的有限
-		// 状态，以及已缩放过的即时攻防量；dual wire 对 flags 逐 bit 编码。
+		// Monsters with the same type/HP/position have completely different next-tick casualty distributions when one is
+		// before an attack's damage frame and the other is idle. Publish the finite state that drives MonsterMode/AI and the current animation progress,
+		// plus the already scaled instant attack/defense values; the dual wire encodes the flags bit by bit.
 		m["mode"] = static_cast<int>(monster.mode);
 		m["direction"] = static_cast<int>(monster.direction);
 		m["anim_frame"] = static_cast<int>(monster.animInfo.currentFrame);
@@ -1490,8 +1490,8 @@ py::dict Observe()
 		m["ai_seed_hi"] = HighWord(monster.aiSeed);
 		m["ai_seed_lo"] = LowWord(monster.aiSeed);
 		m["combat_flags"] = static_cast<uint16_t>(monster.flags);
-		// 全层列表仍是奖励/击杀的事实源；策略只能消费当前人类玩家也能
-		// 看见并经原生寻路到达的子集，禁止用未探索房间里的全知坐标作战。
+		// The full-level list remains the source of truth for rewards/kills; the policy may only consume the subset a human player
+		// could also see and reach by native pathfinding, and must never fight with omniscient coordinates in unexplored rooms.
 		const bool visible = (monster.flags & MFLAG_HIDDEN) == 0
 		    && !monster.isPlayerMinion()
 		    && IsTileLit(monster.position.tile);
@@ -1509,14 +1509,14 @@ py::dict Observe()
 		it["active_id"] = activeItemId;
 		it["x"] = static_cast<int>(item.position.x);
 		it["y"] = static_cast<int>(item.position.y);
-		it["heal"] = IsHealItem(item);   // v13:捡药宏的目标标志
+		it["heal"] = IsHealItem(item);   // v13: target flag for the potion-pickup macro
 		it["heal_kind"] = InstantHealKind(item);
-		it["legacy_heal"] = IsLegacyHealItem(item); // 冻结 v3 只读观测
-		it["gear"] = IsWantedGear(item); // v14:捡装备宏的目标标志(空槽+属性达标)
-		// a14 的坐标与 bool 不足以决定转移：同一格可以承载不同装备，
-		// 其槽位、基础 AC 及已生效词缀会改变即时奖励和后续战斗。把
-		// CalcPlrItemVals 会消费的物品事实完整留在 raw；Python 只为
-		// snapshot 选中的那一件编码，不扩大旧 295/298 兼容观测。
+		it["legacy_heal"] = IsLegacyHealItem(item); // frozen v3 read-only observation
+		it["gear"] = IsWantedGear(item); // v14: target flag for the gear-pickup macro (empty slot + stat requirements met)
+		// a14's coordinates and bool are not enough to determine the transition: the same tile can hold different gear,
+		// whose slot, base AC and active affixes change the immediate reward and later combat. Keep every
+		// item fact that CalcPlrItemVals consumes in raw; Python encodes only the one item selected by the
+		// snapshot, without enlarging the old 295/298 compatibility observation.
 		AppendItemCombatState(it, item, activeItemId, true);
 		const bool visible = IsTileLit(item.position);
 		it["visible"] = visible;
@@ -1525,10 +1525,10 @@ py::dict Observe()
 	}
 	obs["floor_items"] = items;
 
-	// 投射物会在一次 option 的数个 engine tick 内独立移动/命中。只公开
-	// 怪物与格子会把“火球已贴脸”和“尚未发射”压成同一 Worker 状态。
-	// 这里保留 SaveMissile 的全部标量状态并补上重复碰撞 hash；Python
-	// 仅选择 radius-12 内固定槽，并用 uint16 words 无损编码 int32。
+	// Missiles move/hit independently across the several engine ticks of one option. Publishing only
+	// monsters and tiles would collapse "the fireball is already in your face" and "not fired yet" into the same Worker state.
+	// This keeps all scalar state of SaveMissile and adds a duplicate-collision hash; Python
+	// selects only fixed slots within radius 12 and losslessly encodes int32 as uint16 words.
 	py::list missiles;
 	for (Missile &missile : Missiles) {
 		py::dict entry;
@@ -1636,10 +1636,10 @@ py::dict Observe()
 	}
 	obs["missiles"] = missiles;
 
-	// action 10/11 共用的“下一项必需剧情目标”。白名单只包含不完成便
-	// 无法抵达 Diablo 的交互，绝不把普通箱子/神龛/支线物体变成全知
-	// 自动操作。goal 是实际应抵达的格；Vile 两本书尤其要求玩家精确站在
-	// 书西南方的法阵上，直接从任意相邻格操作会被上游静默拒绝。
+	// The "next required story target" shared by actions 10/11. The allowlist contains only interactions without which
+	// Diablo cannot be reached, and never turns ordinary chests/shrines/side-quest objects into omniscient
+	// automation. goal is the tile to actually reach; the two Vile books in particular require the player to stand exactly
+	// on the pentagram south-west of the book, and operating them from any adjacent tile is silently refused upstream.
 	py::list progressionTargets;
 	auto appendProgression = [&progressionTargets](const char *kind, const char *action,
 	                              Point target, Point goal, bool exact) {
@@ -1708,7 +1708,7 @@ py::dict Observe()
 	}
 	obs["progression_targets"] = progressionTargets;
 
-	// 关卡出入口(楼梯/传送点)—— agent 的导航目标
+	// Level entrances/exits (stairs/portals): the agent's navigation targets
 	py::list triggers;
 	for (int i = 0; i < numtrigs; i++) {
 		py::dict t;
@@ -1731,17 +1731,17 @@ py::dict Observe()
 void EngineInit(const std::string &assetsDir, const std::string &saveDir, const std::string &dataDir, int heroClass, bool verbose)
 {
 	if (heroClass != static_cast<int>(HeroClass::Warrior))
-		throw std::invalid_argument("当前动作/自动加点契约只支持 hero_class=0(战士)");
+		throw std::invalid_argument("the current action/auto stat-allocation contract only supports hero_class=0 (Warrior)");
 	if (gEngineInited) {
 		EnsureEngineProcess("init");
 		if (assetsDir != gAssetsDir || saveDir != gSaveDir || dataDir != gDataDir || heroClass != gHeroClass)
-			throw std::runtime_error("DevilutionX 是进程内单例，不能用不同配置重复 init()");
+			throw std::runtime_error("DevilutionX is an in-process singleton; init() cannot be repeated with a different configuration");
 		return;
 	}
 	gHeroClass = heroClass;
 	const std::string expectedMainArchive = ExpectedMainArchivePath(dataDir);
 
-	// 最先置无头,任何后续错误路径都不得弹 GUI 对话框(对齐 test/main.cpp:84)
+	// Set headless first so that no later error path can pop up a GUI dialog (matches test/main.cpp:84)
 	HeadlessMode = true;
 	if (verbose) {
 #ifdef USE_SDL3
@@ -1768,21 +1768,21 @@ void EngineInit(const std::string &assetsDir, const std::string &saveDir, const 
 		}
 	} initGuard;
 
-	// 上游只在创建窗口时注册自定义 SDL 事件(display.cpp);无头嵌入必须自己注册,
-	// 否则关卡切换事件(WM_DIABNEXTLVL 等)推送后无法被识别,玩家会卡死在 PM_NEWLVL
+	// Upstream registers custom SDL events only when creating the window (display.cpp); a headless embedding must register them itself,
+	// or level-change events (WM_DIABNEXTLVL etc.) are not recognized after being pushed and the player gets stuck in PM_NEWLVL
 	RegisterCustomEvents();
 
-	// MPQ 搜索顺序:BasePath → PrefPath → ConfigPath(assets.cpp GetMPQSearchPaths)。
-	// BasePath 指向游戏数据目录;Pref/Config 指 scratch,存档与用户真实游戏隔离
+	// MPQ search order: BasePath -> PrefPath -> ConfigPath (assets.cpp GetMPQSearchPaths).
+	// BasePath points at the game data directory; Pref/Config point at scratch, isolating saves from the user's real game
 	paths::SetBasePath(dataDir + "/");
 	paths::SetAssetsPath(assetsDir + "/");
 	paths::SetPrefPath(saveDir + "/");
 	paths::SetConfigPath(saveDir + "/");
 
 	LoadCoreArchives();
-	LoadGameArchives(); // 找不到 diabdat.mpq 时自动回落 spawn.mpq 并置 gbIsSpawn
+	LoadGameArchives(); // if diabdat.mpq is not found, falls back to spawn.mpq automatically and sets gbIsSpawn
 	if (!HaveMainData())
-		throw std::runtime_error("diabdat.mpq / spawn.mpq 均未找到(默认搜索含 "
+		throw std::runtime_error("neither diabdat.mpq nor spawn.mpq was found (the default search includes "
 		                         "~/Library/Application Support/diasurgical/devilution/)");
 	const bool archiveIsSpawn = gbIsSpawn;
 	std::string expectedArchiveName =
@@ -1794,14 +1794,14 @@ void EngineInit(const std::string &assetsDir, const std::string &saveDir, const 
 	const bool expectedIsSpawn = expectedArchiveName == "spawn.mpq";
 	if (archiveIsSpawn != expectedIsSpawn)
 		throw std::runtime_error(
-		    "主档案模式与 gbIsSpawn 不一致: archive="
+		    "main archive mode disagrees with gbIsSpawn: archive="
 		    + expectedArchiveName + ",gbIsSpawn="
 		    + std::to_string(archiveIsSpawn ? 1 : 0));
 #ifndef UNPACKED_MPQS
-	// LoadGameArchives 还会搜索 scratch、系统目录和当前工作目录。若那里
-	// 恰有更高优先级/同名 MPQ，单纯哈希 data_dir 会把评测身份绑到错误
-	// 文件。嵌入模式必须只接受调用方显式 data_dir 中按引擎优先级选中的
-	// 主档案，使训练/评测的 content SHA 与真正加载的字节一一对应。
+	// LoadGameArchives also searches scratch, system directories and the current working directory. If a
+	// higher-priority/same-name MPQ happens to be there, hashing data_dir alone would bind the evaluation identity to the wrong
+	// file. Embedded mode must accept only the main archive chosen by engine priority from the caller's explicit data_dir,
+	// so that the content SHA of training/evaluation corresponds one-to-one to the bytes actually loaded.
 	const auto mainArchive = MpqArchives.find(MainMpqPriority);
 	if (mainArchive == MpqArchives.end()
 	    || mainArchive->second.path() != expectedMainArchive) {
@@ -1811,18 +1811,18 @@ void EngineInit(const std::string &assetsDir, const std::string &saveDir, const 
 		MpqArchives.clear();
 		if (SDL_WasInit((~0U) & ~SDL_INIT_HAPTIC) != 0)
 			SDL_Quit();
-		throw std::runtime_error("实际主 MPQ 未来自 data_dir: actual=" + actual
+		throw std::runtime_error("actual main MPQ did not come from data_dir: actual=" + actual
 		                         + ", expected=" + expectedMainArchive);
 	}
 #endif
 
 	InitKeymapActions();
 	LoadOptions();
-	// 训练转移不能继承 save_dir/diablo.ini 的个人 QoL、速度或任务配置。
-	// 尤其 autoRefillBelt 会让 action12 优先消耗不可见背包药，自动拾取
-	// 会在无策略动作时改 inventory，autoEquipWeapons 还可能把 Lazarus
-	// 法杖穿到手上而逃过单调任务适配器。所有会改变世界/动作结果的选项
-	// 在 Lua 和新局初始化前钉成协议常量。
+	// Training transitions must not inherit personal QoL, speed or quest settings from save_dir/diablo.ini.
+	// In particular autoRefillBelt would make action12 consume invisible backpack potions first, auto-pickup
+	// would change the inventory without any policy action, and autoEquipWeapons could put the Lazarus
+	// staff in hand and escape the monotone quest adapter. Every option that changes world/action outcomes
+	// is pinned to a protocol constant before Lua and new-game initialization.
 	Options &options = GetOptions();
 	const auto activeMods = options.Mods.GetActiveModList();
 	if (!activeMods.empty()) {
@@ -1833,16 +1833,16 @@ void EngineInit(const std::string &assetsDir, const std::string &saveDir, const 
 			names += name;
 		}
 		throw std::runtime_error(
-		    "DiabloGym 禁止启用 Lua mods；save_dir 中检测到 active mods: "
+		    "DiabloGym forbids enabling Lua mods; active mods detected in save_dir: "
 		    + names);
 	}
 	options.GameMode.gameMode.SetValue(StartUpGameMode::Diablo);
-	// shareware 的回调会直接重写 gbIsSpawn；恢复为实际加载主档案决定的
-	// 模式，既阻断 ini 把完整 DIABDAT 降成试玩版，也保留 spawn.mpq 支持。
+	// The shareware callback rewrites gbIsSpawn directly; restore the mode determined by the main archive actually loaded,
+	// which both stops the ini from downgrading a full DIABDAT to the demo and keeps spawn.mpq support.
 	options.GameMode.shareware.SetValue(archiveIsSpawn);
 	if (gbIsSpawn != archiveIsSpawn)
 		throw std::runtime_error(
-		    "冻结 GameMode.shareware 后 gbIsSpawn 与主档案不一致");
+		    "gbIsSpawn disagrees with the main archive after freezing GameMode.shareware");
 	options.Gameplay.tickRate.SetValue(20);
 	options.Gameplay.runInTown.SetValue(false);
 	options.Gameplay.randomizeQuests.SetValue(true);
@@ -1893,7 +1893,7 @@ void EngineInit(const std::string &assetsDir, const std::string &saveDir, const 
 	if (!gExitCleanupRegistered && std::atexit(EngineShutdownAtExit) != 0) {
 		LuaShutdown();
 		gLuaInitialized = false;
-		throw std::runtime_error("无法注册 DevilutionX 进程退出清理");
+		throw std::runtime_error("cannot register DevilutionX process-exit cleanup");
 	}
 	gExitCleanupRegistered = true;
 
@@ -1901,13 +1901,13 @@ void EngineInit(const std::string &assetsDir, const std::string &saveDir, const 
 	gbMusicOn = false;
 	gbSoundOn = false;
 
-	// 无头下永远没有鼠标事件来把 ControlMode 设成键鼠模式;若停留在 None,
-	// plrctrls 的 WalkInDir 会把"摇杆无输入"理解为松开手柄,每 tick 给寻路发刹车
-	// (plrctrls.cpp:1744),导致走路命令只能执行一步。
+	// Under headless there are never mouse events to set ControlMode to keyboard/mouse; if it stays None,
+	// plrctrls' WalkInDir reads "no stick input" as a released gamepad and brakes the pathing every tick
+	// (plrctrls.cpp:1744), so walk commands only execute one step.
 	ControlMode = ControlTypes::KeyboardAndMouse;
 	ControlDevice = ControlTypes::KeyboardAndMouse;
-	// DiabloGym 的任务空间只允许向下推进。否则 FARM/工人的普通走位
-	// 会偶然踩中上楼触发格，回到城镇后把余下 3000 步空耗掉。
+	// DiabloGym's task space only allows progressing downward. Otherwise ordinary FARM/worker movement
+	// could accidentally step on an up-stairs trigger, return to town and waste the remaining 3000 steps.
 	DisableLevelBacktracking = true;
 
 	LoadSpellData();
@@ -1958,23 +1958,23 @@ void EndGame()
 		return;
 	}
 	gbRunGame = false;
-	// 复刻上游 RunGameLoop 尾声的 FreeGame()。它在 diablo.cpp 匿名
-	// 命名空间中无法直接调用，但不能省略：InitCursor 明确要求
-	// 上一局已 FreeCursor，任务字幕/面板/玩家图形缓存也不得跨 episode。
+	// Replicates FreeGame() at the end of upstream RunGameLoop. It lives in an anonymous namespace in diablo.cpp
+	// and cannot be called directly, but it cannot be omitted: InitCursor explicitly requires
+	// the previous game to have run FreeCursor, and quest text/panel/player graphics caches must not cross episodes.
 	CleanupGameResources();
-	NetClose(); // 外层 StartGame 尾声(会清空 Players)
+	NetClose(); // end of the outer StartGame (clears Players)
 	gInGame = false;
-	gEpisodeGeneration++; // 使直接 end_game() 立即作废 Python wrapper 的 raw 缓存
+	gEpisodeGeneration++; // makes a direct end_game() immediately invalidate the Python wrapper's raw cache
 	DiscardPendingEvents();
 }
 
 void EngineShutdownAtExit() noexcept
 {
-	// fork 后只有调用线程存活；继承来的 SDL/network/Lua 锁与线程状态不能
-	// 在子进程析构。仅仅 return 仍会继续执行上游 CurrentLuaState 等 C++
-	// 全局静态析构，重新暴露跨翻译单元析构顺序 UAF。fork child 的合法
-	// 终点只有 exec/os._exit；若误走普通 exit/SystemExit，这里 fail-closed
-	// 直接终止且返回失败，跳过其余 atexit 与所有静态析构。
+	// After fork only the calling thread survives; inherited SDL/network/Lua locks and thread state must not
+	// be destroyed in the child. A plain return would still run upstream C++ global static destructors such as
+	// CurrentLuaState, re-exposing the cross-translation-unit destruction-order UAF. The only legal end points of a fork child
+	// are exec/os._exit; if it mistakenly takes a normal exit/SystemExit, fail closed here
+	// by terminating immediately with failure, skipping the remaining atexit handlers and all static destructors.
 	if (gEngineInited && gEnginePid != CurrentProcessId())
 		std::_Exit(EXIT_FAILURE);
 	// atexit callbacks must never unwind through the C runtime.  Each phase is
@@ -2006,7 +2006,7 @@ void EngineShutdownAtExit() noexcept
 py::dict Reset(uint32_t seed)
 {
 	if (!gEngineInited)
-		throw std::runtime_error("先调用 init()");
+		throw std::runtime_error("call init() first");
 	EndGame();
 	ClearEpisodePersistentGameplayState();
 	gStallPrints = 0;
@@ -2033,20 +2033,20 @@ py::dict Reset(uint32_t seed)
 		}
 	} resetGuard;
 
-	// 确定性:用用户种子覆写全部地牢种子(引擎在 NetInit 里刚按熵源填过一遍)
+	// Determinism: overwrite all dungeon seeds with the user seed (the engine just filled them from an entropy source in NetInit)
 	std::mt19937 rng(seed);
 	for (int i = 0; i < NUMLEVELS; i++) {
 		DungeonSeeds[i] = static_cast<uint32_t>(rng());
 		LevelSeeds[i] = std::nullopt;
 	}
-	// 防御性接管全局 RNG:CreatePlayer(经 pfile_ui_save_create)刚用墙钟毫秒
-	// SetRndSeed 过(player.cpp)。钉死版引擎里任务抽选不受其影响(InitQuests 走
-	// InitialiseQuestPools(DungeonSeeds[15]),局部 RNG,种子已在上面循环里被接管),
-	// 关卡加载时也会按层种子重播;此覆写是把"全局 RNG 归 episode 种子管"钉成
-	// 不随上游演化失效的不变量。实测修复前后 32 种子评估指纹位级一致。
+	// Defensively take over the global RNG: CreatePlayer (via pfile_ui_save_create) just called SetRndSeed with wall-clock milliseconds
+	// (player.cpp). In the pinned engine quest selection is unaffected (InitQuests goes through
+	// InitialiseQuestPools(DungeonSeeds[15]), a local RNG whose seed was taken over in the loop above),
+	// and level loading also reseeds per level; this overwrite pins "the global RNG belongs to the episode seed" as
+	// an invariant that cannot break as upstream evolves. Measured: 32-seed evaluation fingerprints are bit-identical before and after the fix.
 	SetRndSeed(static_cast<uint32_t>(rng()));
 
-	// 外层 StartGame(bNewGame=true) 的新开局初始化
+	// New-game initialization of the outer StartGame(bNewGame=true)
 	InitLevels();
 	InitQuests();
 	InitPortals();
@@ -2054,8 +2054,8 @@ py::dict Reset(uint32_t seed)
 	DeltaSyncJunk();
 	giNumberOfLevels = gbIsHellfire ? 25 : 17;
 
-	// RunGameLoop 进入 while 前的序幕(无头版,略绘制/渐变/discord)。
-	// 其中内层 StartGame(uMsg) 在匿名命名空间,以下为其公开 API 复刻
+	// The prologue of RunGameLoop before its while loop (headless version, skipping drawing/fades/discord).
+	// The inner StartGame(uMsg) is in an anonymous namespace; below is a copy using its public API
 	SetEventHandler(GymEventHandler);
 	nthread_ignore_mutex(true);
 	try {
@@ -2092,31 +2092,31 @@ py::dict Reset(uint32_t seed)
 	return result;
 }
 
-// v20:属性点自动分配——修复"属性点黑洞"。引擎每级发 5 属性点
-// (NextPlrLevel 只累积 _pStatPts,花点历来靠人类点 UI),本桥十九代从未
-// 调用过花点路径,等级→生存力的兑换链断裂,"先农后潜"在力学上不成立
-// (clvl3 裸身打 L3 中位怪包负期望;唯一翻盘线需要 +10 体力 + 穿甲)。
-// 战士口径:每批点数按 3体:2力 分配(体力主导低等级生存,力量喂伤害与
-// 负重)。ModifyPlr* 自带属性封顶与派生量重算(HP/命中/负重);封顶后的
-// 溢出点与人类玩家一致地原地作废。挂在 Step 尾部:升级发生在 tick 内,
-// 最迟一个 env step(4 tick)后点数落袋,对策略等效即时。
+// v20: automatic stat allocation, fixing the "stat point black hole". The engine grants 5 stat points per level
+// (NextPlrLevel only accumulates _pStatPts; spending has always relied on a human clicking the UI), and nineteen generations of this bridge never
+// called the spending path, so the level -> survivability chain was broken and "farm first, dive later" did not hold mechanically
+// (a naked clvl3 fighting a median L3 monster pack has negative expectation; the only comeback line needs +10 vitality + armor).
+// Warrior definition: each batch of points is split 3 vitality : 2 strength (vitality dominates low-level survival, strength feeds damage and
+// carrying capacity). ModifyPlr* applies the stat caps and recomputes derived values (HP/to-hit/capacity); points overflowing
+// a cap are discarded in place, as for a human player. Hooked at the end of Step: level-ups happen inside ticks, so
+// the points land at most one env step (4 ticks) later, which is immediate for the policy.
 static void AutoSpendStatPoints()
 {
 	Player &p = *MyPlayer;
 	const int pts = p._pStatPts;
 	if (pts <= 0)
 		return;
-	const int vit = (pts * 3 + 4) / 5; // 3/5 向上取整给体力
+	const int vit = (pts * 3 + 4) / 5; // 3/5 rounded up goes to vitality
 	ModifyPlrVit(p, vit);
 	ModifyPlrStr(p, pts - vit);
 	p._pStatPts = 0;
 }
 
-// 原版单机主线要求把 Staff of Lazarus 带回城交给 Cain。DiabloGym 的
-// 训练任务自 L1 起严格单向下潜，既没有回城动作也不允许层级回退；若仍
-// 保留该 UI 前置，完整通关在动作图上就是不可达的。这里只复刻
-// TalkToStoryteller 中该物品的一次性交付状态迁移，不跳过法杖台、拾取、
-// L15 入口、Vile 机关或战斗，并在 raw 中永久标记本局用过适配器。
+// The original single-player main quest requires bringing the Staff of Lazarus back to town and handing it to Cain. DiabloGym's
+// training task dives strictly one way from L1, with neither a town-return action nor level regression; if
+// that UI precondition stayed, a full clear would be unreachable in the action graph. This only replicates
+// the one-time hand-over state transition for that item in TalkToStoryteller, without skipping the staff stand, the pickup,
+// the L15 entrance, the Vile mechanism or combat, and permanently marks in raw that this game used the adapter.
 static void AutoTurnInBetrayerStaffForMonotonicTask()
 {
 	if (gbIsSpawn || UseMultiplayerQuests())
@@ -2137,23 +2137,23 @@ py::dict Step(int ticks)
 {
 	EnsureInGame("step");
 	if (ticks <= 0)
-		throw std::invalid_argument("ticks 必须是正整数");
+		throw std::invalid_argument("ticks must be a positive integer");
 	for (int i = 0; i < ticks && gbRunGame; i++) {
 		PumpSdlEvents();
 		if (!gbRunGame)
 			break;
 		ProcessGameMessagePackets();
 		if (!game_loop(gStartupTick) && gStallPrints < 8) {
-			std::fprintf(stderr, "[diablogym] game_loop 失速(multi_handle_delta 拿不到 turn), destroyed=%d\n",
+			std::fprintf(stderr, "[diablogym] game_loop stalled (multi_handle_delta got no turn), destroyed=%d\n",
 			    gbGameDestroyed ? 1 : 0);
 			gStallPrints++;
 		}
 		gStartupTick = false;
 	}
-	// StartNewLvl 可在最后一个 game_loop 拍尾才把自定义事件
-	// 放入 SDL 队列。返回 Python 前再泵一次，使换层场景与奖励
-	// 归属于真正触发楼梯的这一次 env step，而不是下一个被
-	// 迫空拍的策略动作。这里只加载，不额外消耗游戏逻辑 tick。
+	// StartNewLvl can put the custom event into the SDL queue only at the end of the last game_loop
+	// tick. Pump once more before returning to Python so that the level-change scene and reward
+	// belong to the env step that actually triggered the stairs, not to the next policy action
+	// forced to spend an empty tick. This only loads; it consumes no extra game-logic ticks.
 	if (gbRunGame)
 		PumpSdlEvents();
 	AutoSpendStatPoints();
@@ -2169,14 +2169,14 @@ int ActWait()
 	if (!gbRunGame || player._pmode == PM_DEATH || player._pmode == PM_QUIT)
 		return 0;
 
-	// v4 明确的 wait/cancel 语义：
-	// 1. 立即清掉已经由上一拍 OnWalk/OnAttack 写入的长路径与延迟动作；
-	// 2. 再把“走到当前 future 格”排到 loopback 网络队列末尾，作为 FIFO
-	//    栅栏。只做第 1 步仍有竞态：调用方可能先排 act_attack_monster，
-	//    再在同一 bridge.step 前排 wait，下一拍旧攻击包会重新写回 destAction。
-	// 已经进入攻击/施法动画时必须立刻回站立：若只清 destAction，本拍尚未
-	// 到伤害帧的一刀会在下一个 Gym 动作中命中，把击杀错误记到 action0/
-	// 喝药。走路动画不硬切，允许当前已提交的一格自然收尾，随后停止。
+	// Explicit v4 wait/cancel semantics:
+	// 1. Immediately clear the long path and delayed action already written by the previous tick's OnWalk/OnAttack;
+	// 2. Then queue "walk to the current future tile" at the end of the loopback network queue as a FIFO
+	//    fence. Doing only step 1 still races: the caller may queue act_attack_monster first,
+	//    then queue wait before the same bridge.step, and the old attack packet would write destAction back next tick.
+	// An attack/spell animation already in progress must return to standing immediately: if only destAction were cleared, a swing
+	// that has not reached its damage frame this tick would land during the next Gym action, crediting the kill to action0/
+	// drinking by mistake. Walk animations are not cut hard; the committed tile may finish naturally, then the player stops.
 	if (IsAnyOf(player._pmode, PM_ATTACK, PM_RATTACK, PM_SPELL))
 		StartStand(player, player._pdir);
 	player.Stop();
@@ -2190,7 +2190,7 @@ void ActWalk(int x, int y)
 	if (!CanAcceptPlayerAction("act_walk"))
 		return;
 	if (x < 0 || x >= MAXDUNX || y < 0 || y >= MAXDUNY)
-		return; // 地图边缘的越界走格按 Gym 无效动作处理
+		return; // an out-of-bounds step at the map edge is treated as an invalid Gym action
 	NetSendCmdLoc(MyPlayerId, true, CMD_WALKXY, { x, y });
 }
 
@@ -2246,11 +2246,11 @@ constexpr bool IsExactControllerEdge(int dx, int dy, int pathSteps)
 }
 
 static_assert(IsExactControllerEdge(1, 1, 1),
-    "斜向 Worker 原子键必须能表达为一步");
+    "a diagonal Worker atomic key must be expressible as one step");
 static_assert(!IsExactControllerEdge(1, 1, 2),
-    "相邻目标若只能绕路两步必须 fail-close");
+    "an adjacent target reachable only by a two-step detour must fail closed");
 static_assert(!IsExactControllerEdge(2, 0, 1),
-    "远 waypoint 不得伪装成控制器原子边");
+    "a far waypoint must not masquerade as a controller atomic edge");
 
 int ActExploreWalk(
     int x,
@@ -2270,8 +2270,8 @@ int ActExploreWalk(
 	    || std::abs(y - centerY) > radius)
 		return 0;
 
-	// ActWait 在上一宏末尾放入一个 loopback FIFO 栅栏；安全路径必须在
-	// 它之后写入，否则下一 Step 处理旧 wait 包时会把新 walkpath 擦掉。
+	// ActWait put a loopback FIFO fence at the end of the previous macro; the safe path must be written
+	// after it, or the next Step would erase the new walkpath when processing the old wait packet.
 	ProcessGameMessagePackets();
 	if (!CanAcceptPlayerAction("act_explore_walk"))
 		return 0;
@@ -2284,11 +2284,11 @@ int ActExploreWalk(
 	std::unordered_set<int> forbidden;
 	for (const auto &[tx, ty] : protectedTiles) {
 		if (tx < 0 || tx >= MAXDUNX || ty < 0 || ty >= MAXDUNY)
-			throw std::out_of_range("act_explore_walk protected 坐标越界");
+			throw std::out_of_range("act_explore_walk protected coordinate out of range");
 		if (std::abs(tx - centerX) > radius
 		    || std::abs(ty - centerY) > radius)
 			throw std::out_of_range(
-			    "act_explore_walk protected 坐标超出固定快照");
+			    "act_explore_walk protected coordinate outside the fixed snapshot");
 		forbidden.insert(encode(tx, ty));
 	}
 	if (forbidden.count(encode(x, y)) != 0)
@@ -2301,16 +2301,16 @@ int ActExploreWalk(
 	if (player.position.future == Point { x, y })
 		return 1;
 	const Point start = player.position.future;
-	// Worker 原子方向动作含四个斜向键；只拒绝非相邻 waypoint。堵角等
-	// 斜向非法边仍由 CanStep + 最终 steps==1 逐边 fail-close，不能绕路。
+	// Worker atomic direction actions include four diagonal keys; only non-adjacent waypoints are refused. Illegal
+	// diagonal edges such as blocked corners still fail closed edge by edge via CanStep + final steps==1, with no detours.
 	if (!IsAdjacentControllerDelta(x - start.x, y - start.y)
 	    || !inWindow(start))
 		return 0;
 	const Point target { x, y };
 	const DynamicTileDanger danger = InspectDynamicTileDanger(target);
-	// Python 的冻结快照之后，火焰机关可能刚进入伤害相位；爆炸桶也可能
-	// 在宏执行过程中出现在下一格。提交边的最后一刻重读当前已照亮事实，
-	// 防止安全路径在 TOCTOU 窗口里变成踩火/撞桶。
+	// After Python's frozen snapshot, a fire trap may just have entered its damage phase; an explosive barrel may also
+	// appear on the next tile while the macro runs. Re-read the currently lit facts at the last moment before committing an edge,
+	// so that the safe path cannot turn into stepping into fire/bumping a barrel inside the TOCTOU window.
 	if ((danger.damagingHazard && IsTileLit(target))
 	    || danger.explosiveBreakable)
 		return 0;
@@ -2337,7 +2337,7 @@ void ActAttackMonster(uint16_t monsterId)
 	if (!CanAcceptPlayerAction("act_attack_monster"))
 		return;
 	if (monsterId >= MaxMonsters)
-		throw std::out_of_range("monster_id 越界");
+		throw std::out_of_range("monster_id out of range");
 	NetSendCmdParam1(true, CMD_ATTACKID, monsterId);
 }
 
@@ -2347,7 +2347,7 @@ int ActControllerAttackMonster(
 	if (!CanAcceptPlayerAction("act_controller_attack_monster"))
 		return 0;
 	if (monsterId >= MaxMonsters)
-		throw std::out_of_range("monster_id 越界");
+		throw std::out_of_range("monster_id out of range");
 	if (centerX < 0 || centerX >= MAXDUNX
 	    || centerY < 0 || centerY >= MAXDUNY || radius < 0)
 		return 0;
@@ -2362,8 +2362,8 @@ int ActControllerAttackMonster(
 		return std::abs(position.x - centerX) <= radius
 		    && std::abs(position.y - centerY) <= radius;
 	};
-	// 只允许快照窗内的邻接挥刀。远目标必须由 Python 固定快照路径逐
-	// 相邻步接近，严禁 CMD_ATTACKID 在这里偷偷安装一条全图追击路径。
+	// Only adjacent swings inside the snapshot window are allowed. Far targets must be approached along Python's fixed snapshot path
+	// one adjacent step at a time; CMD_ATTACKID must never quietly install a whole-map chase path here.
 	if (!inWindow(playerPosition) || !inWindow(monsterPosition)
 	    || std::max(
 	           std::abs(playerPosition.x - monsterPosition.x),
@@ -2389,7 +2389,7 @@ void ActOperate(int x, int y)
 		return;
 	if (x < 0 || x >= MAXDUNX || y < 0 || y >= MAXDUNY)
 		return;
-	// 操作目标格上的物体(门/箱子/杠杆):引擎自动走过去再操作——与鼠标点击同路
+	// Operate the object on the target tile (door/chest/lever): the engine walks there and operates it, the same path as a mouse click
 	NetSendCmdLoc(MyPlayerId, true, CMD_OPOBJXY, { x, y });
 }
 
@@ -2424,9 +2424,9 @@ int ActControllerOperate(int x, int y, int centerX, int centerY, int radius)
 
 bool IsHealItem(const Item &item)
 {
-	// Healing 卷轴需要随后指定施法目标，不是“按下即回血”的腰带药。
-	// 把它算进治疗药会让 act_drink 选中卷轴、留下十字光标，并把后续
-	// 所有按键都短路成假成功。这里只承认同步生效且会被消耗的药水。
+	// A Healing scroll needs a spell target afterwards; it is not a belt potion that "heals on press".
+	// Counting it as a heal potion would make act_drink choose the scroll, leave a cross-hair cursor, and short-circuit
+	// every later key press into a fake success. Only potions that take effect synchronously and are consumed count here.
 	return InstantHealKind(item) != 0;
 }
 
@@ -2491,14 +2491,14 @@ int ActDrink()
 {
 	if (!CanAcceptPlayerAction("act_drink"))
 		return 0;
-	// 只喝“按下即回血”的药水。上游 UseBeltItem(BeltItemType::Healing)
-	// 也会匹配 Healing 卷轴；卷轴只会进入选目标状态，却曾被本桥误报为
-	// 已喝药，随后 pcurs != CURSOR_HAND 又令所有动作静默短路。
+	// Drink only potions that "heal on press". Upstream UseBeltItem(BeltItemType::Healing)
+	// also matches Healing scrolls; a scroll only enters target selection, but this bridge once misreported it as
+	// a drink, after which pcurs != CURSOR_HAND silently short-circuited every action.
 	//
-	// UseInvItem 的 bool 也只是“按键已处理”，在商店/聊天/非手形光标等
-	// 情况仍可返回 true。因此回执必须以后置事实认证：HP 确实增加，或
-	// 腰带即时治疗药数确实减少（auto-refill 可能改喝背包同类药，此时
-	// 腰带数不变但 HP 会增加）。只有认证成功才返回请求前的药数。
+	// UseInvItem's bool also only means "the key press was handled", and can still return true with a store/chat/non-hand cursor
+	// and similar cases. The receipt must therefore be certified by post-facts: HP actually rose, or
+	// the belt's instant heal count actually fell (auto-refill may drink a same-kind backpack potion instead; then
+	// the belt count stays the same but HP rises). Only on successful certification is the pre-request potion count returned.
 	const int heals = CountBeltHeals();
 	if (heals == 0 || (MyPlayer->_pHitPoints >> 6) >= (MyPlayer->_pMaxHP >> 6))
 		return 0;
@@ -2510,7 +2510,7 @@ int ActDrink()
 		}
 	}
 	if (beltSlot < 0)
-		return 0; // CountBeltHeals 与选择谓词必须同源；纵深防御。
+		return 0; // CountBeltHeals and the selection predicate must share one source; defense in depth.
 
 	const int hitPointsBefore = MyPlayer->_pHitPoints;
 	UseInvItem(INVITEM_BELT_FIRST + beltSlot);
@@ -2530,7 +2530,7 @@ int ActPickup()
 	// this API to select a distant nearest item would bypass every path/hazard
 	// proof even though ActPickupAt itself is fail-closed.
 	if (CountBeltFreeSlots() == 0)
-		return 0; // 腰带无空位:捡了会直落背包(喝药键与观测都看不见的价值黑洞),不发命令
+		return 0; // no free belt slot: a pickup would drop straight into the backpack (a value black hole invisible to the drink key and the observation), so no command is sent
 	const Point me = MyPlayer->position.future;
 	int best = -1;
 	for (int i = 0; i < ActiveItemCount; i++) {
@@ -2642,7 +2642,7 @@ void RestoreGearUpgradeTransaction(
 	    || player._pManaBase != resources.manaBase
 	    || player._pMaxManaBase != resources.maxManaBase)
 		throw std::runtime_error(
-		    "action14 事务回滚未逐位恢复生命/法力状态");
+		    "action14 transaction rollback did not restore life/mana state bit for bit");
 }
 
 bool CanPairOneHanded(
@@ -2892,11 +2892,11 @@ int ActPickupGearAt(
 		if (!StageLootReplacedInventory(player, plan.clearSlots, *retainedInventory)) return 0;
 	}
 
-	// 不走 AutoGetItem 的 “AutoEquip 失败→腰带→隐藏背包”回退链。
-	// 复制全套身体槽后原子替换；legacy 旧装备明确销毁，loot 模式已预检保留。
-	// legacy 旧件不进背包、
-	// 不落到可能被下一次宏误捞的地面。CalcPlrInv 是最终权威校验；
-	// 任一属性依赖级联使 aggregate utility 不再严格增长就完整回滚。
+	// Do not use AutoGetItem's "AutoEquip fails -> belt -> hidden backpack" fallback chain.
+	// Copy the whole set of body slots, then replace atomically; legacy old gear is explicitly destroyed, loot mode has pre-checked retention.
+	// legacy old items do not enter the backpack
+	// or drop to the floor where the next macro might pick them up by mistake. CalcPlrInv is the final authoritative check;
+	// if any stat-dependent cascade stops the aggregate utility from strictly increasing, roll back completely.
 	const Point position = item.position;
 	const uint32_t seed = item._iSeed;
 	const _item_indexes baseId = item.IDidx;
@@ -2928,14 +2928,14 @@ int ActPickupGearAt(
 		RestoreGearUpgradeTransaction(
 		    player, previousBody, previousResources);
 		throw std::runtime_error(
-		    "action14 模拟规划与原子提交的效用/当前及最大生命不一致");
+		    "action14 simulated plan and atomic commit disagree on utility/current and max life");
 	}
 	if (player.hasNoLife()
 	    || (nextProfile.currentHitPoints >> 6) <= 0) {
 		RestoreGearUpgradeTransaction(
 		    player, previousBody, previousResources);
 		throw std::runtime_error(
-		    "action14 规划安全门失效：原子提交会使玩家死亡");
+		    "action14 planning safety gate failed: the atomic commit would kill the player");
 	}
 	if (!player.InvBody[plan.target]._iStatFlag
 	    || !IsConservativeGearUpgrade(previousProfile, nextProfile)) {
@@ -3007,19 +3007,19 @@ int ActPickupProgression(int x, int y)
 
 PYBIND11_MODULE(_diablogym, m)
 {
-	m.doc() = "DiabloGym v0 —— DevilutionX 无头 RL 桥";
+	m.doc() = "DiabloGym v0: headless DevilutionX RL bridge";
 	m.def("engine_config", []() -> py::object {
 		if (!gEngineInited)
 			return py::none();
 		EnsureEngineProcess("engine_config");
 		return py::make_tuple(gAssetsDir, gSaveDir, gDataDir, gHeroClass);
-	}, "读取已提交的原生单例配置；未初始化返回 None，用于 Python 异步异常恢复");
+	}, "Read the committed native singleton configuration; returns None before init; used by Python's async exception recovery");
 	m.def("init", &EngineInit, py::arg("assets_dir"), py::arg("save_dir"), py::arg("data_dir"),
 	    py::arg("hero_class") = 0, py::arg("verbose") = false,
-	    "一次性引擎初始化。data_dir 为 diabdat.mpq 所在目录；当前仅支持 hero_class=0(战士)");
-	m.def("reset", &Reset, py::arg("seed"), "新开一局(全新 1 级英雄,确定性地牢种子),返回观测");
-	m.def("step", &Step, py::arg("ticks") = 1, "推进游戏逻辑 N 个 tick(20 tick = 游戏内 1 秒),返回观测");
-	m.def("observe", &Observe, "只读当前观测");
+	    "One-time engine initialization. data_dir is the directory holding diabdat.mpq; currently only hero_class=0 (Warrior) is supported");
+	m.def("reset", &Reset, py::arg("seed"), "Start a new game (brand-new level-1 hero, deterministic dungeon seeds) and return the observation");
+	m.def("step", &Step, py::arg("ticks") = 1, "Advance game logic by N ticks (20 ticks = 1 in-game second) and return the observation");
+	m.def("observe", &Observe, "Read the current observation only");
 	m.def("configure_resource_protocol", &ConfigureResourceProtocol, py::arg("enabled"), py::arg("ordinary_armor_scope") = false,
 	    py::arg("preserve_equipment_readiness") = false, py::arg("loot_economy") = false,
 	    py::arg("readiness_advisory") = false, py::arg("retreat") = false, py::arg("portal") = false,
@@ -3383,73 +3383,73 @@ PYBIND11_MODULE(_diablogym, m)
 		return result;
 	}, "Test fixture only: gameplay state touched by InitLevelChange");
 	m.def("act_wait", &ActWait,
-	    "取消遗留寻路/目标动作并原地等待；攻击立即中止，已提交的单格移动可自然收尾，返回 0/1");
-	m.def("act_walk", &ActWalk, py::arg("x"), py::arg("y"), "寻路走向目标格(网络命令层注入)");
+	    "Cancel leftover pathing/target actions and wait in place; attacks stop immediately, a committed single-tile move may finish naturally; returns 0/1");
+	m.def("act_walk", &ActWalk, py::arg("x"), py::arg("y"), "Path toward the target tile (injected through the network command layer)");
 	m.def("act_explore_walk", &ActExploreWalk,
 	    py::arg("x"), py::arg("y"), py::arg("protected_tiles"),
 	    py::arg("center_x"), py::arg("center_y"), py::arg("radius"),
-	    "控制器专用相邻步：只在固定快照窗内安装不穿受保护格的一步路径，返回 0/1");
-	m.def("act_attack_monster", &ActAttackMonster, py::arg("monster_id"), "追击并近战指定怪物");
+	    "Controller-only adjacent step: installs a one-step path inside the fixed snapshot window that avoids protected tiles; returns 0/1");
+	m.def("act_attack_monster", &ActAttackMonster, py::arg("monster_id"), "Chase and melee the given monster");
 	m.def("act_controller_attack_monster", &ActControllerAttackMonster,
 	    py::arg("monster_id"), py::arg("center_x"),
 	    py::arg("center_y"), py::arg("radius"),
-	    "固定控制快照专用：只对窗内相邻怪物挥刀，拒绝原生远程追击");
-	m.def("act_attack_tile", &ActAttackTile, py::arg("x"), py::arg("y"), "原地朝目标格挥击");
-	m.def("act_operate", &ActOperate, py::arg("x"), py::arg("y"), "操作目标格物体(开门等;引擎自动走近)");
+	    "Fixed control snapshot only: swings only at adjacent monsters inside the window; refuses native long-range chasing");
+	m.def("act_attack_tile", &ActAttackTile, py::arg("x"), py::arg("y"), "Swing at the target tile in place");
+	m.def("act_operate", &ActOperate, py::arg("x"), py::arg("y"), "Operate the object on the target tile (open doors etc.; the engine walks there automatically)");
 	m.def("act_controller_operate", &ActControllerOperate,
 	    py::arg("x"), py::arg("y"), py::arg("center_x"),
 	    py::arg("center_y"), py::arg("radius"),
-	    "固定控制快照专用：只操作窗内相邻物体，拒绝原生远程寻路");
-	m.def("act_drink", &ActDrink, "喝腰带上的第一瓶即时治疗药;仅在确认回血/消耗后返回按键前药数，否则返回 0");
+	    "Fixed control snapshot only: operates only adjacent objects inside the window; refuses native long-range pathing");
+	m.def("act_drink", &ActDrink, "Drink the first instant heal potion in the belt; returns the pre-press potion count only after the heal/consumption is confirmed, otherwise 0");
 	m.def("act_pickup", &ActPickup,
-	    "只拾取玩家 future 同格的首瓶治疗药；不负责寻路，返回 0/1");
+	    "Pick up only the first heal potion on the player's future tile; does no pathing; returns 0/1");
 	m.def("act_pickup_at", &ActPickupAt,
 	    py::arg("active_item_id"), py::arg("x"), py::arg("y"),
 	    py::arg("seed_hi"), py::arg("seed_lo"), py::arg("create_info"),
 	    py::arg("base_id"),
-	    "只在玩家 future 精确同格时拾取固定快照逐字匹配身份的即时治疗药，返回 0/1");
+	    "Pick up the instant heal potion whose identity matches the fixed snapshot exactly, only when the player's future tile is exactly that tile; returns 0/1");
 	m.def("act_pickup_gear", &ActPickupGear,
-	    "只原子装备玩家 future 同格的首件安全升级；不负责寻路，返回 0/1");
+	    "Atomically equip only the first safe upgrade on the player's future tile; does no pathing; returns 0/1");
 	m.def("act_pickup_gear_at", &ActPickupGearAt,
 	    py::arg("active_item_id"), py::arg("x"), py::arg("y"),
 	    py::arg("seed_hi"), py::arg("seed_lo"), py::arg("create_info"),
 	    py::arg("base_id"),
-	    "只在玩家 future 精确同格时原子装备固定快照逐字匹配身份的物品，返回 0/1");
+	    "Atomically equip the item whose identity matches the fixed snapshot exactly, only when the player's future tile is exactly that tile; returns 0/1");
 	m.def("act_pickup_progression", &ActPickupProgression, py::arg("x"), py::arg("y"),
-	    "仅在玩家 future 精确同格时拾取指定 Staff of Lazarus；供 action 10/11 使用");
-	m.def("end_game", &EndGame, "结束当前局(reset 会自动调用)");
+	    "Pick up the given Staff of Lazarus only when the player's future tile is exactly that tile; used by actions 10/11");
+	m.def("end_game", &EndGame, "End the current game (reset calls it automatically)");
 	m.def("episode_generation", []() {
 		EnsureEngineProcess("episode_generation");
 		return gEpisodeGeneration;
 	},
-	    "当前原生游戏状态世代号(reset/end_game 时改变,用于缓存安全检查)");
+	    "Generation number of the current native game state (changes on reset/end_game; used for cache safety checks)");
 
-	// ---- 探针专用接口(只用于发车前探针/验尸,训练与评估不得调用)----
+	// ---- Probe-only interface (only for pre-launch probes/post-mortems; training and evaluation must not call it) ----
 	m.def("probe_add_experience", [](uint32_t xp) {
 		EnsureInGame("probe_add_experience");
-		// 直接注入经验(等级差按 0 计),触发引擎原生升级链
-		// (NextPlrLevel → _pStatPts 累积 → Step 尾部 AutoSpendStatPoints)
+		// Inject experience directly (level difference counted as 0), triggering the engine's native level-up chain
+		// (NextPlrLevel -> _pStatPts accumulates -> AutoSpendStatPoints at the end of Step)
 		MyPlayer->addExperience(xp);
-	}, py::arg("xp"), "探针:注入经验值,走原生升级路径");
+	}, py::arg("xp"), "Probe: inject experience, following the native level-up path");
 	m.def("probe_modify_vit", [](int d) {
 		EnsureInGame("probe_modify_vit");
 		ModifyPlrVit(*MyPlayer, d);
 	},
-	    py::arg("d"), "探针:直接调体力(带封顶,同步 HP)");
+	    py::arg("d"), "Probe: adjust vitality directly (capped, HP synced)");
 	m.def("probe_bonus_ac", [](int d) {
 		EnsureInGame("probe_bonus_ac");
 		MyPlayer->_pIBonusAC += d;
 	},
-	    py::arg("d"), "探针:临时附加 AC(CalcPlrInv 会重算,战斗中不换装则稳定)");
+	    py::arg("d"), "Probe: add temporary AC (CalcPlrInv recomputes it; stable if gear is not changed in combat)");
 	m.def("probe_invincible", [](bool enabled) {
 		EnsureInGame("probe_invincible");
 		MyPlayer->_pInvincible = enabled;
-	}, py::arg("enabled"), "探针:切换无敌，仅供真实资源剧情/寻路验收");
+	}, py::arg("enabled"), "Probe: toggle invincibility, only for real resource story/pathing acceptance checks");
 	m.def("probe_stat_pts", []() {
 		EnsureInGame("probe_stat_pts");
 		return (int)MyPlayer->_pStatPts;
 	},
-	    "探针:读未花属性点(自动花点后应恒为 0)");
+	    "Probe: read unspent stat points (always 0 after auto-spending)");
 	m.def("probe_stats", []() {
 		EnsureInGame("probe_stats");
 		py::dict d;
@@ -3457,15 +3457,15 @@ PYBIND11_MODULE(_diablogym, m)
 		d["str"] = (int)MyPlayer->_pStrength;
 		d["max_hp"] = (int)(MyPlayer->_pMaxHP >> 6);
 		return d;
-	}, "探针:读属性明细");
+	}, "Probe: read stat details");
 	m.def("probe_inventory_item_count", []() {
 		EnsureInGame("probe_inventory_item_count");
 		return static_cast<int>(MyPlayer->_pNumInv);
-	}, "探针:读背包物品数，验证原子换装不产生隐藏背包回退");
+	}, "Probe: read the backpack item count, verifying that the atomic gear swap produces no hidden backpack fallback");
 	m.def("probe_kill_monster", [](unsigned monsterId) {
 		EnsureInGame("probe_kill_monster");
 		if (monsterId >= MaxMonsters)
-			throw std::out_of_range("probe_kill_monster 怪物 id 越界");
+			throw std::out_of_range("probe_kill_monster monster id out of range");
 		bool active = false;
 		for (size_t i = 0; i < ActiveMonsterCount; i++) {
 			if (ActiveMonsters[i] == monsterId) {
@@ -3476,7 +3476,7 @@ PYBIND11_MODULE(_diablogym, m)
 		Monster &monster = Monsters[monsterId];
 		if (!active || monster.hasNoLife())
 			throw std::invalid_argument(
-			    "probe_kill_monster 只接受当前活动且存活的怪物");
+			    "probe_kill_monster only accepts a currently active, living monster");
 		const uint64_t before = MonsterKillTotal();
 		const int monsterType = static_cast<int>(monster.type().type);
 		M_StartKill(monster, *MyPlayer);
@@ -3484,14 +3484,14 @@ PYBIND11_MODULE(_diablogym, m)
 		if (before == std::numeric_limits<uint64_t>::max()
 		    || after != before + 1)
 			throw std::logic_error(
-			    "原生 MonsterDeath 未精确递增 monster_kill_total");
+			    "native MonsterDeath did not increment monster_kill_total by exactly one");
 		py::dict result;
 		result["monster_type"] = monsterType;
 		result["before"] = before;
 		result["after"] = after;
 		return result;
 	}, py::arg("monster_id"),
-	    "探针:经原生 M_StartKill 杀死活动怪物并核验累计击杀事实恰好 +1");
+	    "Probe: kill an active monster through native M_StartKill and verify that the cumulative kill fact rises by exactly +1");
 	m.def("probe_gear_combat_profile", []() {
 		EnsureInGame("probe_gear_combat_profile");
 		const GearCombatProfile profile
@@ -3535,17 +3535,17 @@ PYBIND11_MODULE(_diablogym, m)
 		result["mana_steal_tier"] = profile.manaStealTier;
 		result["spell_level_bonus"] = profile.spellLevelBonus;
 		return result;
-	}, "探针:读取整套装备经 CalcPlrItemVals 后的保守战斗评分/硬门事实");
+	}, "Probe: read the conservative combat score/hard-gate facts of the whole gear set after CalcPlrItemVals");
 	m.def("probe_set_current_hit_points", [](int hitPoints) {
 		EnsureInGame("probe_set_current_hit_points");
 		const int maxHitPoints = MyPlayer->_pMaxHP >> 6;
 		if (hitPoints <= 0 || hitPoints > maxHitPoints)
 			throw std::invalid_argument(
-			    "probe_set_current_hit_points 必须在 [1,max_hp] 内");
+			    "probe_set_current_hit_points must be within [1,max_hp]");
 		SetPlayerHitPoints(*MyPlayer, hitPoints << 6);
 		return MyPlayer->_pHitPoints;
 	}, py::arg("hit_points"),
-	    "探针:设置玩家当前整点生命，供换装 projected-HP 安全门回归");
+	    "Probe: set the player's current whole-point life, for projected-HP safety-gate regression tests of gear swaps");
 	m.def("probe_spawn_test_gear", [](int baseId, int minDamage,
 	                                      int maxDamage, int armorClass,
 	                                      int magicDamageBonus,
@@ -3570,7 +3570,7 @@ PYBIND11_MODULE(_diablogym, m)
 	                                      int lightningMaxDamage) {
 		EnsureInGame("probe_spawn_test_gear");
 		if (!IsItemAvailable(baseId))
-			throw std::invalid_argument("probe_spawn_test_gear base_id 不可用");
+			throw std::invalid_argument("probe_spawn_test_gear base_id unavailable");
 		if (minDamage < 0 || minDamage > 255
 		    || maxDamage < minDamage || maxDamage > 255
 		    || armorClass < 0 || armorClass > 32767
@@ -3603,11 +3603,11 @@ PYBIND11_MODULE(_diablogym, m)
 			        && (durability > maxDurability
 			            || ((durability == DUR_INDESTRUCTIBLE)
 			                != (maxDurability == DUR_INDESTRUCTIBLE)))))
-				throw std::invalid_argument("probe_spawn_test_gear 数值越界");
+				throw std::invalid_argument("probe_spawn_test_gear value out of range");
 		Item item;
 		InitializeItem(item, static_cast<_item_indexes>(baseId));
 		if (!item.isEquipment() && baseId != IDI_LAZSTAFF)
-			throw std::invalid_argument("probe_spawn_test_gear 只接受装备");
+			throw std::invalid_argument("probe_spawn_test_gear accepts only equipment");
 		GenerateNewSeed(item);
 		item._iMinDam = static_cast<uint8_t>(minDamage);
 		item._iMaxDam = static_cast<uint8_t>(maxDamage);
@@ -3662,7 +3662,7 @@ PYBIND11_MODULE(_diablogym, m)
 		const std::optional<Point> position = FindClosestValidPosition(
 		    ItemSpaceOk, MyPlayer->position.tile, 1, 2);
 		if (!position.has_value())
-			throw std::runtime_error("probe_spawn_test_gear 玩家两格内无地面空位");
+			throw std::runtime_error("probe_spawn_test_gear: no free floor tile within two tiles of the player");
 		const int activeItemId = PlaceItemInWorld(
 		    std::move(item), *position);
 		const Item &placed = Items[activeItemId];
@@ -3697,17 +3697,17 @@ PYBIND11_MODULE(_diablogym, m)
 	    py::arg("fire_max_damage") = 0,
 	    py::arg("lightning_min_damage") = 0,
 	    py::arg("lightning_max_damage") = 0,
-	    "探针:在玩家两格内生成确定装备，供整套 OR/cap/攻速/诅咒/耐久回归");
+	    "Probe: spawn deterministic gear within two tiles of the player, for whole-set OR/cap/attack-speed/curse/durability regression tests");
 
 	m.def("local_map", [](int radius) {
 		EnsureInGame("local_map");
 		const int maxRadius = std::max(static_cast<int>(MAXDUNX), static_cast<int>(MAXDUNY));
 		if (radius < 0 || radius > maxRadius)
-			throw std::invalid_argument("radius 必须在 [0, max(MAXDUNX, MAXDUNY)] 内");
-		// 以玩家为中心的 (2r+1)² 局部地图:可走性 + 怪物占位 + 关闭的门
-		// (C++ 端单次调用,避免逐格 probe 的开销)。
-		// 注意:观测向量只消费 walkable/monster 两通道;door 通道仅供宏内部导航,
-		// 不改变 286 维观测 —— 旧模型与排行榜完全兼容
+			throw std::invalid_argument("radius must be within [0, max(MAXDUNX, MAXDUNY)]");
+		// Local (2r+1)^2 map centred on the player: walkability + monster occupancy + closed doors
+		// (a single C++ call, avoiding the overhead of per-tile probes).
+		// Note: the observation vector consumes only the walkable/monster channels; the door channel is only for in-macro navigation
+		// and does not change the 286-dim observation, so old models and the leaderboard stay fully compatible
 		const Player &p = *MyPlayer;
 		const int cx = p.position.tile.x, cy = p.position.tile.y;
 		py::list walkable, monster, door, closedDoorOnly;
@@ -3718,10 +3718,10 @@ PYBIND11_MODULE(_diablogym, m)
 				const bool inBounds = x >= 0 && x < MAXDUNX && y >= 0 && y < MAXDUNY;
 				walkable.append(inBounds && IsTileWalkable({ x, y }, false) ? 1 : 0);
 				monster.append(inBounds && dMonster[x][y] != 0 ? 1 : 0);
-				// 关着的门:门对象在场且该格当前不可走。注意不能用 _oSolidFlag——
-				// 引擎里门的封堵是靠门格地块换成实心(nSolidTable),门对象本身不置 solid。
-				// 挡路的桶:实心但可破坏(operate 一击即碎,格子变可走)——seed 9005 的
-				// 楼梯就被"门后一只桶"封死过,可通行规划必须认识这两种"软墙"
+				// Closed door: a door object is present and the tile is currently not walkable. Note that _oSolidFlag cannot be used:
+				// in the engine a door blocks by swapping the door tile's piece for a solid one (nSolidTable); the door object itself is not solid.
+				// Blocking barrel: solid but breakable (operate smashes it in one hit and the tile becomes walkable). On seed 9005 the
+				// stairs were once sealed by "a barrel behind a door"; passability planning must recognize both kinds of "soft wall"
 					bool closedDoor = false;
 					bool barrel = false;
 					DynamicTileDanger danger;
@@ -3735,16 +3735,16 @@ PYBIND11_MODULE(_diablogym, m)
 						}
 					}
 					door.append((closedDoor || barrel) ? 1 : 0);
-				// action10 可在仍有普通边疆时顺路优先开门，但不应把房内
-				// 每只桶都当高优先级出口；保留 door=门或桶的旧规划口径，
-					// 另给探索一个只含可交互闭门的精确通道。
+				// action10 may prefer opening doors on the way while ordinary frontier remains, but must not treat every barrel in the room
+				// as a high-priority exit; keep the old planning definition door = door or barrel,
+					// and give exploration a separate exact channel containing only interactable closed doors.
 					closedDoorOnly.append(
 					    (closedDoor && danger.object != nullptr
 					        && danger.object->canInteractWith())
 					        ? 1
 					        : 0);
-					// 只公开玩家已照亮的活动伤害相位；未发现机关仍明确属于
-					// 部分可观测环境。控制器将该格当硬墙，避免自动踩火。
+					// Only publish active damage phases the player has already lit; undiscovered traps still clearly belong to a
+					// partially observable environment. The controller treats the tile as a hard wall to avoid stepping into fire automatically.
 					hazard.append(
 					    (inBounds && danger.damagingHazard
 					        && IsTileLit({ x, y }))
@@ -3762,7 +3762,7 @@ PYBIND11_MODULE(_diablogym, m)
 			d["hazard"] = hazard;
 			d["explosive_softwall"] = explosiveSoftwall;
 		return d;
-	}, py::arg("radius") = 5, "以玩家为中心的局部地图通道");
+	}, py::arg("radius") = 5, "Local map channels centred on the player");
 
 	m.def("probe_asset", [](const std::string &path) {
 		EnsureEngineProcess("probe_asset");
@@ -3772,12 +3772,12 @@ PYBIND11_MODULE(_diablogym, m)
 		d["ok"] = handle.ok();
 		d["size"] = static_cast<uint64_t>(size);
 		return d;
-	}, py::arg("path"), "调试:检查资产能否打开及其大小");
+	}, py::arg("path"), "Debug: check whether an asset can be opened, and its size");
 
 	m.def("probe_tile", [](int x, int y) {
 		EnsureInGame("probe_tile");
 		if (x < 0 || x >= MAXDUNX || y < 0 || y >= MAXDUNY)
-			throw std::out_of_range("probe_tile 坐标越界");
+			throw std::out_of_range("probe_tile coordinate out of range");
 		py::dict d;
 		d["piece"] = static_cast<int>(dPiece[x][y]);
 		d["monster"] = static_cast<int>(dMonster[x][y]);
@@ -3797,23 +3797,23 @@ PYBIND11_MODULE(_diablogym, m)
 		d["explosive_breakable"] = danger.explosiveBreakable;
 		return d;
 	}, py::arg("x"), py::arg("y"),
-	    "调试:读取单格占位/碰撞/物体及动态伤害/爆炸事实");
+	    "Debug: read one tile's occupancy/collision/object and dynamic damage/explosion facts");
 
 	m.def("probe_is_spawn", []() {
 		EnsureEngineProcess("probe_is_spawn");
 		return gbIsSpawn;
 	},
-	    "探针:当前是否使用 shareware spawn.mpq");
+	    "Probe: whether the shareware spawn.mpq is in use");
 	m.def("probe_warp_main_level", [](int level) {
 		EnsureInGame("probe_warp_main_level");
 		if (setlevel || level < 1 || level > 16)
-			throw std::invalid_argument("探针主层须在 [1,16] 且当前不在 set-level");
+			throw std::invalid_argument("probe main level must be within [1,16] and not currently in a set-level");
 		StartNewLvl(*MyPlayer, WM_DIABNEXTLVL, level);
-	}, py::arg("level"), "探针:排队切换到指定主地牢层");
+	}, py::arg("level"), "Probe: queue a switch to the given main dungeon level");
 	m.def("probe_enter_set_level", [](int level) {
 		EnsureInGame("probe_enter_set_level");
 		if (setlevel)
-			throw std::runtime_error("探针进入 set-level 前必须位于主地牢");
+			throw std::runtime_error("probe must be in the main dungeon before entering a set-level");
 		const auto setLevel = static_cast<_setlevels>(level);
 		dungeon_type requestedType;
 		switch (setLevel) {
@@ -3830,21 +3830,21 @@ PYBIND11_MODULE(_diablogym, m)
 			requestedType = Quests[Q_BETRAYER]._qlvltype;
 			break;
 		default:
-			throw std::invalid_argument("探针只支持四个正式任务 set-level");
+			throw std::invalid_argument("probe supports only the four official quest set-levels");
 		}
 		if (!IsPlayerLevelTransitionAllowed(*MyPlayer, WM_DIABSETLVL, level))
 			return;
 		setlvltype = requestedType;
 		StartNewLvl(*MyPlayer, WM_DIABSETLVL, level);
-	}, py::arg("level"), "探针:排队进入正式任务 set-level(1/2/4/5)");
+	}, py::arg("level"), "Probe: queue entry into an official quest set-level (1/2/4/5)");
 	m.def("probe_return_set_level", []() {
 		EnsureInGame("probe_return_set_level");
 		if (!setlevel)
-			throw std::runtime_error("探针返回前当前必须位于 set-level");
+			throw std::runtime_error("probe must currently be in a set-level before returning");
 		StartNewLvl(*MyPlayer, WM_DIABRTNLVL, GetMapReturnLevel());
-	}, "探针:排队从任务 set-level 返回对应主地牢层");
+	}, "Probe: queue a return from a quest set-level to its main dungeon level");
 
-	// 触发点消息类型常量(观测 triggers[].msg 的取值)
+	// Trigger message-type constants (the values of the observation's triggers[].msg)
 	m.attr("WM_DIABNEXTLVL") = static_cast<int>(WM_DIABNEXTLVL);
 	m.attr("WM_DIABWARPLVL") = static_cast<int>(WM_DIABWARPLVL);
 	m.attr("WM_DIABRETOWN") = static_cast<int>(WM_DIABRETOWN);

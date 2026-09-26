@@ -429,8 +429,8 @@ class ProtocolV4MaskTests(unittest.TestCase):
         different = np.flatnonzero(full_obs != open_obs)
         self.assertTrue(np.array_equal(different, [belt_index]), different)
 
-        # 两个整数域可从单 scalar 唯一恢复；因此 exact free-slot mask 不再
-        # 是 critic 看不见的 raw-only 前置条件。
+        # Both integer domains can be recovered uniquely from a single scalar, so the exact free-slot mask is no longer
+        # a raw-only precondition that the critic cannot see.
         encoded = float(open_obs[belt_index])
         decoded_heals = int(np.floor(encoded * 8 + 1e-6))
         decoded_free = int(round(
@@ -466,7 +466,7 @@ class ProtocolV4MaskTests(unittest.TestCase):
         self.assertEqual(second["id"], 96)
         self.assertIn(left_key, env._engage_blocked_keys)
 
-        # 单目标时完成一整轮后允许重试，不能永久把 action9 变成空拍。
+        # With a single target, a retry is allowed after a full round; action9 must not become an empty tick forever.
         state["monsters"] = [left]
         retried = env._select_engage_target(
             state, allow_blocked_cycle=True)
@@ -802,7 +802,7 @@ class ProtocolV4MaskTests(unittest.TestCase):
         ):
             with self.subTest(invalid=invalid):
                 audit = {"attempts": 0, "accepts": 0}
-                with self.assertRaisesRegex(RuntimeError, "必须是.*0/1"):
+                with self.assertRaisesRegex(RuntimeError, "must be.*0/1"):
                     DiabloGymEnv._record_native_execution(
                         audit, invalid, "strict receipt")
                 self.assertEqual(audit, {"attempts": 0, "accepts": 0})
@@ -1106,7 +1106,7 @@ class ProtocolV4MaskTests(unittest.TestCase):
         self.assertTrue(commit_window["gear_grace_consumed"])
 
     def test_option_controller_memories_never_change_flat_action_legality(self):
-        """宏内部调度可改变 a9/a10 的目标，但不能制造同观测异 mask。"""
+        """Scheduling inside a macro may change the a9/a10 target, but must not create different masks for the same observation."""
         state = raw(monsters=[monster(1, 100)])
         env = self.env_with(state)
         env._visited = {(10, 10)}
@@ -1202,7 +1202,7 @@ class ProtocolV4MaskTests(unittest.TestCase):
         wait.assert_called_once_with()
         self.assertEqual(env.exploration_progress, 1)
 
-        # 只剩一拍时必须计费后截断，不能越预算偷偷推进到 idle。
+        # With one tick left it must charge and then truncate; it must not sneak past the budget into idle.
         env._visited = {(10, 10)}
         env._exploration_progress = 0
         with (
@@ -1218,9 +1218,9 @@ class ProtocolV4MaskTests(unittest.TestCase):
         step.assert_called_once_with(ticks=4)
 
     def test_budget_cut_mid_animation_is_not_a_bootstrapable_truncation(self):
-        """295 维未编码的 busy terminal observation 必须 fail-closed。"""
-        # 真实引擎覆盖放在 smoke_random_agent；这里锁死边界分类的最小
-        # 语义：idle 上限可 TimeLimit bootstrap，busy 上限不可。
+        """An unencoded 295-dim busy terminal observation must fail closed."""
+        # Real-engine coverage lives in smoke_random_agent; here we lock the minimal semantics of the boundary classification:
+        # an idle limit can TimeLimit-bootstrap, a busy limit cannot.
         idle = raw()
         idle.update(
             future_x=10, future_y=10,
@@ -1243,7 +1243,7 @@ class ProtocolV4MaskTests(unittest.TestCase):
             DiabloGymEnv._episode_boundary(busy, 1, 1),
             (True, False, True, False, True),
         )
-        # 真死亡优先于预算中断，且 terminated/truncated 仍互斥。
+        # A real death takes precedence over a budget interruption, and terminated/truncated remain mutually exclusive.
         busy["dead"] = True
         self.assertEqual(
             DiabloGymEnv._episode_boundary(busy, 1, 1),
@@ -1263,7 +1263,7 @@ class ProtocolV4MaskTests(unittest.TestCase):
         self.assertEqual(env.exploration_progress, 1)
 
     def test_explore_frontier_target_is_sticky_across_macro_boundaries(self):
-        """复现 seed7002 的旧 A↔B 抖动：重选会回头，粘性目标会续走。"""
+        """Reproduce the old A<->B jitter of seed7002: re-selection turns back, a sticky target keeps going."""
         env = DiabloGymEnv.__new__(DiabloGymEnv)
         env._visited = {(20, 64)}
         env._explore_target = None
@@ -1271,8 +1271,8 @@ class ProtocolV4MaskTests(unittest.TestCase):
         state = raw()
         state.update(player_x=20, player_y=64)
 
-        # A=(20,69) 起初是唯一达到五格阈值的边疆；一段宏后玩家到
-        # (23,68)，若按新位置重新贪心则 B=(18,64) 反而最近并导致回头。
+        # A=(20,69) is at first the only frontier meeting the five-tile threshold; after one macro the player is at
+        # (23,68), and a fresh greedy choice from the new position would make B=(18,64) the closest and turn back.
         walkable = {
             (20, 64), (20, 65), (20, 66), (20, 67), (20, 68),
             (20, 69), (21, 68), (22, 68), (23, 68),
@@ -1313,7 +1313,7 @@ class ProtocolV4MaskTests(unittest.TestCase):
             self.assertEqual(
                 env._plan_explore_step(state), ("frontier", 20, 69))
 
-            # 证明该断言确实覆盖旧 bug：丢掉跨宏目标后，同一几何会回选 B。
+            # Shows that the assertion really covers the old bug: without the cross-macro target, the same geometry picks B again.
             env._explore_target = None
             self.assertEqual(
                 env._plan_explore_step(state), ("frontier", 18, 64))
@@ -1342,8 +1342,8 @@ class ProtocolV4MaskTests(unittest.TestCase):
 
         with mock.patch.object(
                 env_module.bridge, "local_map", return_value=local_map):
-            # 旧实现会因为唯一 frontier 曾失败而从此每拍返回 None；
-            # 动态阻挡已经消失时必须开始下一轮，并保持相同 action10 语义。
+            # The old implementation returned None on every tick once its only frontier had failed;
+            # when the dynamic blocker is gone it must start the next round and keep the same action10 semantics.
             self.assertEqual(
                 env._plan_explore_step(state), ("frontier", 15, 10))
         self.assertNotIn((15, 10), env._explore_blocked_targets)
@@ -1357,7 +1357,7 @@ class ProtocolV4MaskTests(unittest.TestCase):
         waited = object()
         env._wait_step = lambda: (waited, 1)
         env._macro_descend = lambda **_kwargs: self.fail(
-            "普通 explore 无 frontier 时越权调用 descend")
+            "plain explore without a frontier called descend without authority")
 
         radius = env._EXPLORE_RADIUS
         cells = (2 * radius + 1) ** 2
@@ -1417,8 +1417,8 @@ class ProtocolV4MaskTests(unittest.TestCase):
             }]
             self.assertIsNone(env._plan_explore_step(protected_story))
 
-        # 即使楼梯后方有足够远的未访地板，trigger 格也不能被 BFS 当作
-        # 通路，更不能成为 act_walk 的相邻安全步。
+        # Even if there is unvisited floor far enough behind the stairs, the trigger tile must not be treated as a passage by BFS,
+        # let alone become an adjacent safe step of act_walk.
         stairs = {
             "walkable": [0] * cells,
             "monster": [0] * cells,
@@ -1449,7 +1449,7 @@ class ProtocolV4MaskTests(unittest.TestCase):
         env._exploration_progress = 0
         env._softwalls_opened = 0
         env._wait_step = lambda: self.fail(
-            "有普通闭门通往新区域时 action10 错误返回 wait")
+            "action10 wrongly returned wait while an ordinary closed door leads to a new area")
         env._finish_macro = lambda final_raw, beats, _scene: (
             final_raw, beats)
 
@@ -1498,8 +1498,8 @@ class ProtocolV4MaskTests(unittest.TestCase):
         self.assertEqual(env.softwalls_opened, 1)
         operate.assert_called_once_with(11, 10, 10, 10, 12)
         walk_to.assert_not_called()
-        # 观测和执行严格共用一次 radius-12 读取；开门后的新几何只能由
-        # 下一决策的新快照消费，不能在同一个 action10 内偷读第二张图。
+        # Observation and execution strictly share one radius-12 read; the new geometry after a door opens can only be consumed
+        # by the next decision's new snapshot, never read a second time within the same action10.
         local_map.assert_called_once_with(radius=env._EXPLORE_RADIUS)
 
     def test_vector_has_no_hidden_monster_side_channel(self):
@@ -1509,8 +1509,8 @@ class ProtocolV4MaskTests(unittest.TestCase):
         ])
         side = 11
         cells = side * side
-        # 故意让原始 local_map 谎称每格都有怪；向量必须自行按 policy
-        # 子集重建怪物通道，不能照抄这个全知碰撞通道。
+        # Deliberately make the raw local_map claim a monster on every tile; the vector must rebuild the monster channel from the policy
+        # subset itself and must not copy this omniscient collision channel.
         local_map = {
             "walkable": [1] * cells,
             "monster": [1] * cells,
@@ -1525,7 +1525,7 @@ class ProtocolV4MaskTests(unittest.TestCase):
         monster_map_start = 12 + 8 * 4 + cells
         monster_map = vector[monster_map_start:monster_map_start + cells]
         self.assertEqual(float(monster_map.sum()), 1.0)
-        # actionable monster(1) 位于玩家东二格：(dy=0, dx=2)。
+        # the actionable monster(1) is two tiles east of the player: (dy=0, dx=2).
         self.assertEqual(monster_map[5 * side + 7], 1.0)
 
     def test_complete_v3_worker_view_is_rebuilt_before_v4_information_loss(self):
@@ -1678,7 +1678,7 @@ class ProtocolV4MaskTests(unittest.TestCase):
         self.assertEqual(CONTROLLER_SNAPSHOT_VECTOR_DIM, 12377)
         self.assertEqual(first.shape, (CONTROLLER_SNAPSHOT_VECTOR_DIM,))
         self.assertTrue(np.isfinite(first).all())
-        # 固定尺度只除不裁剪；本 fixture 的登记域应保持在合理幅值内。
+        # The fixed scale only divides and never clips; this fixture's registered domain should stay within a reasonable magnitude.
         self.assertLessEqual(float(np.abs(first).max()), 1.0)
         np.testing.assert_array_equal(first, second)
         self.assertEqual(env._engage_blocked_keys, before_blocked)
@@ -2467,12 +2467,12 @@ class ProtocolV4MaskTests(unittest.TestCase):
         self.assertEqual(one, two)
         self.assertEqual(env._engage_blocked_keys, original)
         env._controller_snapshot = two
-        env.controller_snapshot_vector()  # 模拟选择任一非 a9 前的重复观测
+        env.controller_snapshot_vector()  # simulates the repeated observation before choosing any non-a9
         self.assertEqual(env._engage_blocked_keys, original)
 
     def test_pickup_target_tie_and_execution_share_one_snapshot(self):
-        # raw 顺序故意把 (11,11) 放在前；canonical snapshot 以
-        # (distance,x,y) tie-break 选择 (9,9)，wire 与原生定点拾取必须一致。
+        # The raw order deliberately puts (11,11) first; the canonical snapshot
+        # tie-breaks by (distance,x,y) and picks (9,9); the wire and the native fixed-point pickup must agree.
         far_lexical = {
             "x": 11, "y": 11, "heal": True, "gear": False,
             "visible": True, "reachable": True,
@@ -3119,7 +3119,7 @@ class ConservedDamageRewardTests(unittest.TestCase):
         )
 
     def test_wait_cannot_claim_a_committed_previous_move(self):
-        """ActWait 可让旧单格收尾，但该位移不能记成当前 a0 的塑形收益。"""
+        """ActWait may let an old single-tile move finish, but that displacement must not count as shaping gain for the current a0."""
         before = raw(monsters=[monster(1, 100)])
         after = raw(monsters=[monster(1, 100)])
         after.update(player_x=11, player_y=10)
@@ -3136,7 +3136,7 @@ class ConservedDamageRewardTests(unittest.TestCase):
 
         self.assertAlmostEqual(reward(1), 0.005)
         self.assertAlmostEqual(reward(0), -0.002)
-        # 动作归因只剥离接近塑形；真实 XP 等环境账仍须保留。
+        # Action attribution strips only the approach shaping; real environment accounts such as XP must be kept.
         self.assertAlmostEqual(reward(0, xp=1), 0.008)
 
     def test_gear_shaping_uses_shared_utility_and_is_positive_bounded(self):
@@ -3214,8 +3214,8 @@ class TerminalDeathRewardSourceTests(unittest.TestCase):
                 return_value=-37.0) as shared:
             reward = env._reward(before, after, requested_action=0)
 
-        # R10 经济法案:委托调用显式携带经济规格(裸构造走类级 v1 默认,
-        # 数值语义与旧契约逐位一致)。
+        # R10 economy act: the delegated call carries the economy spec explicitly (a bare construction uses the class-level v1 default,
+        # numerically bit-identical to the old contract).
         shared.assert_called_once_with(
             dead=True, dungeon_level=1, death_ladder=True,
             economy=env_module.REWARD_ECONOMY_V1)

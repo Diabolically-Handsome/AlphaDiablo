@@ -1,4 +1,4 @@
-"""活动选模锚必须是当前 runtime/content 下的 schema-v2+ 档案。"""
+"""An active model-selection anchor must be a schema-v2+ archive under the current runtime/content."""
 
 from __future__ import annotations
 
@@ -85,7 +85,7 @@ class ActiveReferenceContractTests(unittest.TestCase):
                     ):
                 with self.assertRaises(module.OperationalFailure) as raised:
                     getattr(module, helper_name)()
-            self.assertIn("环境语义变更后须", str(raised.exception))
+            self.assertIn("after an environment-semantics change, re-run", str(raised.exception))
 
     def test_no_driver_grants_legacy_trust_to_active_archives(self):
         for module in (v24, v25, v26, v27, v28, v29, relay, verdict):
@@ -101,7 +101,7 @@ class ActiveReferenceContractTests(unittest.TestCase):
                     module.CALIBRATED_PROTOCOL_VERSION + 1):
                 with self.assertRaises(module.OperationalFailure) as raised:
                     module.require_calibrated_protocol()
-            self.assertIn("重跑 protocol-v3 基线", str(raised.exception))
+            self.assertIn("re-run the protocol-v3 baseline", str(raised.exception))
 
     def test_protocol_gate_is_wired_before_every_driver_preflight(self):
         for module in (v24, v25, v26, v27, v28, v29, relay):

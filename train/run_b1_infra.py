@@ -1,29 +1,29 @@
-"""B1「捆绑评测基建」驱动(docs/prereg/PREREG-B1-捆绑评测基建.md 条款唯一执行者;
-克隆 run_v32_sovereign.py 骨架,常量区承继 v32 全部 W7 常量 + PRIORS 四档
-sha + v32 CASE_RUNTIME 五 sha)。
+"""B1 "bundled evaluation infrastructure" driver (sole executor of docs/prereg/PREREG-B1-bundled-eval-infra.md;
+cloned from the run_v32_sovereign.py skeleton; the constants inherit every v32 W7 constant + the four PRIORS
+sha values + the five v32 CASE_RUNTIME sha values).
 
-阶段(D2,防后见条款由阶段顺序强制):
-  S0 预检(W1/W7/PRIOR_REFERENCE/BC_SD_WAIVER/W-E0/W-H8/304000+307000 台账扫描)
-  S1 W-G0-零侵入实弹(种子 307000,2×102,400 步,张量级判据)
-  S2 V1 方差发(兼 RB.1 位级承接;失配循 RB.2 带外分诊)
-  S3 K1/K2 留出参照两发(8000 池首曝,HOLDOUT_EXPOSURE 按发计)
-  S4 CANARY_SET + CRITERION_REGISTER(先登记后开箱)
-  S5 P8 腿点火(ctrl 配方逐字,偏离封闭枚举五处;台账制 2 次)
-  S6 金丝雀离线序列(全部先于 L1)+ 死门 would-trip 读数(一律只记不裁)
-  S7 腿考五发 L1-L5(双经理捆绑通道 + MS_REPORT)
-  S8 CRITERION_VALIDATE(8000 池灾难判据验证,schema 钉死)
-  S9 R 线记分卡(RB.1-RB.10;判决附录由值守记档)
+Stages (D2; the no-hindsight clause is enforced by stage order):
+  S0 preflight (W1/W7/PRIOR_REFERENCE/BC_SD_WAIVER/W-E0/W-H8/304000+307000 ledger scan)
+  S1 W-G0 zero-intrusion live run (seed 307000, 2x102,400 steps, tensor-level criteria)
+  S2 V1 variance run (also RB.1 bit-level continuity; a mismatch follows RB.2 out-of-band triage)
+  S3 K1/K2 two held-out reference runs (first exposure of the 8000 pool, HOLDOUT_EXPOSURE counted per run)
+  S4 CANARY_SET + CRITERION_REGISTER (register first, open later)
+  S5 P8 leg launch (ctrl recipe verbatim, five enumerated deviations; ledger budget 2)
+  S6 offline canary sequence (all before L1) + dead-gate would-trip readings (record only, never ruled on)
+  S7 five leg exams L1-L5 (dual-manager bundled channel + MS_REPORT)
+  S8 CRITERION_VALIDATE (8000-pool catastrophe-criterion validation, schema pinned)
+  S9 R-line scorecard (RB.1-RB.10; the verdict appendix is written by the operator)
 
-**本案系测量与仪表化案:零金种子、零名分变动、零发射、零环境侵入;
-一切死门读数只记不裁;M29 轨永不作裁决线。**
+**This is a measurement and instrumentation case: zero gold seeds, zero title changes, zero releases, zero environment intrusion;
+every dead-gate reading is record-only; the M29 track is never a decision line.**
 
-用法:
-  .venv/bin/python train/run_b1_infra.py            # 全案(S0-S9,幂等续跑)
-  .venv/bin/python train/run_b1_infra.py --plan     # 只打印施工/发车计划,零副作用
-  .venv/bin/python train/run_b1_infra.py --smoke    # 只跑 S1 W-G0(冻结前置,可在
-                                                    # 冻结 commit 前实弹;台账入册)
-退出码:0 案结/幂等;2 额度耗尽;3 预检;4 锁冲突;5 W-E0 发车前漂移;
-6 runtime 案中漂移;7 CASE_HALT_G0;8 REF_DIVERGENCE;其余 P1。
+Usage:
+  .venv/bin/python train/run_b1_infra.py            # whole case (S0-S9, idempotent resume)
+  .venv/bin/python train/run_b1_infra.py --plan     # print the build/launch plan only, no side effects
+  .venv/bin/python train/run_b1_infra.py --smoke    # run only S1 W-G0 (freeze prerequisite; may run live
+                                                    # before the freeze commit; recorded in the ledger)
+Exit codes: 0 case closed/idempotent; 2 budget exhausted; 3 preflight; 4 lock conflict; 5 W-E0 pre-launch drift;
+6 runtime drift during the case; 7 CASE_HALT_G0; 8 REF_DIVERGENCE; anything else P1.
 """
 from __future__ import annotations
 
@@ -57,7 +57,7 @@ B1 = RUNS / "infra-b1"
 LEDGER = B1 / "gate_ledger.jsonl"
 EVAL = RUNS / "eval-assembled"
 
-# ---- W7 工件钉死(全文 sha 驱动器冻结常量;失配即 P4 不发车) ----
+# ---- W7 artifact pins (full-file sha, frozen driver constants; a mismatch means P4, no launch) ----
 KING_ZIP = ROOT / "train" / "models" / "v28-worker-leg1" / "model_final.zip"
 # 2026-09-23: re-saved with neutral local paths (content otherwise unchanged); was 2f7bc9dd810956c3
 KING_ZIP_SHA = "0c6f014da19c3bf27b208d55adc76be13fcad8bc5f744b95f4f743be97426434"
@@ -69,11 +69,11 @@ H_NPZ_SHA = "0f2264860b0960e7951efd424836b90c09c002cebca7bf8109fd669b13be63d7"  
 M29_NPZ = ROOT / "train" / "models" / "v29-manager-mfresh" / "policy.npz"
 M29_NPZ_SHA = "894413884d04adfdb2a574866a15dfed0c1c01d6781403d9ab4ff07b1f7b66d6"
 BC_SD = RUNS / "bc-worker" / "policy_sd.pt"
-BC_SD_SHA = "f052067a589cfcdedaf1754ae6d241d736bb97f6fc798683f395c76cb0ff98e6"   # v32 BC_REGEN 落定值(BC_SD_WAIVER 条款,D0-④)
+BC_SD_SHA = "f052067a589cfcdedaf1754ae6d241d736bb97f6fc798683f395c76cb0ff98e6"   # value settled by v32 BC_REGEN (BC_SD_WAIVER clause, D0-4)
 KING_SD = RUNS / "v32" / "king_anchor_sd.pt"
-KING_SD_SHA = "009aaad29d2653cde3f4e8ed2fafd8861a0f1f572a140c64118df9e3fa3df35d"  # v32 KING_SD_OK 落定值
+KING_SD_SHA = "009aaad29d2653cde3f4e8ed2fafd8861a0f1f572a140c64118df9e3fa3df35d"  # value settled by v32 KING_SD_OK
 
-# PRIORS 前科档案钉死(指纹对照基准,先封存后引用;PRIOR_REFERENCE 事件入台账)
+# PRIORS archive pins (fingerprint baseline, sealed before use; PRIOR_REFERENCE event goes into the ledger)
 PRIORS = {
     "v32-ref-launch": (EVAL / "v32-ref-launch.json",
                        "48033577f8f124ae81fc5436eb44e5aa0bf541a4437d7fec99d8f5b1209c71fa",
@@ -89,7 +89,7 @@ PRIORS = {
                      125.2),
 }
 
-# W-E0 环境零漂移断言:v32 台账 CASE_RUNTIME 落定值(钉为驱动器冻结常量)
+# W-E0 zero environment drift assertion: CASE_RUNTIME values settled in the v32 ledger (pinned as frozen driver constants)
 V32_CASE_RT = {
     "bridge": "8c45da3ea4121eab13da2b1a62ba52a189a25e6ea36833fa98d58d0b46140ba1",
     "engine": "be59473ea7db0a122350b179d1509454bd05ebf0e7d07946f24b2f57ff1890ce",
@@ -99,45 +99,45 @@ V32_CASE_RT = {
 }
 CALIBRATED_PROTOCOL_VERSION = 3
 
-# ---- P8 腿配方常量(D2;ctrl 配方逐字,偏离封闭枚举五处) ----
+# ---- P8 leg recipe constants (D2; ctrl recipe verbatim, five enumerated deviations) ----
 LEG_STEPS = 499_712
 NT_TARGET = 3_997_696
 BETA = 0.015625
 QUANTUM = 2048                        # 512 n-steps × 4 envs
-SEED = 304_000                        # 偏离①:原谱系种子 303000 + 1000(常量,禁种子搜索)
-CALIB_PROBES = tuple(KING_STEPS + 49_152 * k for k in range(1, 11))   # 偏离②:十点步表
-CKPT_EVERY = 98_304                   # 偏离③(=48×2048)
-SENTINEL_EVERY = 49_152               # 偏离④
-DRY_ANCHOR_EVERY = 49_152             # 偏离⑤
+SEED = 304_000                        # deviation 1: original lineage seed 303000 + 1000 (constant, no seed search)
+CALIB_PROBES = tuple(KING_STEPS + 49_152 * k for k in range(1, 11))   # deviation 2: ten-point step table
+CKPT_EVERY = 98_304                   # deviation 3 (=48x2048)
+SENTINEL_EVERY = 49_152               # deviation 4
+DRY_ANCHOR_EVERY = 49_152             # deviation 5
 RUN_NAME = "b1-p8"
 CANARY_STEPS = tuple(KING_STEPS + 98_304 * k for k in range(1, 5))
-# 机械使然另落之 +491,520 ckpt:照常归档但不入金丝雀序列(点表预登记即封闭)
+# the +491,520 ckpt produced mechanically is archived as usual but is not part of the canary sequence (the point table is closed by pre-registration)
 EXTRA_CKPT_STEP = KING_STEPS + 491_520
-CANARY_CONTROLS = (7003, 7011)        # W-C 健康对照(P5 无尖峰,阴性对照)
+CANARY_CONTROLS = (7003, 7011)        # W-C healthy controls (P5 spike-free, negative controls)
 
-# ---- W-G0 烟测常量(专用步表写死于案内) ----
-SMOKE_SEED = 307_000                  # 非案腿种子(弃 304000,防偷看腿前段遥测)
-SMOKE_STEPS = 102_400                 # 50 rollout,整除 2048
+# ---- W-G0 smoke-test constants (dedicated step table fixed in the case) ----
+SMOKE_SEED = 307_000                  # not a case-leg seed (304000 avoided so the leg's early telemetry is not previewed)
+SMOKE_STEPS = 102_400                 # 50 rollouts, divisible by 2048
 SMOKE_END = KING_STEPS + SMOKE_STEPS  # 3,600,384
-SMOKE_CALIB = (KING_STEPS + 49_152, KING_STEPS + 98_304)   # 窗内 2 个 calib 点
+SMOKE_CALIB = (KING_STEPS + 49_152, KING_STEPS + 98_304)   # 2 calib points inside the window
 SMOKE_RUNS = {"bare": "b1-smoke-bare", "knobs": "b1-smoke-knobs"}
 SMOKE_TIMEOUT = 3_600
 
-# ---- 死门 would-trip 常量(E3;一律只记不裁,阈值系定标输入) ----
-CE_LINE = 0.2                         # 绝对门(饱和预期,系重校目标线非区分器)
-RATIO_LINE = 30.0                     # 梯度比门(g_pg/g_ce,β=0.015625 已折入口径)
-DRY_REF_THRONE = 0.7515               # 王座级绝对参考(增量门零点)
-DRY_REF_LINEAGE = 0.6305              # 谱系级血统参考(v28-leg1 起点,F2-P9 在册)
-DRY_TRIP_PP = 2.0                     # would-trip:增量 > +2pp
+# ---- dead-gate would-trip constants (E3; record only, never ruled on; thresholds are calibration inputs) ----
+CE_LINE = 0.2                         # absolute gate (expected to saturate; a re-calibration target, not a discriminator)
+RATIO_LINE = 30.0                     # gradient-ratio gate (g_pg/g_ce, β=0.015625 already folded in)
+DRY_REF_THRONE = 0.7515               # throne-level absolute reference (zero point of the increment gate)
+DRY_REF_LINEAGE = 0.6305              # lineage reference (v28-leg1 start point, recorded in F2-P9)
+DRY_TRIP_PP = 2.0                     # would-trip: increment > +2pp
 
-# ---- 判据常量(D3,全部预登记案中禁调) ----
+# ---- criterion constants (D3; all pre-registered, frozen for the case) ----
 MS_FLAG_LINE = 20.0
-REC_H_LINE = -20.0                    # REC 首肢:Δ_H(s) ≤ −20
-REC_RECOVERY = 20.0                   # REC 次肢:Δ_M29(s) ≥ Δ_H(s) + 20
+REC_H_LINE = -20.0                    # REC first limb: Δ_H(s) ≤ −20
+REC_RECOVERY = 20.0                   # REC second limb: Δ_M29(s) ≥ Δ_H(s) + 20
 MIN_JUDGEABLE_HITS = 3
 TAU_FLOOR_BAND = (25.0, 40.0)
 
-# ---- R 线带常量(D3/D5;闭区间 [lo, hi]) ----
+# ---- R-line band constants (D3/D5; closed interval [lo, hi]) ----
 RB3_BAND = {"point": 25.0, "band": (5.0, 50.0)}
 RB4_BAND = {"point": -20.0, "band": (-45.0, -2.0),
             "median_line": -5.0, "neg_line": 21}
@@ -167,7 +167,7 @@ CASE_RT: dict | None = None
 
 
 # ======================================================================
-# 台账与通用工具(run_v32_sovereign 逐字承继 + 案级扩展)
+# Ledger and shared utilities (inherited verbatim from run_v32_sovereign + case-level extensions)
 # ======================================================================
 
 def log(event: dict):
@@ -198,7 +198,7 @@ def require(condition: bool, message: str) -> None:
 
 
 class PreflightFailure(RuntimeError):
-    """P4:预检不过 → 不发车呈报(退出码 3)。"""
+    """P4: preflight failed -> no launch, report for review (exit code 3)."""
 
 
 def pre(condition: bool, message: str) -> None:
@@ -215,12 +215,12 @@ def runtime_five(snapshot) -> dict:
 
 
 def assert_case_runtime(snapshot, where: str):
-    require(CASE_RT is not None, "CASE_RUNTIME 未落定")
+    require(CASE_RT is not None, "CASE_RUNTIME not settled")
     current = runtime_five(snapshot)
     if current != CASE_RT:
         log({"event": "CASE_HALT_RUNTIME_DRIFT", "where": where,
              "case": CASE_RT, "current": current})
-        attention(f"案级运行时漂移({where}),停机呈报")
+        attention(f"case-level runtime drift ({where}); halting for review")
         raise SystemExit(6)
 
 
@@ -256,7 +256,7 @@ def read_ledger() -> list[dict]:
         try:
             out.append(json.loads(line))
         except json.JSONDecodeError as exc:
-            raise OperationalFailure(f"台账第 {i} 行不可解析: {exc}") from exc
+            raise OperationalFailure(f"ledger line {i} unparsable: {exc}") from exc
     return out
 
 
@@ -281,8 +281,8 @@ def firing_count(events, tag) -> int:
 
 def by_seed(rows, lo, hi) -> dict:
     m = {r["seed"]: r for r in rows}
-    require(len(rows) == len(m), "种子集合异常(含重复 seed)")
-    require(set(m) == set(range(lo, hi + 1)), f"种子集合异常(须为 {lo}-{hi})")
+    require(len(rows) == len(m), "abnormal seed set (duplicate seed)")
+    require(set(m) == set(range(lo, hi + 1)), f"abnormal seed set (must be {lo}-{hi})")
     return m
 
 
@@ -300,19 +300,19 @@ def impl_bundle_sha16() -> str:
 
 
 # ======================================================================
-# 统计纪律工具(D3 硬约束;纯函数,单测覆盖)
+# Statistical discipline tools (D3 hard constraints; pure functions, unit-tested)
 # ======================================================================
 
 def median(xs) -> float:
     s = sorted(xs)
     n = len(s)
-    require(n > 0, "median 输入为空")
+    require(n > 0, "median input is empty")
     mid = n // 2
     return float(s[mid]) if n % 2 else (s[mid - 1] + s[mid]) / 2.0
 
 
 def binom_tail_ge(k: int, n: int, p: float = 0.5) -> float:
-    """P(X >= k),精确二项。"""
+    """P(X >= k), exact binomial."""
     return sum(math.comb(n, i) * p ** i * (1 - p) ** (n - i)
                for i in range(k, n + 1))
 
@@ -328,8 +328,8 @@ def sign_test(diffs) -> dict:
 
 
 def deleveraged_mean(diff_by_seed: dict) -> dict:
-    """留一去最大杠杆种子后重算均值,并列名该种子(F2 头条勘正②)。"""
-    require(len(diff_by_seed) >= 2, "去杠杆均值需要 ≥2 种子")
+    """Leave out the highest-leverage seed and recompute the mean, naming that seed (F2 headline correction 2)."""
+    require(len(diff_by_seed) >= 2, "the deleveraged mean needs >=2 seeds")
     lever = max(diff_by_seed, key=lambda s: abs(diff_by_seed[s]))
     rest = [v for s, v in diff_by_seed.items() if s != lever]
     return {"dropped_seed": lever,
@@ -338,7 +338,7 @@ def deleveraged_mean(diff_by_seed: dict) -> dict:
 
 
 def band_judge(x: float, lo: float, hi: float, integer: bool = False) -> dict:
-    """闭区间带判读 + 临线条款(D3:连续量 |x−边界|≤0.05×带宽;计数量距边界≤1)。"""
+    """Closed-band reading + borderline clause (D3: continuous |x-boundary|<=0.05 x bandwidth; counts within 1 of the boundary)."""
     in_band = lo <= x <= hi
     if integer:
         borderline = min(abs(x - lo), abs(x - hi)) <= 1
@@ -346,15 +346,15 @@ def band_judge(x: float, lo: float, hi: float, integer: bool = False) -> dict:
         borderline = min(abs(x - lo), abs(x - hi)) <= 0.05 * (hi - lo)
     out = {"x": round(float(x), 4), "band": [lo, hi], "in_band": in_band}
     if borderline:
-        out["borderline_note"] = "临线 + 线未重标(D3 临线条款强制注记)"
+        out["borderline_note"] = "borderline + line not recalibrated (mandatory note per the D3 borderline clause)"
     return out
 
 
 def clopper_pearson(k: int, n: int, alpha: float = 0.05) -> tuple[float, float]:
-    """精确二项 95% 区间(D3:precision 判词强制携带,禁裸点数)。
-    下界:cdf(k−1, p) = 1 − α/2 之解;上界:cdf(k, p) = α/2 之解;
-    cdf(kk, p) 对 p 单调递减,二分即得。"""
-    require(0 <= k <= n and n > 0, "clopper_pearson 输入非法")
+    """Exact binomial 95% interval (D3: a precision verdict must carry it; no bare point estimates).
+    Lower bound: solve cdf(k-1, p) = 1 - α/2; upper bound: solve cdf(k, p) = α/2;
+    cdf(kk, p) is decreasing in p, so bisection suffices."""
+    require(0 <= k <= n and n > 0, "clopper_pearson invalid input")
 
     def cdf(kk: int, p: float) -> float:      # P(X <= kk | n, p)
         return sum(math.comb(n, i) * p ** i * (1 - p) ** (n - i)
@@ -376,11 +376,11 @@ def clopper_pearson(k: int, n: int, alpha: float = 0.05) -> tuple[float, float]:
 
 
 def ms_vectors(leg_h: dict, leg_m29: dict, ref_h: dict, ref_m29: dict) -> dict:
-    """MS(s) := |Δ_H(s) − Δ_M29(s)|,Δ_m(s) = ret_leg,m − ret_ref,m(同经理配对)。
-    并列带符号量 Δ_H−Δ_M29(承统计 m-7,防'M29 侧更差'型翻转被绝对值吞没)。"""
+    """MS(s) := |Δ_H(s) − Δ_M29(s)|, Δ_m(s) = ret_leg,m − ret_ref,m (paired by manager).
+    The signed Δ_H−Δ_M29 is reported alongside (statistics m-7, so an 'M29 side worse' flip is not swallowed by the absolute value)."""
     seeds = sorted(leg_h)
     require(set(seeds) == set(leg_m29) == set(ref_h) == set(ref_m29),
-            "MS 四档种子面不一致")
+            "MS: the four archives have different seed sets")
     signed = {}
     for s in seeds:
         dh = leg_h[s]["ret"] - ref_h[s]["ret"]
@@ -396,20 +396,20 @@ def ms_vectors(leg_h: dict, leg_m29: dict, ref_h: dict, ref_m29: dict) -> dict:
 
 
 # ======================================================================
-# 评测机械(exam_or_adopt 骨架承继 + P2 台账制额度 + E1 捆绑通道)
+# Evaluation machinery (exam_or_adopt skeleton inherited + P2 ledger budgets + E1 bundled channel)
 # ======================================================================
 
 def exam(worker, tag, seeds, manager_npz=None):
     out = EVAL / f"{tag}.json"
-    require(not out.exists(), f"档案不可变性:{out} 已存在,拒绝覆写")
+    require(not out.exists(), f"archive immutability: {out} already exists, refusing to overwrite")
     lo, hi = (int(x) for x in seeds.split("-", 1))
     seed_values = list(range(lo, hi + 1))
     snapshot = freeze_eval_identity(ROOT, worker, manager_npz)
-    assert_case_runtime(snapshot, f"exam:{tag}")          # W11 每发身份重申
+    assert_case_runtime(snapshot, f"exam:{tag}")          # W11 identity restated for every run
     expected = expected_eval_identity(snapshot, tag=tag, seeds=seed_values)
     worker_arg = (worker if snapshot["worker"]["kind"] in {"script", "bc"}
                   else snapshot["worker"]["path"])
-    # E1 纪律:--manager-npz 逐次显式,禁默认回落;本案一切发无 --board
+    # E1 discipline: --manager-npz explicit every time, no default fallback; no run in this case uses --board
     cmd = [PY, "train/eval_assembled.py", "--worker", str(worker_arg),
            "--manager-npz", snapshot["manager"]["path"],
            "--seeds", seeds, "--tag", tag]
@@ -443,21 +443,21 @@ def validate_adopted(tag, worker, seeds, manager_npz=None):
 
 def exam_case(events, worker, tag, seeds, manager_npz=None,
               bundled_with=None, extra: dict | None = None):
-    """考发终局条款(v32 逐字)+ P2 台账制额度(每发 FIRING_START 计 2 次)。"""
+    """Exam-run finality clause (v32 verbatim) + P2 ledger budget (each run's FIRING_START counts, 2 allowed)."""
     out = EVAL / f"{tag}.json"
     prior = [e for e in events
              if e.get("event") == "exam_ok" and e.get("tag") == tag]
     if out.exists():
-        require(bool(prior), f"{tag} 残档在位而台账无 exam_ok,停机呈报")
+        require(bool(prior), f"{tag} leftover archive present but no exam_ok in the ledger; halting for review")
         d = validate_adopted(tag, worker, seeds, manager_npz)
         require(d["agg"]["_sha"] == prior[-1]["sha"],
-                f"{tag} 档案与台账 exam_ok sha 失配")
+                f"{tag} archive and ledger exam_ok sha mismatch")
         log({"event": "exam_adopted", "tag": tag, "sha": d["agg"]["_sha"]})
         return d
-    require(not prior, f"{tag} 台账在册而档案缺失(REF_INVALID 型),停机呈报")
+    require(not prior, f"{tag} recorded in the ledger but the archive is missing (REF_INVALID type); halting for review")
     while True:
         fired = firing_count(events, tag)
-        require(fired < 2, f"{tag} 评测发额度耗尽(台账制 2 次)——P5 甲案停机")
+        require(fired < 2, f"{tag} evaluation run budget exhausted (ledger budget 2) -- P5 plan A halt")
         ev = {"event": "FIRING_START", "tag": tag, "attempt": fired + 1}
         log(ev)
         events.append(ev)
@@ -467,31 +467,31 @@ def exam_case(events, worker, tag, seeds, manager_npz=None,
             ok = {"event": "exam_ok", "tag": tag, "mean": a["ret_mean"],
                   "died": a["died"], "sha": a["_sha"]}
             if bundled_with:
-                ok["bundled_with"] = bundled_with     # E1:exam_ok 强制加携对侧 tag
+                ok["bundled_with"] = bundled_with     # E1: exam_ok must also carry the paired tag
             if extra:
                 ok.update(extra)
             log(ok)
             events.append({"event": "exam_ok", "tag": tag, "sha": a["_sha"]})
             return d
         log({"event": "exam_crash", "tag": tag,
-             "note": "评测失败,按 P2 额度重考(发车前断言失败一律停机不重试)"})
+             "note": "evaluation failed; re-exam within the P2 budget (a failed pre-launch assertion always halts, no retry)"})
 
 
 def holdout_account(events, tag):
-    """HOLDOUT_EXPOSURE 按发计(W-H8 立法;暴露预算不可再生)。"""
+    """HOLDOUT_EXPOSURE counted per run (W-H8 rule; the exposure budget does not regenerate)."""
     if any(e.get("event") == "HOLDOUT_EXPOSURE" and e.get("tag") == tag
            for e in events):
         return
     n = sum(1 for e in events if e.get("event") == "HOLDOUT_EXPOSURE") + 1
     ev = {"event": "HOLDOUT_EXPOSURE", "tag": tag, "cumulative_shots": n,
-          "note": "按发计;本案首曝 2 对/4 发(D0-② 亲批);"
-                  "'每案至多一对捆绑发'自本案案结后生效"}
+          "note": "counted per run; first exposure in this case is 2 pairs/4 runs (D0-2, approved 2026-07-17); "
+                  "'at most one bundled pair per case' applies after this case closes"}
     log(ev)
     events.append(ev)
 
 
 def bundled_exam(events, worker, tag_h, tag_m29, seeds, holdout=False):
-    """E1 双经理捆绑评测通道(驱动器级):每次工人考发自动 H 与 M29 成对。"""
+    """E1 dual-manager bundled evaluation channel (driver level): every worker exam pairs H and M29 automatically."""
     d_h = exam_case(events, worker, tag_h, seeds, manager_npz=None,
                     bundled_with=tag_m29)
     if holdout:
@@ -512,23 +512,23 @@ def ms_report(events, pool, tag_h, tag_m29, leg_h, leg_m29, ref_h, ref_m29,
     var_zero = stage_done(events, "VARPROBE")
     ev = {"event": "MS_REPORT", "pool": pool, "tags": [tag_h, tag_m29],
           "refs": ref_names, **v,
-          "family_note": "MS 逐种子挂旗系 32 次比较之族(族账注记,承统计 M-6)"
-                         + (";RB.2 判方差=0 → 旗无测量噪声假阳" if var_zero
+          "family_note": "per-seed MS flags form a family of 32 comparisons (family accounting note, statistics M-6)"
+                         + ("; RB.2 found variance=0 -> flags carry no measurement-noise false positives" if var_zero
                             else ""),
-          "ms_limitation": "MS 限定(强制随判词):M29 与 H 共享 exhausted 盲区"
-                           "与 7017 型选窗盲点,MS≈0 不证工人无损——MS 系"
-                           "'经理敏感损伤'探测器,非全损伤探测器"}
+          "ms_limitation": "MS caveat (mandatory with the verdict): M29 and H share the exhausted blind spot"
+                           " and the 7017-type window-choice blind spot; MS≈0 does not show the worker is undamaged -- MS is a"
+                           " detector of 'manager-sensitive damage', not of all damage"}
     log(ev)
     events.append(ev)
 
 
 # ======================================================================
-# E4 重放通道(OBS_DRIFT)与 E2 金丝雀
+# E4 replay channel (OBS_DRIFT) and E2 canaries
 # ======================================================================
 
 def run_obsdrift(worker_npz, archive: pathlib.Path, out: pathlib.Path,
                  manager=None) -> dict:
-    """先落档案、后重放对账(保真锚顺序写死,承工程 m-8);报告文件幂等采信。"""
+    """Archive first, then replay and reconcile (fidelity anchor order fixed, engineering m-8); an existing report file is adopted idempotently."""
     if out.exists():
         report = strict_json_loads(out.read_bytes())
         if (report.get("archive_sha256") == sha256(archive)
@@ -541,7 +541,7 @@ def run_obsdrift(worker_npz, archive: pathlib.Path, out: pathlib.Path,
         cmd += ["--manager", str(manager)]
     rc = run(cmd, f"obsdrift-{out.stem}.{time.time_ns()}.log", 3_600)
     require(rc == 0 and out.exists(),
-            f"E4 重放失败/保真失配:{archive.name}(保真锚条款,停机呈报)")
+            f"E4 replay failed / fidelity mismatch: {archive.name} (fidelity anchor clause; halting for review)")
     return strict_json_loads(out.read_bytes())
 
 
@@ -571,9 +571,9 @@ def obs_drift_event(events, at: str, leg_report: dict, throne_report: dict,
         diffs[dim] = (None if leg_stats is None or th is None
                       else round(leg_stats["P50"] - th["P50"], 6))
     ev = {"event": "OBS_DRIFT", "at": at,
-          "schema": "8 追加维逐维 {mean,std,min,max,P5,P50,P95} + 窗末 walkable"
-                    " 体态 {walkΣ/121 窗末均值, 西南带均值}(局部图下标 44-164);"
-                    "漂移读数 := 腿侧对王座侧逐维 P50 差(封闭枚举)",
+          "schema": "8 appended dims, each {mean,std,min,max,P5,P50,P95} + window-end walkable"
+                    " shape {window-end mean of walkSum/121, south-west band mean} (local-map indices 44-164);"
+                    " drift reading := per-dim P50 difference, leg side minus throne side (closed enumeration)",
           "appended8_leg": leg_report["appended8_window_end"],
           "appended8_throne": throne_report["appended8_window_end"],
           "p50_diff_leg_minus_throne": diffs,
@@ -587,8 +587,8 @@ def obs_drift_event(events, at: str, leg_report: dict, throne_report: dict,
                           leg_report, sort_keys=True).encode()).hexdigest()[:16],
                       "throne_sha16": hashlib.sha256(json.dumps(
                           throne_report, sort_keys=True).encode()).hexdigest()[:16]},
-          "note": "P1 改判限定:仪表维(8 追加维)仅翻边际窗,体态维系主嫌;"
-                  "F-lock 机制在基础 295 维体态,监控面双覆盖;只记不裁"}
+          "note": "P1 revised-ruling caveat: the instrument dims (8 appended dims) only flip marginal windows; the shape dims are the main suspect;"
+                  " the F-lock mechanism lives in the base 295-dim shape, so monitoring covers both; record only"}
     log(ev)
     events.append(ev)
 
@@ -600,25 +600,25 @@ def canary_eval_done(events, tag) -> dict | None:
 
 
 def canary_exam(events, worker_npz, tag, manager_npz, l1_fired: bool):
-    """E2 金丝雀发:不占评测发额度;同 ckpt×manager 落档至多一条即终局;
-    重试仅限无档案运维失败(计数入 OPERATIONAL-canary);补评截止 = 首个 L1
-    FIRING_START 之前;失败只记不停腿(P-canary)。"""
+    """E2 canary run: does not use the evaluation run budget; one archive per ckpt x manager is final;
+    retries only for operational failures without an archive (counted in OPERATIONAL-canary); the make-up evaluation deadline = before the first L1
+    FIRING_START; a failure is recorded only and never stops the leg (P-canary)."""
     out = EVAL / f"{tag}.json"
     prior = canary_eval_done(events, tag)
     if prior is not None:
-        require(out.exists(), f"金丝雀 {tag} 台账在册而档案缺失,停机呈报")
+        require(out.exists(), f"canary {tag} recorded in the ledger but the archive is missing; halting for review")
         d = validate_adopted(tag, worker_npz, POOL_PROBE, manager_npz)
         require(d["agg"]["_sha"] == prior["sha"],
-                f"金丝雀 {tag} 档案与台账 sha 失配")
+                f"canary {tag} archive and ledger sha mismatch")
         return d, False
     if out.exists():
-        # 同一驱动进程在落档与记账之间崩溃的残档:身份复验后采信(终局条款)
+        # leftover archive from a driver crash between writing the archive and the ledger entry: adopted after identity re-check (finality clause)
         d = validate_adopted(tag, worker_npz, POOL_PROBE, manager_npz)
         return d, True
     if l1_fired:
         log({"event": "OPERATIONAL-canary", "tag": tag,
-             "why": "补评截止已过(首个 L1 FIRING_START 之前),禁补——"
-                    "该点 R 线判'不可判,如实登记'"})
+             "why": "make-up evaluation deadline passed (before the first L1 FIRING_START); no make-up -- "
+                    "the R line for this point reads 'undecidable, recorded as is'"})
         return None, False
     retries = 0
     while retries < 2:
@@ -627,14 +627,14 @@ def canary_exam(events, worker_npz, tag, manager_npz, l1_fired: bool):
             return d, True
         retries += 1
         log({"event": "OPERATIONAL-canary", "tag": tag, "retry": retries,
-             "why": "无档案之运维失败,重试(计数入册)"})
+             "why": "operational failure without an archive; retry (counted in the ledger)"})
     log({"event": "OPERATIONAL-canary", "tag": tag,
-         "why": "重试后仍失败——只记不停腿,该点 R 线判'不可判'"})
+         "why": "still failing after retry -- record only, the leg continues; the R line for this point reads 'undecidable'"})
     return None, False
 
 
 def canary_stage(events, d_c_seeds):
-    """S6:金丝雀离线序列(检查点离线通道;只记不裁;全部先于 L1)。"""
+    """S6: offline canary sequence (checkpoint offline channel; record only; all before L1)."""
     l1_fired = firing_count(events, "p8-s16") > 0
     throne_rep = throne_replay()
     canary_docs = {}
@@ -642,13 +642,13 @@ def canary_stage(events, d_c_seeds):
         ckpt = RUNS / RUN_NAME / "ckpt" / f"model_{step}_steps.zip"
         npz = B1 / "canary" / f"policy_{step}.npz"
         if not npz.exists():
-            require(ckpt.is_file(), f"金丝雀 ckpt 缺失:{ckpt}")
-            # 案外独立进程逐 ckpt 离线导出(现成 export_worker_npz,自带 parity)
+            require(ckpt.is_file(), f"canary ckpt missing: {ckpt}")
+            # per-ckpt offline export in a separate out-of-case process (existing export_worker_npz, with built-in parity)
             rc = run([PY, "train/export_worker_npz.py", str(ckpt), str(npz)],
                      f"canary-export-{step}.log", 600)
             if rc != 0 or not npz.exists():
                 log({"event": "OPERATIONAL-canary", "ckpt_step": step,
-                     "why": f"npz 导出失败(rc={rc}),该点全部读数'不可判'"})
+                     "why": f"npz export failed (rc={rc}); every reading at this point is 'undecidable'"})
                 continue
         replay_rep = None
         for mtag, manager in (("h", None), ("m29", str(M29_NPZ))):
@@ -681,11 +681,11 @@ def canary_stage(events, d_c_seeds):
                       "d_windows": [d_windows(r) for r in rows],
                       "farm_tau_mean": [r["farm_tau_mean"] for r in rows],
                       "tau_floor_distance_footnote": tau_note,
-                      "footnote": "τ 中位距 25 地板之近失距离(承统计 m-9,"
-                                  "只记不裁;P5 型重放取证明示出界不做;"
-                                  "τ 中位系 H 侧 E4 重放口径)",
-                      "discipline": "只记不裁;禁作任何腿内干预依据;"
-                                    "终点检查点唯一 = nt 3,997,696"}
+                      "footnote": "near-miss distance of the τ median from the 25 floor (statistics m-9,"
+                                  " record only; P5-style replay forensics explicitly out of scope;"
+                                  " the τ median uses the H-side E4 replay definition)",
+                      "discipline": "record only; never a basis for any in-leg intervention;"
+                                    " the only end checkpoint = nt 3,997,696"}
                 log(ev)
                 events.append({"event": "CANARY_EVAL", "tag": tag,
                                "sha": d["agg"]["_sha"]})
@@ -693,10 +693,10 @@ def canary_stage(events, d_c_seeds):
 
 
 def deadgate_stage(events):
-    """S6b:死门 would-trip 双读数(E3;一律只记不裁,阈值系定标输入)。"""
+    """S6b: dead-gate would-trip dual readings (E3; record only, never ruled on; thresholds are calibration inputs)."""
     leg_dir = RUNS / RUN_NAME
     calib_path = leg_dir / "calib.jsonl"
-    require(calib_path.is_file(), "calib.jsonl 缺失(E3 十点步表未产出)")
+    require(calib_path.is_file(), "calib.jsonl missing (E3 ten-point step table not produced)")
     done_steps = {e.get("step") for e in events
                   if e.get("event") == "GATE_WOULD_TRIP"
                   and e.get("gate") == "calib"}
@@ -716,14 +716,14 @@ def deadgate_stage(events):
               "grad_ratio": None if ratio is None else round(ratio, 2),
               "ratio_line": RATIO_LINE,
               "would_trip_ratio": (ratio is not None and ratio > RATIO_LINE),
-              "口径": "比值 := calib.jsonl 之 g_pg/g_ce,g_ce = ‖∇(β·distill_ce)‖"
-                     "(β=0.015625 已折入;字面裸 CE 梯度读法差 64×,禁用)",
-              "note": "只记不裁;绝对门系重校目标线非区分器,饱和即预期,"
-                      "判词禁作异常叙事(承工程 m-2)"}
+              "definition": "ratio := g_pg/g_ce from calib.jsonl, g_ce = ‖∇(β·distill_ce)‖"
+                     " (β=0.015625 folded in; reading it as the raw literal CE gradient is off by 64x, not allowed)",
+              "note": "record only; the absolute gate is a re-calibration target, not a discriminator; saturation is expected,"
+                      " and the verdict must not narrate it as an anomaly (engineering m-2)"}
         log(ev)
         events.append(ev)
     sentinel_path = leg_dir / "sentinel.jsonl"
-    require(sentinel_path.is_file(), "sentinel.jsonl 缺失(E3 哨兵加密未产出)")
+    require(sentinel_path.is_file(), "sentinel.jsonl missing (E3 denser sentinel not produced)")
     dry_lines = [json.loads(x) for x in sentinel_path.read_text().splitlines()
                  if '"dry-anchor"' in x]
     done_dry = {e.get("step") for e in events
@@ -738,21 +738,21 @@ def deadgate_stage(events):
               "ref_throne": DRY_REF_THRONE, "ref_lineage": DRY_REF_LINEAGE,
               "increment_pp": inc_pp, "trip_line_pp": DRY_TRIP_PP,
               "would_trip": inc_pp > DRY_TRIP_PP,
-              "note": "双参考钉死(承统计 M-4/工程 m-3):增量门零点 0.7515"
-                      "(王座级);血统参考 0.6305(v28-leg1 起点)——漂移早于"
-                      " v32 之 +12pp 血统事实随定标数据入册,防误导后案挂闸;"
-                      "回调跨界后首发,首点非入场步,如实登记;只记不裁"}
+              "note": "both references pinned (statistics M-4 / engineering m-3): increment-gate zero point 0.7515"
+                      " (throne level); lineage reference 0.6305 (v28-leg1 start) -- the drift predates"
+                      " v32; the +12pp lineage fact is recorded with the calibration data so later cases do not gate on a misleading line;"
+                      " first run after the callback crosses the boundary, first point is not the entry step, recorded as is; record only"}
         log(ev)
         events.append(ev)
     return {"ratios": ratios, "ce_values": ce_values, "dry_lines": dry_lines}
 
 
 # ======================================================================
-# S1 W-G0-零侵入实弹(冻结先决;张量级判据)
+# S1 W-G0 zero-intrusion live run (freeze prerequisite; tensor-level criteria)
 # ======================================================================
 
 def _smoke_cmd(variant: str) -> list[str]:
-    """烟测命令(ctrl 配方逐字,仅换种子/步数;knobs 侧加全套仪表旋钮)。"""
+    """Smoke-test commands (ctrl recipe verbatim, only seed/steps changed; the knobs side adds the full instrument knob set)."""
     cmd = [PY, "train/train_ppo.py", "--worker", "--algo", "mppo",
            "--gamma", "1.0", "--max-steps", "3000", "--n-steps", "512",
            "--num-envs", "4", "--lr", "3e-4", "--ent-coef", "0.005",
@@ -835,7 +835,7 @@ def _progress_lines(run_dir: pathlib.Path) -> list[dict]:
     lines = []
     for raw in (run_dir / "progress.jsonl").read_text().splitlines():
         rec = json.loads(raw)
-        rec.pop("t", None)                    # 墙钟字段非 RNG 相关,剔除
+        rec.pop("t", None)                    # wall-clock field is not RNG-related; dropped
         lines.append(rec)
     return lines
 
@@ -852,30 +852,30 @@ def _final_sentinel_lines(run_dir: pathlib.Path) -> dict:
 
 
 def smoke_stage(events) -> None:
-    """W-G0-零侵入(E 项旋钮之冻结先决,实弹)。幂等:PASS 事件且 impl 束
-    sha16 与当前一致即免跑;FAIL → CASE_HALT_G0(退出码 7)不冻结不发车。"""
+    """W-G0 zero intrusion (freeze prerequisite for the E-item knobs, live run). Idempotent: a PASS event whose impl bundle
+    sha16 matches the current one skips the run; FAIL -> CASE_HALT_G0 (exit code 7), no freeze, no launch."""
     impl16 = impl_bundle_sha16()
     for e in events:
         if (e.get("event") == "G0_NULLINTRUSION" and e.get("verdict") == "PASS"
                 and e.get("impl_sha16") == impl16):
-            print(f"W-G0 已过(impl {impl16}),幂等跳过", flush=True)
+            print(f"W-G0 already passed (impl {impl16}); idempotent skip", flush=True)
             return
-    # 烟测前置断言(工件面;不含 W1 git 断言——烟测系冻结前置,准许脏树实弹)
-    pre(KING_ZIP.is_file() and sha256(KING_ZIP) == KING_ZIP_SHA, "王 zip 漂移")
-    pre(zip_steps(KING_ZIP) == KING_STEPS, "王 zip 步数账异常")
-    pre(sha256(M29_NPZ) == M29_NPZ_SHA, "M29 npz 漂移")
-    pre(sha256(BC_SD) == BC_SD_SHA, "BC_SD 与 v32 BC_REGEN 落定值不符")
-    pre(sha256(KING_SD) == KING_SD_SHA, "KING_SD 与 v32 落定值不符")
+    # smoke-test pre-assertions (artifact side; no W1 git assertion -- the smoke test is a freeze prerequisite and may run live on a dirty tree)
+    pre(KING_ZIP.is_file() and sha256(KING_ZIP) == KING_ZIP_SHA, "king zip drift")
+    pre(zip_steps(KING_ZIP) == KING_STEPS, "king zip step count abnormal")
+    pre(sha256(M29_NPZ) == M29_NPZ_SHA, "M29 npz drift")
+    pre(sha256(BC_SD) == BC_SD_SHA, "BC_SD differs from the value settled by v32 BC_REGEN")
+    pre(sha256(KING_SD) == KING_SD_SHA, "KING_SD differs from the value settled in v32")
     scan_foreign_ledgers_for_seeds((SMOKE_SEED,))
     pre(not any(lo <= SMOKE_SEED + rank <= hi
                 for rank in range(4)
                 for lo, hi in ((7000, 7031), (8000, 8031), (9000, 9031))),
-        "烟测种子撞评测池")
+        "smoke seed collides with an evaluation pool")
     snapshot = freeze_eval_identity(ROOT, str(KING_NPZ), None)
     if runtime_five(snapshot) != V32_CASE_RT:
         log({"event": "CASE_HALT_ENV_DRIFT", "where": "smoke",
              "expected": V32_CASE_RT, "current": runtime_five(snapshot)})
-        attention("W-E0 环境零漂移断言失败(烟测前),不冻结不发车")
+        attention("W-E0 zero environment drift assertion failed (before smoke test); no freeze, no launch")
         raise SystemExit(5)
 
     results = {}
@@ -889,12 +889,12 @@ def smoke_stage(events) -> None:
         if rc != 0 or nt != SMOKE_END:
             log({"event": "G0_NULLINTRUSION", "verdict": "FAIL",
                  "impl_sha16": impl16, "runs": results,
-                 "why": f"烟测 {variant} 未达标(rc={rc}, nt={nt}, "
-                        f"目标={SMOKE_END})"})
-            attention("W-G0 烟测运行失败,不冻结不发车")
+                 "why": f"smoke {variant} fell short (rc={rc}, nt={nt}, "
+                        f"target={SMOKE_END})"})
+            attention("W-G0 smoke run failed; no freeze, no launch")
             raise SystemExit(7)
 
-    # 仪表确实跑了(“仪表被证零侵入”不得实为“仪表根本没跑”)
+    # the instruments really ran ("instruments proven zero-intrusion" must not actually mean "instruments never ran")
     knobs_dir = RUNS / SMOKE_RUNS["knobs"]
     bare_dir = RUNS / SMOKE_RUNS["bare"]
     evidence = {
@@ -926,7 +926,7 @@ def smoke_stage(events) -> None:
                 if json.loads(raw).get("sentinel") == "dry-anchor"
                 and json.loads(raw)["step"] < SMOKE_END) >= 1)
 
-    # 张量级判据:policy state_dict + optimizer state 逐张量 torch.equal
+    # tensor-level criterion: policy state_dict + optimizer state, torch.equal per tensor
     pol_b, opt_b = _load_zip_states(bare_dir / "model_final.zip")
     pol_k, opt_k = _load_zip_states(knobs_dir / "model_final.zip")
     tensor_diffs: list[str] = []
@@ -935,12 +935,12 @@ def smoke_stage(events) -> None:
     digest_bare = _state_digest(pol_b, opt_b)
     digest_knobs = _state_digest(pol_k, opt_k)
 
-    # RNG 相关遥测逐字段(step/loss/ret 等;墙钟剔除)
+    # RNG-related telemetry field by field (step/loss/ret etc.; wall clock dropped)
     telemetry_diffs: list[str] = []
     prog_b, prog_k = _progress_lines(bare_dir), _progress_lines(knobs_dir)
     if len(prog_b) != len(prog_k):
         telemetry_diffs.append(
-            f"progress 行数 {len(prog_b)} != {len(prog_k)}")
+            f"progress line count {len(prog_b)} != {len(prog_k)}")
     else:
         for i, (a, b) in enumerate(zip(prog_b, prog_k)):
             if a != b:
@@ -960,7 +960,7 @@ def smoke_stage(events) -> None:
                 telemetry_diffs.append(
                     f"final {name}: {fin_b[name]} != {fin_k[name]}")
         else:
-            telemetry_diffs.append(f"final {name} 行缺席: "
+            telemetry_diffs.append(f"final {name} line missing: "
                                    f"bare={name in fin_b}, knobs={name in fin_k}")
 
     verdict = ("PASS" if not tensor_diffs and not telemetry_diffs
@@ -976,30 +976,30 @@ def smoke_stage(events) -> None:
               "dry_anchor_first": ((KING_STEPS // DRY_ANCHOR_EVERY) + 1)
               * DRY_ANCHOR_EVERY},
           "runs": results,
-          "tensor_verdict": ("逐张量 torch.equal 全等" if not tensor_diffs
+          "tensor_verdict": ("all tensors equal under torch.equal" if not tensor_diffs
                              else tensor_diffs[:20]),
           "state_digest_sha": {"bare": digest_bare, "knobs": digest_knobs},
-          "telemetry_verdict": ("RNG 相关字段逐字段相等" if not telemetry_diffs
+          "telemetry_verdict": ("RNG-related fields equal field by field" if not telemetry_diffs
                                 else telemetry_diffs[:20]),
           "instruments_actually_fired": instrument_ok,
           "instrument_evidence": evidence,
-          "criteria_note": "文件字节级比对废除(SB3 zip 成员时间戳与 pickle "
-                           "序列化不可复现);烟测遥测除位级判据外禁作任何 "
-                           "go/no-go 或回炉输入;短程外推全程之 IO/时钟理论"
-                           "残余入残余⑨"}
+          "criteria_note": "file byte-level comparison dropped (SB3 zip member timestamps and pickle "
+                           "serialization are not reproducible); smoke telemetry, beyond the bit-level criterion, must not feed any "
+                           "go/no-go or re-education input; the IO/clock theory of extrapolating the short run to the full run"
+                           " goes to residual 9"}
     log(ev)
     events.append(ev)
     if verdict != "PASS":
-        attention("W-G0 零侵入失败:仪表回炉重设计,不冻结不发车")
+        attention("W-G0 zero intrusion failed: instruments go back for redesign; no freeze, no launch")
         raise SystemExit(7)
 
 
 # ======================================================================
-# S0 预检(W 线)
+# S0 preflight (W lines)
 # ======================================================================
 
 def scan_foreign_ledgers_for_seeds(seeds: tuple[int, ...]):
-    """预检断言:目标种子未见于历案台账任一 leg_start(命中 → 停机呈报)。"""
+    """Preflight assertion: the target seed appears in no leg_start of any earlier case ledger (hit -> halt for review)."""
     hits = []
     for ledger in sorted(RUNS.glob("*/gate_ledger.jsonl")):
         if ledger == LEDGER:
@@ -1011,11 +1011,11 @@ def scan_foreign_ledgers_for_seeds(seeds: tuple[int, ...]):
                 continue
             if e.get("event") == "leg_start" and e.get("seed") in seeds:
                 hits.append({"ledger": str(ledger), "seed": e["seed"]})
-    pre(not hits, f"种子已见于历案台账 leg_start,停机呈报(禁顺延取值): {hits}")
+    pre(not hits, f"seed already appears in an earlier ledger leg_start; halting for review (no shifting to the next value): {hits}")
 
 
 def holdout_virgin_scan(events):
-    """W-H8 留出池处女断言(登记面;历史未登记之手工暴露不可探测,残余⑭)。"""
+    """W-H8 held-out pool virginity assertion (registered side; unregistered historical manual exposure is undetectable, residual 14)."""
     pattern = re.compile(r"\b80(?:[0-2][0-9]|3[01])\b")
     sanctioned = set()
     for tag in HOLDOUT_TAGS:
@@ -1030,7 +1030,7 @@ def holdout_virgin_scan(events):
             doc = json.loads(arch.read_text())
             seeds = doc.get("meta", {}).get("seeds", [])
         except (json.JSONDecodeError, UnicodeDecodeError):
-            offenders.append(f"{arch.name}: 不可解析")
+            offenders.append(f"{arch.name}: unparsable")
             continue
         if any(8000 <= int(s) <= 8031 for s in seeds):
             offenders.append(arch.name)
@@ -1049,108 +1049,108 @@ def holdout_virgin_scan(events):
                 seed_val = e.get("seed")
                 if isinstance(seed_val, int) and 8000 <= seed_val <= 8031:
                     offenders.append(f"{ledger.parent.name}: {e}")
-    pre(not offenders, f"W-H8 留出池处女断言失败,停机呈报: {offenders}")
+    pre(not offenders, f"W-H8 held-out pool virginity assertion failed; halting for review: {offenders}")
     if not stage_done(events, "HOLDOUT_FIRSTBURN"):
         ev = {"event": "HOLDOUT_FIRSTBURN",
               "pairs": 2, "shots": 4, "tags": list(HOLDOUT_TAGS),
-              "authorization": "D0-② 亲批(2026-07-17『三个都准了』);"
-                               "按发计入 HOLDOUT_EXPOSURE;"
-                               "'每案至多一对捆绑发'自本案案结后生效",
-              "evidence_grade": "登记面处女断言(承统计 m-5,残余⑭)"}
+              "authorization": "D0-2, approved 2026-07-17; "
+                               "counted per run in HOLDOUT_EXPOSURE; "
+                               "'at most one bundled pair per case' applies after this case closes",
+              "evidence_grade": "registered-side virginity assertion (statistics m-5, residual 14)"}
         log(ev)
         events.append(ev)
 
 
 def preflight(events):
     global CASE_RT
-    pre(PROTOCOL_VERSION == CALIBRATED_PROTOCOL_VERSION, "契约版本漂移")
-    # ---- W1 冻结公证 ----
+    pre(PROTOCOL_VERSION == CALIBRATED_PROTOCOL_VERSION, "contract version drift")
+    # ---- W1 freeze notarization ----
     dirty = [l for l in git("status", "--porcelain").splitlines()
              if l != "?? train/leaderboard-assembled-v3.md"]
-    pre(not dirty, f"W1: 工作树不净 {dirty}")
+    pre(not dirty, f"W1: working tree not clean {dirty}")
     head = git("rev-parse", "HEAD")
-    for path in ("docs/prereg/PREREG-B1-捆绑评测基建.md", "train/run_b1_infra.py"):
+    for path in ("docs/prereg/PREREG-B1-bundled-eval-infra.md", "train/run_b1_infra.py"):
         touch = git("log", "-1", "--format=%H", "--", path)
-        pre(touch == head, f"W1: {path} 最后触碰 != HEAD")
+        pre(touch == head, f"W1: {path} last touched != HEAD")
     freezes = [e for e in events if e.get("event") == "FREEZE_SHA"]
     if freezes and freezes[-1]["sha"] != head:
         reason_file = B1 / "REFREEZE_REASON"
         pre(reason_file.is_file(),
-            "W1: HEAD != 台账最后 FREEZE_SHA(链式重冻结须 REFREEZE_REASON 文件)")
+            "W1: HEAD != last FREEZE_SHA in the ledger (a chained re-freeze needs a REFREEZE_REASON file)")
         ev = {"event": "FREEZE_SHA", "sha": head,
               "prev_sha": freezes[-1]["sha"],
               "reason": reason_file.read_text().strip()}
         log(ev)
         events.append(ev)
         freezes.append(ev)
-    # ---- W7 工件钉死 ----
-    pre(KING_ZIP.is_file() and sha256(KING_ZIP) == KING_ZIP_SHA, "王 zip 漂移")
-    pre(sha256(KING_NPZ) == KING_NPZ_SHA, "王 npz 漂移")
-    pre(sha256(H_NPZ) == H_NPZ_SHA, "H npz 漂移(!= DEFAULT_MANAGER_SHA256)")
-    pre(sha256(M29_NPZ) == M29_NPZ_SHA, "M29 npz 漂移")
-    pre(zip_steps(KING_ZIP) == KING_STEPS, "王 zip 步数账异常")
+    # ---- W7 artifact pins ----
+    pre(KING_ZIP.is_file() and sha256(KING_ZIP) == KING_ZIP_SHA, "king zip drift")
+    pre(sha256(KING_NPZ) == KING_NPZ_SHA, "king npz drift")
+    pre(sha256(H_NPZ) == H_NPZ_SHA, "H npz drift (!= DEFAULT_MANAGER_SHA256)")
+    pre(sha256(M29_NPZ) == M29_NPZ_SHA, "M29 npz drift")
+    pre(zip_steps(KING_ZIP) == KING_STEPS, "king zip step count abnormal")
     pre(KING_SD.is_file() and sha256(KING_SD) == KING_SD_SHA,
-        "KING_SD 漂移(沿用 v32 件)")
+        "KING_SD drift (the v32 artifact is reused)")
     pre(run([PY, "train/check_teacher_parity.py", str(KING_SD),
              str(KING_NPZ)], "parity-king.log", 600) == 0,
-        "G-KL-W:王锚 sd 与 npz 宣誓失败(案内 0/1000 复验)")
-    # BC_SD 沿用 v32 重生成件之显式裁量条款(承合规 M-2;非默认承继)
+        "G-KL-W: king anchor sd and npz attestation failed (in-case 0/1000 re-check)")
+    # explicit discretionary clause for reusing the v32 regenerated BC_SD (compliance M-2; not inherited by default)
     pre(BC_SD.is_file() and sha256(BC_SD) == BC_SD_SHA,
-        "BC_SD 与 v32 BC_REGEN 落定值不符")
+        "BC_SD differs from the value settled by v32 BC_REGEN")
     if not stage_done(events, "BC_SD_WAIVER"):
         ev = {"event": "BC_SD_WAIVER", "bc_sd_sha256": BC_SD_SHA,
-              "basis": "BC 生成链不经训练驱动层旋钮 ∧ runtime_five 零漂移"
-                       "(W-E0)——案级裁量豁免,随冻结呈报单列(D0-④)"}
+              "basis": "the BC generation chain does not pass through the training-driver knobs ∧ runtime_five has zero drift"
+                       " (W-E0) -- case-level discretionary waiver, listed separately in the freeze report (D0-4)"}
         log(ev)
         events.append(ev)
-    # PRIORS 前科档案钉死(先封存后引用)
+    # PRIORS archive pins (sealed before use)
     for name, (path, expected, mean) in PRIORS.items():
         pre(path.is_file() and sha256(path) == expected,
-            f"PRIORS 档案钉死失配:{name}")
+            f"PRIORS archive pin mismatch: {name}")
         doc = strict_json_loads(path.read_bytes())
         pre(doc["agg"]["ret_mean"] == mean,
-            f"PRIORS {name} ret_mean != 台账落定值 {mean}")
+            f"PRIORS {name} ret_mean != value settled in the ledger {mean}")
     if not stage_done(events, "PRIOR_REFERENCE"):
         ev = {"event": "PRIOR_REFERENCE",
               "priors": {n: {"sha256": s, "ret_mean": m}
                          for n, (_, s, m) in PRIORS.items()},
-              "note": "v32 四档指纹对照基准,先封存后引用"}
+              "note": "fingerprint baseline of the four v32 archives, sealed before use"}
         log(ev)
         events.append(ev)
-    # ---- W-E0 环境零漂移断言(runtime_five == v32 CASE_RUNTIME 落定值) ----
+    # ---- W-E0 zero environment drift assertion (runtime_five == value settled in v32 CASE_RUNTIME) ----
     snapshot = freeze_eval_identity(ROOT, str(KING_NPZ), None)
     five = runtime_five(snapshot)
     if five != V32_CASE_RT:
         log({"event": "CASE_HALT_ENV_DRIFT", "expected": V32_CASE_RT,
              "current": five})
-        attention("W-E0 环境+评测协议束漂移,不冻结不发车,呈报")
+        attention("W-E0 environment + evaluation-protocol bundle drift; no freeze, no launch; report for review")
         raise SystemExit(5)
     CASE_RT = five
     prior_rt = [e for e in events if e.get("event") == "CASE_RUNTIME"]
     if prior_rt:
-        pre(prior_rt[0]["five"] == five, "W10: 续跑运行时对账失配")
+        pre(prior_rt[0]["five"] == five, "W10: resume runtime reconciliation mismatch")
     else:
         log({"event": "CASE_RUNTIME", "five": five,
-             "w_e0": "与 v32 CASE_RUNTIME 逐字相等(环境与评测协议束零漂移)"})
+             "w_e0": "identical to v32 CASE_RUNTIME (zero drift in environment and evaluation-protocol bundle)"})
         events.append({"event": "CASE_RUNTIME", "five": five})
-    # ---- 种子纪律扫描(304000/307000)+ W-H8 ----
+    # ---- seed discipline scan (304000/307000) + W-H8 ----
     scan_foreign_ledgers_for_seeds((SEED, SMOKE_SEED))
     pre(not any(lo <= SEED + rank <= hi for rank in range(4)
                 for lo, hi in ((7000, 7031), (8000, 8031), (9000, 9031))),
-        "W-H8: 训练种子撞评测池(驱动器侧断言,train_ppo 守卫仅含 7000/9000 段)")
-    pre(SEED == 303_000 + 1_000, "种子选择规则失守(D2 ①:原谱系种子+1000)")
+        "W-H8: training seed collides with an evaluation pool (driver-side assertion; the train_ppo guard covers only the 7000/9000 ranges)")
+    pre(SEED == 303_000 + 1_000, "seed selection rule violated (D2 deviation 1: original lineage seed + 1000)")
     holdout_virgin_scan(events)
-    # ---- W9 目标档案先决 ----
+    # ---- W9 target-archive prerequisite ----
     for t in ALL_EXAM_TAGS:
         has_ledger = any(e.get("event") in ("exam_ok", "CANARY_EVAL")
                          and e.get("tag") == t for e in events)
         if not has_ledger:
-            adoptable = (t in CANARY_TAGS)   # 金丝雀残档走终局采信条款
+            adoptable = (t in CANARY_TAGS)   # leftover canary archives use the finality adoption clause
             if not adoptable:
                 pre(not (EVAL / f"{t}.json").exists(),
-                    f"W9: 目标档案已存在:{t}(重启协议:先 .void)")
+                    f"W9: target archive already exists: {t} (restart protocol: .void it first)")
     if leg_starts(events, RUN_NAME) == 0:
-        pre(not (RUNS / RUN_NAME).exists(), f"运行目录残留:{RUN_NAME}")
+        pre(not (RUNS / RUN_NAME).exists(), f"run directory left over: {RUN_NAME}")
     if not freezes:
         log({"event": "FREEZE_SHA", "sha": head})
     log({"event": "preflight_ok", "king_zip": KING_ZIP_SHA[:16],
@@ -1160,59 +1160,59 @@ def preflight(events):
 
 
 # ======================================================================
-# S2 V1 方差发(RB.1 位级承接 + RB.2)
+# S2 V1 variance run (RB.1 bit-level continuity + RB.2)
 # ======================================================================
 
 def varprobe_stage(events):
     tag = "b1-varprobe-launch"
     d = exam_case(events, str(KING_NPZ), tag, POOL_PROBE, manager_npz=None,
-                  extra={"note": "V1 方差发:独立重评授权在此落章;只记不裁,"
-                                 "不改锚不改参照名分;V1 永不替代配对基准,"
-                                 "v32-ref-launch 原档终局地位与 RB.4 基准身份不变"})
+                  extra={"note": "V1 variance run: the independent re-evaluation authorization is recorded here; record only,"
+                                 " no change of anchor or reference title; V1 never replaces the paired baseline;"
+                                 " the final status of the original v32-ref-launch archive and its RB.4 baseline role are unchanged"})
     ref_doc = strict_json_loads(PRIORS["v32-ref-launch"][0].read_bytes())
     old_rows = sorted(ref_doc["rows"], key=lambda r: r["seed"])
     new_rows = sorted(d["rows"], key=lambda r: r["seed"])
-    require(len(old_rows) == len(new_rows) == 32, "参照行数异常")
+    require(len(old_rows) == len(new_rows) == 32, "reference row count abnormal")
     diff_seeds = [o["seed"] for o, n in zip(old_rows, new_rows) if o != n]
     core = ("ret_mean", "ret_median", "died", "depth_median", "kills_mean",
             "farm_tau_mean", "override_rate", "cap_rate")
     agg_diff = [k for k in core
                 if ref_doc["agg"].get(k) != d["agg"].get(k)]
     if diff_seeds or agg_diff:
-        # RB.2 带外:先行漂移分诊(W-E0/CASE_RUNTIME 全项复验)
+        # RB.2 out-of-band: drift triage first (full re-check of W-E0/CASE_RUNTIME)
         snapshot = freeze_eval_identity(ROOT, str(KING_NPZ), None)
         if runtime_five(snapshot) != V32_CASE_RT:
             log({"event": "CASE_HALT_ENV_DRIFT", "where": "varprobe-triage",
                  "current": runtime_five(snapshot)})
-            attention("V1 失配且运行时漂移:CASE_HALT")
+            attention("V1 mismatch with runtime drift: CASE_HALT")
             raise SystemExit(6)
         max_dret = max(abs(n["ret"] - o["ret"])
                        for o, n in zip(old_rows, new_rows))
         log({"event": "REF_DIVERGENCE", "tag": tag,
              "row_diff_seeds": diff_seeds, "agg_diff": agg_diff,
              "max_abs_dret": round(max_dret, 2),
-             "triage": "runtime_five 全绿且失配呈非系统性——停机呈报总设计师"
-                       "裁量;专项方差案(≥k 次重复)另立;禁以 n=2 之 1 自由度"
-                       "读数造全项目噪声带,禁'如实发布即续案'"})
-        attention("V1 方差发对 v32-ref-launch 失配,REF_DIVERGENCE 停机呈报")
+             "triage": "runtime_five all green and the mismatch is non-systematic -- halt for a design review"
+                       "; a dedicated variance case (>=k repeats) would be set up separately; a 1-degree-of-freedom n=2"
+                       " reading must not become a project-wide noise band, and 'publish as is and continue' is not allowed"})
+        attention("V1 variance run mismatches v32-ref-launch: REF_DIVERGENCE halt for review")
         raise SystemExit(8)
     if not stage_done(events, "VARPROBE"):
         ev = {"event": "VARPROBE", "tag": tag, "rows": 32,
               "max_abs_dret": 0.0, "band": [0, 0], "in_band": True,
-              "verdict": "种子内测量方差 = 0(确定性协议,限本运行时世界、"
-                         "限 H 侧——M29 侧系推定,注记随判词,实测另案,"
-                         "承合规 m-4/残余⑮):配对 Δ 之显著性评估必须走跨"
-                         "种子符号检验,禁以测量噪声名义作 t 检验;F2 统计"
-                         "登记之'方差未知'缺口就此闭合",
-              "rb1": "RB.1 位级承接 PASS(launch 侧逐种子逐字段 biteq;"
-                     "science 侧以 PRIORS 全文 sha 钉死承接,140.9 不设新发)"}
+              "verdict": "within-seed measurement variance = 0 (deterministic protocol, limited to this runtime world"
+                         " and to the H side -- the M29 side is presumed, the note goes with the verdict, measured in a separate case,"
+                         " compliance m-4 / residual 15): significance of the paired Δ must use the cross-seed"
+                         " sign test; no t test in the name of measurement noise; the 'variance unknown' gap"
+                         " registered in the F2 statistics is closed",
+              "rb1": "RB.1 bit-level continuity PASS (launch side biteq per seed per field;"
+                     " science side carried over by the PRIORS full-file sha pin; no new run for 140.9)"}
         log(ev)
         events.append(ev)
     return d
 
 
 # ======================================================================
-# S4 CANARY_SET + CRITERION_REGISTER(先登记后开箱)
+# S4 CANARY_SET + CRITERION_REGISTER (register first, open later)
 # ======================================================================
 
 def canary_set_stage(events) -> dict:
@@ -1221,14 +1221,14 @@ def canary_set_stage(events) -> dict:
         return prior[0]
     info = extract_depth2(PRIORS["v32-ref-launch"][0], CANARY_CONTROLS)
     require(info["archive_sha256"] == PRIORS["v32-ref-launch"][1],
-            "CANARY_SET 提取源档案 sha 漂移")
+            "CANARY_SET extraction source archive sha drift")
     ev = {"event": "CANARY_SET", "n_D": info["n_D"],
           "depth2_seeds": info["depth2_seeds"],
           "controls": info["controls"], "C": info["C"],
           "source_archive_sha256": info["archive_sha256"],
-          "extractor": "train/extract_canary_set.py(E8,随冻结 commit 入库)",
-          "note": "腿点火前冻结;记分种子集仅约束 RB.5/RB.8,不约束考发面"
-                  "(金丝雀评测种子面 = 全池 7000-7031)"}
+          "extractor": "train/extract_canary_set.py (E8, committed with the freeze commit)",
+          "note": "frozen before the leg launch; the scoring seed set constrains only RB.5/RB.8, not the exam surface"
+                  " (canary evaluation seeds = the whole 7000-7031 pool)"}
     log(ev)
     events.append(ev)
     return ev
@@ -1240,24 +1240,24 @@ def criterion_register_stage(events):
     info = extract_depth2(EVAL / "b1-ref8k-launch.json", ())
     ev = {"event": "CRITERION_REGISTER",
           "criterion": "REC(s) := [Δ_H(s) ≤ −20] ∧ [Δ_M29(s) ≥ Δ_H(s) + 20]"
-                        "(经理敏感真值;各对同经理参照配对 K1/K2)",
+                        " (manager-sensitive ground truth; each pair uses the same-manager reference K1/K2)",
           "holdout_depth2_seeds": info["depth2_seeds"],
           "n_holdout_depth2": info["n_D"],
           "source_archive_sha256": info["archive_sha256"],
           "min_judgeable_hits": MIN_JUDGEABLE_HITS,
           "precision_point": REC_PRECISION["point"],
           "precision_band": list(REC_PRECISION["band"]),
-          "note": "先登记后开箱(承统计 m-2)——名单本身在此实例化;本事件系"
-                  " D3 判据之重申性落账,非案中另立判据之口子(承合规 m-7);"
-                  "池级注记(承统计 m-6):REC 首肢在池级整体下移情形近于恒真"
-                  "(RB.7 点估 −18),判别负担主压 M29 回收肢"}
+          "note": "register first, open later (statistics m-2) -- the list itself is instantiated here; this event is"
+                  " a restating record of the D3 criterion, not an opening for a new in-case criterion (compliance m-7);"
+                  " pool-level note (statistics m-6): the REC first limb is nearly always true when the whole pool shifts down"
+                  " (RB.7 point estimate −18), so the discriminating burden falls mainly on the M29 recovery limb"}
     log(ev)
     events.append(ev)
     return ev
 
 
 # ======================================================================
-# S5 P8 腿(唯一训练点火;台账制 2 次;禁换种子)
+# S5 P8 leg (the only training launch; ledger budget 2; no seed change)
 # ======================================================================
 
 def leg_cmd() -> list[str]:
@@ -1284,19 +1284,19 @@ def leg_stage(events) -> str:
         if not out.exists():
             require(run([PY, "train/export_worker_npz.py", str(model_path),
                          str(out)], "export-p8.retry.log", 600) == 0
-                    and out.exists(), "P8 补导出失败,停机呈报")
+                    and out.exists(), "P8 make-up export failed; halting for review")
             log({"event": "npz_exported", "leg": RUN_NAME,
-                 "sha256": sha256(out), "note": "补导出(非重点火,不烧额度)"})
+                 "sha256": sha256(out), "note": "make-up export (not a relaunch, uses no budget)"})
         log({"event": "leg_skip_complete", "leg": RUN_NAME})
         return str(out)
     require(leg_starts(events, RUN_NAME) < 2,
-            "P8 腿点火额度耗尽(台账制 2 次)——OPERATIONAL_FAILURE 全案停机,"
-            "禁手改台账续命")
+            "P8 leg launch budget exhausted (ledger budget 2) -- OPERATIONAL_FAILURE, whole case halts;"
+            " never hand-edit the ledger to keep it alive")
     ev = {"event": "leg_start", "leg": RUN_NAME, "seed": SEED,
-          "recipe": "v30/v32 ctrl 配方逐字;偏离封闭枚举五处"
-                    "(seed/calib十点/ckpt-every/sentinel-every/dry-anchor-every)",
-          "resume_from": "king zip(重点火系同命题续办;种子恒 304000,"
-                         "重点火禁换种子)"}
+          "recipe": "v30/v32 ctrl recipe verbatim; five enumerated deviations"
+                    " (seed/ten calib points/ckpt-every/sentinel-every/dry-anchor-every)",
+          "resume_from": "king zip (a relaunch continues the same proposition; seed always 304000,"
+                         " no seed change on relaunch)"}
     log(ev)
     events.append(ev)
     t0 = time.time()
@@ -1305,11 +1305,11 @@ def leg_stage(events) -> str:
     log({"event": "leg_done", "leg": RUN_NAME, "rc": rc, "nt_zip": nt,
          "dt_min": round((time.time() - t0) / 60, 1)})
     require(rc == 0 and nt == NT_TARGET,
-            f"P8 腿未达标(rc={rc}, nt={nt}, 目标={NT_TARGET})——运维闸三式"
-            "之一未过,按 P3 额度重点火(本案无放弃闸:一切分数皆读数)")
+            f"P8 leg fell short (rc={rc}, nt={nt}, target={NT_TARGET}) -- one of the three operational gates"
+            " failed; relaunch within the P3 budget (this case has no abandon gate: every score is a reading)")
     require(run([PY, "train/export_worker_npz.py", str(model_path),
                  str(out)], "export-p8.log", 600) == 0 and out.exists(),
-            "P8 npz 导出失败(补导出通道不烧额度,重启后走 leg_skip 分支)")
+            "P8 npz export failed (the make-up export channel uses no budget; after restart the leg_skip branch runs)")
     log({"event": "npz_exported", "leg": RUN_NAME, "sha256": sha256(out)})
     return str(out)
 
@@ -1331,7 +1331,7 @@ def criterion_validate_stage(events, reg_ev, k1, k2, l4, l5, l4_replay):
     from probe_composite_signature import composite_signature
     sig = composite_signature(k1_rows, l4_rows, tau)
     require(sorted(sig["ref_depth2_seeds"]) == sorted(d2_seeds),
-            "CRITERION_VALIDATE 分母与 CRITERION_REGISTER 名单不一致")
+            "CRITERION_VALIDATE denominator differs from the CRITERION_REGISTER list")
     confusion = {"hit_rec": [], "hit_norec": [], "miss_rec": [], "miss_norec": []}
     for s in d2_seeds:
         dh = l4_rows[s]["ret"] - k1_rows[s]["ret"]
@@ -1344,14 +1344,14 @@ def criterion_validate_stage(events, reg_ev, k1, k2, l4, l5, l4_replay):
     fn, tn = len(confusion["miss_rec"]), len(confusion["miss_norec"])
     hits = tp + fp
     if hits == 0:
-        precision_verdict = ("指纹不复现于留出池(命中 = 0)——与 RB.5 联判,"
-                             "不构成重烧或加烧理由")
+        precision_verdict = ("fingerprint not reproduced in the held-out pool (hits = 0) -- judged together with RB.5;"
+                             " not a reason to rerun or add runs")
         precision = None
         ci = None
     elif hits < MIN_JUDGEABLE_HITS:
-        precision_verdict = (f"不可判(样本不足:命中 {hits} < "
-                             f"{MIN_JUDGEABLE_HITS}),不入带判读,"
-                             "循 RB.7 同型降级呈报")
+        precision_verdict = (f"undecidable (too few samples: hits {hits} < "
+                             f"{MIN_JUDGEABLE_HITS}); not read against the band;"
+                             " downgraded and reported like RB.7")
         precision = round(tp / hits, 4)
         ci = clopper_pearson(tp, hits)
     else:
@@ -1361,26 +1361,26 @@ def criterion_validate_stage(events, reg_ev, k1, k2, l4, l5, l4_replay):
     recall = round(tp / (tp + fn), 4) if (tp + fn) else None
     ev = {"event": "CRITERION_VALIDATE",
           "denominator": {"seeds": d2_seeds, "n": len(d2_seeds),
-                          "source": "CRITERION_REGISTER 所嵌 8000 池 "
-                                    "king×H depth≥2 名单"},
+                          "source": "the 8000-pool "
+                                    "king x H depth>=2 list embedded in CRITERION_REGISTER"},
           "confusion_2x2": {k: sorted(v) for k, v in confusion.items()},
           "tp_fp_fn_tn": [tp, fp, fn, tn],
           "precision": precision,
           "precision_ci95_clopper_pearson": ci,
           "precision_verdict": precision_verdict,
           "recall": recall,
-          "recall_note": "recall 系首曝定标读数,无先验带,如实登记",
-          "pool_note": "REC 首肢在池级整体下移情形近于恒真,判别负担主压 "
-                       "M29 回收肢(承统计 m-6,判词如实携此注记)",
-          "caveats": ["签名特异性未标定(D3,强制随判词)",
-                      "horizon 限定(评测协议 max-steps 3000)"]}
+          "recall_note": "recall is a first-exposure calibration reading with no prior band; recorded as is",
+          "pool_note": "the REC first limb is nearly always true when the whole pool shifts down, so the discriminating burden falls mainly on "
+                       "the M29 recovery limb (statistics m-6; the verdict carries this note as is)",
+          "caveats": ["signature specificity uncalibrated (D3, mandatory with the verdict)",
+                      "horizon caveat (evaluation protocol max-steps 3000)"]}
     log(ev)
     events.append(ev)
     return ev
 
 
 # ======================================================================
-# S9 R 线记分卡
+# S9 R-line scorecard
 # ======================================================================
 
 def rb4_grid(x: float, med: float, sign: dict, delev: dict) -> dict:
@@ -1394,20 +1394,20 @@ def rb4_grid(x: float, med: float, sign: dict, delev: dict) -> dict:
     limb_s3 = region(delev["mean"]) == region(x)
     limbs = int(limb_s1) + int(limb_s2) + int(limb_s3)
     if lo <= x <= hi:
-        cell = "复现" if limbs >= 2 else "杠杆驱动候选"
+        cell = "reproduced" if limbs >= 2 else "leverage-driven candidate"
     elif x < lo:
-        cell = "放大" if limbs >= 2 else "杠杆驱动候选(负向变体)"
+        cell = "amplified" if limbs >= 2 else "leverage-driven candidate (negative variant)"
     elif med <= RB4_BAND["median_line"] or sign["neg"] >= RB4_BAND["neg_line"]:
-        cell = "均值掩蔽候选"
+        cell = "mean-masking candidate"
     else:
-        cell = "不复现"
+        cell = "not reproduced"
     return {"x": round(x, 2), **band_judge(x, lo, hi),
             "limbs": {"S1_median": [round(med, 2), limb_s1],
                       "S2_signs": [sign["neg"], limb_s2],
                       "S3_deleveraged": [delev, limb_s3]},
             "n_limbs": limbs, "cell": cell,
-            "note": "各格皆有效结论,判词按格改述,禁以'成/败'统称;"
-                    "禁均值单独裁决(承统计 B-2)"}
+            "note": "every cell is a valid conclusion; the verdict is worded per cell, never lumped as 'pass/fail';"
+                    " the mean alone never decides (statistics B-2)"}
 
 
 def scorecard_stage(events, docs, canary_docs, gates, reg_ev, n_D, d_c_seeds,
@@ -1429,10 +1429,10 @@ def scorecard_stage(events, docs, canary_docs, gates, reg_ev, n_D, d_c_seeds,
         if isinstance(judged, dict) and "in_band" in judged:
             band_outcomes.append((name, judged["in_band"]))
 
-    # RB.1/RB.2 已由 VARPROBE 事件落账
-    card["RB1_RB2"] = ("VARPROBE 在册:位级承接 PASS,方差带 [0,0] 带内"
-                       if stage_done(events, "VARPROBE") else "缺席(缓判)")
-    # RB.3 双经理读数差(8000 池王座参照)
+    # RB.1/RB.2 already recorded by the VARPROBE event
+    card["RB1_RB2"] = ("VARPROBE recorded: bit-level continuity PASS, variance band [0,0] in band"
+                       if stage_done(events, "VARPROBE") else "absent (verdict deferred)")
+    # RB.3 dual-manager reading difference (8000-pool throne reference)
     diffs_k = [k2[s]["ret"] - k1[s]["ret"] for s in sorted(k1)]
     rb3 = band_judge(sum(diffs_k) / 32, *RB3_BAND["band"])
     rb3.update({"point": RB3_BAND["point"], "median": round(median(diffs_k), 2),
@@ -1440,16 +1440,16 @@ def scorecard_stage(events, docs, canary_docs, gates, reg_ev, n_D, d_c_seeds,
                 "deleveraged": deleveraged_mean(
                     {s: k2[s]["ret"] - k1[s]["ret"] for s in k1})})
     add("RB3_dual_manager_8k", rb3)
-    # RB.4 主判读数一(复合主判)
+    # RB.4 main reading 1 (composite main verdict)
     diff4 = {s: l2[s]["ret"] - ref_launch[s]["ret"] for s in sorted(l2)}
     x4 = sum(diff4.values()) / 32
     rb4 = rb4_grid(x4, median(list(diff4.values())),
                    sign_test(list(diff4.values())), deleveraged_mean(diff4))
     add("RB4_f2_reproduction", rb4)
     cell = rb4["cell"]
-    branch = ("R" if cell in ("复现", "放大") else
-              "N" if cell == "不复现" else None)
-    # RB.5 F-lock 指纹复现(以 CANARY_SET 实数 n_D 为准)
+    branch = ("R" if cell in ("reproduced", "amplified") else
+              "N" if cell == "not reproduced" else None)
+    # RB.5 F-lock fingerprint reproduction (per the actual CANARY_SET n_D)
     from probe_composite_signature import composite_signature
     tau = {int(s): v.get("farm_tau_median")
            for s, v in leg_replay.get("per_seed", {}).items()}
@@ -1459,16 +1459,16 @@ def scorecard_stage(events, docs, canary_docs, gates, reg_ev, n_D, d_c_seeds,
     rb5 = band_judge(sig7k["n_hits"], lo5, n_D, integer=True)
     rb5.update({"point": point5, "hits": sig7k["hits"],
                 "not_reproduced_line": lo5 - 1,
-                "verdict": ("指纹不复现(与 RB.4 联判)"
-                            if sig7k["n_hits"] <= lo5 - 1 else "带判读"),
-                "caveat": "签名特异性未标定(强制限定,D3);下缘依据:带下缘"
-                          "容许种子面近半衰减仍判复现(承统计 M-3)"})
+                "verdict": ("fingerprint not reproduced (judged together with RB.4)"
+                            if sig7k["n_hits"] <= lo5 - 1 else "read against the band"),
+                "caveat": "signature specificity uncalibrated (mandatory caveat, D3); lower-edge basis: the band's lower edge"
+                          " still counts as reproduced when the seed set decays by nearly half (statistics M-3)"})
     add("RB5_flock_fingerprint", rb5)
-    # RB.6 P8 腿双经理读数差
+    # RB.6 P8 leg dual-manager reading difference
     diffs6 = [l3[s]["ret"] - l2[s]["ret"] for s in sorted(l2)]
     rb6 = band_judge(sum(diffs6) / 32, *RB6_MEAN["band"])
     rb6["point"] = RB6_MEAN["point"]
-    rb6["branch_note"] = "均差线无条件(健康王座 +27.9 与损伤腿 +29.1/+32.9 皆在带)"
+    rb6["branch_note"] = "mean-difference line is unconditional (healthy throne +27.9 and damaged legs +29.1/+32.9 are all in band)"
     add("RB6_mean_l3_minus_l2", rb6)
     ms_ev = [e for e in events if e.get("event") == "MS_REPORT"
              and e.get("pool") == "7000"]
@@ -1482,8 +1482,8 @@ def scorecard_stage(events, docs, canary_docs, gates, reg_ev, n_D, d_c_seeds,
         add(f"RB6_MS_max_branch_{branch}", rb6ms_max)
         add(f"RB6_MS_overline_branch_{branch}", rb6ms_over)
     else:
-        card["RB6_MS"] = "条件线不可判(RB.4 落候选格),如实登记"
-    # RB.7 留出池转移
+        card["RB6_MS"] = "conditional line undecidable (RB.4 landed on a candidate cell); recorded as is"
+    # RB.7 held-out pool transfer
     diff7 = {s: l4[s]["ret"] - k1[s]["ret"] for s in sorted(l4)}
     rb7 = band_judge(sum(diff7.values()) / 32, *RB7_BAND["band"])
     rb7.update({"point": RB7_BAND["point"],
@@ -1496,9 +1496,9 @@ def scorecard_stage(events, docs, canary_docs, gates, reg_ev, n_D, d_c_seeds,
                       integer=True)
     rb7d["point"] = RB7_BAND["d2_point"]
     if d2_8k < 2:
-        rb7d["verdict"] = "签名判据在该池'不可考',CRITERION_VALIDATE 降级呈报"
+        rb7d["verdict"] = "the signature criterion is 'not testable' in this pool; CRITERION_VALIDATE downgraded and reported"
     add("RB7_holdout_depth2_count", rb7d)
-    # RB.8 金丝雀仪表(保持率;度量公式钉死)
+    # RB.8 canary instrument (retention; metric formula pinned)
     c4h = canary_docs.get("p8-canary4-h")
     if c4h is not None and branch:
         c4_rows = by_seed(c4h["rows"], 7000, 7031)
@@ -1507,13 +1507,13 @@ def scorecard_stage(events, docs, canary_docs, gates, reg_ev, n_D, d_c_seeds,
         pt, band8 = RB8_BAND[branch]
         rb8 = band_judge(retention, *band8)
         rb8.update({"point": pt, "kept_seeds": sorted(kept), "n_D": n_D,
-                    "formula": "保持率 := |{s∈D_C: 腿×H 金丝雀(+393,216 点)"
-                               "档案该种子 D 窗数 ≥ 1}| / n_D"})
+                    "formula": "retention := |{s in D_C: leg x H canary (+393,216 point)"
+                               " archive has >= 1 D window for the seed}| / n_D"})
         add(f"RB8_canary_retention_branch_{branch}", rb8)
     else:
-        card["RB8_canary_retention"] = ("不可判(金丝雀缺数或 RB.4 落候选格),"
-                                        "如实登记(P-canary)")
-    # RB.9 死门 would-trip(只记不裁,定标输入)
+        card["RB8_canary_retention"] = ("undecidable (canary data missing or RB.4 landed on a candidate cell);"
+                                        " recorded as is (P-canary)")
+    # RB.9 dead-gate would-trip (record only, calibration input)
     ratios = [r for r in gates["ratios"] if r is not None]
     if ratios:
         rb9a = band_judge(median(ratios), *RB9_BAND["ratio_median"][1])
@@ -1528,7 +1528,7 @@ def scorecard_stage(events, docs, canary_docs, gates, reg_ev, n_D, d_c_seeds,
                 / max(1, len(gates["ce_values"])))
     rb9c = band_judge(ce_share, *RB9_BAND["ce_over_share"][1])
     rb9c.update({"point": RB9_BAND["ce_over_share"][0],
-                 "note": "饱和即预期,该门系重校目标线非区分器(注记随判词)"})
+                 "note": "saturation is expected; this gate is a re-calibration target, not a discriminator (note goes with the verdict)"})
     add("RB9_ce_over_share", rb9c)
     final_dry = [r for r in gates["dry_lines"] if r.get("final")] or \
         gates["dry_lines"][-1:]
@@ -1536,10 +1536,10 @@ def scorecard_stage(events, docs, canary_docs, gates, reg_ev, n_D, d_c_seeds,
         inc = (final_dry[-1]["mismatch"] - DRY_REF_THRONE) * 100
         rb9d = band_judge(inc, *RB9_BAND["dry_increment_pp"][1])
         rb9d.update({"point": RB9_BAND["dry_increment_pp"][0],
-                     "reading": "腿终点 dry-anchor 失配对王座级零点 0.7515 之"
-                                "增量(pp);血统注记:谱系起点 0.6305 随定标数据"})
+                     "reading": "increment (pp) of the leg-end dry-anchor mismatch over the throne-level zero point 0.7515;"
+                                " lineage note: the lineage start 0.6305 goes with the calibration data"})
         add("RB9_dry_anchor_increment_pp", rb9d)
-    # RB.10 经理观测体态漂移
+    # RB.10 manager observation shape drift
     th_walk = throne_rep["walk_d_decision"]["walk_sum_over_121_mean"]
     rb10t = band_judge(th_walk, *RB10_BAND["throne_d"][1])
     rb10t["point"] = RB10_BAND["throne_d"][0]
@@ -1551,61 +1551,61 @@ def scorecard_stage(events, docs, canary_docs, gates, reg_ev, n_D, d_c_seeds,
         rb10l["point"] = pt
         add(f"RB10_leg_walk_branch_{branch}", rb10l)
     else:
-        card["RB10_leg_walk"] = "不可判(RB.4 落候选格或重放缺数),如实登记"
-    card["RB10_p50_diffs_note"] = ("8 追加维逐维 P50 差并列于 OBS_DRIFT 事件;"
-                                   "P1 改判限定随行:仪表维仅翻边际窗,"
-                                   "体态维系主嫌")
+        card["RB10_leg_walk"] = "undecidable (RB.4 landed on a candidate cell or replay data missing); recorded as is"
+    card["RB10_p50_diffs_note"] = ("per-dim P50 differences of the 8 appended dims are listed in the OBS_DRIFT event;"
+                                   " the P1 revised-ruling caveat applies: instrument dims only flip marginal windows,"
+                                   " the shape dims are the main suspect")
 
-    # 族级解读条款(承统计 M-6):全表带内/带外计数,禁摘樱桃
+    # family-level reading clause (statistics M-6): count in-band/out-of-band over the whole table, no cherry-picking
     n_out = sum(1 for _, ok in band_outcomes if not ok)
     out_names = [n for n, ok in band_outcomes if not ok]
     family = {"n_band_readings": len(band_outcomes), "n_out_of_band": n_out,
               "out_names": out_names,
-              "clause": "目标覆盖意图 ≈85%;散发带外(≤3 条且机制互异)系统计"
-                        "常态,禁作系统性异常叙事;聚簇带外(≥4 条同向或同机制)"
-                        "才升级 NEEDS_ATTENTION"}
+              "clause": "intended coverage ≈85%; scattered out-of-band lines (<=3, with different mechanisms) are statistically"
+                        " normal and must not be narrated as a systematic anomaly; clustered out-of-band lines (>=4 in the same direction or mechanism)"
+                        " escalate to NEEDS_ATTENTION"}
     if n_out >= 4:
-        attention(f"R 线聚簇带外({n_out} 条):{out_names}")
+        attention(f"R lines clustered out of band ({n_out}): {out_names}")
 
-    # 转化条款(措辞按 N=2 限定收口,承统计 M-7)
-    if cell == "不复现":
-        transform = ("RB.4 落'不复现' → F2 全案结论限定升级为'训练种子特异"
-                     "候选',死门重校阈值定标改以 P8 腿实测分布为准——该定标"
-                     "只能定特异性(不误报健康),不能定灵敏度(能否报灾难),"
-                     "此限定随转化条款写死;P8 腿自身即首个健康腿,其签名命中"
-                     "率升格为假阳性率首实测,入定标交付")
-    elif cell in ("复现", "放大"):
-        transform = ("RB.4 落'复现' → 判词:『F-lock 于第二训练种子上复现"
-                     "(2/2,同配方、同教师、同治下),可复制性证据 1→2』,"
-                     "强制携残余①⑨⑩,禁作总体级'可复制命题'陈述;审判庭"
-                     "菜单④换届案先决之一满足,呈报总设计师排产")
+    # conversion clause (wording limited to N=2, statistics M-7)
+    if cell == "not reproduced":
+        transform = ("RB.4 landed on 'not reproduced' -> the F2 case conclusion is narrowed to 'training-seed-specific"
+                     " candidate', and dead-gate re-calibration thresholds use the measured P8 leg distribution -- that calibration"
+                     " can only set specificity (no false alarms on healthy legs), not sensitivity (whether catastrophes are caught);"
+                     " this caveat is fixed with the conversion clause; the P8 leg itself is the first healthy leg, and its signature hit"
+                     " rate becomes the first measured false-positive rate, delivered with the calibration")
+    elif cell in ("reproduced", "amplified"):
+        transform = ("RB.4 landed on 'reproduced' -> verdict: 'F-lock reproduced on a second training seed"
+                     " (2/2, same recipe, same teacher, same manager), replication evidence 1->2',"
+                     " must carry residuals 1, 9 and 10; no population-level 'replicable proposition' claim; one prerequisite"
+                     " of option 4 (succession case) on the manager-inquiry menu is met; reported for scheduling")
     else:
-        transform = f"RB.4 落'{cell}'——条件线判'不可判,如实登记'"
+        transform = f"RB.4 landed on '{cell}' -- conditional line reads 'undecidable, recorded as is'"
 
     ev = {"event": "VERDICT_PATH", "case": "B1", "golden_authorized": False,
           "scorecard": card, "family_ledger": family,
           "rb4_cell": cell, "transform_clause": transform,
           "acceptance_three_limbs": {
-              "①处方①转正": "E1 通道 + 范本义务条款落账(金评划界依 D0-① "
-                            "亲批:不立法,金评维持单 H);义务范围明文排除金评",
-              "②处方②定标数据": "10 点 calib / 双门 would-trip / dry-anchor "
-                               "双参考 / OBS_DRIFT / 金丝雀全序列落档,"
-                               "供死门重校正式挂闸案引用",
-              "③P8 复现判词": f"RB.4/RB.5 联判:{cell}(各向皆合法结论,"
-                             "无档位竞赛)"},
+              "1_prescription_1_confirmed": "E1 channel + template-obligation clause recorded (gold-evaluation scope per D0-1,"
+                            " approved 2026-07-17: no new rule, gold evaluation stays single-H); the obligation explicitly excludes gold evaluation",
+              "2_prescription_2_calibration_data": "10 calib points / two-gate would-trip / dry-anchor"
+                               " dual reference / OBS_DRIFT / full canary sequence archived,"
+                               " for the case that formally gates on the re-calibrated dead gates to cite",
+              "3_P8_reproduction_verdict": f"RB.4/RB.5 joint verdict: {cell} (every direction is a legal conclusion,"
+                             " no tier competition)"},
           "mandatory_notes": [
-              "horizon 敏感性声明(承 P5 ④):一切签名/判据/灾难名单条件于"
-              "评测协议 horizon;本案内禁调 horizon",
-              "H 轨默认条款:M29 一切读数永不进入任何裁决线",
-              "不溯及既往条款:历届判词、名分、锚值全部维持原状",
-              "残余①-⑮ 见预注册全文,随判决附录承继"]}
+              "horizon sensitivity statement (from P5 (4)): every signature/criterion/catastrophe-list condition holds under the"
+              " evaluation-protocol horizon; the horizon may not change within this case",
+              "H-track default clause: no M29 reading ever enters any decision line",
+              "non-retroactivity clause: all earlier verdicts, titles and anchor values stay as they are",
+              "residuals 1-15: see the full pre-registration; carried into the verdict appendix"]}
     log(ev)
     events.append(ev)
-    attention(f"B1 案结记分卡在册:RB.4 = {cell};判决附录由值守记档")
+    attention(f"B1 case-closing scorecard recorded: RB.4 = {cell}; the verdict appendix is written by the operator")
 
 
 # ======================================================================
-# --plan(零副作用)
+# --plan (no side effects)
 # ======================================================================
 
 def print_plan():
@@ -1613,36 +1613,36 @@ def print_plan():
         return " ".join(str(x).replace(str(ROOT) + "/", "") for x in c)
 
     plan = {
-        "case": "B1 捆绑评测基建(测量与仪表化案;零金种子/零名分/零发射/零环境侵入)",
-        "driver": "train/run_b1_infra.py(克隆 run_v32_sovereign.py 骨架)",
+        "case": "B1 bundled evaluation infrastructure (measurement and instrumentation case; zero gold seeds/titles/releases/environment intrusion)",
+        "driver": "train/run_b1_infra.py (cloned from the run_v32_sovereign.py skeleton)",
         "ledger": str(LEDGER.relative_to(ROOT)),
         "stages": [
-            "S0 预检:W1/W7(king zip·npz/H/M29/KING_SD+parity/BC_SD_WAIVER)/"
-            "PRIOR_REFERENCE 四档/W-E0(runtime_five == v32 CASE_RUNTIME)/"
-            "W-H8 留出池处女+HOLDOUT_FIRSTBURN(2对/4发)/304000+307000 台账扫描/"
+            "S0 preflight: W1/W7 (king zip/npz, H, M29, KING_SD+parity, BC_SD_WAIVER)/"
+            "PRIOR_REFERENCE four archives/W-E0 (runtime_five == v32 CASE_RUNTIME)/"
+            "W-H8 held-out pool virginity + HOLDOUT_FIRSTBURN (2 pairs/4 runs)/304000+307000 ledger scan/"
             "W9/FREEZE_SHA",
-            "S1 W-G0 零侵入实弹(冻结先决)",
-            "S2 V1 方差发 b1-varprobe-launch(兼 RB.1 位级承接;带 [0,0])",
-            "S3 K1 b1-ref8k-launch + K2 b1-ref8k-science(8000 池首曝,按发计)",
-            "S4 CANARY_SET(E8 提取 depth≥2 ∪ {7003,7011})+ CRITERION_REGISTER"
-            "(嵌 K1 之 8000 池 depth≥2 名单)",
-            "S5 P8 腿点火(额度 2;nt 闸 3,997,696;timeout 6h;launcher 按 E6)",
-            "S6 金丝雀离线序列(4 ckpt × {H,M29} 共 8 发,全部先于 L1;"
-            "OBS_DRIFT 随档;+3,989,504 ckpt 归档不入序列)+ GATE_WOULD_TRIP"
-            "(calib 十点双门 + dry-anchor 双参考;一律只记不裁)",
-            "S7 腿考五发:L1 p8-s16(单 H,E1 豁免①)→ L2/L3 捆绑 + MS_REPORT"
-            " → L4/L5 留出捆绑 + MS_REPORT",
-            "S8 CRITERION_VALIDATE(2×2 混淆表 + precision(CP 95%)+ recall;"
-            "命中 <3 判不可判)",
-            "S9 R 线记分卡 RB.1-RB.10 + 转化条款 → VERDICT_PATH(判决附录值守记档)",
+            "S1 W-G0 zero-intrusion live run (freeze prerequisite)",
+            "S2 V1 variance run b1-varprobe-launch (also RB.1 bit-level continuity; band [0,0])",
+            "S3 K1 b1-ref8k-launch + K2 b1-ref8k-science (first exposure of the 8000 pool, counted per run)",
+            "S4 CANARY_SET (E8 extracts depth>=2 ∪ {7003,7011}) + CRITERION_REGISTER"
+            " (embeds K1's 8000-pool depth>=2 list)",
+            "S5 P8 leg launch (budget 2; nt gate 3,997,696; timeout 6h; launcher per E6)",
+            "S6 offline canary sequence (4 ckpt x {H,M29}, 8 runs in total, all before L1;"
+            " OBS_DRIFT with each archive; the +3,989,504 ckpt is archived but not in the sequence) + GATE_WOULD_TRIP"
+            " (ten calib points on both gates + dry-anchor dual reference; record only)",
+            "S7 five leg exams: L1 p8-s16 (H only, E1 exemption 1) -> L2/L3 bundled + MS_REPORT"
+            " -> L4/L5 held-out bundled + MS_REPORT",
+            "S8 CRITERION_VALIDATE (2x2 confusion table + precision (CP 95%) + recall;"
+            " hits <3 means undecidable)",
+            "S9 R-line scorecard RB.1-RB.10 + conversion clause -> VERDICT_PATH (verdict appendix written by the operator)",
         ],
         "leg_cmd": fmt_cmd(leg_cmd()),
         "leg_deviations_closed_enum": {
-            "①seed": f"{SEED}(=303000+1000,禁种子搜索/重选)",
-            "②calib_probes": list(CALIB_PROBES),
-            "③ckpt_every_steps": CKPT_EVERY,
-            "④sentinel_every": SENTINEL_EVERY,
-            "⑤dry_anchor_every": DRY_ANCHOR_EVERY},
+            "1_seed": f"{SEED} (=303000+1000, no seed search/reselection)",
+            "2_calib_probes": list(CALIB_PROBES),
+            "3_ckpt_every_steps": CKPT_EVERY,
+            "4_sentinel_every": SENTINEL_EVERY,
+            "5_dry_anchor_every": DRY_ANCHOR_EVERY},
         "canary_points": {"mid4": list(CANARY_STEPS),
                           "terminal_npz": NT_TARGET,
                           "archived_not_in_sequence": EXTRA_CKPT_STEP},
@@ -1658,45 +1658,45 @@ def print_plan():
                 * SENTINEL_EVERY,
                 "dry_anchor_first": ((KING_STEPS // DRY_ANCHOR_EVERY) + 1)
                 * DRY_ANCHOR_EVERY},
-            "criteria": "policy state_dict + optimizer state 逐张量 torch.equal"
-                        " + RNG 相关遥测字段逐字段;文件字节级比对废除"},
+            "criteria": "policy state_dict + optimizer state, torch.equal per tensor"
+                        " + RNG-related telemetry field by field; file byte-level comparison dropped"},
         "exam_table": [
-            {"发": "V1", "tag": "b1-varprobe-launch", "worker": "king npz",
+            {"run": "V1", "tag": "b1-varprobe-launch", "worker": "king npz",
              "manager": "H", "seeds": POOL_PROBE},
-            {"发": "K1", "tag": "b1-ref8k-launch", "worker": "king npz",
+            {"run": "K1", "tag": "b1-ref8k-launch", "worker": "king npz",
              "manager": "H", "seeds": POOL_HOLD},
-            {"发": "K2", "tag": "b1-ref8k-science", "worker": "king npz",
+            {"run": "K2", "tag": "b1-ref8k-science", "worker": "king npz",
              "manager": "M29", "seeds": POOL_HOLD},
-            {"发": "L1", "tag": "p8-s16", "worker": "P8 npz", "manager": "H",
+            {"run": "L1", "tag": "p8-s16", "worker": "P8 npz", "manager": "H",
              "seeds": POOL_S16},
-            {"发": "L2", "tag": "p8-full32", "worker": "P8 npz", "manager": "H",
+            {"run": "L2", "tag": "p8-full32", "worker": "P8 npz", "manager": "H",
              "seeds": POOL_PROBE},
-            {"发": "L3", "tag": "p8-full32-m29", "worker": "P8 npz",
+            {"run": "L3", "tag": "p8-full32-m29", "worker": "P8 npz",
              "manager": "M29", "seeds": POOL_PROBE},
-            {"发": "L4", "tag": "p8-hold8k", "worker": "P8 npz", "manager": "H",
+            {"run": "L4", "tag": "p8-hold8k", "worker": "P8 npz", "manager": "H",
              "seeds": POOL_HOLD},
-            {"发": "L5", "tag": "p8-hold8k-m29", "worker": "P8 npz",
+            {"run": "L5", "tag": "p8-hold8k-m29", "worker": "P8 npz",
              "manager": "M29", "seeds": POOL_HOLD}],
         "would_trip_lines": {"distill_ce": CE_LINE, "grad_ratio": RATIO_LINE,
-                             "dry_anchor": f"零点 {DRY_REF_THRONE},"
-                                           f"+{DRY_TRIP_PP}pp;血统参考 "
+                             "dry_anchor": f"zero point {DRY_REF_THRONE},"
+                                           f" +{DRY_TRIP_PP}pp; lineage reference "
                                            f"{DRY_REF_LINEAGE}",
-                             "discipline": "本案内一律只记不裁"},
-        "exit_codes": {0: "案结/幂等", 2: "额度耗尽", 3: "预检", 4: "锁冲突",
-                       5: "W-E0 发车前漂移", 6: "runtime 案中漂移",
+                             "discipline": "record only throughout this case"},
+        "exit_codes": {0: "case closed/idempotent", 2: "budget exhausted", 3: "preflight", 4: "lock conflict",
+                       5: "W-E0 pre-launch drift", 6: "runtime drift during the case",
                        7: "CASE_HALT_G0", 8: "REF_DIVERGENCE"},
     }
     print(json.dumps(plan, ensure_ascii=False, indent=1))
 
 
 # ======================================================================
-# 主流程
+# main flow
 # ======================================================================
 
 def _main():
     events = read_ledger()
     if stage_done(events, "VERDICT_PATH"):
-        print("案已结:幂等退出", flush=True)
+        print("case already closed: idempotent exit", flush=True)
         return
     preflight(events)
     smoke_stage(events)                                        # S1
@@ -1712,8 +1712,8 @@ def _main():
     docs = {"b1-ref8k-launch": k1, "b1-ref8k-science": k2}
     docs["p8-s16"] = exam_case(events, leg_npz, "p8-s16", POOL_S16,
                                manager_npz=None,
-                               extra={"note": "运维健全读数(E1 豁免枚举①,"
-                                              "半池单 H 合规)"})       # S7 L1
+                               extra={"note": "operational sanity reading (E1 exemption 1,"
+                                              " half pool, H only, compliant)"})       # S7 L1
     l2, l3 = bundled_exam(events, leg_npz, "p8-full32", "p8-full32-m29",
                           POOL_PROBE)
     docs["p8-full32"], docs["p8-full32-m29"] = l2, l3
@@ -1724,7 +1724,7 @@ def _main():
     ms_report(events, "7000", "p8-full32", "p8-full32-m29",
               by_seed(l2["rows"], 7000, 7031), by_seed(l3["rows"], 7000, 7031),
               ref_launch, ref_science,
-              ["v32-ref-launch(PRIORS 钉死)", "v32-ref-science(PRIORS 钉死)"])
+              ["v32-ref-launch (PRIORS pinned)", "v32-ref-science (PRIORS pinned)"])
     l4, l5 = bundled_exam(events, leg_npz, "p8-hold8k", "p8-hold8k-m29",
                           POOL_HOLD, holdout=True)
     docs["p8-hold8k"], docs["p8-hold8k-m29"] = l4, l5
@@ -1732,11 +1732,11 @@ def _main():
               by_seed(l4["rows"], 8000, 8031), by_seed(l5["rows"], 8000, 8031),
               by_seed(k1["rows"], 8000, 8031), by_seed(k2["rows"], 8000, 8031),
               ["b1-ref8k-launch", "b1-ref8k-science"])
-    # S8:L4 重放(τ 中位;8000 池)+ CRITERION_VALIDATE
+    # S8: L4 replay (τ median; 8000 pool) + CRITERION_VALIDATE
     l4_replay = run_obsdrift(leg_npz, EVAL / "p8-hold8k.json",
                              B1 / "replay" / "p8-hold8k.json")
     criterion_validate_stage(events, reg_ev, k1, k2, l4, l5, l4_replay)
-    # S9:终腿重放(τ 中位 + RB.10 腿侧 + 终局 OBS_DRIFT)+ 记分卡
+    # S9: final-leg replay (τ median + RB.10 leg side + final OBS_DRIFT) + scorecard
     throne_rep = throne_replay()
     leg_replay = run_obsdrift(leg_npz, EVAL / "p8-full32.json",
                               B1 / "replay" / "p8-full32.json")
@@ -1747,38 +1747,38 @@ def _main():
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--plan", action="store_true", help="打印计划,零副作用")
+    ap.add_argument("--plan", action="store_true", help="print the plan, no side effects")
     ap.add_argument("--smoke", action="store_true",
-                    help="只跑 S1 W-G0 零侵入烟测(冻结前置,准许脏树)")
+                    help="run only the S1 W-G0 zero-intrusion smoke test (freeze prerequisite, dirty tree allowed)")
     args = ap.parse_args()
     if args.plan:
         print_plan()
         return
     try:
-        with exclusive_lock(B1 / ".driver.lock", "B1 驱动"):
+        with exclusive_lock(B1 / ".driver.lock", "B1 driver"):
             if args.smoke:
                 smoke_stage(read_ledger())
-                print("W-G0 烟测阶段完成(判词见台账 G0_NULLINTRUSION)",
+                print("W-G0 smoke stage complete (verdict in ledger event G0_NULLINTRUSION)",
                       flush=True)
             else:
                 _main()
     except OutputReservationError as e:
-        log({"event": "OPERATIONAL_FAILURE", "why": f"W8 锁冲突: {e}"})
-        attention("W8 不空闲/锁冲突:\n" + str(e))
+        log({"event": "OPERATIONAL_FAILURE", "why": f"W8 lock conflict: {e}"})
+        attention("W8 not idle / lock conflict:\n" + str(e))
         raise SystemExit(4) from e
     except PreflightFailure as e:
         log({"event": "PREFLIGHT_FAIL", "why": str(e)})
-        attention("P4 预检不过,不发车呈报:\n" + str(e))
+        attention("P4 preflight failed, no launch; report for review:\n" + str(e))
         raise SystemExit(3) from e
     except OperationalFailure as e:
         log({"event": "OPERATIONAL_FAILURE", "why": str(e)})
-        attention("运维失败:\n" + str(e))
+        attention("operational failure:\n" + str(e))
         raise SystemExit(2) from e
     except SystemExit:
         raise
     except Exception as e:
         log({"event": "DRIVER_EXCEPTION", "why": repr(e)})
-        attention("驱动异常死亡(P1):\n" + traceback.format_exc())
+        attention("driver died abnormally (P1):\n" + traceback.format_exc())
         raise
 
 

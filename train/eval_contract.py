@@ -1,8 +1,8 @@
-"""评测档案 schema v5 / protocol v4、身份绑定与并发写入契约。
+"""Evaluation archive schema v5 / protocol v4: identity binding and the concurrent-write contract.
 
-新档案必须能回答三件事：谁被评、使用了哪些二进制/游戏内容、逐种子明细
-是否真的推出所声明的汇总。旧档案没有这些证据，默认拒绝；法证代码只有
-在显式给出完整的历史文件 SHA-256 时才可读取。
+A new archive must answer three questions: who was evaluated, which binaries/game content were used, and whether the
+per-seed detail really yields the declared aggregate. Old archives lack this evidence and are rejected by default; forensic code
+may read them only when it supplies the full SHA-256 of the historical file explicitly.
 """
 
 from __future__ import annotations
@@ -138,13 +138,13 @@ _TERMINAL_KINDS = {
     "death", "victory", "game_over",
     "time_limit_idle", "time_limit_unsettled",
 }
-# R16 新法环境/教室开关的旧法默认值(= OptionsEnv/DiabloGymEnv 构造器默认;
-# eval_assembled._native_runtime 对 FARM_SCENE_CAP 做漂移守卫)。档案身份只记
-# 非默认取值:全默认时 meta.protocol 无 r16_environment 键(旧档案/默认旗档案
-# 逐字节不变);显式写默认值属身份不规范,validator 拒绝。
+# Old-law defaults of the R16 new-law environment/classroom switches (= the OptionsEnv/DiabloGymEnv constructor defaults;
+# eval_assembled._native_runtime guards FARM_SCENE_CAP against drift). The archive identity records only
+# non-default values: with all defaults meta.protocol has no r16_environment key (old archives/default-flag archives
+# stay byte-identical); writing a default value explicitly is a malformed identity and the validator rejects it.
 R16_ENVIRONMENT_DEFAULTS = {
     "explore_global_hunt": False,
-    # R18-B5 (2026-09-07):a10 全局猎怪的作用域(all = 冻结行为,缺省表示)。
+    # R18-B5 (2026-09-07): scope of the a10 global hunt (all = frozen behavior, expressed by omission).
     "hunt_scope": "all",
     "explore_global_fallback": False,
     "progress_far_tiles": 0,
@@ -155,10 +155,10 @@ R16_ENVIRONMENT_DEFAULTS = {
     "resource_service_policy": "legacy-v1",
     "resource_readiness_law": "veto-v1",
     "resource_retreat": "off",
-    # R18-B5 (2026-09-07):传送卷轴载具(off = 冻结行为,缺省表示)。
+    # R18-B5 (2026-09-07): the town-portal scroll carrier (off = frozen behavior, expressed by omission).
     "resource_portal": "off",
-    # R18-B6 (2026-09-07):扫箱/鉴定/武器升级三条 loot 行程法
-    # (off = 冻结行为,缺省表示;缺省即旧档案逐字节不变)。
+    # R18-B6 (2026-09-07): the three loot-trip laws: chest sweep / identify / weapon upgrade
+    # (off = frozen behavior, expressed by omission; omission keeps old archives byte-identical).
     "resource_sweep": "off",
     "resource_identify": "off",
     "resource_weapon_upgrade": "off",
@@ -242,12 +242,12 @@ def dive_blocker_recovery_recipe(recovery="off"):
             "continuation": "replan-from-current-native-state"}
 
 
-# R18-B3 (2026-09-07):战利品经济进入工人训练后,配方必须写明它究竟在哪一部
-# 完成时钟下跑——completion-l2-v1(followup 1800)与 completion-l2-r18c
-# (followup 9000)下的「两趟城镇 + 卖装备」不是同一件事。每部时钟一个注册版本
-# 号;未注册的时钟 fail closed。键集合刻意与 diablogym.completion_clock.
-# COMPLETION_PROTOCOLS 完全相同(由 tests/test_r18b3_loot_training_contract.py
-# 逐字节盯住),本模块因此仍然不 import 引擎(档案法证在无原生扩展的机器上也要能跑)。
+# R18-B3 (2026-09-07): once the loot economy enters worker training, the recipe must state which
+# completion clock it runs under: "two town trips + selling gear" under completion-l2-v1 (followup 1800) and under completion-l2-r18c
+# (followup 9000) are not the same thing. Each clock gets one registered version
+# number; an unregistered clock fails closed. The key set is deliberately identical to diablogym.completion_clock.
+# COMPLETION_PROTOCOLS (pinned byte for byte by tests/test_r18b3_loot_training_contract.py),
+# so this module still does not import the engine (archive forensics must also run on machines without the native extension).
 LOOT_SERVICE_RECIPE_VERSIONS = {
     "completion-l2-v1": "l1-two-trip-loot-economy-v1",
     "completion-l2-r18c": "l1-two-trip-loot-economy-v1-r18c",
@@ -258,14 +258,14 @@ LOOT_SERVICE_DEFAULT_TIME_PROTOCOL = "completion-l2-v1"
 def resource_service_recipe(protocol="off", mode="full",
                             service_policy="legacy-v1",
                             time_protocol=None):
-    """R18-B3:``time_protocol`` 只对 sustain-loot-v1 有意义,缺省逐字节保持旧配方。
+    """R18-B3: ``time_protocol`` only matters for sustain-loot-v1; when omitted the old recipe stays byte-identical.
 
-    R18-B3 复审 (2026-09-07):哨兵由「缺省时钟值」改为 ``None``(= 调用者没有
-    传时钟)。从前拿真实缺省值当哨兵,``resource_service_recipe(...,"sustain-v6",
-    time_protocol="completion-l2-v1")`` 会被静默接受并忽略,而同样写法配
-    completion-l2-r18c 却报错——统一把运行时钟穿进配方的调用者因此一半静默、
-    一半炸。现在**任何**显式 time_protocol 落在非 loot 服务法上一律 fail closed;
-    缺省输出(含键序)逐字节不变。
+    R18-B3 review (2026-09-07): the sentinel changed from "the default clock value" to ``None`` (= the caller passed
+    no clock). Previously the real default served as the sentinel, so ``resource_service_recipe(...,"sustain-v6",
+    time_protocol="completion-l2-v1")`` was silently accepted and ignored, while the same call with
+    completion-l2-r18c raised: callers that uniformly thread the run clock into the recipe were half silent and
+    half crashing. Now **any** explicit time_protocol on a non-loot service law fails closed;
+    the default output (including key order) is byte-identical.
     """
     validate_resource_service_config(protocol, mode, service_policy)
     if service_policy == "sustain-loot-v1":
@@ -376,15 +376,15 @@ def resource_service_recipe(protocol="off", mode="full",
 
 
 class EvalContractError(ValueError):
-    """评测档案不满足身份、schema 或数值契约。"""
+    """The evaluation archive violates the identity, schema or numeric contract."""
 
 
 class OutputReservationError(FileExistsError):
-    """目标档案已存在，或同 tag 正由另一个进程生成。"""
+    """The target archive already exists, or the same tag is being produced by another process."""
 
 
 class OperationalFailure(RuntimeError):
-    """驱动已识别的训练、导出或评测基础设施失败。"""
+    """A known training, export or evaluation infrastructure failure in the driver."""
 
 
 def _require(condition: bool, message: str) -> None:
@@ -398,9 +398,9 @@ def _is_int(value: Any) -> bool:
 
 def _finite_number(value: Any, label: str) -> float:
     _require(isinstance(value, (int, float)) and not isinstance(value, bool),
-             f"{label} 必须是数值")
+             f"{label} must be numeric")
     result = float(value)
-    _require(math.isfinite(result), f"{label} 必须有限")
+    _require(math.isfinite(result), f"{label} must be finite")
     return result
 
 
@@ -418,12 +418,12 @@ def sha256_file(path: str | pathlib.Path) -> str:
 
 def _validate_sha256(value: Any, label: str) -> str:
     _require(isinstance(value, str) and _SHA256_RE.fullmatch(value) is not None,
-             f"{label} 必须是完整的小写 SHA-256")
+             f"{label} must be a full lowercase SHA-256")
     return value
 
 
 def source_bundle_sha256(files: Mapping[str, str]) -> str:
-    """按相对路径与各文件完整 SHA 生成稳定的协议源码 bundle SHA。"""
+    """Build a stable protocol-source bundle SHA from relative paths and each file's full SHA."""
     h = hashlib.sha256()
     for name, digest in sorted(files.items()):
         _validate_sha256(digest, f"runtime.python_protocol.files[{name!r}]")
@@ -442,11 +442,11 @@ def runtime_versions_identity() -> dict[str, Any]:
             for name in RUNTIME_PACKAGE_VERSIONS
         }
     except importlib.metadata.PackageNotFoundError as exc:
-        raise EvalContractError(f"评测运行时依赖缺失: {exc.name}") from exc
-    # 跨平台注记(2026-07-27 WSL2 移植):同一上游发行版在 Linux 轮子上带本地
-    # 版本段(如 2.12.1+cpu)。门槛按公开版本段比对;archives 里 packages 仍
-    # 记录完整本地版本,身份不失真。CUDA 轮子(+cu130)在 WSL 下 import 不稳,
-    # 本机钉 +cpu(见 OPS-windows-feasibility.md)。
+        raise EvalContractError(f"evaluation runtime dependency missing: {exc.name}") from exc
+    # Cross-platform note (2026-07-27 WSL2 port): the same upstream release carries a local
+    # version segment on Linux wheels (e.g. 2.12.1+cpu). The gate compares the public version segment; archives still
+    # record the full local version in packages, so the identity stays exact. The CUDA (+cu130) wheel imports
+    # unreliably under WSL, so the CPU (+cpu) wheel is pinned there.
     mismatches = {
         name: (packages[name], expected)
         for name, expected in RUNTIME_PACKAGE_VERSIONS.items()
@@ -454,7 +454,7 @@ def runtime_versions_identity() -> dict[str, Any]:
         and packages[name].split("+", 1)[0] != expected
     }
     _require(not mismatches,
-             f"评测运行时版本漂移（升级须重做数值回归）: {mismatches}")
+             f"evaluation runtime version drift (an upgrade requires redoing the numeric regression): {mismatches}")
     return {
         "python": {
             "implementation": sys.implementation.name,
@@ -466,7 +466,7 @@ def runtime_versions_identity() -> dict[str, Any]:
 
 
 def default_game_data_dir() -> pathlib.Path:
-    """与 DiabloGymEnv 的默认 data_dir 保持同一平台契约。"""
+    """Keep the same platform contract as DiabloGymEnv's default data_dir."""
     return (pathlib.Path.home()
             / "Library" / "Application Support" / "diasurgical" / "devilution")
 
@@ -477,7 +477,7 @@ def default_assets_dir(root: pathlib.Path) -> pathlib.Path:
 
 
 def _absolute_path(path: str | pathlib.Path) -> pathlib.Path:
-    """取得绝对词法路径但不消解 symlink，便于复验路径本身的选择。"""
+    """Get the absolute lexical path without resolving symlinks, so the path choice itself can be re-verified."""
     return pathlib.Path(os.path.abspath(os.fspath(pathlib.Path(path).expanduser())))
 
 
@@ -487,66 +487,66 @@ def _stat_signature(value: os.stat_result) -> tuple[int, int, int, int, int]:
 
 
 def _stable_file_sha256(path: pathlib.Path, label: str) -> str:
-    """哈希一个始终由同一路径指向、且读取期间未变化的普通文件。"""
-    _require(not path.is_symlink(), f"{label} 不允许符号链接: {path}")
+    """Hash a regular file that the same path points to throughout and that does not change while being read."""
+    _require(not path.is_symlink(), f"{label} must not be a symlink: {path}")
     try:
         with open(path, "rb") as stream:
             before = os.fstat(stream.fileno())
             _require(stat_module.S_ISREG(before.st_mode),
-                     f"{label} 不是普通文件: {path}")
+                     f"{label} is not a regular file: {path}")
             digest = hashlib.sha256()
             for chunk in iter(lambda: stream.read(1024 * 1024), b""):
                 digest.update(chunk)
             after = os.fstat(stream.fileno())
         current = path.stat()
     except OSError as exc:
-        raise EvalContractError(f"{label} 不可稳定读取: {path}: {exc}") from exc
+        raise EvalContractError(f"{label} cannot be read stably: {path}: {exc}") from exc
     signature = _stat_signature(before)
     _require(signature == _stat_signature(after)
              and signature == _stat_signature(current),
-             f"{label} 在哈希期间发生变化: {path}")
+             f"{label} changed while being hashed: {path}")
     return digest.hexdigest()
 
 
 def game_data_identity(data_dir: str | pathlib.Path | None = None
                        ) -> dict[str, Any]:
-    """按 LoadGameArchives 的优先级绑定默认 data_dir 中实际主 MPQ。"""
+    """Bind the main MPQ actually used in the default data_dir, in LoadGameArchives priority order."""
     directory = _absolute_path(data_dir or default_game_data_dir())
-    _require(directory.is_dir(), f"游戏 data_dir 不存在: {directory}")
+    _require(directory.is_dir(), f"game data_dir does not exist: {directory}")
     for name in ("DIABDAT.MPQ", "diabdat.mpq", "spawn.mpq"):
         candidate = directory / name
         if candidate.is_file():
             return {
                 "path": str(candidate),
-                "sha256": _stable_file_sha256(candidate, "游戏主 MPQ"),
+                "sha256": _stable_file_sha256(candidate, "game main MPQ"),
             }
     raise EvalContractError(
-        f"游戏 data_dir 缺少 DIABDAT.MPQ/diabdat.mpq/spawn.mpq: {directory}")
+        f"game data_dir lacks DIABDAT.MPQ/diabdat.mpq/spawn.mpq: {directory}")
 
 
 def _resource_files(directory: pathlib.Path) -> list[pathlib.Path]:
     try:
         entries = list(directory.rglob("*"))
     except OSError as exc:
-        raise EvalContractError(f"资源树不可遍历: {directory}: {exc}") from exc
+        raise EvalContractError(f"resource tree cannot be traversed: {directory}: {exc}") from exc
     files: list[pathlib.Path] = []
     for entry in entries:
-        _require(not entry.is_symlink(), f"资源树不允许符号链接: {entry}")
+        _require(not entry.is_symlink(), f"resource tree must not contain symlinks: {entry}")
         if entry.is_file():
             files.append(entry)
         else:
-            _require(entry.is_dir(), f"资源树含特殊文件: {entry}")
+            _require(entry.is_dir(), f"resource tree contains a special file: {entry}")
     return sorted(files, key=lambda path: path.relative_to(directory).as_posix())
 
 
 def assets_tree_identity(assets_dir: str | pathlib.Path) -> dict[str, Any]:
-    """以相对路径和每个文件的原始内容计算确定性 Resources 树哈希。"""
+    """Compute a deterministic Resources tree hash from relative paths and each file's raw content."""
     directory = _absolute_path(assets_dir)
-    _require(directory.is_dir(), f"引擎 Resources 目录不存在: {directory}")
+    _require(directory.is_dir(), f"engine Resources directory does not exist: {directory}")
     _require(not directory.is_symlink(),
-             f"引擎 Resources 目录不允许符号链接: {directory}")
+             f"engine Resources directory must not be a symlink: {directory}")
     files = _resource_files(directory)
-    _require(bool(files), f"引擎 Resources 目录为空: {directory}")
+    _require(bool(files), f"engine Resources directory is empty: {directory}")
     digest = hashlib.sha256(b"diablogym-resources-tree-v1\0")
     signatures: dict[str, tuple[int, int, int, int, int]] = {}
     try:
@@ -556,9 +556,9 @@ def assets_tree_identity(assets_dir: str | pathlib.Path) -> dict[str, Any]:
             with open(path, "rb") as stream:
                 before = os.fstat(stream.fileno())
                 _require(stat_module.S_ISREG(before.st_mode),
-                         f"资源树条目不是普通文件: {path}")
+                         f"resource tree entry is not a regular file: {path}")
                 _require(0 <= before.st_size < 2**64,
-                         f"资源树文件大小无法编码: {path}")
+                         f"resource tree file size cannot be encoded: {path}")
                 digest.update(len(relative_bytes).to_bytes(8, "big"))
                 digest.update(relative_bytes)
                 digest.update(before.st_size.to_bytes(8, "big"))
@@ -570,22 +570,22 @@ def assets_tree_identity(assets_dir: str | pathlib.Path) -> dict[str, Any]:
             signature = _stat_signature(before)
             _require(read_size == before.st_size
                      and signature == _stat_signature(after),
-                     f"资源文件在树哈希期间发生变化: {path}")
+                     f"resource file changed during the tree hash: {path}")
             signatures[relative] = signature
     except OSError as exc:
-        raise EvalContractError(f"资源树不可稳定读取: {exc}") from exc
+        raise EvalContractError(f"resource tree cannot be read stably: {exc}") from exc
 
     final_files = _resource_files(directory)
     final_relatives = [path.relative_to(directory).as_posix()
                        for path in final_files]
     _require(final_relatives == list(signatures),
-             "资源树文件集合在哈希期间发生变化")
+             "resource tree file set changed during hashing")
     try:
         stable = all(_stat_signature(path.stat()) == signatures[relative]
                      for path, relative in zip(final_files, final_relatives))
     except OSError as exc:
-        raise EvalContractError(f"资源树无法完成读后复验: {exc}") from exc
-    _require(stable, "资源树文件在哈希完成前发生变化")
+        raise EvalContractError(f"resource tree read-back re-verification failed: {exc}") from exc
+    _require(stable, "resource tree files changed before hashing finished")
     return {
         "path": str(directory),
         "sha256": digest.hexdigest(),
@@ -605,7 +605,7 @@ def content_identity(root: pathlib.Path, *,
 
 
 def engine_binary_path(root: pathlib.Path) -> pathlib.Path:
-    """定位 bridge 实际链接的 DevilutionX 共享引擎，歧义时 fail closed。"""
+    """Locate the DevilutionX shared engine the bridge actually links; fail closed on ambiguity."""
     engine_root = root.resolve() / "build" / "engine"
     if sys.platform == "darwin":
         names = ("liblibdevilutionx_so.dylib",)
@@ -625,7 +625,7 @@ def engine_binary_path(root: pathlib.Path) -> pathlib.Path:
         if (candidate := directory / name).is_file()
     }
     _require(len(matches) == 1,
-             "无法唯一定位 DevilutionX engine 共享库: "
+             "cannot uniquely locate the DevilutionX engine shared library: "
              f"root={engine_root}, matches={sorted(map(str, matches))}")
     return next(iter(matches))
 
@@ -672,11 +672,11 @@ def loaded_engine_binary_path(expected_path: str | pathlib.Path) -> pathlib.Path
                     if path.name == expected.name:
                         candidates.add(path.resolve())
     _require(len(candidates) == 1,
-             "无法唯一定位当前进程实际映射的 DevilutionX engine: "
+             "cannot uniquely locate the DevilutionX engine actually mapped by this process: "
              f"expected={expected}, mapped={sorted(map(str, candidates))}")
     actual = next(iter(candidates))
     _require(actual == expected,
-             f"实际映射 engine 路径与冻结身份不一致: {actual} != {expected}")
+             f"actually mapped engine path differs from the frozen identity: {actual} != {expected}")
     return actual
 
 
@@ -691,7 +691,7 @@ def runtime_identity(root: pathlib.Path, bridge_path: pathlib.Path,
     for relative in PROTOCOL_SOURCE_FILES:
         path = root / relative
         if not path.is_file():
-            raise EvalContractError(f"协议源码缺失: {path}")
+            raise EvalContractError(f"protocol source missing: {path}")
         files[relative] = sha256_file(path)
     return {
         "bridge": {
@@ -714,9 +714,9 @@ def runtime_identity(root: pathlib.Path, bridge_path: pathlib.Path,
 
 def bridge_binary_path(root: pathlib.Path) -> pathlib.Path:
     suffix = sysconfig.get_config_var("EXT_SUFFIX")
-    _require(isinstance(suffix, str) and bool(suffix), "无法确定当前 Python 扩展 ABI")
+    _require(isinstance(suffix, str) and bool(suffix), "cannot determine the current Python extension ABI")
     path = root.resolve() / "build" / f"_diablogym{suffix}"
-    _require(path.is_file(), f"当前 ABI 的 bridge 二进制不存在: {path}")
+    _require(path.is_file(), f"bridge binary for the current ABI does not exist: {path}")
     return path
 
 
@@ -728,7 +728,7 @@ def resolve_checkpoint_file(path: str | pathlib.Path) -> pathlib.Path:
         zipped = pathlib.Path(f"{candidate}.zip")
         if zipped.is_file():
             return zipped.resolve()
-    raise EvalContractError(f"checkpoint 不存在: {candidate}")
+    raise EvalContractError(f"checkpoint does not exist: {candidate}")
 
 
 def checkpoint_num_timesteps_bytes(payload: bytes, label: str = "checkpoint") -> int:
@@ -739,9 +739,9 @@ def checkpoint_num_timesteps_bytes(payload: bytes, label: str = "checkpoint") ->
         value = data["num_timesteps"]
     except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError,
             zipfile.BadZipFile) as exc:
-        raise EvalContractError(f"checkpoint num_timesteps 不可读: {label}") from exc
+        raise EvalContractError(f"checkpoint num_timesteps unreadable: {label}") from exc
     _require(_is_int(value) and value >= 0,
-             f"checkpoint num_timesteps 非法: {value!r}")
+             f"checkpoint num_timesteps is illegal: {value!r}")
     return value
 
 
@@ -751,7 +751,7 @@ def checkpoint_num_timesteps(path: str | pathlib.Path) -> int:
         payload = checkpoint.read_bytes()
     except OSError as exc:
         raise EvalContractError(
-            f"checkpoint num_timesteps 不可读: {checkpoint}") from exc
+            f"checkpoint num_timesteps unreadable: {checkpoint}") from exc
     return checkpoint_num_timesteps_bytes(payload, str(checkpoint))
 
 
@@ -759,11 +759,11 @@ def file_identity(kind: str, path: str | pathlib.Path,
                   *, num_timesteps: int | None = None,
                   gate_report_path: str | pathlib.Path | None = None) -> dict[str, Any]:
     resolved = pathlib.Path(path).resolve()
-    _require(resolved.is_file(), f"策略文件不存在: {resolved}")
+    _require(resolved.is_file(), f"policy file does not exist: {resolved}")
     report_sha = None
     if gate_report_path is not None:
         report = pathlib.Path(gate_report_path).resolve()
-        _require(report.is_file(), f"策略闸门报告不存在: {report}")
+        _require(report.is_file(), f"policy gate report does not exist: {report}")
         report_sha = sha256_file(report)
     return {
         "kind": kind,
@@ -789,7 +789,7 @@ def script_worker_identity(protocol_bundle_sha256: str) -> dict[str, Any]:
 def freeze_eval_identity(root: pathlib.Path, worker_spec: str | pathlib.Path,
                          manager_path: str | pathlib.Path | None = None
                          ) -> dict[str, Any]:
-    """在启动评测子进程前冻结全部输入与当前运行时身份。"""
+    """Freeze all inputs and the current runtime identity before starting the evaluation subprocess."""
     root = root.resolve()
     runtime = runtime_identity(root, bridge_binary_path(root))
     spec = str(worker_spec)
@@ -806,7 +806,7 @@ def freeze_eval_identity(root: pathlib.Path, worker_spec: str | pathlib.Path,
         try:
             checkpoint_payload = checkpoint.read_bytes()
         except OSError as exc:
-            raise EvalContractError(f"checkpoint 不可读: {checkpoint}") from exc
+            raise EvalContractError(f"checkpoint unreadable: {checkpoint}") from exc
         worker = {
             "kind": "sb3_checkpoint", "path": str(checkpoint),
             "sha256": hashlib.sha256(checkpoint_payload).hexdigest(),
@@ -824,7 +824,7 @@ def freeze_eval_identity(root: pathlib.Path, worker_spec: str | pathlib.Path,
     manager = file_identity("numpy_policy", manager_file)
     if manager_path is None:
         _require(manager["sha256"] == DEFAULT_MANAGER_SHA256,
-                 "默认 v22-H manager SHA 漂移: "
+                 "default v22-H manager SHA drift: "
                  f"{manager['sha256']} != {DEFAULT_MANAGER_SHA256}")
     return {"worker": worker, "manager": manager, "runtime": runtime}
 
@@ -857,7 +857,7 @@ def expected_eval_identity(snapshot: Mapping[str, Any], *, tag: str,
 
 
 def verify_eval_identity(snapshot: Mapping[str, Any], root: pathlib.Path) -> None:
-    """子进程结束后重哈希；任何评测期间输入替换都使档案作废。"""
+    """Re-hash after the subprocess exits; any input swapped during evaluation voids the archive."""
     verify_file_identity(snapshot["worker"])
     verify_file_identity(snapshot["manager"])
     try:
@@ -865,12 +865,12 @@ def verify_eval_identity(snapshot: Mapping[str, Any], root: pathlib.Path) -> Non
         data_dir = pathlib.Path(content["game_data"]["path"]).parent
         assets_dir = pathlib.Path(content["assets"]["path"])
     except (KeyError, TypeError, ValueError) as exc:
-        raise EvalContractError("冻结的 content identity 结构异常") from exc
+        raise EvalContractError("frozen content identity structure is malformed") from exc
     current = runtime_identity(
         root.resolve(), bridge_binary_path(root.resolve()),
         data_dir=data_dir, assets_dir=assets_dir)
     _require(current == snapshot["runtime"],
-             "评测期间 bridge、engine、游戏数据、资源树或 Python 协议源码发生变化")
+             "bridge, engine, game data, resource tree or Python protocol source changed during evaluation")
 
 
 def verify_file_identity(identity: Mapping[str, Any]) -> None:
@@ -878,10 +878,10 @@ def verify_file_identity(identity: Mapping[str, Any]) -> None:
         return
     path = identity.get("path")
     _require(isinstance(path, str) and pathlib.Path(path).is_file(),
-             f"策略身份路径失效: {path!r}")
+             f"policy identity path is invalid: {path!r}")
     actual = sha256_file(path)
     _require(actual == identity.get("sha256"),
-             f"评测期间策略文件发生变化: {actual} != {identity.get('sha256')!r}")
+             f"policy file changed during evaluation: {actual} != {identity.get('sha256')!r}")
     expected_report = identity.get("gate_report_sha256")
     if expected_report is not None:
         report_name = (
@@ -890,20 +890,20 @@ def verify_file_identity(identity: Mapping[str, Any]) -> None:
             else "bc_report.json")
         report_path = pathlib.Path(path).with_name(report_name)
         _require(report_path.is_file(),
-                 f"评测期间策略发布/gate report 消失: {report_path}")
+                 f"policy release/gate report disappeared during evaluation: {report_path}")
         actual_report = sha256_file(report_path)
         _require(actual_report == expected_report,
-                 "评测期间策略发布/gate report 发生变化: "
+                 "policy release/gate report changed during evaluation: "
                  f"{actual_report} != {expected_report!r}")
 
 
 def validate_r16_environment(value: Any) -> dict[str, Any]:
-    """R16 环境开关身份子字典:非空、只含已知键、每键必须是非默认的合法值。"""
+    """R16 environment-switch identity sub-dict: non-empty, known keys only, every key a legal non-default value."""
     _require(isinstance(value, dict) and bool(value),
-             "meta.protocol.r16_environment 必须是非空对象")
+             "meta.protocol.r16_environment must be a non-empty object")
     unknown = set(value) - set(R16_ENVIRONMENT_DEFAULTS)
     _require(not unknown,
-             f"meta.protocol.r16_environment 含未知键: {sorted(unknown)}")
+             f"meta.protocol.r16_environment has unknown keys: {sorted(unknown)}")
     for key, item in value.items():
         default = R16_ENVIRONMENT_DEFAULTS[key]
         if key == "resource_protocol":
@@ -918,14 +918,14 @@ def validate_r16_environment(value: Any) -> dict[str, Any]:
         elif key == "resource_service_policy":
             _require(item in ("sustain-v2", "sustain-v3", "sustain-v4", "sustain-v5", "sustain-v6", "sustain-loot-v1"),
                      "resource_service_policy must be sustain-v2/sustain-v3/sustain-v4/sustain-v5/sustain-v6 (legacy-v1 is omitted)")
-            # R18-B3 复审 (2026-09-07):loot 配方自本版起随完成时钟分版
-            # (LOOT_SERVICE_RECIPE_VERSIONS),而档案身份词汇表
-            # (R16_ENVIRONMENT_DEFAULTS)里根本没有时钟键——档案说不出自己
-            # 究竟在哪部时钟下跑。若照旧用缺省 completion-l2-v1 造配方,
-            # 一份 completion-l2-r18c 训练出来的工人的档案就会写下一句关于
-            # 时钟与经济版本号的假话,而诚实的 -r18c 配方反而被 validator 拒。
-            # 在档案 schema 长出时钟键之前一律 fail closed:宁可评不了,
-            # 不可让缺省值替被测世界作证。
+            # R18-B3 review (2026-09-07): from this version on, the loot recipe is versioned by completion clock
+            # (LOOT_SERVICE_RECIPE_VERSIONS), yet the archive identity vocabulary
+            # (R16_ENVIRONMENT_DEFAULTS) has no clock key at all: an archive cannot say
+            # which clock it ran under. If we kept building the recipe from the default completion-l2-v1,
+            # the archive of a worker trained under completion-l2-r18c would record a false statement about
+            # its clock and economy version, while the honest -r18c recipe would be rejected by the validator.
+            # Until the archive schema grows a clock key, fail closed: better unable to evaluate
+            # than let a default value testify for the world under test.
             _require(item != "sustain-loot-v1",
                      "sustain-loot-v1 archives require the completion-l2 clock in the "
                      "archive identity, which this schema version does not carry yet "
@@ -946,8 +946,8 @@ def validate_r16_environment(value: Any) -> dict[str, Any]:
                      "resource_retreat retreat-v1 requires resource_protocol "
                      "l2-town-v1 and resource_readiness_law coach-v03")
         elif key == "resource_portal":
-            # R18-B5 (2026-09-07):传送是撤退的载具,档案身份必须同时写下
-            # 那部撤退法,否则一份「有传送、没撤退」的档案说不清窗是怎么关的。
+            # R18-B5 (2026-09-07): the portal is the retreat's carrier, so the archive identity must also record
+            # that retreat law; otherwise a "portal without retreat" archive cannot explain how the window was closed.
             _require(item == "portal-v1",
                      "resource_portal must be portal-v1 (off is omitted)")
             _require(value.get("resource_protocol") == "l2-town-v1"
@@ -958,23 +958,23 @@ def validate_r16_environment(value: Any) -> dict[str, Any]:
                      "resource_retreat retreat-v1")
         elif key in ("resource_sweep", "resource_identify",
                      "resource_weapon_upgrade"):
-            # R18-B6 (2026-09-07):三条法都只活在 loot 经济的进城行程里
-            # (部署侧 validate_sweep_protocol / validate_identify_protocol /
-            # validate_weapon_upgrade 同款),故档案身份必须同时写下
-            # l2-town-v1 与 sustain-loot-v1;smith-v1 另需 full 采购模式。
-            # 注意这条链当前一定 fail closed:上面的 resource_service_policy
-            # 分支拒绝一切 sustain-loot-v1 档案(R18-B3——档案 schema 还没有
-            # 时钟键)。这是刻意的:在档案能说出自己在哪部时钟下跑之前,
-            # 一份"有扫箱、说不出时钟"的档案不许被铸出来。
-            # 复核修正(同日):这张表对 resource_weapon_upgrade 而言比部署侧
-            # 词汇表窄一个值——RESOURCE_WEAPON_UPGRADES 还有 dry-v1,这里不
-            # 收。这是刻意的,与训练侧 (_validate_args / make_env) 同一条理由:
-            # dry-v1 不发命令、不走微步、不做 native 调用,行数据与 control 臂
-            # 逐位相同,故一份写着 dry-v1 的档案身份是在为一个与缺省世界逐位
-            # 相同的环境作伪证(hunt_scope l1-only 复核修正同款裁定)。所以
-            # B6 的窄化不止在训练环,也**明确**落在档案身份环与 eval_assembled
-            # 的 CLI 环上;dry-v1 反事实臂若要考核,需先有自己的身份裁定
-            # (B6-REPORT.md 开放问题 2),而不是在这里放行。
+            # R18-B6 (2026-09-07): all three laws live only inside the loot economy's town trips
+            # (same as the deployment side's validate_sweep_protocol / validate_identify_protocol /
+            # validate_weapon_upgrade), so the archive identity must also record
+            # l2-town-v1 and sustain-loot-v1; smith-v1 additionally needs the full purchase mode.
+            # Note this chain currently always fails closed: the resource_service_policy
+            # branch above rejects every sustain-loot-v1 archive (R18-B3: the archive schema has no
+            # clock key yet). This is deliberate: until an archive can say which clock it ran under,
+            # an archive "with chest sweep but no clock" must not be minted.
+            # Review fix (same day): for resource_weapon_upgrade this table is one value narrower than the deployment-side
+            # vocabulary: RESOURCE_WEAPON_UPGRADES also has dry-v1, which is not
+            # accepted here. This is deliberate, for the same reason as on the training side (_validate_args / make_env):
+            # dry-v1 sends no command, takes no micro-step and makes no native call, so its row data are bit-identical
+            # to the control arm; an archive identity stating dry-v1 would falsely testify for an environment bit-identical
+            # to the default world (the same decision as the hunt_scope l1-only review fix). So
+            # the B6 narrowing sits not only in the training ring but **explicitly** also in the archive identity ring and eval_assembled's
+            # CLI ring; to examine a dry-v1 counterfactual arm it first needs its own identity decision
+            # (B6-REPORT.md open question 2), not a pass here.
             expected = {"resource_sweep": "sweep-v1",
                         "resource_identify": "cain-v1",
                         "resource_weapon_upgrade": "smith-v1"}[key]
@@ -989,13 +989,13 @@ def validate_r16_environment(value: Any) -> dict[str, Any]:
                          "resource_weapon_upgrade smith-v1 requires the full "
                          "purchase mode")
         elif key == "hunt_scope":
-            # R18-B5 (2026-09-07):DiabloGymEnv 级开关,不需要资源协议。
+            # R18-B5 (2026-09-07): a DiabloGymEnv-level switch; needs no resource protocol.
             _require(item == "l1-only",
                      "hunt_scope must be l1-only (all is omitted)")
-            # 复核修正(同日):l1-only 的唯一消费者是 a10 全图寻怪的闸,
-            # 寻怪关着时它是保证的空操作。一份声明了这条法却没开寻怪的档案
-            # 会为一个与缺省世界逐位相同的环境铸出另一个身份——身份必须只
-            # 为真的跑过的法作证(R18-B3 裁定同款),故 fail closed。
+            # Review fix (same day): the only consumer of l1-only is the gate of the a10 whole-map monster search,
+            # so with the search off it is a guaranteed no-op. An archive that declares this law without enabling the search
+            # would mint a second identity for an environment bit-identical to the default world; an identity must only
+            # testify for laws that really ran (same decision as R18-B3), hence fail closed.
             _require(value.get("explore_global_hunt") is True,
                      "hunt_scope l1-only requires explore_global_hunt")
         elif key == "dive_blocker_recovery":
@@ -1004,14 +1004,14 @@ def validate_r16_environment(value: Any) -> dict[str, Any]:
                      "dive_blocker_recovery requires resource_protocol l2-town-v1")
         elif isinstance(default, bool):
             _require(item is True,
-                     f"meta.protocol.r16_environment.{key} 只允许 true"
-                     "(默认 false 以缺省表示)")
+                     f"meta.protocol.r16_environment.{key} only allows true"
+                     " (default false is expressed by omission)")
         else:
             _require(_is_int(item) and item > 0,
-                     f"meta.protocol.r16_environment.{key} 必须是正整数")
+                     f"meta.protocol.r16_environment.{key} must be a positive integer")
             _require(item != default,
-                     f"meta.protocol.r16_environment.{key} 显式写默认值 "
-                     f"{default} 属身份不规范,应缺省")
+                     f"meta.protocol.r16_environment.{key} explicitly writes the default value "
+                     f"{default}; malformed identity, omit it")
     return {key: value[key] for key in R16_ENVIRONMENT_DEFAULTS if key in value}
 
 
@@ -1030,15 +1030,15 @@ def make_protocol(seeds: Iterable[int], *,
         "deterministic": True,
         "seeds": list(seeds),
     }
-    # R16(C3):工人解码方式进入档案身份。argmax 是历史唯一口径,以缺省
-    # 表示(旧档案/默认旗档案逐字节不变);sample = 工人按训练分布逐局定种
-    # 采样(torch.manual_seed(seed)、单线程),仍可逐位复现,故 deterministic
-    # 保持 True。action_selection 描述经理侧 numpy argmax,不变。
+    # R16 (C3): the worker decoding mode enters the archive identity. argmax is the only historical definition and is expressed
+    # by omission (old archives/default-flag archives stay byte-identical); sample = the worker samples from its training distribution
+    # with a per-episode seed (torch.manual_seed(seed), single thread) and stays bit-reproducible, so deterministic
+    # stays True. action_selection describes the manager-side numpy argmax and is unchanged.
     if worker_decoding != "argmax":
         _require(worker_decoding == "sample",
-                 f"worker_decoding 只允许 argmax/sample: {worker_decoding!r}")
+                 f"worker_decoding only allows argmax/sample: {worker_decoding!r}")
         protocol["worker_decoding"] = worker_decoding
-    # R16 新法锚:环境/教室开关任一非默认时才写入子字典(只列非默认键)。
+    # R16 new-law anchor: write the sub-dict only when some environment/classroom switch is non-default (listing only non-default keys).
     if r16_environment:
         protocol["r16_environment"] = validate_r16_environment(
             dict(r16_environment))
@@ -1069,13 +1069,13 @@ def make_meta(*, tag: str, seeds: Iterable[int], worker: Mapping[str, Any],
 
 def recompute_agg(rows: list[Mapping[str, Any]]) -> dict[str, Any]:
     n = len(rows)
-    _require(n > 0, "评测 rows 不能为空")
+    _require(n > 0, "evaluation rows must not be empty")
     rets = sorted(row["ret"] for row in rows)
     farm_n = sum(row["farm_n"] for row in rows)
     return {
         "n": n,
-        # schema-v5 在档案中保留完整 float，CLI/排行榜才负责格式化展示。
-        # 这消除了逐局先 round(2) 与聚合再 round 所造成的贴线翻闸。
+        # schema-v5 keeps full floats in the archive; only the CLI/leaderboard formats them for display.
+        # This removes gate flips at the line caused by round(2) per episode followed by another round after aggregation.
         "ret_mean": sum(rets) / n,
         "ret_median": statistics.median(rets),
         "died": sum(row["died"] for row in rows),
@@ -1133,32 +1133,32 @@ def recompute_agg(rows: list[Mapping[str, Any]]) -> dict[str, Any]:
 
 def _validate_identity(identity: Any, label: str,
                        runtime_bundle_sha256: str) -> None:
-    _require(isinstance(identity, dict), f"meta.{label} 必须是对象")
+    _require(isinstance(identity, dict), f"meta.{label} must be an object")
     _require(set(identity) == {
         "kind", "path", "sha256", "num_timesteps", "gate_report_sha256"},
-        f"meta.{label} 字段异常")
+        f"meta.{label} fields are malformed")
     kind = identity["kind"]
     allowed = ({"script", "bc_state_dict", "numpy_policy", "sb3_checkpoint"}
                if label == "worker" else {"numpy_policy"})
-    _require(kind in allowed, f"meta.{label}.kind 非法: {kind!r}")
+    _require(kind in allowed, f"meta.{label}.kind is illegal: {kind!r}")
     _validate_sha256(identity["sha256"], f"meta.{label}.sha256")
     if kind == "script":
         _require(identity["path"] is None and identity["num_timesteps"] is None
                  and identity["gate_report_sha256"] is None,
-                 "script worker 不应声明文件、步数或闸门报告")
+                 "script worker must not declare a file, step count or gate report")
         expected = script_worker_identity(runtime_bundle_sha256)["sha256"]
         _require(identity["sha256"] == expected,
-                 "script worker SHA 未绑定当前协议源码 bundle")
+                 "script worker SHA is not bound to the current protocol source bundle")
     else:
         _require(isinstance(identity["path"], str) and bool(identity["path"]),
-                 f"meta.{label}.path 缺失")
+                 f"meta.{label}.path missing")
         if kind == "sb3_checkpoint":
             _require(_is_int(identity["num_timesteps"])
                      and identity["num_timesteps"] >= 0,
-                     "SB3 worker 必须声明非负 num_timesteps")
+                     "SB3 worker must declare a non-negative num_timesteps")
         else:
             _require(identity["num_timesteps"] is None,
-                     f"{kind} 不应声明 num_timesteps")
+                     f"{kind} must not declare num_timesteps")
         report_sha = identity["gate_report_sha256"]
         if kind == "bc_state_dict":
             _validate_sha256(report_sha, "meta.worker.gate_report_sha256")
@@ -1168,17 +1168,17 @@ def _validate_identity(identity: Any, label: str,
                     report_sha, "meta.worker.gate_report_sha256")
         else:
             _require(report_sha is None,
-                     f"{kind} 不应声明 gate_report_sha256")
+                     f"{kind} must not declare gate_report_sha256")
 
 
 def _validate_rows(rows: Any, seeds: list[int]) -> list[Mapping[str, Any]]:
-    _require(isinstance(rows, list) and rows, "rows 必须是非空数组")
-    _require(len(rows) == len(seeds), "rows 数量与协议 seeds 不一致")
+    _require(isinstance(rows, list) and rows, "rows must be a non-empty array")
+    _require(len(rows) == len(seeds), "rows count differs from the protocol seeds")
     seen: list[int] = []
     for index, row in enumerate(rows):
         label = f"rows[{index}]"
-        _require(isinstance(row, dict), f"{label} 必须是对象")
-        _require(set(row) == _ROW_KEYS, f"{label} 字段异常")
+        _require(isinstance(row, dict), f"{label} must be an object")
+        _require(set(row) == _ROW_KEYS, f"{label} fields are malformed")
         for key in (
                 "seed", "depth", "kills", "micro_steps",
                 "farm_kills", "farm_worker_kills", "nonfarm_kills",
@@ -1191,33 +1191,33 @@ def _validate_rows(rows: Any, seeds: list[int]) -> list[Mapping[str, Any]]:
                 "ending_belt_heals",
                 "farm_n", "farm_tau_sum", "farm_descend",
                 "windows", "beats", "overrides", "cap"):
-            _require(_is_int(row[key]), f"{label}.{key} 必须是整数")
+            _require(_is_int(row[key]), f"{label}.{key} must be an integer")
         _require(0 <= row["seed"] <= UINT32_MAX,
-                 f"{label}.seed 必须在 uint32 范围")
+                 f"{label}.seed must be in uint32 range")
         _require(1 <= row["depth"] <= 16 and row["kills"] >= 0,
-                 f"{label} 深度必须在 [1,16]，击杀不能为负")
+                 f"{label} depth must be in [1,16] and kills must not be negative")
         _require(0 < row["micro_steps"] <= PROTOCOL_MAX_STEPS,
-                 f"{label}.micro_steps 越界")
-        # beats 是已执行的基础 action/macro 调用数；一个调用至少消耗一个
-        # micro-step。fuse 拒绝既不增加 beats 也不消耗 micro-step。
+                 f"{label}.micro_steps out of range")
+        # beats is the number of executed base action/macro calls; each call consumes at least one
+        # micro-step. A fuse rejection neither adds beats nor consumes a micro-step.
         _require(row["farm_n"] >= 0 and 0 < row["windows"] <= row["beats"]
                  <= row["micro_steps"],
-                 f"{label} 窗口/action-beat/micro-step 计数越界")
+                 f"{label} window/action-beat/micro-step counts out of range")
         _require(row["kills"] <= PROTOCOL_MAX_STEPS,
-                 f"{label}.kills 超出单局微步预算")
+                 f"{label}.kills exceeds the per-episode micro-step budget")
         _require(
             0 <= row["farm_worker_kills"] <= row["farm_kills"]
             and row["nonfarm_kills"] >= 0
             and row["kills"] == row["farm_kills"] + row["nonfarm_kills"],
-            f"{label} FARM/non-FARM/worker 击杀分账不守恒",
+            f"{label} FARM/non-FARM/worker kill split does not balance",
         )
         _require(0 <= row["farm_descend"] <= row["farm_n"] <= row["windows"],
-                 f"{label} FARM 计数关系异常")
+                 f"{label} FARM count relation is malformed")
         _require(
             row["farm_dry_n"] >= 0
             and row["farm_fresh_n"] >= 0
             and row["farm_dry_n"] + row["farm_fresh_n"] == row["farm_n"],
-            f"{label} FARM dry/fresh 窗口分账不守恒",
+            f"{label} FARM dry/fresh window split does not balance",
         )
         _require(
             row["farm_dry_worker_kills"] >= 0
@@ -1227,32 +1227,32 @@ def _validate_rows(rows: Any, seeds: list[int]) -> list[Mapping[str, Any]]:
                 + row["farm_fresh_worker_kills"]
                 == row["farm_worker_kills"]
             ),
-            f"{label} FARM dry/fresh worker 击杀分账不守恒",
+            f"{label} FARM dry/fresh worker kill split does not balance",
         )
         _require(0 <= row["overrides"] <= row["beats"],
-                 f"{label}.overrides 超出 beats")
+                 f"{label}.overrides exceeds beats")
         _require(0 <= row["cap"] <= row["windows"],
-                 f"{label}.cap 超出 windows")
+                 f"{label}.cap exceeds windows")
         _require(
             row["farm_voluntary_drinks"] >= 0
             and row["farm_reflex_drain_attempts"]
             >= row["farm_reflex_drains"] >= 0
             and row["farm_voluntary_drinks"] + row["farm_reflex_drains"]
             <= row["beats"],
-            f"{label} 主动饮/反射尝试/成功排水计数越界")
+            f"{label} active-drink/reflex-attempt/successful-drain counts out of range")
         _require(
             0 <= row["farm_multi_drink_windows"] <= row["farm_n"]
             and 0 <= row["farm_max_voluntary_drinks_per_window"]
             <= row["farm_voluntary_drinks"]
             and 2 * row["farm_multi_drink_windows"]
             <= row["farm_voluntary_drinks"],
-            f"{label} 多饮窗口/单窗最大主动饮计数越界")
+            f"{label} multi-drink window/per-window max active-drink counts out of range")
         _require(
             (row["farm_multi_drink_windows"] == 0
              and row["farm_max_voluntary_drinks_per_window"] <= 1)
             or (row["farm_multi_drink_windows"] > 0
                 and row["farm_max_voluntary_drinks_per_window"] >= 2),
-            f"{label} 多饮窗口与单窗最大主动饮不一致")
+            f"{label} multi-drink windows disagree with the per-window max active drinks")
         farm_windows = row["farm_n"]
         voluntary_drinks = row["farm_voluntary_drinks"]
         multi_drink_windows = row["farm_multi_drink_windows"]
@@ -1264,15 +1264,15 @@ def _validate_rows(rows: Any, seeds: list[int]) -> list[Mapping[str, Any]]:
                 multi_drink_windows == 0 and max_voluntary_drinks == 0
             )
         elif multi_drink_windows == 0:
-            # 没有多饮窗时，每个 FARM 窗至多一瓶；只要发生过主动饮，
-            # 单窗最大值就必须恰为 1。
+            # Without a multi-drink window each FARM window has at most one potion; if any active drink happened,
+            # the per-window maximum must be exactly 1.
             drink_distribution_feasible = (
                 max_voluntary_drinks == 1
                 and voluntary_drinks <= farm_windows
             )
         else:
-            # M 个多饮窗中至少一个达到 max，其余 M-1 个至少各喝两瓶；
-            # 非多饮窗至多各喝一瓶。T 必须落在这两个可实现边界之间。
+            # Of M multi-drink windows at least one reaches max and the other M-1 drink at least two each;
+            # non-multi-drink windows drink at most one each. T must lie between these two achievable bounds.
             minimum_total = (
                 max_voluntary_drinks + 2 * (multi_drink_windows - 1)
             )
@@ -1285,10 +1285,10 @@ def _validate_rows(rows: Any, seeds: list[int]) -> list[Mapping[str, Any]]:
             )
         _require(
             drink_distribution_feasible,
-            f"{label} FARM 主动饮 N/T/M/max 联立不可实现")
+            f"{label} FARM active drinks N/T/M/max are jointly unachievable")
         _require(0 <= row["ending_belt_heals"] <= 8,
-                 f"{label}.ending_belt_heals 越界")
-        _require(isinstance(row["died"], bool), f"{label}.died 必须是 bool")
+                 f"{label}.ending_belt_heals out of range")
+        _require(isinstance(row["died"], bool), f"{label}.died must be a bool")
         ret = _finite_number(row["ret"], f"{label}.ret")
         farm_r = _finite_number(row["farm_r"], f"{label}.farm_r")
         farm_w = _finite_number(row["farm_w"], f"{label}.farm_w")
@@ -1303,18 +1303,18 @@ def _validate_rows(rows: Any, seeds: list[int]) -> list[Mapping[str, Any]]:
             row["farm_fresh_worker_wage"],
             f"{label}.farm_fresh_worker_wage")
         nonfarm_r = _finite_number(row["nonfarm_r"], f"{label}.nonfarm_r")
-        _require(farm_bonus >= 0, f"{label}.farm_bonus 不能为负")
+        _require(farm_bonus >= 0, f"{label}.farm_bonus must not be negative")
         _require(math.isclose(
             ret, farm_r + nonfarm_r, rel_tol=1e-12, abs_tol=1e-12),
-            f"{label} 总回报与 FARM/non-FARM 分账不守恒")
+            f"{label} total return does not balance with the FARM/non-FARM split")
         _require(math.isclose(
             farm_r, farm_w + farm_bonus,
             rel_tol=1e-12, abs_tol=1e-12),
-            f"{label} FARM R/W/bonus 分账不守恒")
+            f"{label} FARM R/W/bonus split does not balance")
         _require(
             farm_worker_wage
             == farm_dry_worker_wage + farm_fresh_worker_wage,
-            f"{label} FARM dry/fresh worker 工资分账不守恒",
+            f"{label} FARM dry/fresh worker wage split does not balance",
         )
         for stratum, windows, wage, kills in (
                 ("dry", row["farm_dry_n"], farm_dry_worker_wage,
@@ -1323,17 +1323,17 @@ def _validate_rows(rows: Any, seeds: list[int]) -> list[Mapping[str, Any]]:
                  row["farm_fresh_worker_kills"])):
             _require(
                 windows > 0 or (wage == 0.0 and kills == 0),
-                f"{label} FARM {stratum} 无窗口却含 worker 账",
+                f"{label} FARM {stratum} has worker entries but no windows",
             )
         tau_mean = _finite_number(row["farm_tau_mean"], f"{label}.farm_tau_mean")
         tau_sum = _finite_number(row["farm_tau_sum"], f"{label}.farm_tau_sum")
-        _require(tau_mean >= 0 and tau_sum >= 0, f"{label} FARM tau 不能为负")
+        _require(tau_mean >= 0 and tau_sum >= 0, f"{label} FARM tau must not be negative")
         _require(tau_sum <= row["micro_steps"],
-                 f"{label}.farm_tau_sum 超出本局 micro_steps")
+                 f"{label}.farm_tau_sum exceeds this episode's micro_steps")
         expected_tau = tau_sum / max(1, row["farm_n"])
         _require(math.isclose(
             tau_mean, expected_tau, rel_tol=1e-12, abs_tol=1e-12),
-                 f"{label}.farm_tau_mean 与 farm_tau_sum 不一致")
+                 f"{label}.farm_tau_mean disagrees with farm_tau_sum")
         if row["farm_n"] == 0:
             _require(
                 farm_r == farm_w == farm_bonus == 0.0
@@ -1345,36 +1345,36 @@ def _validate_rows(rows: Any, seeds: list[int]) -> list[Mapping[str, Any]]:
                 == row["farm_multi_drink_windows"]
                 == row["farm_max_voluntary_drinks_per_window"]
                 == 0,
-                f"{label} 无 FARM 窗却含 FARM 账",
+                f"{label} has FARM entries but no FARM window",
             )
         terminal = row["terminal_kind"]
         _require(isinstance(terminal, str) and terminal in _TERMINAL_KINDS,
-                 f"{label}.terminal_kind 非法: {terminal!r}")
+                 f"{label}.terminal_kind is illegal: {terminal!r}")
         _require(row["died"] == (terminal == "death"),
-                 f"{label}.died 与 terminal_kind 不一致")
+                 f"{label}.died disagrees with terminal_kind")
         if terminal in {"time_limit_idle", "time_limit_unsettled"}:
             _require(row["micro_steps"] == PROTOCOL_MAX_STEPS,
-                     f"{label} 时限终局未恰好耗尽预算")
+                     f"{label} time-limit terminal did not exactly exhaust the budget")
         sequence = row["mode_seq"]
-        _require(isinstance(sequence, str), f"{label}.mode_seq 必须是字符串")
+        _require(isinstance(sequence, str), f"{label}.mode_seq must be a string")
         death_marker = sequence.endswith("†")
         core_sequence = sequence[:-1] if death_marker else sequence
         _require("†" not in core_sequence and set(core_sequence) <= {"F", "D", "R"},
-                 f"{label}.mode_seq 含非法/错位标记")
+                 f"{label}.mode_seq has illegal/misplaced markers")
         _require(death_marker == row["died"],
-                 f"{label}.mode_seq 死亡标记与 died 不一致")
+                 f"{label}.mode_seq death marker disagrees with died")
         _require(len(core_sequence) == row["windows"],
-                 f"{label}.mode_seq 长度与 windows 不一致")
+                 f"{label}.mode_seq length disagrees with windows")
         _require(core_sequence.count("F") == row["farm_n"],
-                 f"{label}.mode_seq FARM 数与 farm_n 不一致")
+                 f"{label}.mode_seq FARM count disagrees with farm_n")
         seen.append(row["seed"])
-    _require(seen == seeds, "rows seed 顺序/集合与协议 seeds 不精确一致")
-    _require(len(seen) == len(set(seen)), "rows 含重复 seed")
+    _require(seen == seeds, "rows seed order/set does not exactly match the protocol seeds")
+    _require(len(seen) == len(set(seen)), "rows contain a duplicate seed")
     return rows
 
 
 def _validate_agg(agg: Any, rows: list[Mapping[str, Any]], worker_kind: str) -> None:
-    _require(isinstance(agg, dict), "agg 必须是对象")
+    _require(isinstance(agg, dict), "agg must be an object")
     if worker_kind == "script":
         expected_key_sets = {frozenset(_BASE_AGG_KEYS)}
     else:
@@ -1390,30 +1390,30 @@ def _validate_agg(agg: Any, rows: list[Mapping[str, Any]], worker_kind: str) -> 
         }
     _require(
         frozenset(agg) in expected_key_sets,
-        "agg 字段与 worker 类型/schema 不一致",
+        "agg fields disagree with the worker type/schema",
     )
     integer_keys = {
         "n", "died", "l3", "victories", "game_over",
         "time_limit_idle", "time_limit_unsettled",
     }
     for key in integer_keys:
-        _require(_is_int(agg[key]), f"agg.{key} 必须是整数")
+        _require(_is_int(agg[key]), f"agg.{key} must be an integer")
     for key in _BASE_AGG_KEYS - integer_keys:
         _finite_number(agg[key], f"agg.{key}")
     n = len(rows)
     _require(0 <= agg["died"] <= n and 0 <= agg["l3"] <= n,
-             "agg 死亡/L3 计数超界")
+             "agg death/L3 counts out of range")
     _require(
         agg["died"] + agg["victories"] + agg["game_over"]
         + agg["time_limit_idle"] + agg["time_limit_unsettled"] == n,
-        "agg 终局类别未精确覆盖全部 episode",
+        "agg terminal categories do not exactly cover all episodes",
     )
     for key in ("farm_descend_rate", "override_rate", "cap_rate"):
-        _require(0 <= float(agg[key]) <= 1, f"agg.{key} 必须在 [0,1]")
+        _require(0 <= float(agg[key]) <= 1, f"agg.{key} must be in [0,1]")
     recomputed = recompute_agg(rows)
     for key, expected in recomputed.items():
         _require(agg[key] == expected,
-                 f"agg.{key} 与 rows 重算不一致: {agg[key]!r} != {expected!r}")
+                 f"agg.{key} disagrees with the recomputation from rows: {agg[key]!r} != {expected!r}")
     if worker_kind == "script":
         _require(
             all(row["farm_worker_wage"] == 0.0
@@ -1423,45 +1423,45 @@ def _validate_agg(agg: Any, rows: list[Mapping[str, Any]], worker_kind: str) -> 
                 and row["farm_dry_worker_kills"] == 0
                 and row["farm_fresh_worker_kills"] == 0
                 for row in rows),
-            "script worker 档案不应声明学习工人工资/击杀",
+            "script worker archive must not declare learned-worker wage/kills",
         )
     if worker_kind != "script":
         calls = agg["worker_calls"]
-        _require(_is_int(calls) and calls >= 0, "agg.worker_calls 必须是非负整数")
-        # worker callback 在每个提案前计数；fuse 拒绝的提案会增加
-        # overrides，但按协议既不执行基础动作也不增加 beats。因此合法上界
-        # 是已执行拍 + 明确拒绝拍，不能用 beats 单独封顶而误杀真实 fuse 局。
+        _require(_is_int(calls) and calls >= 0, "agg.worker_calls must be a non-negative integer")
+        # The worker callback counts before every proposal; a proposal rejected by the fuse adds to
+        # overrides but, per protocol, neither executes a base action nor adds beats. So the legal upper bound
+        # is executed beats + explicitly rejected beats; capping at beats alone would wrongly fail real fuse episodes.
         _require(
             calls <= sum(row["beats"] + row["overrides"] for row in rows),
-            "agg.worker_calls 超出全部已执行/明确拒绝提案数",
+            "agg.worker_calls exceeds all executed/explicitly rejected proposals",
         )
         histogram = agg["worker_action_hist"]
-        _require(isinstance(histogram, dict), "agg.worker_action_hist 必须是对象")
+        _require(isinstance(histogram, dict), "agg.worker_action_hist must be an object")
         normalized: dict[int, int] = {}
         for raw_key, value in histogram.items():
             try:
                 key = int(raw_key)
             except (TypeError, ValueError) as exc:
-                raise EvalContractError("worker_action_hist 动作键必须是整数") from exc
+                raise EvalContractError("worker_action_hist action keys must be integers") from exc
             _require(str(key) == str(raw_key) or raw_key == key,
-                     f"worker_action_hist 动作键非规范: {raw_key!r}")
+                     f"worker_action_hist action key is not canonical: {raw_key!r}")
             _require(0 <= key < 15 and key not in normalized,
-                     f"worker_action_hist 动作键非法/重复: {raw_key!r}")
+                     f"worker_action_hist action key is illegal/duplicate: {raw_key!r}")
             _require(_is_int(value) and value >= 0,
-                     f"worker_action_hist[{raw_key!r}] 必须是非负整数")
+                     f"worker_action_hist[{raw_key!r}] must be a non-negative integer")
             normalized[key] = value
         _require(sum(normalized.values()) == calls,
-                 "worker_action_hist 总数与 worker_calls 不一致")
+                 "worker_action_hist total disagrees with worker_calls")
         divergences = agg["worker_divergences"]
         _require(_is_int(divergences) and 0 <= divergences <= calls,
-                 "agg.worker_divergences 必须在 [0, worker_calls]")
+                 "agg.worker_divergences must be in [0, worker_calls]")
         divergence = _finite_number(
             agg["script_divergence_rate"], "agg.script_divergence_rate")
         _require(0 <= divergence <= 1,
-                 "agg.script_divergence_rate 必须在 [0,1]")
+                 "agg.script_divergence_rate must be in [0,1]")
         _require(agg["script_divergence_rate"]
                  == divergences / max(1, calls),
-                 "script_divergence_rate 与原始分歧计数不一致")
+                 "script_divergence_rate disagrees with the raw divergence count")
         if _GEAR_ENGAGEMENT_KEYS <= set(agg):
             opportunities = agg[
                 "worker_action14_mask_opportunities"]
@@ -1477,23 +1477,23 @@ def _validate_agg(agg: Any, rows: list[Mapping[str, Any]], worker_kind: str) -> 
             ):
                 _require(
                     _is_int(value) and value >= 0,
-                    f"agg.{key} 必须是非负整数",
+                    f"agg.{key} must be a non-negative integer",
                 )
             _require(
                 opportunities <= calls,
-                "action14 mask 机会数超出 worker_calls",
+                "action14 mask opportunities exceed worker_calls",
             )
             _require(
                 requests == normalized.get(14, 0),
-                "action14 请求数与 worker_action_hist[14] 不一致",
+                "action14 request count disagrees with worker_action_hist[14]",
             )
             _require(
                 successes <= requests <= opportunities,
-                "action14 机会/请求/原生成功计数次序异常",
+                "action14 opportunity/request/native-success count ordering is malformed",
             )
             _require(
                 (successes == 0) == (utility_delta == 0),
-                "action14 原生成功数与 gear utility 增量零性不一致",
+                "action14 native success count disagrees with the zero-ness of the gear utility gain",
             )
 
 
@@ -1517,53 +1517,53 @@ def validate_eval_archive(document: Any, *, expected_tag: str | None = None,
                           expected_worker_decoding: str | None = None,
                           expected_r16_environment: Mapping[str, Any] | None = None
                           ) -> dict[str, Any]:
-    """严格校验一个 schema v5 档案；legacy 永远不会从这里静默放行。"""
-    _require(isinstance(document, dict), "评测档案必须是 JSON 对象")
+    """Strictly validate one schema v5 archive; legacy is never silently let through here."""
+    _require(isinstance(document, dict), "evaluation archive must be a JSON object")
     _require(set(document) == {"schema_version", "meta", "agg", "rows"},
-             "评测档案顶层字段异常或属于未授权 legacy schema")
+             "evaluation archive top-level fields are malformed or belong to an unauthorized legacy schema")
     _require(document["schema_version"] == SCHEMA_VERSION,
-             f"评测 schema 必须为 v{SCHEMA_VERSION}")
+             f"evaluation schema must be v{SCHEMA_VERSION}")
     meta = document["meta"]
-    _require(isinstance(meta, dict), "meta 必须是对象")
+    _require(isinstance(meta, dict), "meta must be an object")
     _require(set(meta) == {
         "tag", "created_at_utc", "protocol", "worker", "manager", "runtime"},
-        "meta 字段异常")
+        "meta fields are malformed")
     tag = meta["tag"]
     _require(isinstance(tag, str) and _TAG_RE.fullmatch(tag) is not None,
-             "meta.tag 非法")
+             "meta.tag is illegal")
     _require(isinstance(meta["created_at_utc"], str) and bool(meta["created_at_utc"]),
-             "meta.created_at_utc 缺失")
+             "meta.created_at_utc missing")
     try:
         created_at = dt.datetime.fromisoformat(meta["created_at_utc"])
     except ValueError as exc:
-        raise EvalContractError("meta.created_at_utc 不是 ISO-8601 时间") from exc
+        raise EvalContractError("meta.created_at_utc is not an ISO-8601 time") from exc
     _require(created_at.tzinfo is not None
              and created_at.utcoffset() == dt.timedelta(0),
-             "meta.created_at_utc 必须是 UTC 时间")
+             "meta.created_at_utc must be a UTC time")
     if expected_tag is not None:
-        _require(tag == expected_tag, f"评测 tag 错标: {tag!r} != {expected_tag!r}")
+        _require(tag == expected_tag, f"evaluation tag mislabeled: {tag!r} != {expected_tag!r}")
 
     protocol = meta["protocol"]
-    _require(isinstance(protocol, dict), "meta.protocol 必须是对象")
+    _require(isinstance(protocol, dict), "meta.protocol must be an object")
     protocol_keys = {
         "name", "version", "environment", "max_steps", "action_selection",
         "manager_forward", "reward", "deterministic", "seeds"}
-    # R16(C3):worker_decoding 为可选键;缺省 = argmax(全部历史档案),
-    # 出现时只允许 sample——同一口径禁止两种拼法,身份保持规范唯一。
-    # R16 新法锚:r16_environment 为可选键(只列非默认开关),可与
-    # worker_decoding 同时出现。
+    # R16 (C3): worker_decoding is an optional key; omitted = argmax (all historical archives);
+    # when present only sample is allowed: one definition must not have two spellings, so the identity stays canonical and unique.
+    # R16 new-law anchor: r16_environment is an optional key (listing only non-default switches) and may appear together with
+    # worker_decoding.
     optional_keys = {"worker_decoding", "r16_environment", "resource_service_recipe",
                      "dive_blocker_recovery_recipe"}
     _require(protocol_keys <= set(protocol)
              and set(protocol) - protocol_keys <= optional_keys,
-             "meta.protocol 字段异常")
+             "meta.protocol fields are malformed")
     _require("worker_decoding" not in protocol
              or protocol["worker_decoding"] == "sample",
-             "meta.protocol.worker_decoding 只允许缺省(argmax)或 sample")
+             "meta.protocol.worker_decoding only allows omission (argmax) or sample")
     worker_decoding = protocol.get("worker_decoding", "argmax")
     if expected_worker_decoding is not None:
         _require(worker_decoding == expected_worker_decoding,
-                 "worker 解码方式与调用契约不一致: "
+                 "worker decoding mode disagrees with the call contract: "
                  f"{worker_decoding!r} != {expected_worker_decoding!r}")
     r16_environment: dict[str, Any] = {}
     if "r16_environment" in protocol:
@@ -1584,45 +1584,45 @@ def validate_eval_archive(document: Any, *, expected_tag: str | None = None,
                  "Disabled DIVE blocker recovery must omit its recipe")
     if expected_r16_environment is not None:
         _require(r16_environment == dict(expected_r16_environment),
-                 "R16 环境开关身份与调用契约不一致: "
+                 "R16 environment-switch identity disagrees with the call contract: "
                  f"{r16_environment!r} != {dict(expected_r16_environment)!r}")
     _require(protocol["name"] == PROTOCOL_NAME
              and protocol["version"] == PROTOCOL_VERSION,
-             "评测协议名称/版本不匹配")
+             "evaluation protocol name/version mismatch")
     _require(protocol["environment"] == "OptionsEnv"
              and protocol["max_steps"] == PROTOCOL_MAX_STEPS
              and protocol["action_selection"] == "argmax_with_action_masks"
              and protocol["manager_forward"] == "numpy_tanh_mlp"
              and protocol["reward"] == "undiscounted_manager_ledger"
              and protocol["deterministic"] is True,
-             "评测协议旋钮漂移")
+             "evaluation protocol knob drift")
     seeds = protocol["seeds"]
     _require(isinstance(seeds, list) and seeds
              and all(_is_int(seed) and 0 <= seed <= UINT32_MAX for seed in seeds),
-             "meta.protocol.seeds 必须是非空 uint32 整数数组")
-    _require(len(seeds) == len(set(seeds)), "meta.protocol.seeds 含重复值")
+             "meta.protocol.seeds must be a non-empty array of uint32 integers")
+    _require(len(seeds) == len(set(seeds)), "meta.protocol.seeds contains duplicates")
     if expected_seeds is not None:
-        _require(seeds == list(expected_seeds), "评测 seed 列表与调用契约不一致")
+        _require(seeds == list(expected_seeds), "evaluation seed list disagrees with the call contract")
 
     runtime = meta["runtime"]
     _require(isinstance(runtime, dict)
              and set(runtime) == {
                  "bridge", "engine", "content", "versions", "python_protocol"},
-             "meta.runtime 字段异常")
+             "meta.runtime fields are malformed")
     bridge = runtime["bridge"]
     _require(isinstance(bridge, dict) and set(bridge) == {"path", "sha256"}
              and isinstance(bridge["path"], str) and bool(bridge["path"]),
-             "meta.runtime.bridge 字段异常")
+             "meta.runtime.bridge fields are malformed")
     bridge_sha = _validate_sha256(bridge["sha256"], "meta.runtime.bridge.sha256")
     engine = runtime["engine"]
     _require(isinstance(engine, dict) and set(engine) == {"path", "sha256"}
              and isinstance(engine["path"], str) and bool(engine["path"]),
-             "meta.runtime.engine 字段异常")
+             "meta.runtime.engine fields are malformed")
     engine_sha = _validate_sha256(engine["sha256"], "meta.runtime.engine.sha256")
     content = runtime["content"]
     _require(isinstance(content, dict)
              and set(content) == {"game_data", "assets"},
-             "meta.runtime.content 字段异常")
+             "meta.runtime.content fields are malformed")
     game_data = content["game_data"]
     _require(isinstance(game_data, dict)
              and set(game_data) == {"path", "sha256"}
@@ -1630,7 +1630,7 @@ def validate_eval_archive(document: Any, *, expected_tag: str | None = None,
              and pathlib.Path(game_data["path"]).is_absolute()
              and pathlib.Path(game_data["path"]).name
              in {"DIABDAT.MPQ", "diabdat.mpq", "spawn.mpq"},
-             "meta.runtime.content.game_data 字段异常")
+             "meta.runtime.content.game_data fields are malformed")
     game_data_sha = _validate_sha256(
         game_data["sha256"], "meta.runtime.content.game_data.sha256")
     assets = content["assets"]
@@ -1640,92 +1640,92 @@ def validate_eval_archive(document: Any, *, expected_tag: str | None = None,
              and pathlib.Path(assets["path"]).is_absolute()
              and _is_int(assets["file_count"])
              and assets["file_count"] > 0,
-             "meta.runtime.content.assets 字段异常")
+             "meta.runtime.content.assets fields are malformed")
     assets_sha = _validate_sha256(
         assets["sha256"], "meta.runtime.content.assets.sha256")
     versions = runtime["versions"]
     _require(isinstance(versions, dict)
              and set(versions) == {"python", "packages"},
-             "meta.runtime.versions 字段异常")
+             "meta.runtime.versions fields are malformed")
     python_runtime = versions["python"]
     _require(isinstance(python_runtime, dict)
              and set(python_runtime) == {"implementation", "version", "cache_tag"}
              and all(isinstance(value, str) and bool(value)
                      for value in python_runtime.values()),
-             "meta.runtime.versions.python 字段异常")
+             "meta.runtime.versions.python fields are malformed")
     packages = versions["packages"]
-    # 与采集门(runtime_versions_identity)同一跨平台修订:按公开版本段比对,
-    # 档案里仍存完整本地版本(2026-07-27 WSL2 移植)。
+    # Same cross-platform revision as the collection gate (runtime_versions_identity): compare the public version segment;
+    # the archive still stores the full local version (2026-07-27 WSL2 port).
     _require(isinstance(packages, dict)
              and set(packages) == set(RUNTIME_PACKAGE_VERSIONS)
              and all(isinstance(v, str)
                      and (v == RUNTIME_PACKAGE_VERSIONS[k]
                           or v.split("+", 1)[0] == RUNTIME_PACKAGE_VERSIONS[k])
                      for k, v in packages.items()),
-             "meta.runtime.versions.packages 与冻结数值栈不一致")
+             "meta.runtime.versions.packages disagrees with the frozen numeric stack")
     py_protocol = runtime["python_protocol"]
     _require(isinstance(py_protocol, dict)
              and set(py_protocol) == {"sha256", "files"}
              and isinstance(py_protocol["files"], dict) and py_protocol["files"],
-             "meta.runtime.python_protocol 字段异常")
+             "meta.runtime.python_protocol fields are malformed")
     _require(set(py_protocol["files"]) == set(PROTOCOL_SOURCE_FILES),
-             "协议源码 bundle 文件集合不完整/含未知文件")
+             "protocol source bundle file set is incomplete/contains unknown files")
     for name in py_protocol["files"]:
         path = pathlib.PurePosixPath(name)
         _require(not path.is_absolute() and ".." not in path.parts,
-                 f"协议源码路径非法: {name!r}")
+                 f"illegal protocol source path: {name!r}")
     bundle_sha = _validate_sha256(
         py_protocol["sha256"], "meta.runtime.python_protocol.sha256")
     _require(source_bundle_sha256(py_protocol["files"]) == bundle_sha,
-             "协议源码 bundle SHA 与逐文件 SHA 不一致")
+             "protocol source bundle SHA disagrees with the per-file SHAs")
     if expected_bridge_sha256 is not None:
-        _require(bridge_sha == expected_bridge_sha256, "bridge SHA 与调用契约不一致")
+        _require(bridge_sha == expected_bridge_sha256, "bridge SHA disagrees with the call contract")
     if expected_engine_sha256 is not None:
         _require(engine_sha == expected_engine_sha256,
-                 "engine SHA 与调用契约不一致")
+                 "engine SHA disagrees with the call contract")
     if expected_game_data_path is not None:
         _require(game_data["path"] == expected_game_data_path,
-                 "游戏主 MPQ 路径与调用契约不一致")
+                 "game main MPQ path disagrees with the call contract")
     if expected_game_data_sha256 is not None:
         _require(game_data_sha == expected_game_data_sha256,
-                 "游戏主 MPQ SHA 与调用契约不一致")
+                 "game main MPQ SHA disagrees with the call contract")
     if expected_assets_path is not None:
         _require(assets["path"] == expected_assets_path,
-                 "Resources 路径与调用契约不一致")
+                 "Resources path disagrees with the call contract")
     if expected_assets_sha256 is not None:
         _require(assets_sha == expected_assets_sha256,
-                 "Resources 树 SHA 与调用契约不一致")
+                 "Resources tree SHA disagrees with the call contract")
     if expected_assets_file_count is not None:
         _require(assets["file_count"] == expected_assets_file_count,
-                 "Resources 文件数与调用契约不一致")
+                 "Resources file count disagrees with the call contract")
     if expected_runtime_versions is not None:
         _require(versions == expected_runtime_versions,
-                 "Python/数值依赖版本与调用契约不一致")
+                 "Python/numeric dependency versions disagree with the call contract")
     if expected_protocol_bundle_sha256 is not None:
         _require(bundle_sha == expected_protocol_bundle_sha256,
-                 "协议源码 bundle SHA 与调用契约不一致")
+                 "protocol source bundle SHA disagrees with the call contract")
 
     _validate_identity(meta["worker"], "worker", bundle_sha)
     _validate_identity(meta["manager"], "manager", bundle_sha)
     if expected_worker_kind is not None:
         _require(meta["worker"]["kind"] == expected_worker_kind,
-                 "worker 类型与调用输入不一致")
+                 "worker type disagrees with the call inputs")
     if expected_worker_sha256 is not None:
         _require(meta["worker"]["sha256"] == expected_worker_sha256,
-                 "worker SHA 与调用输入不一致（疑似复制/错标档案）")
+                 "worker SHA disagrees with the call inputs (suspected copied/mislabeled archive)")
     if expected_worker_gate_report_sha256 is not None:
         _require(meta["worker"]["gate_report_sha256"]
                  == expected_worker_gate_report_sha256,
-                 "worker gate report SHA 与调用输入不一致")
+                 "worker gate report SHA disagrees with the call inputs")
     if expected_manager_kind is not None:
         _require(meta["manager"]["kind"] == expected_manager_kind,
-                 "manager 类型与调用输入不一致")
+                 "manager type disagrees with the call inputs")
     if expected_manager_sha256 is not None:
         _require(meta["manager"]["sha256"] == expected_manager_sha256,
-                 "manager SHA 与调用输入不一致（疑似复制/错标档案）")
+                 "manager SHA disagrees with the call inputs (suspected copied/mislabeled archive)")
     if expected_worker_num_timesteps is not None:
         _require(meta["worker"]["num_timesteps"] == expected_worker_num_timesteps,
-                 "worker num_timesteps 与调用输入不一致")
+                 "worker num_timesteps disagrees with the call inputs")
 
     rows = _validate_rows(document["rows"], seeds)
     _validate_agg(document["agg"], rows, meta["worker"]["kind"])
@@ -1734,13 +1734,13 @@ def validate_eval_archive(document: Any, *, expected_tag: str | None = None,
 
 def strict_json_loads(payload: str | bytes) -> Any:
     def reject_constant(value: str) -> None:
-        raise EvalContractError(f"JSON 含非标准/非有限常量: {value}")
+        raise EvalContractError(f"JSON contains a non-standard/non-finite constant: {value}")
 
     def reject_duplicate_keys(pairs):
         result = {}
         for key, value in pairs:
             if key in result:
-                raise EvalContractError(f"JSON 对象含重复键: {key!r}")
+                raise EvalContractError(f"JSON object has a duplicate key: {key!r}")
             result[key] = value
         return result
 
@@ -1748,13 +1748,13 @@ def strict_json_loads(payload: str | bytes) -> Any:
         return json.loads(payload, parse_constant=reject_constant,
                           object_pairs_hook=reject_duplicate_keys)
     except json.JSONDecodeError as exc:
-        raise EvalContractError(f"评测 JSON 不可解析: {exc}") from exc
+        raise EvalContractError(f"evaluation JSON cannot be parsed: {exc}") from exc
 
 
 def read_eval_archive(path: str | pathlib.Path, *,
                       trusted_legacy_sha256: str | None = None,
                       **expected: Any) -> dict[str, Any]:
-    """读取并校验档案；legacy 只按调用者给出的完整文件 SHA 显式放行。"""
+    """Read and validate an archive; legacy is let through only explicitly, against the full file SHA the caller supplies."""
     archive_path = pathlib.Path(path)
     payload = archive_path.read_bytes()
     document = strict_json_loads(payload)
@@ -1763,15 +1763,15 @@ def read_eval_archive(path: str | pathlib.Path, *,
     _validate_sha256(trusted_legacy_sha256, "trusted_legacy_sha256")
     actual = hashlib.sha256(payload).hexdigest()
     _require(actual == trusted_legacy_sha256,
-             f"legacy 档案 SHA 不匹配: {actual} != {trusted_legacy_sha256}")
+             f"legacy archive SHA mismatch: {actual} != {trusted_legacy_sha256}")
     _require(isinstance(document, dict) and set(document) == {"agg", "rows"},
-             "legacy 档案基本结构异常")
+             "legacy archive basic structure is malformed")
     return document
 
 
 @contextlib.contextmanager
-def exclusive_lock(lock_path: str | pathlib.Path, purpose: str = "资源"):
-    """获取一个持久 lock 文件的跨进程、非阻塞独占锁。"""
+def exclusive_lock(lock_path: str | pathlib.Path, purpose: str = "resource"):
+    """Take a cross-process, non-blocking exclusive lock on a persistent lock file."""
     lock_path = pathlib.Path(lock_path)
     lock_path.parent.mkdir(parents=True, exist_ok=True)
     descriptor = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o644)
@@ -1780,7 +1780,7 @@ def exclusive_lock(lock_path: str | pathlib.Path, purpose: str = "资源"):
             fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError as exc:
             raise OutputReservationError(
-                f"{purpose}正由另一评测进程占用: {lock_path}") from exc
+                f"{purpose} is held by another evaluation process: {lock_path}") from exc
         os.ftruncate(descriptor, 0)
         os.write(descriptor, f"pid={os.getpid()}\n".encode("ascii"))
         os.fsync(descriptor)
@@ -1794,11 +1794,11 @@ def exclusive_lock(lock_path: str | pathlib.Path, purpose: str = "资源"):
 
 @contextlib.contextmanager
 def reserve_output(path: str | pathlib.Path):
-    """用持久 lock 文件对同一目标做跨进程、非阻塞独占预约。"""
+    """Make a cross-process, non-blocking exclusive reservation of one target via a persistent lock file."""
     output = pathlib.Path(path)
     output.parent.mkdir(parents=True, exist_ok=True)
     lock_path = output.with_name(f".{output.name}.lock")
-    with exclusive_lock(lock_path, "同 tag"):
+    with exclusive_lock(lock_path, "same tag"):
         if output.exists():
-            raise OutputReservationError(f"评测档案已存在，拒绝覆写: {output}")
+            raise OutputReservationError(f"evaluation archive already exists, refusing to overwrite: {output}")
         yield output

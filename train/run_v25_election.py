@@ -1,10 +1,10 @@
-"""v25-ALT「换届选举」驱动(docs/prereg/PREREG-v25.md 条款唯一执行者)。
+"""v25-ALT "manager election" driver (sole executor of the clauses of docs/prereg/PREREG-v25.md).
 
-流程:G-A0(仪器回归)→ M-warm 权重包 → 两臂串行训练(v22-H 原配方)→
-G-A0m(逐臂 npz parity)→ 提前放弃闸(16 种子双 <75)→ 两臂满 32 →
-胜者 → 配对发射判据 → GOLDEN_AUTHORIZED / VERDICT_PATH。
-金牌不在此发射(值夜者手启,单臂一次)。账本:train/runs/v25/gate_ledger.jsonl。
-用法:.venv/bin/python train/run_v25_election.py
+Flow: G-A0 (instrument regression) -> M-warm weight bundle -> two arms trained in series (the original v22-H recipe) ->
+G-A0m (per-arm npz parity) -> early abandonment gate (16 seeds, both <75) -> both arms full 32 ->
+winner -> paired launch criterion -> GOLDEN_AUTHORIZED / VERDICT_PATH.
+The gold-standard evaluation is not launched here (started manually, single arm, once). Ledger: train/runs/v25/gate_ledger.jsonl.
+Usage: .venv/bin/python train/run_v25_election.py
 """
 from __future__ import annotations
 
@@ -30,12 +30,12 @@ V25 = RUNS / "v25"
 V25.mkdir(parents=True, exist_ok=True)
 LEDGER = V25 / "gate_ledger.jsonl"
 
-LEG7_ZIP = str(ROOT / "train" / "models" / "v24-worker-leg7" / "model")   # SB3 路(与存档同)
+LEG7_ZIP = str(ROOT / "train" / "models" / "v24-worker-leg7" / "model")   # SB3 path (same as the archive)
 LEG7_NPZ = str(ROOT / "train" / "models" / "v24-worker-leg7" / "policy.npz")
 V22H_ZIP = ROOT / "train" / "models" / "v22-h-manager" / "model_final.zip"
 WARM_SD = ROOT / "train" / "models" / "v22-h-manager" / "policy_full_sd.pt"
 WARM_MANIFEST = WARM_SD.with_name(f"{WARM_SD.name}.manifest.json")
-ARCHIVE = RUNS / "eval-assembled" / "v24-G3-leg7.json"   # 参考行 92.0(逐种子)
+ARCHIVE = RUNS / "eval-assembled" / "v24-G3-leg7.json"   # reference row 92.0 (per seed)
 ARCHIVE_SHA = "22d9442257d3a3c79feb5b40918890917772e11036e4026ca4d3cc2005318359"
 # 2026-09-23: re-saved with neutral local paths (content otherwise unchanged); was ac65d4eb91fdb678
 LEG7_ZIP_SHA = "fb9cd6f58c5e212202e1579457234288acdfe156b292c5971bebd1bac8b63d9b"
@@ -43,12 +43,12 @@ LEG7_NPZ_SHA = "a31fa7c6b18b5c3593f4e1753d97aac9386689aa6ad8b158c526b673c57fbc2a
 # 2026-09-23: re-saved with neutral local paths (content otherwise unchanged); was f3b579d2b0c9b613
 V22H_ZIP_SHA = "9dcf40b061bcb40b5548f30587d726758f2ea27df745dd7fb418c44adaa81c38"
 
-ABANDON = 75.0        # 提前放弃闸(双臂 16 种子均 < 此值)
+ABANDON = 75.0        # early abandonment gate (both arms' 16-seed means < this value)
 EXPECTED_STEPS = 40_192  # ceil(40_000 / (64×4)) × (64×4)
-PAIRED_DIFF = 4.0     # 发射线:配对均差 ≥ +4
-PAIRED_WINS = 18      # 且配对赢 ≥ 18/32
+PAIRED_DIFF = 4.0     # launch line: paired mean difference >= +4
+PAIRED_WINS = 18      # and paired wins >= 18/32
 DEATHS_MAX = 6
-FLOOR_REPRO = 85.0    # 胜者 < 85 → "重训未复现,命题未考"
+FLOOR_REPRO = 85.0    # winner < 85 -> "retraining did not reproduce, proposition not examined"
 R4 = {"descend": 0.0204, "override_sentinel": 0.03, "override_void": 0.08, "cap": 0.05}
 CALIBRATED_PROTOCOL_VERSION = 2
 
@@ -82,13 +82,13 @@ def require(condition: bool, message: str) -> None:
 def require_calibrated_protocol() -> None:
     if PROTOCOL_VERSION != CALIBRATED_PROTOCOL_VERSION:
         raise OperationalFailure(
-            "v25 的 ABANDON/资格/R4 等裁决线仅在 pre-v3 语义标定；"
-            "必须先重跑 protocol-v3 基线并人工更新预注册，禁止混用旧阈值"
+            "v25 ABANDON/eligibility/R4 and other verdict lines are calibrated only under pre-v3 semantics; "
+            "re-run the protocol-v3 baseline and update the pre-registration by hand first; mixing in the old thresholds is forbidden"
         )
 
 
 def read_comparable_anchor() -> dict:
-    """活动裁决锚必须与当前环境和固定组装体同一 schema-v2 身份。"""
+    """The active verdict anchor must share one schema-v2 identity with the current environment and the fixed assembly."""
     try:
         snapshot = freeze_eval_identity(ROOT, LEG7_ZIP, None)
         expected = expected_eval_identity(
@@ -98,8 +98,8 @@ def read_comparable_anchor() -> dict:
         return document
     except (OSError, KeyError, TypeError, ValueError, RuntimeError) as exc:
         raise OperationalFailure(
-            "v24-G3-leg7 不满足当前 schema-v2 可比性契约；"
-            "环境语义变更后须用固定 leg7 worker + 默认 manager 重跑基线"
+            "v24-G3-leg7 does not satisfy the current schema-v2 comparability contract; "
+            "after an environment-semantics change, re-run the baseline with the fixed leg7 worker + default manager"
         ) from exc
 
 
@@ -113,8 +113,8 @@ def zip_steps(p: pathlib.Path) -> int:
 
 def by_seed(rows, expected=range(7000, 7032)) -> dict:
     result = {r["seed"]: r for r in rows}
-    require(len(rows) == len(result), "评测档案含重复 seed")
-    require(set(result) == set(expected), "评测档案 seed 集合异常")
+    require(len(rows) == len(result), "evaluation archive contains a duplicate seed")
+    require(set(result) == set(expected), "evaluation archive seed set is malformed")
     return result
 
 
@@ -123,42 +123,42 @@ def preflight() -> None:
     leg7_zip = pathlib.Path(LEG7_ZIP + ".zip")
     leg7_npz = pathlib.Path(LEG7_NPZ)
     require(leg7_zip.is_file() and sha256(leg7_zip) == LEG7_ZIP_SHA,
-            "v24 leg7 工人 zip 缺失或 sha 漂移")
+            "v24 leg7 worker zip missing or sha drift")
     require(leg7_npz.is_file() and sha256(leg7_npz) == LEG7_NPZ_SHA,
-            "v24 leg7 工人 npz 缺失或 sha 漂移")
+            "v24 leg7 worker npz missing or sha drift")
     require(V22H_ZIP.is_file() and sha256(V22H_ZIP) == V22H_ZIP_SHA,
-            "v22-H 经理 zip 缺失或 sha 漂移")
+            "v22-H manager zip missing or sha drift")
     read_comparable_anchor()
     tags = ["v25-GA0", "v25-golden"] + [
         f"{arm}-{suffix}" for arm in ARMS for suffix in ("s16", "full32")]
     for tag in tags:
         require(not (RUNS / "eval-assembled" / f"{tag}.json").exists(),
-                f"评测档案已存在:{tag}")
+                f"evaluation archive already exists: {tag}")
     for arm in ARMS:
-        require(not (RUNS / arm).exists(), f"运行目录残留:{arm}")
+        require(not (RUNS / arm).exists(), f"leftover run directory: {arm}")
 
 
 def validate_warm_export() -> None:
-    """导出成功还必须证明产物来自本次钉死的 v22-H checkpoint。"""
+    """A successful export must also prove the artifact comes from the v22-H checkpoint pinned for this run."""
     try:
         manifest = strict_json_loads(WARM_MANIFEST.read_text())
     except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
-        raise OperationalFailure("M-warm 导出清单缺失/不可读") from exc
+        raise OperationalFailure("M-warm export manifest missing/unreadable") from exc
     if not isinstance(manifest, dict):
-        raise OperationalFailure("M-warm 导出清单不是 JSON 对象")
+        raise OperationalFailure("M-warm export manifest is not a JSON object")
     checks = (
         (manifest.get("schema_version") == 1
          and manifest.get("artifact_type") == "checkpoint_policy_state",
-         "M-warm 导出清单类型异常"),
+         "M-warm export manifest type is malformed"),
         (manifest.get("artifact_sha256") == sha256(WARM_SD),
-         "M-warm 权重与导出清单 sha 不匹配"),
+         "M-warm weights do not match the export manifest sha"),
         (manifest.get("source_checkpoint") == str(V22H_ZIP.resolve())
          and manifest.get("source_checkpoint_sha256") == V22H_ZIP_SHA,
-         "M-warm 导出清单未绑定钉死的 v22-H checkpoint"),
+         "M-warm export manifest is not bound to the pinned v22-H checkpoint"),
         (isinstance(manifest.get("tensor_count"), int)
          and not isinstance(manifest.get("tensor_count"), bool)
          and manifest["tensor_count"] > 0,
-         "M-warm 导出清单 tensor_count 非法"),
+         "M-warm export manifest tensor_count is illegal"),
     )
     for passed, message in checks:
         if not passed:
@@ -182,13 +182,13 @@ def run(cmd, logfile, timeout=1_800) -> int:
 
 def exam(worker, tag, seeds, manager_npz=None):
     out = RUNS / "eval-assembled" / f"{tag}.json"
-    require(not out.exists(), f"档案不可变性:{out} 已存在,拒绝覆写")
+    require(not out.exists(), f"archive immutability: {out} already exists, refusing to overwrite")
     lo, hi = (int(x) for x in seeds.split("-", 1))
     seed_values = list(range(lo, hi + 1))
-    require(seed_values and lo >= 0, f"非法 seed 范围:{seeds}")
+    require(seed_values and lo >= 0, f"illegal seed range: {seeds}")
 
-    # 发车前冻结 worker/manager、SB3 真步数、bridge 与评测源码；子进程
-    # 必须回交与这份快照完全一致的 schema-v2 档案。
+    # Freeze worker/manager, the real SB3 step count, the bridge and the evaluation sources before launch; the subprocess
+    # must hand back a schema-v2 archive exactly consistent with this snapshot.
     snapshot = freeze_eval_identity(ROOT, worker, manager_npz)
     expected = expected_eval_identity(snapshot, tag=tag, seeds=seed_values)
     worker_arg = (worker if snapshot["worker"]["kind"] in {"script", "bc"}
@@ -217,7 +217,7 @@ def dive_per_ep(rows) -> float:
 
 def main():
     try:
-        with exclusive_lock(V25 / ".driver.lock", "v25 驱动"):
+        with exclusive_lock(V25 / ".driver.lock", "v25 driver"):
             _main()
     except (OperationalFailure, OutputReservationError) as exc:
         log({"event": "OPERATIONAL_FAILURE", "why": str(exc)})
@@ -233,12 +233,12 @@ def _main():
     log({"event": "start", "prereg": "docs/prereg/PREREG-v25.md v2",
          "paired_line": PAIRED_DIFF, "wins_line": PAIRED_WINS})
 
-    # ---- G-A0:仪器回归(npz 工人 + 默认经理 ≡ v24-G3-leg7 存档,32/32)----
+    # ---- G-A0: instrument regression (npz worker + default manager == the v24-G3-leg7 archive, 32/32) ----
     ref = read_comparable_anchor()
     floor_repro = round(ref["agg"]["ret_mean"] * 85.0 / 92.0, 1)
     ga0 = exam(LEG7_NPZ, "v25-GA0", "7000-7031")
     if ga0 is None:
-        why = "G-A0 考试进程失败"
+        why = "G-A0 exam process failed"
         log({"event": "STOP", "why": why})
         raise OperationalFailure(why)
     ref_rows = by_seed(ref["rows"])
@@ -250,19 +250,19 @@ def _main():
                or r["mode_seq"] != ref_rows[s]["mode_seq"])]
     log({"event": "g_a0", "mismatch_seeds": bad, "n_ok": 32 - len(bad)})
     if bad:
-        why = "G-A0 位级回归失配——按预注册回退条款人工重锚"
+        why = "G-A0 bit-level regression mismatch: re-anchor by hand under the pre-registered fallback clause"
         log({"event": "STOP", "why": why})
         raise OperationalFailure(why)
 
-    # ---- M-warm 权重包 ----
+    # ---- M-warm weight bundle ----
     if run([PY, "train/export_manager_sd.py"], "export-warm-sd.log", timeout=600) != 0 or not WARM_SD.exists():
-        why = "M-warm 权重包导出失败"
+        why = "M-warm weight bundle export failed"
         log({"event": "STOP", "why": why})
         raise OperationalFailure(why)
     validate_warm_export()
     log({"event": "warm_sd", "sha": sha16(WARM_SD)})
 
-    # ---- 两臂串行训练(v22-H status.json 原配方)----
+    # ---- train the two arms in series (the original v22-H status.json recipe) ----
     npz = {}
     for name, extra in ARMS.items():
         cmd = [PY, "train/train_ppo.py", "--options", "--algo", "mppo", "--gamma", "1.0",
@@ -282,26 +282,26 @@ def _main():
              "nt_zip": nt,
              "dt_min": round((time.time() - t0) / 60, 1)})
         if rc != 0 or nt != EXPECTED_STEPS:
-            why = (f"{name} 训练未达标(rc={rc},zip={nt},"
-                   f"期望={EXPECTED_STEPS};命题未考,本版不追加重训)")
+            why = (f"{name} training did not reach its target (rc={rc}, zip={nt}, "
+                   f"expected={EXPECTED_STEPS}; proposition not examined, this version adds no retraining)")
             log({"event": "STOP", "why": why})
             raise OperationalFailure(why)
         out = RUNS / name / "policy.npz"
         if run([PY, "train/export_manager_npz.py",
                 str(RUNS / name / "model_final.zip"), str(out)],
                f"export-{name}.log", timeout=600) != 0 or not out.exists():
-            why = f"{name} G-A0m parity 失败"
+            why = f"{name} G-A0m parity failed"
             log({"event": "STOP", "why": why})
             raise OperationalFailure(why)
         npz[name] = str(out)
         log({"event": "g_a0m", "arm": name, "npz_sha": sha16(out)})
 
-    # ---- 提前放弃闸(16 种子)----
+    # ---- early abandonment gate (16 seeds) ----
     s16 = {}
     for name in ARMS:
         d = exam(LEG7_ZIP, f"{name}-s16", "7000-7015", manager_npz=npz[name])
         if d is None:
-            why = f"{name} 初筛考试失败"
+            why = f"{name} screen exam failed"
             log({"event": "STOP", "why": why})
             raise OperationalFailure(why)
         s16[name] = d["agg"]["ret_mean"]
@@ -309,15 +309,15 @@ def _main():
              "died": d["agg"]["died"]})
     if all(v < ABANDON for v in s16.values()):
         log({"event": "VERDICT_PATH", "golden_authorized": False,
-             "why": f"双臂初筛均 <{ABANDON}——训练失败,换届命题未考(免满 32)"})
+             "why": f"both arms' screens < {ABANDON}: training failed, the succession proposition was not examined (full 32 skipped)"})
         return
 
-    # ---- 两臂满 32(R25.1/R25.2 口径)----
+    # ---- both arms full 32 (R25.1/R25.2 definitions) ----
     full = {}
     for name in ARMS:
         d = exam(LEG7_ZIP, f"{name}-full32", "7000-7031", manager_npz=npz[name])
         if d is None:
-            why = f"{name} 满 32 考试失败"
+            why = f"{name} full-32 exam failed"
             log({"event": "STOP", "why": why})
             raise OperationalFailure(why)
         full[name] = d
@@ -331,7 +331,7 @@ def _main():
                  for s in range(7000, 7032)]
     log({"event": "r25_2", "paired_warm_minus_fresh_mean": round(sum(paired_wf) / 32, 2)})
 
-    # ---- 胜者 ----
+    # ---- winner ----
     names = list(ARMS)
     m0, m1 = full[names[0]]["agg"]["ret_mean"], full[names[1]]["agg"]["ret_mean"]
     if abs(m0 - m1) <= 0.05:
@@ -343,14 +343,14 @@ def _main():
     wa = W["agg"]
     log({"event": "winner", "arm": winner, "mean": wa["ret_mean"], "died": wa["died"]})
 
-    # ---- 发射判据(配对 vs 存档 + 哨兵)----
-    # 训练历时可能跨越代码/engine/content 变更；裁决前按当前身份重读锚。
+    # ---- launch criterion (paired vs the archive + sentinels) ----
+    # Training may span code/engine/content changes; re-read the anchor under the current identity before the verdict.
     ref = read_comparable_anchor()
     ref_rows = by_seed(ref["rows"])
     floor_repro = round(ref["agg"]["ret_mean"] * 85.0 / 92.0, 1)
     if wa["ret_mean"] < floor_repro:
         log({"event": "VERDICT_PATH", "golden_authorized": False,
-             "why": f"胜者 {wa['ret_mean']} < {floor_repro}——重训未复现参考水平,命题未考"})
+             "why": f"winner {wa['ret_mean']} < {floor_repro}: retraining did not reproduce the reference level, proposition not examined"})
         return
     winner_rows = by_seed(W["rows"])
     diffs = [winner_rows[s]["ret"] - ref_rows[s]["ret"] for s in range(7000, 7032)]
@@ -358,11 +358,11 @@ def _main():
     pd_wins = sum(d > 0 for d in diffs)
     dive = dive_per_ep(W["rows"])
     void = wa["override_rate"] >= R4["override_void"] or (dive > 1 and wa["died"] > 6)
-    hard_ok = (wa["farm_descend_rate"] <= R4["descend"]      # 套利仪表与机械健康:恒硬闸
+    hard_ok = (wa["farm_descend_rate"] <= R4["descend"]      # arbitrage instruments and mechanical health: always hard gates
                and wa["cap_rate"] < R4["cap"])
     override_ok = wa["override_rate"] < R4["override_sentinel"]
     sentinels = hard_ok and override_ok
-    # 预注册条件条款:DIVE>1/局 时仅 override 触线走双归因(τ̄ 本就只记不裁)
+    # Pre-registered conditional clause: with DIVE>1/episode only an override crossing takes the dual-attribution path (tau-bar was always recorded only, not judged)
     dual_attr = dive > 1 and hard_ok and not override_ok
     launch = (pd_mean >= PAIRED_DIFF and pd_wins >= PAIRED_WINS
               and wa["died"] <= DEATHS_MAX and not void
@@ -374,13 +374,13 @@ def _main():
     if launch:
         log({"event": "GOLDEN_AUTHORIZED", "arm": winner,
              "model_npz": npz[winner], "probe32": wa["ret_mean"],
-             "note": "金牌由值夜者手启,单臂一次;败臂/未发射臂永不见 9000 段"})
+             "note": "the gold-standard evaluation is started manually, single arm, once; losing/non-launched arms never see the 9000 range"})
     elif pd_mean >= 2.0:
         log({"event": "VERDICT_PATH", "golden_authorized": False,
-             "why": f"配对均差 {pd_mean:.2f} ∈[+2,+4)——探针级改进,不烧牌,留工作站复赛"})
+             "why": f"paired mean diff {pd_mean:.2f} in [+2,+4): a probe-level improvement, does not spend the gold run; rematch left for the workstation line"})
     else:
         log({"event": "VERDICT_PATH", "golden_authorized": False,
-             "why": f"配对均差 {pd_mean:.2f} <+2——连任,本轮交替无增益(功效限定)"})
+             "why": f"paired mean diff {pd_mean:.2f} <+2: incumbent stays, this alternation brings no gain (power-limited)"})
 
 
 if __name__ == "__main__":

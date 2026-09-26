@@ -1,213 +1,210 @@
-# 呈报件:R7 战役修订提案(rev20 → rev21)
+# Proposal: R7 campaign revision (rev20 → rev21)
 
-状态:**草案待批**。本件系 F3 终审卷(docs/FORENSICS-F3-why-no-progress.md)裁定
-之落实提案,未经总设计师亲批,**不构成任何发车授权**;未改动任何代码,
-run_r7_combat_recovery.py(rev20)与 r7_statistics.py 原封未动。
-2026-07-27,值守起草。
+Status: **draft awaiting approval**. This document is the implementation proposal for the ruling of the F3 final review
+(docs/forensics/FORENSICS-F3-why-no-progress.md); it has not been approved and **constitutes no launch authorization**;
+no code was changed, and run_r7_combat_recovery.py (rev20) and r7_statistics.py are untouched.
+Drafted on 2026-07-27.
 
-## 案由
+## Background
 
-F3 终审定谳:R6 全案唯一疑似真进步信号是**每步战斗效率**(步数口径 ~+6 wage/种子,
-两池同号,合并 64 对 t=+2.26、bootstrap CI95=[+0.48,+6.22];但逐池符号检验不显著,
-p=0.11~0.19,系待验假说非既证事实)。现行 R7 四条门指标(farm_worker_wage/
-farm_worker_kills/ret/kills)全部是**总量指标**,每一条都混合了效率分量与存活时长
-分量——而 F3 已证明存活时长分量是对称种子彩票(死亡翻转 6/14 有利,p=0.79,
-micro_steps 差 +151/−152 两池镜像)。若 R7 终考再次出现"总量归零",现行记账
-无法回答"效率残余是否真实存在"——那正是烧掉 256 对处女池后最该带回来的知识。
+F3 final ruling: the only possible real sign of progress in the whole R6 case is **per-step combat efficiency** (step definition ~+6 wage per seed,
+same sign in both pools, 64 pairs combined t=+2.26, bootstrap CI95=[+0.48,+6.22]; but the per-pool sign tests are not significant,
+p=0.11~0.19, so it is a hypothesis to test, not an established fact). The four current R7 gate metrics (farm_worker_wage/
+farm_worker_kills/ret/kills) are all **totals**, and each mixes an efficiency component with a survival-time
+component -- and F3 has shown that the survival-time component is a symmetric seed lottery (death flips 6/14 favourable, p=0.79,
+micro_steps differences +151/−152 mirrored across the two pools). If the R7 final exam again shows "totals back to zero", the current accounting
+cannot answer "is the efficiency residual real" -- which is exactly the knowledge most worth bringing back after burning a virgin pool of 256 pairs.
 
-## 修订一(新增):每步效率预注册记分肢(只记不裁)
+## Revision 1 (new): pre-registered per-step efficiency scoring limb (record only)
 
-- **指标定义(钉死)**:逐种子 `rate(s) := farm_worker_wage(s) / micro_steps(s)`
-  (schema-5 行字段直除,零新机械);配对差 Δrate(s) = rate_cand(s) − rate_base(s)。
-- **落账**:development 决策与 final 分析各随卷落 RATE_REPORT(均值/中位/符号计数
-  /精确二项 p/去杠杆均值,统计纪律照 B1 D3 逐字)。
-- **性质**:**记分肢,只记不裁**——不进 METRIC_RULES、不占 familywise α、
-  不作任何 pass/fail 输入。理由:①保持 rev20 已冻结的 familywise 保证原封;
-  ②rate 单独可被"高效早死"策略 Goodhart(死亡非劣性门在侧,但记分肢独立成门
-  需另案论证);③本肢的使命是**测量**效率假说,非裁决候选。
-- **预注册参考带(供判读,非门)**:点 +0.004/微步(≈R6 两池实测 +0.0041/+0.0048),
-  带 [0, +0.010];带外任一侧均系登记级发现。256 对下该肢 SEM 足以分辨 0 与点估
-  (32 对下不能——F3 噪声地板卷)。
-- **口径立法(强制随一切引用)**:效率/暴露分解必须声明**窗口口径还是步数口径**
-  (同一净差下两口径相差 3.3 倍,F3 内洽审查裁定);本肢一律步数口径;
-  窗口口径(wage/farm_fresh_n)只许作带窗长混杂注记的次级诊断。
+- **Metric definition (pinned)**: per seed `rate(s) := farm_worker_wage(s) / micro_steps(s)`
+  (direct division of schema-5 row fields, no new machinery); paired difference Δrate(s) = rate_cand(s) − rate_base(s).
+- **Recording**: the development decision and the final analysis each carry a RATE_REPORT (mean/median/sign count
+  /exact binomial p/deleveraged mean, statistical discipline per B1 D3 verbatim).
+- **Nature**: **a scoring limb, record only** -- not in METRIC_RULES, uses no familywise α,
+  and is not an input to any pass/fail. Reasons: (1) keep the familywise guarantee frozen in rev20 intact;
+  (2) rate alone can be Goodharted by an "efficient early death" policy (the death non-inferiority gate is alongside, but making the scoring limb its own gate
+  would need a separate case); (3) the mission of this limb is to **measure** the efficiency hypothesis, not to decide on candidates.
+- **Pre-registered reference band (for reading, not a gate)**: point +0.004 per micro-step (≈ R6 measured +0.0041/+0.0048 in the two pools),
+  band [0, +0.010]; out of band on either side is a registered finding. With 256 pairs the SEM of this limb is small enough to tell 0 from the point estimate
+  (with 32 pairs it is not -- the F3 noise-floor review).
+- **Definition rule (mandatory with every citation)**: an efficiency/exposure decomposition must state **whether it uses the window definition or the step definition**
+  (for the same net difference the two differ by 3.3×, per the F3 internal-consistency review ruling); this limb always uses the step definition;
+  the window definition (wage/farm_fresh_n) may only be a secondary diagnostic with a window-length confound note.
 
-## 修订二(确认,无需改动):seed-majority 条款已内建
+## Revision 2 (confirmation, no change needed): the seed-majority clause is already built in
 
-F3 曾建议"保留 seed-majority 条款"。核验结果:r7_statistics.MetricRule 默认
-`require_sign_test=True`,rev20 四条门指标全部已带精确符号检验——**此条已满足,
-零改动**,在此如实入册以免后案重提。(附系数:256 对下符号检验需胜率 ≥0.578,
-按 R6 两池去均值经验分布折算≈平移 +5.3 wage,对小效应确比均值门灵敏。)
+F3 had suggested "keep the seed-majority clause". Check result: r7_statistics.MetricRule defaults to
+`require_sign_test=True`, and all four rev20 gate metrics already carry an exact sign test -- **this is already satisfied,
+zero changes**; recorded here so a later case does not raise it again. (Note: with 256 pairs the sign test needs a win rate ≥0.578,
+which, from the de-meaned empirical distribution of the two R6 pools, corresponds to a shift of ≈+5.3 wage -- indeed more sensitive to small effects than the mean gate.)
 
-## 修订三(新增,轻量):final 分析随卷落存活分解诊断
+## Revision 3 (new, lightweight): survival decomposition diagnostic with the final analysis
 
-final 分析除 RATE_REPORT 外,随卷落一次 rate×time 对称分解(总配对差 = 效率分量
-+ 时长分量,逐种子死亡翻转清单)。零判据、纯落账——若终考总量再归零,本诊断
-即时回答"归零是效率消失还是彩票反面签",不必再开一次法证编队。
+Besides RATE_REPORT, the final analysis records one symmetric rate×time decomposition (total paired difference = efficiency component
++ time component, with the per-seed list of death flips). No criterion, pure recording -- if the final exam totals go back to zero, this diagnostic
+immediately answers "did the efficiency vanish, or is this the losing side of the lottery", without another forensics team.
 
-## 实现面(若批)
+## Implementation (if approved)
 
-全部改动限 run_r7_combat_recovery.py 分析/报告段(derived metric 计算与落账)+
-配套单测;环境/评测协议文件(python/diablogym/*、eval_assembled.py、
-eval_contract.py)**零触碰**,eval 档案 schema 不动(rate 系行字段直除,不入档案)。
-campaign_revision 20→21,依 rev20 之 CAMPAIGN_REVISION 常量与状态 schema 升版惯例。
+All changes are limited to the analysis/report sections of run_r7_combat_recovery.py (derived-metric computation and recording) +
+matching unit tests; environment/evaluation-protocol files (python/diablogym/*, eval_assembled.py,
+eval_contract.py) are **untouched**, and the eval archive schema does not change (rate is a direct division of row fields and is not stored in archives).
+campaign_revision 20→21, following the rev20 CAMPAIGN_REVISION constant and the state-schema version convention.
 
-## 与发车的关系
+## Relation to launch
 
-本件不改变 R7 发车前置(引擎可用 + 总设计师亲批)。发车环境选项与约束见
-docs/OPS-windows-feasibility.md。
-
-
-## 修正案二:BC-v1 demos-only 门(A2,总设计师 2026-07-27 批)
-
-批文原文:「可以 就听您的 A2方案为主 不行就只能给模型升级了」(回退路线=模型升级)。
-
-- **缘起**:R7 prepare-bc 两次失守——2_102 池被 a14 保险丝回执缺失崩溃烧毁
-  (已修);2_104 池被候选质量门 FAIL 烧毁(top1 0.833 vs 门 0.95,稀有键
-  recall 0.34/0.46 vs 0.85,类权重试无效)。零池成本天花板测量(burned-2_104
-  demos,200ep+类权):top1≈0.88-0.90、稀有键≤0.43——门在 07-25 未过滤 v3
-  视图下结构性不可达(Mac 时代 1.0 系过滤视图产物)。且 R7 训练命令不消费
-  BC 策略(teacher=KING_SD,无 --teacher-sd/--bc-aux-demos),0.95 门保护的是
-  R5/R6 时代遗物;R7 实际消费物 = demos(dry-anchor 锚 + 身份链)。
-- **改动**:①bc_worker v1 候选/终评质量线降为只记不裁(字段原样落档);
-  发布门 = demos-validity(池覆盖精确/局纪律/a14 覆盖/零标签冲突硬断言,
-  新增 _require_zero_exact_label_conflicts);②train_ppo._validate_bc_report
-  data_gate 分支的 0.95/0.85 两行降为 [0,1] 范围检查(身份链/marker/逐位
-  复算一致性原封);③v1 登记段推进 2_106_000..127(2_104 已烧,append-only)。
-- **池经济警示**:v1 偶数段仅剩 2_106/2_108 两发即撞 2_110_000 评测银行;
-  本次失败则按批文转模型升级路线(方案C),不再烧池试错。
+This document does not change the R7 launch preconditions (engine available + recorded approval). Launch environment: WSL2 (from 2026-07-27). This runtime is a new numeric world: Mac-era archives (REF_BITEQ 113.0/140.9) are not expected to re-verify bit for bit; baselines are re-evaluated on the same runtime and never paired with Mac archives.
 
 
-## 修正案三:A3 不变量修正 + 2_140 立法块(总设计师 2026-07-27 批「同意 辛苦您了」)
+## Amendment 2: BC-v1 demos-only gate (A2, approved 2026-07-27)
 
-- **缘起**:第一腿 119,776 步处训练崩于 leashed_ppo 终止互斥账不变量——
-  快进链把「工人窗无进展超时罚款(-8/-32)」与「整局 3000 步预算于未结算态
-  耗尽」桥进同一 transition,账实守恒(reward=wage+timeout ✓,死亡三字段 0 ✓)
-  而判官过苛。隔离诊断树确定性复现于同一步,肇事帧账目全量在案。
-- **A3 改动**:该不变量单肢放行「unsettled_budget_terminal=True 且与
-  budget_exhausted=True 一致闭合」之合法同现;其余八肢原封。
-- **立法块**:leashed_ppo 属实现指纹束,变更作废 2_108/2_103 之 BC 件;
-  注册表 append-only 立法 BC 块 2_140_000-2_158_xxx(避开评测银行),
-  活动对 v1=2_140_000..127 / v2=2_141_000..383,后续每对消费即追表。
-  今日烧毁池终账:v1 2_102(崩溃)/2_104(门败)/2_106(第二洞)/2_108(A3 作废);
-  v2 2_103(A3 作废)。
+Approved as plan A2, with the model-upgrade route as the fallback.
+
+- **Origin**: R7 prepare-bc failed twice -- pool 2_102 was burned by a crash from a missing a14 fuse receipt
+  (fixed); pool 2_104 was burned by a failed candidate quality gate (top1 0.833 vs gate 0.95, rare-key
+  recall 0.34/0.46 vs 0.85; class-weight retries did not help). A zero-pool cost-ceiling measurement (burned-2_104
+  demos, 200 epochs + class weights): top1≈0.88-0.90, rare keys ≤0.43 -- the gate is structurally unreachable under the unfiltered v3
+  view of 07-25 (the Mac-era 1.0 was a product of the filtered view). Moreover, the R7 training command does not consume
+  the BC policy (teacher=KING_SD, no --teacher-sd/--bc-aux-demos), so the 0.95 gate protects a relic of the
+  R5/R6 era; what R7 actually consumes = demos (dry-anchor anchor + identity chain).
+- **Changes**: (1) the bc_worker v1 candidate/final quality lines become record-only (fields archived as is);
+  the release gate = demos validity (exact pool coverage / game discipline / a14 coverage / hard assertion of zero label conflicts,
+  new _require_zero_exact_label_conflicts); (2) the two lines 0.95/0.85 in the data_gate branch of train_ppo._validate_bc_report
+  become [0,1] range checks (identity chain / marker / bit-level recomputation consistency unchanged); (3) the v1 registration range advances
+  to 2_106_000..127 (2_104 already burned, append-only).
+- **Pool-economy warning**: only two runs, 2_106/2_108, remain in the even v1 range before it hits the 2_110_000 evaluation bank;
+  if this attempt fails, the approved fallback, the model-upgrade route (plan C), is taken, with no more pools burned on trial and error.
+
+## Amendment 3: A3 invariant correction + 2_140 legislation block (approved 2026-07-27)
+
+- **Origin**: the first leg crashed at step 119,776 on the leashed_ppo termination-exclusivity ledger invariant --
+  the fast-forward chain bridged "worker-window no-progress timeout penalty (-8/-32)" and "the whole-game 3000-step budget running out in an unsettled state"
+  into the same transition; the accounting balanced (reward=wage+timeout ✓, the three death fields 0 ✓)
+  but the checker was too strict. An isolation diagnostic tree reproduced it deterministically at the same step, with the full accounts of the offending frame on record.
+- **A3 change**: that invariant has one limb that allows the legitimate co-occurrence "unsettled_budget_terminal=True, closed consistently with
+  budget_exhausted=True"; the other eight limbs are unchanged.
+- **Legislation block**: leashed_ppo is part of the implementation fingerprint bundle, so the change voids the BC artifacts of 2_108/2_103;
+  the registry legislates, append-only, a BC block 2_140_000-2_158_xxx (avoiding the evaluation bank),
+  with active pair v1=2_140_000..127 / v2=2_141_000..383, extended as each pair is consumed.
+  Final account of pools burned that day: v1 2_102 (crash) / 2_104 (gate failure) / 2_106 (second hole) / 2_108 (voided by A3);
+  v2 2_103 (voided by A3).
 
 
-## 修正案四:A4 优化步地板与 target_kl 早停调和(2026-07-27,批文系「A2为主/同意」授权族)
+## Amendment 4: A4 reconciles the optimizer-step floor with target_kl early stopping (2026-07-27, covered by the A2/A3 approvals)
 
-- **缘起**:腿3 182,248 步崩于「每 joint rollout ≥8 actor optimizer steps」
-  硬地板——冻结配方自带 target_kl=0.01(KL 早停),某 KL 尖峰 rollout 于第
-  7 步早停被地板误杀。地板(满一 epoch)与配方自身旋钮内在矛盾,判为 bug。
-- **A4 改动**:①早停 rollout 落 kl_early_stopped 旗,生产者/校验器地板对
-  其豁免至 ≥1(活性保证保留),未早停仍 ≥8;②qualifies 公式不变(早停短
-  rollout 如实记 False);③R7 聚合地板按旗折算;④audit schema /9→/10。
-- **登记段**:2_140/2_141 随束变作废,追表 2_142/2_143(立法块内)。
+- **Origin**: leg 3 crashed at step 182,248 on the hard floor "≥8 actor optimizer steps per joint rollout"
+  -- the frozen recipe itself has target_kl=0.01 (KL early stopping), and a rollout with a KL spike stopped early at step
+  7 and was killed by the floor. The floor (a full epoch) contradicts the recipe's own knob, so it is judged a bug.
+- **A4 changes**: (1) an early-stopped rollout records a kl_early_stopped flag, and the producer/validator floor exempts
+  it down to ≥1 (liveness guarantee kept), while non-early-stopped rollouts still need ≥8; (2) the qualifies formula is unchanged (an early-stopped short
+  rollout is recorded as False as is); (3) the R7 aggregate floor is converted by the flag; (4) audit schema /9→/10.
+- **Registered ranges**: 2_140/2_141 are voided by the bundle change; the table extends to 2_142/2_143 (inside the legislation block).
 
-## 修正案五(2026-07-28,草案待批):死亡非劣性门功效重标定
+## Amendment 5 (2026-07-28, draft awaiting approval): power recalibration of the death non-inferiority gate
 
-### 事实(开发阶段判决,12 份冻结分析在案)
-R7 开发阶段 14 发评测零故障满程,判决 DEVELOPMENT_SCIENTIFIC_FAIL,
-终考未开。逐项拆解:
+### Facts (development-stage decision, 12 frozen analyses on record)
+The R7 development stage ran 14 evaluations to completion with zero faults, decision DEVELOPMENT_SCIENTIFIC_FAIL;
+the final exam had not been opened. Item by item:
 
-- **主终点 farm_worker_wage:12/12 腿通过**。改进 +14.5~+41.7,
-  族错校正后 LCB 全部 >0(最强腿 b-risk64-s2130100:+41.7,LCB +29.3)。
-  这是 v28 之后首个出样本、跨 6 训练 RNG × 2 池复现的正信号。
-- **rev21 每步效率肢(record_only)首秀:12/12 腿显著为正**。
-  去杠杆均值 +0.0089~+0.0209 wage/步,符号检验 p 至 2.2e-14。
-  证实 F3 疑似真效率残余为真,且不依赖存活时长杠杆。
-- **死亡观测:risk64 六腿全部低于基线**(−2.3~−5.5pp,均值 −3.1pp);
-  risk32 3/6 腿升高(其 s2130200 复制一致最弱)。
-- **唯一齐败项:deaths.noninferiority_upper_bound(12/12)**。
+- **Primary endpoint farm_worker_wage: 12/12 legs pass**. Improvements +14.5~+41.7,
+  all LCB >0 after family-wise correction (strongest leg b-risk64-s2130100: +41.7, LCB +29.3).
+  This is the first out-of-sample positive signal since v28 that replicates across 6 training RNGs × 2 pools.
+- **First showing of the rev21 per-step efficiency limb (record_only): 12/12 legs significantly positive**.
+  Deleveraged means +0.0089~+0.0209 wage per step, sign-test p down to 2.2e-14.
+  This confirms that the efficiency residual F3 suspected is real and does not depend on survival-time leverage.
+- **Observed deaths: all six risk64 legs are below the baseline** (−2.3~−5.5pp, mean −3.1pp);
+  risk32 is higher in 3/6 legs (its s2130200 replicate is consistently the weakest).
+- **The only item failing everywhere: deaths.noninferiority_upper_bound (12/12)**.
 
-### 诊断:预注册设计缺陷(第 9 项,战役自我暴露)
-死亡非劣性 CI 半宽在 α=0.005(族错分摊)、不一致对 ~30/128 下 ≈0.110;
-边距 0.05 意味着候选须**观测上安全 ≥6pp** 才能证明「不劣于 5pp」——
-门槛在任何候选到场前已数学不可达。终考层(n=256,边距 0.025,半宽
-≈0.078,需观测 ≤−5.3pp)同病。此门等价于要求显著更安全,而非非劣。
+### Diagnosis: a pre-registered design defect (item 9, exposed by the campaign itself)
+With α=0.005 (family-wise split) and ~30/128 discordant pairs, the half-width of the death non-inferiority CI is ≈0.110;
+a margin of 0.05 means a candidate must be **observed ≥6pp safer** to show "not worse than 5pp" --
+the bar was mathematically unreachable before any candidate arrived. The final-exam layer (n=256, margin 0.025, half-width
+≈0.078, needs observed ≤−5.3pp) has the same problem. The gate was in effect a demand for being significantly safer, not for non-inferiority.
 
-### 拟议修正(三选一,总设计师裁)
-- **B 案(推荐)**:开发死亡门改为 observed_not_higher(逐腿点估计不升,
-  ≥2/3 种子跨两池)。按冻结数据:risk64 3/3 过,risk32 1/3 不过 →
-  唯一选出 risk64(与 wage/效率肢一致)。非劣推断移交终考,终考边距
-  0.05(n=256 半宽 0.078,需观测 ≤−2.8pp;risk64 开发均值 −3.1pp,
-  期望上可过、真差则诚实失败——终考仍有真裁决力)。
-- **A 案**:两级边距按功效折算(开发 0.125/终考 0.05),结构不变。
-  开发按冻结数据 risk64 仍 12/12 过 wage 但 NI 上界 0.106~0.147,
-  0.125 下 4/6 腿过 → 2/3 达标,同样选出 risk64。
-- **C 案**:判死 R7,转模型升级路线(此前语境为 BC 门失败预案;
-  现 wage 12/12 过,不建议)。
+### Proposed amendment (three options, for decision)
+- **Plan B (recommended)**: the development death gate becomes observed_not_higher (per-leg point estimate not higher,
+  ≥2/3 seeds across both pools). On the frozen data: risk64 3/3 pass, risk32 1/3 fail →
+  risk64 is the only selection (consistent with the wage/efficiency limbs). Non-inferiority inference moves to the final exam, with final margin
+  0.05 (n=256 half-width 0.078, needs observed ≤−2.8pp; risk64 development mean −3.1pp,
+  so it can be expected to pass, and fails honestly if the true difference is worse -- the final exam still has real decision power).
+- **Plan A**: two-level margins converted by power (development 0.125 / final 0.05), structure unchanged.
+  On the frozen development data risk64 still passes wage 12/12 but its NI upper bounds are 0.106~0.147;
+  under 0.125, 4/6 legs pass → 2/3 met, and risk64 is again selected.
+- **Plan C**: declare R7 dead and switch to the model-upgrade route (earlier this was the contingency for a BC gate failure;
+  with wage now passing 12/12, not recommended).
 
-### 诚实性声明
-- 本修正在观察开发数据**之后**提出,任何基于 2_110/2_111 已读池的
-  再裁决一律标注 post-hoc;其正当性依据是功效缺陷**先于数据存在**
-  (纯 α/n/边距代数,上表可离线复核)。
-- 终考池 2_120_000-2_120_256 仍未消费未读,终考裁决不受污染。
-- 实施须动 run_r7_combat_recovery.py(门逻辑+边距常量)→ 触发
-  launcher sha 变更 → 六腿训练回执作废。两条实施路径待批时一并选:
-  ①全量重训重评(干净,但耗 ~6h 且再烧两个 128 池);
-  ②收养式:独立 post-hoc 分析件消费冻结档案出选拔,production/final
-  以新战役文件引用冻结 sha(不重训,标注收养)。
+### Honesty statement
+- This amendment is proposed **after** seeing the development data; any re-decision based on the already-read 2_110/2_111 pools
+  is labelled post-hoc; its justification is that the power defect **existed before the data**
+  (pure α/n/margin algebra; the table above can be re-checked offline).
+- The final-exam pool 2_120_000-2_120_256 is still unconsumed and unread, so the final decision is not contaminated.
+- Implementation must touch run_r7_combat_recovery.py (gate logic + margin constant) → the launcher sha changes
+  → the six legs' training receipts are voided. Two implementation paths to choose from at approval:
+  (1) full retraining and re-evaluation (clean, but ~6h and burns two more 128 pools);
+  (2) adoption: a separate post-hoc analysis file consumes the frozen archives to make the selection, and production/final
+  reference the frozen sha from a new campaign file (no retraining, labelled as adoption).
 
-### 修正案五批文与实施记录(2026-07-28)
-- **批文**:总设计师口令「那咱们现在先执行方案B吧 256局」——B 案 + 收养式
-  (直奔终考,不重训开发腿)。资源令:训练独占 24 核,游戏留 CCD3 八核。
-- **实施**:rev22。①FINAL_DEATH_MARGIN 0.025→0.05;②新命令
-  adopt-development:校验 rev21 DEVELOPMENT_SCIENTIFIC_FAIL 终态 + 全部
-  冻结工件逐字节清点(12 analysis + decision + 14×3 eval 件 + 6×2 训练件),
-  按 B 门(预注册检查集 − deaths.noninferiority_upper_bound 单项)重推导
-  选拔,落 amendment5-adoption.json(post_hoc: true)后原子迁移 state;
-  ③_validate_development_decision 收养态改道:逐份重算换为逐字节冻结
-  复验 + B 门重推导等值检查(production/final 全程沿用)。
-- **精确判读更正**:B 门下 risk64 为 2/3(dev-a s2130200 带
-  kills/ret exact_sign 侧翼失败,非 3/3;死亡 observed_not_higher 单项
-  仍为 6/6),risk32 为 1/3;选出 risk64,与草案结论一致。
-- **旧身份快照**:rev21 launcher c28623a0…、recipe af939783…(收养文档
-  pre 节全量记录;git 历史可离线复核)。
+### Amendment 5 approval and implementation record (2026-07-28)
+- **Approval**: approved on 2026-07-28 -- plan B, 256 games, with adoption
+  (straight to the final exam, no retraining of the development legs). Resource allocation: 24 cores reserved for training.
+- **Implementation**: rev22. (1) FINAL_DEATH_MARGIN 0.025→0.05; (2) a new command
+  adopt-development: checks the rev21 DEVELOPMENT_SCIENTIFIC_FAIL final state + a byte-exact inventory of all
+  frozen artifacts (12 analyses + decision + 14×3 eval files + 6×2 training files),
+  re-derives the selection under gate B (the pre-registered check set minus the single item deaths.noninferiority_upper_bound),
+  writes amendment5-adoption.json (post_hoc: true) and then migrates the state atomically;
+  (3) _validate_development_decision is rerouted in the adopted state: per-analysis recomputation is replaced by a byte-exact
+  frozen re-check + an equality check of the gate-B re-derivation (used throughout production/final).
+- **Correction of the exact reading**: under gate B risk64 is 2/3 (dev-a s2130200 has a flank failure on
+  kills/ret exact_sign, not 3/3; the single death item observed_not_higher
+  is still 6/6), and risk32 is 1/3; risk64 is selected, consistent with the draft's conclusion.
+- **Old identity snapshot**: rev21 launcher c28623a0…, recipe af939783… (recorded in full in the pre section of the adoption document).
 
-### 修正案五之二:终考边距功效修正(2026-07-28,对抗复核第 2 项 blocker)
-- **勘误**:B 案草案以 McNemar 型半宽(z·√60/256≈0.078)论证 0.05 边距
-  「期望上可过」——但实现的统计量是 bonferroni-one-sided-clopper-pearson
-  风险差(对两个互斥死亡比例各花 α=0.005 的联合界),保守得多。用仓库
-  自身 CP 函数复算:真效应=risk64 开发汇池观测(−3.1pp)时,0.025/0.05
-  边距通过率仅 ~3%/~16%;六条 risk64 腿不一致结构×2 缩放到 n=256 在
-  0.05 下全败。草案在终考门上复现了它自己诊断的第 9 项缺陷。
-- **复批**:呈报功效表(0.05→16%、0.07→38%、0.08→52%、0.09→65%、
-  0.10→77%、0.11→86%)后,总设计师选定 **0.10**(推荐项)。
-  认证语义「增死 ≤10pp」;观测死亡率与 NI 上界全文公开,不因门宽而隐匿。
-- **同批落地的复核修复束**(全部先于收养执行):①判决时刻锚定
-  (decision.analysis_sha256s 强制比对 + attestation 链核对 + 预注册
-  检查键集钉死);②收养态封存守卫(eval/train-development 拒绝重入,
-  先于任何 phase 写);③收养两写崩溃窗幂等修复分支;④改道键兜底
-  AMENDMENT5_PATH;⑤夹具战役测试 7 项(收养/篡改拦截/崩溃窗/封存)。
+### Amendment 5-2: power correction of the final-exam margin (2026-07-28, adversarial review item 2, blocker)
+- **Erratum**: the plan B draft argued with a McNemar-type half-width (z·√60/256≈0.078) that a 0.05 margin
+  "can be expected to pass" -- but the statistic actually implemented is the bonferroni-one-sided-clopper-pearson
+  risk difference (a joint bound spending α=0.005 on each of the two mutually exclusive death proportions), which is far more conservative. Recomputed with the repo's
+  own CP function: with the true effect = the pooled risk64 development observation (−3.1pp), the pass rates at margins 0.025/0.05
+  are only ~3%/~16%; scaling the discordance structure of the six risk64 legs ×2 to n=256, all fail
+  at 0.05. On the final-exam gate the draft reproduced the very item-9 defect it had diagnosed.
+- **Re-approval**: after the power table was presented (0.05→16%, 0.07→38%, 0.08→52%, 0.09→65%,
+  0.10→77%, 0.11→86%), **0.10** (the recommended option) was chosen.
+  Certification meaning: "extra deaths ≤10pp"; the observed death rate and the NI upper bound are published in full and not hidden behind the gate width.
+- **Review fix bundle landed with the same approval** (all before the adoption ran): (1) anchoring of the decision moment
+  (mandatory comparison of decision.analysis_sha256s + attestation chain check + pinned set of pre-registered
+  check keys); (2) sealing guard for the adopted state (eval/train-development refuse re-entry,
+  before any phase write); (3) an idempotent repair branch for the two-write crash window of the adoption; (4) fallback for the reroute key
+  AMENDMENT5_PATH; (5) seven fixture-campaign tests (adoption / tamper blocking / crash window / sealing).
 
-## 修正案六(2026-07-28,批文「启用备用池(推荐)」):终考事故换池
-- **事故**:终考基线评测(2_120 池)在 214/256 处被机器重启打断——点火
-  标记已落、档案未提交,协议按预注册拒绝该发重试(残卷 214 局的逐局
-  数字已进日志,构成部分观察)。候选评测从未点火;候选模型、边距 0.10、
-  全部判据均于事故前冻结提交,不存在任何事故后选择。
-- **裁定**:弃用 2_120(永久登记于 final registry,不删除),启用下一
-  预留段 **2_121_000-2_121_256**(全新未读,MDE 不变)。
-- **实施**:rev23。adopt-final-incident 命令:①验证 rev22 事故态
-  (修五链、生产腿冻结、eval_final 停在 opened、烧毁标记 sha、候选
-  从未点火、事故日志副本 sha);②落 amendment6-final-incident.json
-  (post_hoc,事故全案+新旧身份+生产件 sha 冻结);③烧毁标记与被烧池
-  opened 文档归档进 final-incident-20260728-reboot/;④state 迁移。
-  生产回执复验改道 sha 冻结(回执绑 rev22 身份);修五文档校验加链式
-  身份;train-production 封存;崩溃窗幂等续走;夹具测试 5 项。
-- **旧身份快照**:rev22 launcher 01a3e212…、recipe 9f842ca5…;烧毁
-  标记 34f93496…;残卷日志 05edbb26…(末种子 2120213)。
+## Amendment 6 (2026-07-28, approved: switch to the reserve pool): final-exam incident, pool switch
+- **Incident**: the final-exam baseline evaluation (pool 2_120) was interrupted at 214/256 by a machine reboot -- the launch
+  marker had been written but the archive was not committed, and the protocol, as pre-registered, refused a retry of that run (the per-game
+  numbers of the 214 partial games were already in the log, a partial observation). The candidate evaluation was never launched; the candidate model, the 0.10 margin and
+  all criteria were frozen and committed before the incident, so no choice was made after the incident.
+- **Ruling**: pool 2_120 is abandoned (permanently registered in the final registry, not deleted), and the next
+  reserved range **2_121_000-2_121_256** is used (fresh and unread; MDE unchanged).
+- **Implementation**: rev23. The adopt-final-incident command: (1) verifies the rev22 incident state
+  (amendment 5 chain, production legs frozen, eval_final stopped at opened, sha of the burn marker, candidate
+  never launched, sha of the incident log copy); (2) writes amendment6-final-incident.json
+  (post_hoc, the whole incident + old and new identities + frozen sha of the production artifacts); (3) the burn marker and the opened document of the burned pool
+  are archived into final-incident-20260728-reboot/; (4) state migration.
+  Re-checking the production receipts is rerouted to frozen sha (the receipts are bound to the rev22 identity); the amendment 5 document check adds a chained
+  identity; train-production is sealed; the crash window resumes idempotently; five fixture tests.
+- **Old identity snapshot**: rev22 launcher 01a3e212…, recipe 9f842ca5…; burn
+  marker 34f93496…; partial log 05edbb26… (last seed 2120213).
 
-## R7 终考判决与收案(2026-07-28,批文「接受并且开始R8」)
-- **判决:FAIL(FINAL_SCIENTIFIC_FAIL 终态)**。2_121 全新 256 对池:
-  farm_worker_wage 46.4→84.8(+38.41,族错 LCB +29.80,过);
-  farm_worker_kills +16.50(LCB +12.90,过);kills +14.32(过);
-  ret +31.28(LCB +21.83,过);gear 门过;rev21 每步效率肢 +0.01867/步,
-  符号检验 p=1.51e-18,197胜/59负;死亡 196/256 = 196/256 完全持平,
-  observed_not_higher 过,翻转 31↔31 对称。
-  **唯一失败项:deaths.noninferiority_upper_bound = 0.1086 > 边距 0.10**
-  (62 不一致对下 CP-Bonferroni 认证宽度 10.86pp;真效应持平处该边距
-  通过率本为 ~50%)。
-- **科学结论**:「模型为什么不进步」正式翻案——改进为出样本铁证,
-  且为每步真效率;形式 FAIL 系认证宽度差 0.86pp,非任何观测伤害信号。
-- **收案**:总设计师接受判决;模型不发布;档案冻结;R8 认证战役立案
-  (24 核并行 + 死亡尺按实测不一致密度重标定 + 全新池)。
+## R7 final-exam verdict and case closure (2026-07-28, approved: accept the verdict and start R8)
+- **Verdict: FAIL (final state FINAL_SCIENTIFIC_FAIL)**. On the fresh 2_121 pool of 256 pairs:
+  farm_worker_wage 46.4→84.8 (+38.41, family-wise LCB +29.80, pass);
+  farm_worker_kills +16.50 (LCB +12.90, pass); kills +14.32 (pass);
+  ret +31.28 (LCB +21.83, pass); gear gate passes; rev21 per-step efficiency limb +0.01867 per step,
+  sign test p=1.51e-18, 197 wins / 59 losses; deaths 196/256 = 196/256, exactly equal,
+  observed_not_higher passes, flips 31↔31 symmetric.
+  **The only failure: deaths.noninferiority_upper_bound = 0.1086 > margin 0.10**
+  (with 62 discordant pairs the CP-Bonferroni certification width is 10.86pp; at a true null effect this margin
+  would pass only ~50% of the time).
+- **Scientific conclusion**: the question "why the model does not improve" is formally overturned -- the improvement is solid out-of-sample evidence,
+  and it is real per-step efficiency; the formal FAIL is a certification-width gap of 0.86pp, not any observed signal of harm.
+- **Closure**: the verdict was accepted; the model is not released; the archives are frozen; the R8 certification campaign is opened
+  (24 cores in parallel + the death yardstick recalibrated to the measured discordance density + a fresh pool).

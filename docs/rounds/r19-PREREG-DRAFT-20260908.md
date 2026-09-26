@@ -1,123 +1,191 @@
-# R19 预注册草案(2026-09-08 晚,主刀;**未冻结,明早主席审**)— 「公平装备打屠夫」战役
+# R19 pre-registration draft (2026-09-08; draft, never frozen): the "fair-gear Butcher" campaign
 
-阶段:一层毕业 → 二层养成(绕开屠夫)→ 6 级公平装备打屠夫 → 之后才谈三层。每阶段各自冻结一份预注册、各自过闸。
+Stages: graduate from level 1 -> build up on level 2 (avoiding the Butcher) -> fight the Butcher at level 6 with
+fair gear -> only then consider level 3. Each stage freezes its own pre-registration and passes its own gates.
 
-## 〇、主席今日裁定与方向(2026-09-08 下午—晚)
+## 0. Campaign goals (2026-09-08)
 
-1. 目标:做**第一个有记录、可复现的「公平装备」屠夫击杀**(定义见 §一)。
-2. 一步一步:先把一层打稳,再二层养成,稳定打得过屠夫之后再下三层,「不然去三层只是送死」。
-3. 屠夫的房间**按布局识别**,不用引擎里的怪物坐标(神视角)。
-4. 经理选项按 2026-09-07 的清单补齐;担心「越来越像脚本 AI」——每条脚手架登记「学/写」与「拆除条件」。
-5. 终点是**一张网走完 16 层**;专才、父代前缀、复合部署都是脚手架,最后走课程或蒸馏回一张网;「通关」的定义写进宪法。
-6. 主席分工:看人类通关视频,按「触发条件 / 动作 / 为什么 / 代价」逆向常识,给 AI 完整的学习环境。
+1. Goal: the **first recorded, reproducible "fair-gear" Butcher kill** (defined in section 1).
+2. One step at a time: make level 1 solid, then build up on level 2, and go down to level 3 only after the Butcher
+   can be beaten reliably; going to level 3 earlier just gets the character killed.
+3. The Butcher's room is **recognised from its layout**, not from monster coordinates in the engine (no god's-eye
+   view).
+4. Manager options are completed per the 2026-09-07 list. To keep the agent from turning into a scripted AI, every
+   piece of scaffolding is registered as "learned / written" with a removal condition.
+5. The end point is **one network that plays all 16 levels**. Specialists, parent prefixes and composite
+   deployments are scaffolding that is eventually folded back into one network through a curriculum or
+   distillation. The definition of a "full clear" goes into the project's standing rules.
+6. Human knowledge: study videos of human full clears and reverse-engineer common sense as "trigger / action /
+   why / cost", so the agent gets a complete learning environment.
 
-## 一、「公平装备」与「稳定」(宪法条款候选,阈值待主席定)
+## 1. "Fair gear" and "reliable" (candidate standing rules; thresholds to be set)
 
-- **公平装备**:出生装备原样;不改属性、不刷物品、不改等级表;金币与装备全部游戏内挣得;只用战士职业自带手段(近战、卷轴、药水),不借法术;单人普通难度;屠夫按原版规则出现,**不禁用、不隐藏他的门**;从城镇开始的**连续一局**,中途回城算,读档不算。
-- **稳定**:预注册在先;处女种子;48 局配对;公布击杀率与击杀后存活率(建议门槛:击杀 ≥ 50% 且击杀者存活 ≥ 80%);每局种子、存档、完整轨迹公开可重放;GitHub 打 tag、aispeedrun.ai 上榜;措辞用「第一个有记录的」。
-- **先例(2026-09-08 搜索,三路核实)**:rouming/DevilutionX-AI develop 分支自报 16 层逐层出生成功率 73.7%(二层 50.2%),**把屠夫的门伪装成墙绕开**,不打;lciesielski/DeepDungeon 以屠夫为目标但给超模装备 + 末日审判法术,无成功率;NiteKat/DAPI 纯规则系统据称通全游戏;学术文献零篇。**没有任何人有记录的屠夫击杀。**
+- **Fair gear**: starting gear unchanged; no attribute edits, no item duplication, no experience-table edits; all
+  gold and gear earned in game; only the warrior's own means (melee, scrolls, potions), no spells; single player,
+  normal difficulty; the Butcher appears under the original rules, and **his door is neither disabled nor
+  hidden**; **one continuous game** from town. Town trips count; loading a save does not.
+- **Reliable**: pre-registration first; fresh seeds; 48 paired games; publish the kill rate and the survival rate
+  after the kill (suggested thresholds: kill >= 50% and killer survival >= 80%); every game's seed, save and full
+  trajectory published and replayable; a GitHub tag and an aispeedrun.ai entry; wording "the first recorded".
+- **Prior work (searched 2026-09-08, checked three ways)**: the develop branch of rouming/DevilutionX-AI reports
+  a 73.7% per-level spawn success rate over 16 levels (50.2% on level 2) and **disguises the Butcher's door as a
+  wall** to avoid him, without fighting; lciesielski/DeepDungeon targets the Butcher but with overpowered gear and
+  the Doom spell, and reports no success rate; NiteKat/DAPI, a purely rule-based system, reportedly clears the
+  whole game; zero academic papers. **Nobody has a recorded Butcher kill.**
 
-## 二、现状基线(数字来源:`r18-B-GATES-REPORT-20260908.md`、对照行 rows sha 0e5a1acd…,父代 7e31dc54 × v1 世界,48 种子)
+## 2. Current baseline (source: `r18-B-GATES-REPORT-20260908.md`, control rows sha 0e5a1acd..., parent 7e31dc54 in the v1 world, 48 seeds)
 
-| 项 | 现状 |
+| Item | Now |
 |---|---|
-| 局末/死前 clvl ≥ 3 | 39/48(81%) |
-| 活着离开一层 | 34/48(71%);另 7 局活着但 12 000 拍内没下楼(1 局全程 0 击杀) |
-| 死在一层 | 7/48(15%):全在首次回城前(559–2433 拍),1–2 级、腰带 0、金币 100、护甲 7,死时身边 5–10 只怪,5/7 头号伤害是**骷髅队长** |
-| 一层清空(剩 ≤ 3 只) | 4/41(10%);平均杀 90–97 只、剩 9 只 |
-| 首次下二层时 | clvl 3(70%)/ 4(30%),AC 9–15,腰带多为 4 瓶 |
-| 二层 | 每千拍风险率 0.222;每次访问杀 26 只(二层约 120 只);二层死亡 19/48;屠夫致死 3/48 |
-| 经验账 | clvl 6 = 18 258 XP;一层清空 ≈ 6k(3 级);差的 1.2 万只能来自二层 |
+| clvl >= 3 at game end / before death | 39/48 (81%) |
+| Leaves level 1 alive | 34/48 (71%); another 7 games alive but did not descend within 12,000 ticks (1 game with 0 kills throughout) |
+| Dies on level 1 | 7/48 (15%): all before the first town trip (ticks 559-2433), at clvl 1-2, belt 0, 100 gold, armour 7, with 5-10 monsters nearby; in 5/7 the top damage source is a **skeleton captain** |
+| Level 1 cleared (<= 3 left) | 4/41 (10%); on average 90-97 kills with 9 left |
+| At the first descent to level 2 | clvl 3 (70%) / 4 (30%), AC 9-15, belt mostly 4 potions |
+| Level 2 | hazard 0.222 per 1,000 ticks; 26 kills per visit (level 2 holds about 120); level 2 deaths 19/48; killed by the Butcher 3/48 |
+| Experience budget | clvl 6 = 18,258 XP; clearing level 1 gives about 6k (clvl 3); the missing 12k can only come from level 2 |
 
-R18-B 的三条教训:报酬到位就会学(下楼宏 a11 率 2.4% → 13.9%,三层到达 4 → 15);只在二层以上开学习窗会让一层退化(独自部署一层死亡 25/48);学会下楼而没学会活,死亡只是往下搬。
+Three lessons from R18-B: the agent learns when the reward is there (descend-macro a11 rate 2.4% -> 13.9%,
+level-3 arrivals 4 -> 15); opening learning windows only on level 2 and above makes level 1 regress (deployed
+alone, level-1 deaths 25/48); learning to descend without learning to survive only moves the deaths deeper.
 
-## 三、阶段、法条、闸门
+## 3. Stages, rules and gates
 
-### 阶段 A:一层毕业(臂 `r19-A`)
+### Stage A: graduate from level 1 (arm `r19-A`)
 
-法条(新,零训练配对探针先行):
-- **A1 开局撤退**:retreat-v1 的触发法(hp ≤ 0.5·max,或腰带空且 hp ≤ 0.75·max)扩展到一层——一层的上楼梯就是回城;直接对着那 7 局早死。
-- **A2 开局买药**:进地牢前用初始 100 金买药(需核实 Pepin 药价与可买数量);人类的第一件事。
-- **A3 一层保持(训练形态)**:学习窗覆盖一层(见 §六),不再让学习者对一层零数据。
-- 沿用:sweep-v1、cain-v1、smith-v1、sustain-loot-v1、hunt_scope=l1-only、coach-v03、r18c 时钟。
+Rules (new; zero-training paired probes first):
+- **A1 early retreat**: extend the retreat-v1 trigger (hp <= 0.5 max, or empty belt and hp <= 0.75 max) to level 1;
+  on level 1 the up staircase is the way to town. Aimed directly at the 7 early deaths.
+- **A2 buy potions at the start**: spend the starting 100 gold on potions before entering the dungeon (Pepin's
+  price and purchasable count to be checked). It is the first thing a human does.
+- **A3 level-1 retention (training shape)**: learning windows cover level 1 (see section 6), so the learner no
+  longer has zero level-1 data.
+- Kept: sweep-v1, cain-v1, smith-v1, sustain-loot-v1, hunt_scope=l1-only, coach-v03, the r18c clock.
 
-闸门(48 种子配对,对照 = 父代 × 同世界;虚线为建议值):
-- 一层死亡 ≤ 5%(现 15%);一层清空率 ≥ 50%(现 10%);首次下楼时 clvl ≥ 3 的局 ≥ 90%、腰带 ≥ 4;
-- 成对存活不劣于对照(UCB95 < 0 或净 ≥ 0 且不显著变差);
-- 六卷考场不退化(需修正案三或新考卷形态,见 §六);
-- 机制指标:早死局的死因图鉴、开局买药次数、一层撤退次数与撤退中死亡。
+Gates (48 paired seeds; control = parent in the same world; values are suggestions):
+- level-1 deaths <= 5% (now 15%); level-1 clear rate >= 50% (now 10%); games with clvl >= 3 at the first descent
+  >= 90%, with belt >= 4;
+- paired survival not worse than control (UCB95 < 0, or net >= 0 and not significantly worse);
+- no regression on the six-exam set (needs amendment 3 or a new exam format, see section 6);
+- mechanism metrics: cause-of-death catalogue of early deaths, number of opening potion purchases, number of
+  level-1 retreats and deaths during retreat.
 
-### 阶段 B:二层养成(臂 `r19-B`)
+### Stage B: build up on level 2 (arm `r19-B`)
 
-法条:
-- **B1 屠夫房禁区 v2(布局识别,§四)**:三套寻路器(a10 打猎/探索、a11 下楼路径、撤退步行)统一绕开;`boss_near` 撤退触发(6 格)。R18-J v1 只盖了 a10,屠夫致死 3→3,不算。
-- **B2 锚在楼梯边刷**(R18-M 构想):二层在离上楼梯 R 格内打,直到达标再外扩——针对「撤退路上死」(15/22 二层死亡发生在撤退步行中,触发时离楼梯中位 22 格)。
-- **B3 撤退检查解耦**:撤退法现在只在 DIVE 窗边界评估(85 次触发里 70 次);改为每拍检查但**不改阈值**(retreat-v2 改阈值为负,不再采用)。K1 教训:关掉自愿 DIVE 就等于关掉撤退检查,所以先解耦再谈阶段门。
-- **B4 二层不下楼**:本阶段 DIVE(2→3)整体掩码(阶段目标是养成,不是深度)。阈值/掩码变更,须主席签字。
-- 沿用阶段 A 全部。
+Rules:
+- **B1 Butcher-room exclusion v2 (layout recognition, section 4)**: all three path finders (a10 hunt/explore, a11
+  descent path, retreat walk) avoid it; `boss_near` retreat trigger (6 tiles). R18-J v1 covered only a10 and
+  Butcher deaths stayed 3 -> 3, so it does not count.
+- **B2 farm near the stairs** (R18-M idea): fight on level 2 within R tiles of the up staircase until the
+  targets are met, then widen. Aimed at deaths on the retreat path (15 of 22 level-2 deaths happen while walking
+  back, with a median distance of 22 tiles to the stairs at trigger time).
+- **B3 decouple the retreat check**: the retreat rule is currently evaluated only at DIVE window boundaries (70 of
+  85 triggers); check it every tick instead, **without changing thresholds** (retreat-v2 changed the thresholds,
+  was negative, and is dropped). Lesson from K1: turning off voluntary DIVE also turns off the retreat check, so
+  decouple first and add stage gates afterwards.
+- **B4 no descent from level 2**: in this stage DIVE (2 -> 3) is masked entirely (the stage goal is build-up, not
+  depth). A threshold/mask change that needs sign-off.
+- Everything from stage A is kept.
 
-闸门:二层风险率 ≤ 0.15(现 0.222);局末 clvl ≥ 6 的局 ≥ 50%(现 4%);**屠夫致死 = 0**;二层击杀 ≥ 1.5×;成对存活不劣于对照。
+Gates: level-2 hazard <= 0.15 (now 0.222); games ending with clvl >= 6 >= 50% (now 4%); **Butcher deaths = 0**;
+level-2 kills >= 1.5x; paired survival not worse than control.
 
-### 阶段 C:打屠夫(臂 `r19-C`)
+### Stage C: fight the Butcher (arm `r19-C`)
 
-- **C1 屠夫战备表**(脚手架,登记拆除条件):clvl ≥ 6、AC ≥ X、腰带 ≥ 6、武器伤害 ≥ Y、装备已回城整理——全部满足才解除禁区,同时经理多出选项 4 **BOSS**(进屠夫房交战)。
-- **C2 战法**:从人类视频逆向(门口卡位、药水节奏、开门触发「Ah, fresh meat」后的站位),优先作为观测特征与奖励项让工人学,不写死脚本;确需脚本的部分登记为脚手架。
-- **拆除条件**:C 阶段过闸后,把战备信号(clvl/AC/腰带/武器)喂进经理观测,拆掉硬掩码,让经理自己学「什么时候够格」——禁区只保留「认出房间」这一感知功能。
-- 闸门:48 粒处女配对种子上击杀率 ≥ 50%、击杀者存活 ≥ 80%(阈值待定);全部轨迹公开。
+- **C1 Butcher readiness table** (scaffolding with a registered removal condition): clvl >= 6, AC >= X, belt >= 6,
+  weapon damage >= Y, gear sorted in town. Only when all hold is the exclusion lifted, and the manager gains
+  option 4 **BOSS** (enter the Butcher's room and fight).
+- **C2 tactics**: reverse-engineered from human videos (holding the doorway, potion rhythm, positioning after the
+  door triggers "Ah, fresh meat"), preferably as observation features and reward terms the worker learns rather
+  than a fixed script; any part that must be scripted is registered as scaffolding.
+- **Removal condition**: after stage C passes its gates, feed the readiness signals (clvl/AC/belt/weapon) into the
+  manager's observation, remove the hard mask, and let the manager learn when it is ready. The exclusion keeps
+  only its perception role (recognising the room).
+- Gates: on 48 fresh paired seeds, kill rate >= 50% and killer survival >= 80% (thresholds to be set); all
+  trajectories published.
 
-### 阶段 D:三层——只在 C 过闸后立预注册。
+### Stage D: level 3, with a pre-registration only after stage C passes.
 
-## 四、屠夫房间的布局识别(2026-09-08 侦察,引擎与桥的事实)
+## 4. Layout recognition of the Butcher's room (2026-09-08 survey; engine and bridge facts)
 
-引擎(DevilutionX,均有 file:line 证据,见 `train/runs/r18-reports/gates-20260908/` 旁的侦察记录):
-- 屠夫任务 Q_BUTCHER 固定在教堂二层;房间是预制图 `levels/l1data/rnd6.dun`(6×6 大格 = 12×12 世界格),由 `InitSetPiece()` 盖章,全图只此一处。
-- 位置只有**五种**(由 SelectChamber 决定):预制图原点 W ∈ {(20,48), (48,48), (76,48), (48,20), (48,76)};内部可走区 W+4..W+9;唯一开口在**东墙**(大格 (5,3));屠夫固定出生在 W+(4,4),即五个固定坐标之一。
-- 12 件刑具/尸体物件由 `AddTortures()` 围绕锚点微格 dPiece 366 按固定偏移摆放;其中 7 件(TNUDEM1-4、TNUDEW1-3)是实体,会在可走图上留下固定的 7 点空洞;5 件刑架非实体。教堂层里除屠夫房外,只有 THEME_TORTURE 主题房会放 TNUDEM2 一种——**看到任何 TORTURE1-5 或 TNUDEW\* 就是屠夫房**。
-- 墙砖 87/88/91/92/123/126 只出现在 rnd6.dun;房间自成一个 8×8 光照区(W+3..W+10),进门整间点亮;房内不会刷其他怪、桶、石棺。
-- 屠夫:类型 51(MT_CLEAVER)、AI 13、220 HP、抗火电、不会开门。
+Engine (DevilutionX; each point has file:line evidence in a survey note next to
+`train/runs/r18-reports/gates-20260908/`, not published):
+- The Butcher quest Q_BUTCHER is fixed on cathedral level 2; the room is the prefab `levels/l1data/rnd6.dun`
+  (6x6 large tiles = 12x12 world tiles), stamped by `InitSetPiece()`, and it occurs once per map.
+- There are only **five** positions (chosen by SelectChamber): prefab origin W in {(20,48), (48,48), (76,48),
+  (48,20), (48,76)}; walkable interior W+4..W+9; the only opening is in the **east wall** (large tile (5,3)); the
+  Butcher always spawns at W+(4,4), i.e. at one of five fixed coordinates.
+- `AddTortures()` places 12 torture/corpse objects at fixed offsets around the anchor micro-tile dPiece 366. Seven
+  of them (TNUDEM1-4, TNUDEW1-3) are solid and leave a fixed 7-point hole in the walkable map; the 5 racks are
+  not solid. On cathedral levels only the THEME_TORTURE theme room also places one of them (TNUDEM2), so **any
+  TORTURE1-5 or TNUDEW\* means the Butcher's room**.
+- Wall tiles 87/88/91/92/123/126 occur only in rnd6.dun; the room is its own 8x8 light zone (W+3..W+10) and lights
+  up entirely on entry; no other monsters, barrels or sarcophagi spawn inside.
+- The Butcher: type 51 (MT_CLEAVER), AI 13, 220 HP, resists fire and lightning, cannot open doors.
 
-桥(diablogym)现状:
-- 观测里**没有**砖块 id、没有已探索/已照亮地图、没有房间/光照区 id;`local_map` 只有 walkable/door/closed_door/hazard/explosive 五通道,且 walkable 是穿透黑暗的真值;`objects` 通道(sweep-v1)只导出箱/桶/石棺五类,不含刑具;怪物列表暴露未照亮怪物的坐标(**已裁定不用**)。
+Bridge (diablogym) today:
+- The observation has **no** tile ids, no explored/lit map and no room or light-zone ids; `local_map` has only
+  five channels (walkable/door/closed_door/hazard/explosive), and walkable is ground truth that sees through
+  darkness; the `objects` channel (sweep-v1) exports only five classes of chests/barrels/sarcophagi and no torture
+  objects; the monster list exposes the coordinates of unlit monsters (**ruled out; not used**).
 
-提案 **butcher-room-v1**(尊重部分可观测):
-1. `objects` 通道新增一类 `gore`(12 种物件 id 29–40),沿用 `visible = IsTileLit` 标签;
-2. 只有当至少一件刑具**在光照下被看见过**(与 sweep 的「见过才算」记忆同款),才用其固定偏移反推 W,把 12×12 脚印登记为禁区,三套寻路器一致绕开;
-3. 没看见之前一无所知——和人类一样可能误入,这是公平的代价;`boss_near` 撤退触发兜底;
-4. **不用**「五个候选位置 × 可走图 7 点空洞」这种穿透黑暗的模板匹配(与神视角同类),除非主席另裁。
+Proposal **butcher-room-v1** (respects partial observability):
+1. Add a class `gore` to the `objects` channel (the 12 object ids 29-40), with the same `visible = IsTileLit` tag;
+2. only when at least one torture object **has been seen under light** (the same "seen before it counts" memory as
+   sweep) is W inferred from its fixed offset and the 12x12 footprint registered as an exclusion zone, avoided by
+   all three path finders;
+3. before that nothing is known, and like a human the agent may wander in; that is the price of fairness, and the
+   `boss_near` retreat trigger is the fallback;
+4. **no** template matching of "five candidate positions x the 7-point hole in the walkable map", which sees
+   through darkness (the same class as the god's-eye view), unless decided otherwise.
 
-待核实(明日探针):东墙开口是否挂 OBJ_L1LDOOR 门物件;dPiece 366 在认证种子集上是否唯一;误报率。
+To check (next probe): whether the east-wall opening carries an OBJ_L1LDOOR door object; whether dPiece 366 is
+unique on the certified seed set; the false-positive rate.
 
-## 五、经理选项与法条清单(学 / 写 / 拆除条件)
+## 5. Manager options and rules (learned / written / removal condition)
 
-| 项 | 现状 | 学/写 | R19 计划 / 拆除条件 |
+| Item | Now | Learned/written | R19 plan / removal condition |
 |---|---|---|---|
-| FARM / DIVE / RESUPPLY 选项 | 资源世界里由脚本教练 coach-v03 选 | 写 | 阶段 C2 起把战备信号喂进经理观测,改为学 |
-| BOSS(新选项 4) | 无 | — | 阶段 C 引入;入口由 C1 战备表守门(脚手架),C2 拆 |
-| 开箱 / 砸桶 sweep-v1 | 有,一层 | 写 | 保留,登记为「经济管道」 |
-| 鉴定 cain-v1 / 卖货 / 买药 / 买甲 / 买武器 smith-v1 | 有 | 写 | 保留;人类也只是点几下,不争 |
-| 捡地装备 a14 | 有 | **学** | 保留 |
-| 加点 | 桥内写死 3 体 : 2 力 | 写(C++) | 保留并登记;将来可做成选项 |
-| 击杀优先级 threat-v1 / 仇恨上限 | 有但关(R18-D/E 为负) | 写 | 保持关;怪物图鉴改作经理观测特征(C2) |
-| 撤退 retreat-v1 | 有,二层+;只在窗边界检查 | 写 | A1 扩到一层开局;B3 每拍检查不改阈值 |
-| 回城卷轴 portal-v1 | 有但关(太贵) | 写 | 「有钱再买」法条另立 |
-| 屠夫房禁区 | 无(J v1 未合并) | 写(感知) | B1 布局识别 v2;C2 后只保留感知 |
-| 求战范围 hunt_scope | l1-only | 世界设定 | 保留 |
-| 锚在楼梯边刷 | 无 | 写 | B2 |
-| 大局观(先小怪再 Boss) | 教练六条法,无 Boss 意识 | 写 | 分阶段战备表 → C2 改学 |
-| NPC | Griswold / Pepin / Cain(Adria 随门关) | — | 打屠夫不需要 Wirt/Ogden/Farnham/Gillian |
+| FARM / DIVE / RESUPPLY options | chosen by the scripted coach coach-v03 in the resource world | written | from stage C2, feed readiness signals into the manager's observation and learn them |
+| BOSS (new option 4) | none | - | introduced in stage C; entry guarded by the C1 readiness table (scaffolding), removed in C2 |
+| open chests / break barrels, sweep-v1 | yes, level 1 | written | keep; registered as the "economy pipeline" |
+| identify cain-v1 / sell / buy potions / buy armour / buy weapons smith-v1 | yes | written | keep; a human only clicks a few times here too |
+| pick up gear from the floor, a14 | yes | **learned** | keep |
+| stat points | fixed in the bridge at 3 vitality : 2 strength | written (C++) | keep and register; could become an option later |
+| kill priority threat-v1 / aggro cap | present but off (R18-D/E negative) | written | keep off; the monster catalogue becomes a manager observation feature (C2) |
+| retreat retreat-v1 | yes, level 2+; checked only at window boundaries | written | A1 extends it to the start of level 1; B3 checks every tick without changing thresholds |
+| town portal portal-v1 | present but off (too expensive) | written | a separate "buy when rich" rule |
+| Butcher-room exclusion | none (J v1 not merged) | written (perception) | B1 layout recognition v2; after C2 only perception remains |
+| hunt range hunt_scope | l1-only | world setting | keep |
+| farm near the stairs | none | written | B2 |
+| big picture (small monsters first, then the boss) | the coach's six rules, no boss awareness | written | staged readiness tables -> learned in C2 |
+| NPCs | Griswold / Pepin / Cain (Adria follows the gate) | - | the Butcher fight needs no Wirt/Ogden/Farnham/Gillian |
 
-## 六、训练形态与工具
+## 6. Training shape and tools
 
-- **一层保持**(A3):学习窗须覆盖一层。两条路待选:(a) earned-dive-suffix-v2——前缀仍由父代打,但一定份额的一层窗实况进学习者;(b) 直接 farm-dive-v1 从父代热启动,所有窗实况。复合部署 v0 只作诊断;正式部署形态 = 一张网。
-- **托管**:保留(R18-B 证明兑现有效);各阶段的兑现条件随阶段目标改(阶段 B 不下楼,托管转向「清房/升级」类目标)——阈值变更,须签字。
-- **考卷**:weights-only 谱系被正式考卷拒绝(修正案三草案待裁);R19 若用 critic 迁移热启动(带预热回执)可不动考卷工具——二选一。
-- **预算**:每阶段约 1M 学习步 / 10 h;发射前泡机 ≥ 30 min;磁盘 ≥ 20 GB(alphaxiang 搬走后约 890 GB 空闲)。
-- **审核**:法条与探针改动走 Opus 审核编队;主树只进认证过的字节;新文件不覆盖冻结件。
+- **Level-1 retention** (A3): learning windows must cover level 1. Two options: (a) earned-dive-suffix-v2, where
+  the parent still plays the prefix but a fixed share of live level-1 windows goes to the learner; (b) farm-dive-v1
+  warm-started directly from the parent, with all windows live. Composite deployment v0 is diagnostic only; the
+  formal deployment shape is one network.
+- **Escrow**: kept (R18-B showed that payouts work); each stage's payout condition follows the stage goal (stage B
+  does not descend, so escrow moves to "clear the room / level up" goals). A threshold change that needs
+  sign-off.
+- **Exams**: the formal exam rejects the weights-only lineage (amendment 3 draft pending); if R19 warm-starts with
+  critic migration (with a warm-up receipt), the exam tools can stay as they are. One of the two.
+- **Budget**: about 1M learning steps / 10 h per stage; soak for >= 30 min before launch; >= 20 GB free disk.
+- **Review**: changes to rules and probes go through code review; only certified bytes enter the main tree; new
+  files never overwrite frozen files.
 
-## 七、待主席裁定
+## 7. Open decisions
 
-1. §一 的两个定义与门槛数字;2. 修正案三(考卷准入)或改用 critic 迁移热启动;3. 一层保持走 (a) 还是 (b);4. 禁区识别只认「见过的刑具」(建议)还是允许穿透黑暗的模板;5. 阶段 B 的 2→3 掩码与托管条件;6. 阶段闸门的具体数字;7. 明日先跑零训练探针(A1、A2、B1)再冻结阶段 A——同意与否。
+1. The two definitions and threshold numbers in section 1; 2. amendment 3 (exam admission) or a switch to critic
+migration warm starts; 3. level-1 retention via (a) or (b); 4. exclusion recognition from "seen torture objects"
+only (recommended) or a template that sees through darkness; 5. the 2 -> 3 mask and escrow conditions of stage B;
+6. the exact numbers of the stage gates; 7. whether to run the zero-training probes (A1, A2, B1) before freezing
+stage A.
 
-## 八、明日顺序(若批准)
+## 8. Proposed order (if approved)
 
-零训练探针(A1 一层撤退、A2 开局买药、B1 禁区 v2 → 屠夫致死 3→0)→ 审核编队 → 认证 → 冻结 `r19-A` 预注册 → 发射(白天发,泡机 30 min)→ 当晚关门。
+Zero-training probes (A1 level-1 retreat, A2 opening potion purchase, B1 exclusion v2 -> Butcher deaths 3 -> 0)
+-> review -> certification -> freeze the `r19-A` pre-registration -> launch (daytime launch, 30 min soak) -> close
+the same day.

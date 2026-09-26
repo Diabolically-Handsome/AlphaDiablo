@@ -1,8 +1,8 @@
-"""DiabloGym 训练监控面板(零依赖,stdlib HTTP)。
+"""DiabloGym training monitor dashboard (no dependencies, stdlib HTTP).
 
-用法(仓库根目录):  .venv/bin/python train/dashboard.py [--port 8787] [--run-dir runs/xxx]
-默认自动追踪 runs/ 下最新的训练(每次刷新重新探测,可跨多次训练常开)。
-打开:  http://127.0.0.1:8787
+Usage (from the repo root):  .venv/bin/python train/dashboard.py [--port 8787] [--run-dir runs/xxx]
+By default it follows the newest run under runs/ (re-detected on every refresh, so it can stay open across runs).
+Open:  http://127.0.0.1:8787
 """
 
 from __future__ import annotations
@@ -14,11 +14,11 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 RUNS_DIR = pathlib.Path(__file__).resolve().parent / "runs"
 FORCED_RUN: pathlib.Path | None = None
-MAX_EPISODES = 800  # 返回给前端的最多局数(尾部)
+MAX_EPISODES = 800  # maximum number of (most recent) episodes returned to the front end
 
 
 def tail_lines(path: pathlib.Path, limit: int) -> list[str]:
-    """只读取 JSONL 尾部，避免面板每两秒扫描完整训练日志拖慢采样。"""
+    """Read only the tail of the JSONL so that polling every two seconds never scans the full training log and slows sampling."""
     if limit <= 0:
         return []
     with open(path, "rb") as f:
@@ -66,8 +66,8 @@ def collect() -> dict:
     return {"status": status, "episodes": episodes}
 
 
-PAGE = """<!doctype html><html lang="zh"><head><meta charset="utf-8">
-<title>DiabloGym 训练监控</title>
+PAGE = """<!doctype html><html lang="en"><head><meta charset="utf-8">
+<title>DiabloGym Training Monitor</title>
 <style>
   :root { --bg:#12100e; --card:#1c1917; --line:#d97706; --line2:#78716c;
           --text:#e7e5e4; --dim:#a8a29e; --good:#4ade80; --bad:#f87171; }
@@ -95,19 +95,19 @@ PAGE = """<!doctype html><html lang="zh"><head><meta charset="utf-8">
   td { text-align:right; padding:3px 8px; border-top:1px solid #292524; }
   th:first-child, td:first-child { text-align:left; }
 </style></head><body>
-<h1>⚔️ DiabloGym <em>训练监控</em></h1>
-<div class="sub" id="runline">等待训练数据…</div>
+<h1>⚔️ DiabloGym <em>Training Monitor</em></h1>
+<div class="sub" id="runline">Waiting for training data…</div>
 <div class="stats" id="stats"></div>
 <div class="bar"><i id="bar" style="width:0%"></i></div>
 <div class="grid">
-  <div class="card"><h3>每局奖励(橙=近20局均值)</h3><svg id="c-reward"></svg></div>
-  <div class="card"><h3>每局击杀数</h3><svg id="c-kills"></svg></div>
-  <div class="card"><h3>每局 XP 收益</h3><svg id="c-xp"></svg></div>
-  <div class="card"><h3>每局步数(存活时长)</h3><svg id="c-len"></svg></div>
+  <div class="card"><h3>Reward per episode (orange = 20-episode moving mean)</h3><svg id="c-reward"></svg></div>
+  <div class="card"><h3>Kills per episode</h3><svg id="c-kills"></svg></div>
+  <div class="card"><h3>XP gained per episode</h3><svg id="c-xp"></svg></div>
+  <div class="card"><h3>Steps per episode (survival time)</h3><svg id="c-len"></svg></div>
 </div>
-<div class="card" style="margin-top:12px"><h3>最近战绩</h3>
-  <table><thead><tr><th>局</th><th>奖励</th><th>步数</th><th>击杀</th><th>清层%</th><th>XP</th>
-  <th>等级</th><th>层</th><th>金币</th><th>结局</th></tr></thead>
+<div class="card" style="margin-top:12px"><h3>Recent episodes</h3>
+  <table><thead><tr><th>Ep</th><th>Reward</th><th>Steps</th><th>Kills</th><th>Clear %</th><th>XP</th>
+  <th>Level</th><th>Depth</th><th>Gold</th><th>Outcome</th></tr></thead>
   <tbody id="tbody"></tbody></table>
 </div>
 <script>
@@ -132,24 +132,24 @@ async function tick() {
   try {
     const d = await (await fetch('/data')).json();
     const st = d.status, eps = d.episodes;
-    if (!st) { document.getElementById('runline').textContent='还没有任何训练数据(runs/ 为空)'; return; }
+    if (!st) { document.getElementById('runline').textContent='No training data yet (runs/ is empty)'; return; }
     const fresh = (Date.now()/1000 - st.updated_at) < 6;
     document.getElementById('runline').innerHTML =
       `run <b>${st.run}</b> · ${st.config.algo} · ${st.config.num_envs} envs · ` +
-      `<span class="badge ${fresh?'run':'idle'}">${fresh?'训练中':'已停止/空闲'}</span>`;
+      `<span class="badge ${fresh?'run':'idle'}">${fresh?'training':'stopped/idle'}</span>`;
     const pct = (100*st.total_steps/st.target_steps).toFixed(1);
     document.getElementById('bar').style.width = pct+'%';
     const last20 = eps.slice(-20);
     const mean = a=>a.length? (a.reduce((x,y)=>x+y,0)/a.length) : 0;
     document.getElementById('stats').innerHTML = [
-      [fmt(st.total_steps)+' / '+fmt(st.target_steps), '步数 ('+pct+'%)'],
-      [fmt(st.sps)+'/s', '采样速度'],
-      [st.episodes, '总局数'],
-      [hms(st.elapsed_sec), '已运行'],
-      [mean(last20.map(e=>e.reward)).toFixed(2), '近20局均奖励'],
-      [mean(last20.map(e=>e.kills||0)).toFixed(1), '近20局均击杀'],
-      [(100*mean(last20.map(e=>e.died?1:0))).toFixed(0)+'%', '近20局死亡率'],
-      [Math.max(0,...eps.map(e=>e.depth||1)), '最深到达层'],
+      [fmt(st.total_steps)+' / '+fmt(st.target_steps), 'steps ('+pct+'%)'],
+      [fmt(st.sps)+'/s', 'sampling speed'],
+      [st.episodes, 'total episodes'],
+      [hms(st.elapsed_sec), 'elapsed'],
+      [mean(last20.map(e=>e.reward)).toFixed(2), 'mean reward, last 20'],
+      [mean(last20.map(e=>e.kills||0)).toFixed(1), 'mean kills, last 20'],
+      [(100*mean(last20.map(e=>e.died?1:0))).toFixed(0)+'%', 'death rate, last 20'],
+      [Math.max(0,...eps.map(e=>e.depth||1)), 'deepest level reached'],
     ].map(([v,l])=>`<div class="stat"><b>${v}</b><span>${l}</span></div>`).join('');
     chart('c-reward', eps.map(e=>e.reward));
     chart('c-kills',  eps.map(e=>e.kills||0));
@@ -161,7 +161,7 @@ async function tick() {
       `<td>${e.xp??'-'}</td><td>${e.char_level??'-'}</td>`+
       `<td>${e.depth??'-'}</td><td>${e.gold??'-'}</td>`+
       `<td>${e.died?'💀':'⏳'}</td></tr>`).join('');
-  } catch (err) { /* 训练进程写文件的瞬间可能读到半行,下轮自愈 */ }
+  } catch (err) { /* a read can catch a half-written line while training writes the file; the next tick recovers */ }
 }
 tick(); setInterval(tick, 2000);
 </script></body></html>"""
@@ -187,31 +187,31 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def log_message(self, *args):
-        pass  # 静音访问日志
+        pass  # silence the access log
 
 
 def main():
     global FORCED_RUN
     ap = argparse.ArgumentParser()
     ap.add_argument("--port", type=int, default=8787)
-    ap.add_argument("--run-dir", default=None, help="固定监控某个 run(默认自动追最新)")
+    ap.add_argument("--run-dir", default=None, help="monitor one fixed run (default: follow the newest)")
     args = ap.parse_args()
     if args.run_dir:
         p = pathlib.Path(args.run_dir).expanduser()
         if not p.is_absolute():
             cwd_path = p.resolve()
             if cwd_path.exists():
-                p = cwd_path       # 例如从仓库根传 train/runs/foo
+                p = cwd_path       # e.g. train/runs/foo passed from the repo root
             elif p.parts[:1] == ("runs",):
-                p = RUNS_DIR.parent / p   # 文档中的 runs/foo 相对于 train/
+                p = RUNS_DIR.parent / p   # runs/foo in the docs is relative to train/
             else:
-                p = RUNS_DIR / p          # 裸 run 名
+                p = RUNS_DIR / p          # bare run name
         FORCED_RUN = p.resolve()
         if not FORCED_RUN.is_dir():
-            ap.error(f"run 目录不存在: {FORCED_RUN}")
+            ap.error(f"run directory does not exist: {FORCED_RUN}")
 
     server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
-    print(f"Dashboard: http://127.0.0.1:{args.port}  (自动追踪 {RUNS_DIR} 最新训练)")
+    print(f"Dashboard: http://127.0.0.1:{args.port}  (following the newest run in {RUNS_DIR})")
     server.serve_forever()
 
 

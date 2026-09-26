@@ -186,7 +186,7 @@ class ValidatorTests(unittest.TestCase):
 
 class AggroCapPolicyTests(unittest.TestCase):
 
-    def test_chairman_defaults(self):
+    def test_default_policy(self):
         policy = AggroCapPolicy()
         self.assertEqual(policy.count, 5)
         self.assertEqual(policy.radius, 6)
@@ -212,7 +212,7 @@ class AggroCapPolicyTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     AggroCapPolicy(**kwargs)
 
-    def test_accepts_the_chairman_lower_bound(self):
+    def test_accepts_lower_bound(self):
         self.assertEqual(AggroCapPolicy(count=3).count, 3)
         self.assertEqual(AggroCapPolicy(count=1, radius=1).as_dict(),
                          {"count": 1, "radius": 1})

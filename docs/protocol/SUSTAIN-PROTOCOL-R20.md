@@ -1,46 +1,46 @@
-# R20：真实补给后的连续推进
+# R20: continuous progress after real resupply
 
-当前目标是让候选工人稳定学习下楼和发育，争取正常起局连续到 L7，长期目标仍是 L16 和 Diablo。回城成功、兼容测试或 L2 单次到达都不是这个目标的完成条件。
+The current goal is for the candidate worker to learn to descend and develop reliably, aiming to reach L7 continuously from a normal start; the long-term goal remains L16 and Diablo. A successful town trip, compatibility tests or a single arrival on L2 do not complete this goal.
 
-本轮从已保存的 R19 源码、R16 工人、认证工人和原生库恢复快照开始。新原生构建及实验放在 `/home/user/r20_sustain_20260904`，现用 `build/` 和认证模型不替换。
+This round starts from the saved R19 source, the R16 worker, the certified worker and the native library recovery snapshot. The new native build and the experiments live in a separate local work directory (not published); the `build/` in use and the certified model are not replaced.
 
-## 显式候选配方
+## Explicit candidate recipe
 
-新增 `resource_service_policy=sustain-v2`；缺省仍为 `legacy-v1`，保留旧 600 微拍流程。新策略只接受 `l2-town-v1` 和 `full`，正常评测的服务上限为 1500 微拍；这是根据 R19 路线耗时提出、仍须实际检验的新参数，不冒充旧协议。FARM 触发保持 3600，经理动作和工人观测尺寸保持原样；诊断性的 `ResourceCalibration` 仍不能进入训练。
+`resource_service_policy=sustain-v2` is added; the default remains `legacy-v1`, which keeps the old 600-micro-tick flow. The new policy only accepts `l2-town-v1` and `full`, and the service cap in normal evaluation is 1500 micro ticks; this is a new parameter proposed from the R19 route timings, still to be tested in practice, and it does not pose as the old protocol. The FARM trigger stays at 3600, and the manager actions and worker observation size stay as they were; the diagnostic `ResourceCalibration` still cannot enter training.
 
-1. 使用真实拾金和已有 L1→城镇→原 L1 授权。先观察 Smith 商品与维修报价，再正常交谈 Pepin、显式关闭首次剧情对话并免费治疗，读取药价。
-2. 用当前原生战备及观察到的价格比较保留并维修、购买胸甲、穿上已拥有的合格胸甲、正常卸下一个耐久不达标的头盔/盾牌/胸甲；每个方案计入其他装备的必要维修及最低即时腰带药量。比较范围是一次装备变更加维修，随后根据实际结果重新计算，不宣称穷举全部物品组合的全局最优。
-3. 卸装使用引擎普通背包容量和装备重算，保留原物品。只有原生投影仍满足护甲、输出、武器和生命要求时才选择。预览只用于计划，实际下楼始终重新读取原生当前状态。
-4. 完整方案可负担时先执行最便宜方案的下一项，再重新观察；不足时允许不损失必需属性的免费改善，并用余额补最低药量。每次购买、维修和换装保留真实回执。无法买齐仍报告缺项，不强制下楼。
-5. 每次移动重新规划真实怪物占位；无法通行时可正常近战、喝药或等待。每个堵点最多 180 真实微拍，连续 48 微拍无进展停止；一次攻击及动画结算最多 12 微拍，仍服从服务及整局截止。没有移除怪物或清空碰撞。
+1. Use real gold pickup and the existing L1→town→original L1 permission. First observe the Smith's stock and repair quotes, then talk to Pepin normally, close the first story dialogue explicitly and heal for free, and read the potion prices.
+2. With the current native readiness and the observed prices, compare: keep and repair, buy a chest armor, put on an owned qualifying chest armor, or normally take off a helmet/shield/chest armor whose durability fails the gate; each plan includes the necessary repairs of the other equipment and the minimum amount of instant belt potions. The comparison covers one equipment change plus repair, then recomputes from the actual result; it does not claim a global optimum over all item combinations.
+3. Unequipping uses the engine's ordinary backpack capacity and equipment recalculation and keeps the original item. It is chosen only if the native projection still meets the armor, damage, weapon and life requirements. The preview is only for planning; the actual descent always re-reads the current native state.
+4. When a complete plan is affordable, execute the next item of the cheapest plan first and then observe again; when it is not, free improvements that lose no required attribute are allowed, and the remaining money buys the minimum potions. Every purchase, repair and swap keeps its real receipt. If not everything can be bought, the shortfall is still reported, and no descent is forced.
+5. Every move re-plans around the real monster occupancy; when the way is blocked the character may melee normally, drink or wait. Each blockage gets at most 180 real micro ticks and stops after 48 consecutive micro ticks without progress; one attack and its animation settlement take at most 12 micro ticks and still obey the service and whole-game deadlines. No monster is removed and no collision is cleared.
 
-## 验证与后续学习
+## Verification and later learning
 
-先完成单测和重建原生测试，再复查此前低最大耐久胸甲及动态堵路样本。正式验证复用逐原生微拍换层账：6000 微拍内首次到 L2，并在随后完整 1800 微拍存活。首次回城不再是停止点；无到达、资源缺口和死亡留在分母；观察不足不能记成功。
+First complete the unit tests and the rebuilt native tests, then re-check the earlier low-maximum-durability chest armor and the dynamic path-blocking samples. The formal verification reuses the per-native-micro-tick level-change ledger: first reaching L2 within 6000 micro ticks, then surviving the full following 1800 micro ticks. The first town trip is no longer a stopping point; non-arrivals, resource shortfalls and deaths stay in the denominator, and insufficient observation cannot count as success.
 
-新策略进行两模型独立工程冒烟与精确重放，随后固定模型配对比较。出现工程错误立即停止补发效果试验。模型、源文件、原生库和配置身份全部封存。1500 对新增绕路与战斗是否够用须重新测量。
+The new policy gets independent engineering smoke runs with two models and exact replays, followed by a paired comparison with fixed models. On an engineering error, the effect trial stops immediately and no further runs are dispatched. The identities of the models, source files, native library and configuration are all sealed. Whether 1500 is enough for the added detours and combat has to be measured again.
 
-训练前先检查真实发育可达性和 DIVE 学习样本：当前工人没有专门拾金币动作，补给由脚本执行；不能把脚本采购称作 PPO 学会经济管理。先显式迁移 R16 权重及契约，有限工程训练腿通过后再考虑候选训练；不扩大通用续训漂移白名单，不自动替换认证件。
+Before training, real development reachability and DIVE learning samples are checked first: the current worker has no dedicated gold-pickup action and resupply is executed by a script; scripted purchasing cannot be called PPO learning economic management. The R16 weights and contract are migrated explicitly first, and candidate training is considered only after a finite engineering training leg passes; the general resumed-training drift allowlist is not widened, and the certified model is not replaced automatically.
 
-当前原生课程仍拒绝 L3 以上；在此协议中训练再久也不会到 L7。L2 真实能力改善后逐层扩大课程并校准入场条件，统计同一局连续 L1→L2→L3→L4→L7，保留前层成本、怪物、掉落和奖金去重。深层预装出生或代打不能成为连续通关成绩。
+The current native course still refuses L3 and above; under this protocol no amount of training will reach L7. Once real L2 ability improves, the course is extended level by level with calibrated entry conditions, counting continuous L1→L2→L3→L4→L7 within the same game while keeping the earlier levels' costs, monsters, drops and de-duplicated bonuses. A deep pre-equipped spawn or someone else playing the levels cannot count as a continuous clear.
 
-训练接口、旧模型有效 teacher 状态、金币和药耗监督及后续阶段规格见 `/home/user/r20_sustain_20260904/reports/TRAINING-PATH.md`。本文件为实现与验收约定，实时结果另记实验报告。
+The training interface, the old model's effective teacher state, gold and potion-consumption supervision and the later stage specifications are in a training-path note in the local work directory (not published). This file is the implementation and acceptance agreement; live results are recorded in the experiment reports.
 
-## sustain-v6：换装保全已经达到的装备战备
+## sustain-v6: gear swaps preserve the equipment readiness already reached
 
-`sustain-v6` 是独立、显式的实验版本。它沿用 `sustain-v5` 的普通头盔、盾牌和胸甲补给方案、实际库存与维修、保留有效格挡的最低可负担完整方案，以及 450 微拍新拾金命令窗、1500 微拍服务总限。旧 `legacy-v1` 和 `sustain-v2/v3/v4/v5` 继续保留原语义；v6 不改变默认服务策略。
+`sustain-v6` is a separate, explicit experimental version. It keeps `sustain-v5`'s ordinary helmet, shield and chest-armor resupply plans, real stock and repair, the cheapest affordable complete plan that keeps effective blocking, and the new 450-micro-tick gold-pickup command window and 1500-micro-tick service cap. The old `legacy-v1` and `sustain-v2/v3/v4/v5` keep their original semantics; v6 does not change the default service policy.
 
-新增原生配置 `configure_resource_protocol(..., preserve_equipment_readiness=True)`，默认关闭，只可在局间配置，且要求 `l2-town-v1` 已启用。v6 同时显式开启普通护甲范围。开启时原生 `resource_state` 才包含 `preserve_equipment_readiness: true`；Python 在启动和已有的后续原生观测处验证标记，不额外观察、采样或推进微拍。不支持此能力的原生库应明确失败。
+A new native configuration `configure_resource_protocol(..., preserve_equipment_readiness=True)` is added; it is off by default, can only be configured between games and requires `l2-town-v1` to be enabled. v6 also explicitly enables the ordinary armor scope. Only when it is on does the native `resource_state` contain `preserve_equipment_readiness: true`; Python verifies the marker at start-up and at the existing later native observations, without extra observation, sampling or advancing micro ticks. A native library without this capability should fail explicitly.
 
-修复针对已经实际确认的冲突：a14 的全套评分可能因 AC 增加而接受低耐久装备，但实际下楼还要求已装备有限耐久不少于 15。五个真实重放案例均发生了评分增长、血量不变、换装后仅耐久失格的提交，证据见 `/home/user/r20_sustain_20260904/reports/PASSIVE-POSTRETURN-GEAR-TRACE-REVIEW.md`。
+The fix targets a conflict already confirmed in practice: a14's whole-set score could accept low-durability equipment because of an AC increase, while the actual descent also requires the equipped finite durability to be at least 15. All five real replay cases were commits where the score rose, HP was unchanged and, after the swap, only durability failed; the evidence is in a replay review in the local work directory (not published).
 
-候选可见性与实际 a14 提交共用以下原生约束：
+Candidate visibility and the actual a14 commit share these native constraints:
 
-- 当前完整装备组合已经满足 canonical readiness 中 `armor`、`damage`、`weapon`、`durability` 四项时，替换后的完整装备组合仍必须满足四项。是否满足直接由既有原生战备判定提供，不复制阈值或另造评分。
-- 当前生命、腰带药量或等级暂时未达标，不取消已经满足的装备战备保全。当前装备四项尚未全部满足时，仍按旧升级规则处理，保留早期发育路径。
-- 原有存活、生命比例、严格全套评分增长和诅咒限制继续适用。装备属性依赖、双手占槽及实际换装结果使用引擎全身重算；空槽与不可损坏物品沿用 canonical 规则。
-- 原生提交前按实时角色与目标物品重算。早先看见一个候选不构成永久许可；拒绝不得改变物品、金币、随机数、网络操作或角色装备。
+- When the current complete equipment set already meets the four canonical readiness items `armor`, `damage`, `weapon` and `durability`, the complete set after the replacement must still meet all four. Whether they are met comes directly from the existing native readiness check; thresholds are not copied and no other score is invented.
+- Life, belt potions or level being temporarily below standard does not cancel the preservation of equipment readiness already reached. While the current equipment does not yet meet all four items, the old upgrade rules still apply, keeping the early development path.
+- The existing survival, life ratio, strict whole-set score growth and curse restrictions still apply. Equipment attribute dependencies, two-handed slot use and the actual swap result use the engine's whole-body recalculation; empty slots and indestructible items follow the canonical rules.
+- Before a native commit everything is recomputed from the live character and target item. Having seen a candidate earlier is no permanent permission; a refusal must not change items, gold, random numbers, network operations or the character's equipment.
 
-这一内部布尔判断不加入工人输入，也不改变 15 动作、13012 维观测、奖励、FARM 预算、6000+1800 真实微拍端点、原生下楼硬门或 L2 课程边界。v6 的服务配方和迁移身份必须与旧版本区分；仅显式的固定 R16 权重迁移可进入该新实验，不允许把旧 G0/v4c 或 v5 检查点通过一般漂移开关静默续入。
+This internal boolean is not added to the worker input, and it does not change the 15 actions, the 13,012-dim observation, the reward, the FARM budget, the 6000+1800 real-micro-tick end points, the native descent hard gate or the L2 course boundary. v6's service recipe and migration identity must be distinguishable from the old versions; only an explicit migration of the fixed R16 weights may enter this new experiment, and old G0/v4c or v5 checkpoints may not be silently continued through the general drift switches.
 
-验证顺序为隔离编译、真实反例与正常升级的原生检查、Python 契约回归、旧协议完整结果与轨迹兼容，随后固定 R16 的有限案例验证。工程 fixture、禁止一次坏换装或已消费案例重放均不是独立效果或模型学习成绩。长训练、认证替换与课程扩展另行决定；当前验证状态以对应候选与报告为准。
+The verification order is: isolated compilation, native checks of the real counterexamples and normal upgrades, Python contract regression, full-result and trajectory compatibility of the old protocols, then finite case verification with the fixed R16. Engineering fixtures, preventing one bad swap or replaying consumed cases are not independent effects or model learning results. Long training, certification replacement and course extension are decided separately; the current verification status follows the corresponding candidates and reports.

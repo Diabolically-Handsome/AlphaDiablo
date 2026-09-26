@@ -140,11 +140,11 @@ def fmt_ci(ci, pct=True):
     if ci is None:
         return '—'
     f = (lambda x: f'{100 * x:.0f}%') if pct else (lambda x: f'{x:+.2f}')
-    return f'{f(ci[0])} 至 {f(ci[1])}'
+    return f'{f(ci[0])} to {f(ci[1])}'
 
 
 def pp(ci):
-    return '—' if ci is None else f'{100 * ci[0]:+.0f} 至 {100 * ci[1]:+.0f} 个百分点'
+    return '—' if ci is None else f'{100 * ci[0]:+.0f} to {100 * ci[1]:+.0f} percentage points'
 
 
 # ---------------------------------------------------------------- units
@@ -164,7 +164,7 @@ def exam_units(cfg):
                 voided.update(p.parent.name for p in mvoid)
                 units.append(dict(arm=arm, mission=mission, seed=seed, primary=f'{ob}/s{seed}',
                                   makeups=[rel(use)] if use else [], makeups_extra=[rel(p) for p in mextra]))
-    return dict(label='第 9 轮终考', mock=False, units=units, extra=[], voided_waves=sorted(voided),
+    return dict(label='Round-9 final exam', mock=False, units=units, extra=[], voided_waves=sorted(voided),
                 king_seeds_with_butcher_quest=cfg['king_seeds_with_butcher_quest'],
                 butcher_seeds_with_king_quest=cfg['butcher_seeds_with_king_quest'])
 
@@ -293,10 +293,10 @@ def analyse(units, cfg, king_bq, butcher_kq=frozenset(), exclude=None):
     out['V_old'] = sum(bool(p[3]['boundary']) for p in bu)
     # strata (PREREG section 2): King seeds with / without the Butcher quest; Butcher seeds with / without the King quest
     st = {}
-    for name, mission, cond in (('骷髅王组·同时有屠夫任务', 'skeleton_king', lambda s: s in king_bq),
-                                ('骷髅王组·没有屠夫任务', 'skeleton_king', lambda s: s not in king_bq),
-                                ('屠夫组·同时有骷髅王任务', 'butcher', lambda s: s in butcher_kq),
-                                ('屠夫组·没有骷髅王任务', 'butcher', lambda s: s not in butcher_kq)):
+    for name, mission, cond in (('Skeleton King seeds with the Butcher quest', 'skeleton_king', lambda s: s in king_bq),
+                                ('Skeleton King seeds without the Butcher quest', 'skeleton_king', lambda s: s not in king_bq),
+                                ('Butcher seeds with the Skeleton King quest', 'butcher', lambda s: s in butcher_kq),
+                                ('Butcher seeds without the Skeleton King quest', 'butcher', lambda s: s not in butcher_kq)):
         ps = [p for p in pairs if p[0] == mission and cond(p[1])]
         n = len(ps)
         a_ = sum(1 for p in ps if p[2]['y'] and p[3]['y'])
@@ -333,13 +333,13 @@ def adoption(an, rt_new, rt_old, cfg):
         c3b = None
     c3 = c3a and (c3b is not False)
     if c1 and c2 and c3:
-        verdict = '采纳'
+        verdict = 'adopt'
     elif c1 and c2:
-        verdict = '不采纳：成绩持平或更好但行为指标未达标，查原因'
+        verdict = 'do not adopt: results equal or better but a behaviour criterion failed; investigate'
     else:
-        verdict = '不采纳'
+        verdict = 'do not adopt'
     return dict(c1=c1, c1_per_mission_diff=c1_parts, c2=c2, c3a=c3a, c3b=c3b, c3=c3, verdict=verdict,
-                c3a_note='两臂越界都为 0，按 18:10 批准的写法算满足' if an['V_old'] == 0 and an['V_new'] == 0 else None)
+                c3a_note='both arms have 0 boundary violations; satisfied per the pre-registered wording' if an['V_old'] == 0 and an['V_new'] == 0 else None)
 
 
 def main():
@@ -381,9 +381,9 @@ def main():
     rt = {arm: retreat(units, arm, cfg) for arm in ('new', 'old')}
     adopt = adoption(itt, rt['new'], rt['old'], cfg)
     sens = {}
-    for name, fn in (('S1 剔除 A 类二次失败的对', lambda u, o: u['flags']['a2'] or o['flags']['a2']),
-                     ('S2 剔除有人工停局的对', lambda u, o: u['flags']['op_stop'] or o['flags']['op_stop']),
-                     ('S3 剔除两者及待补跑的对', lambda u, o: any(x['flags'][k] for x in (u, o) for k in ('a2', 'op_stop', 'pending')))):
+    for name, fn in (('S1 excluding pairs with a second type-A failure', lambda u, o: u['flags']['a2'] or o['flags']['a2']),
+                     ('S2 excluding pairs with a manual stop', lambda u, o: u['flags']['op_stop'] or o['flags']['op_stop']),
+                     ('S3 excluding both and pairs with a pending rerun', lambda u, o: any(x['flags'][k] for x in (u, o) for k in ('a2', 'op_stop', 'pending')))):
         an = analyse(units, cfg, king_bq, butcher_kq, exclude=fn)
         ad = adoption(an, rt['new'], rt['old'], cfg)
         sens[name] = dict(n_pairs=an['n_pairs'], K_new=an['K_new'], K_old=an['K_old'], D_new=an['D_new'], D_old=an['D_old'],
@@ -466,152 +466,152 @@ def main():
 
 def markdown(o, cfg):
     it, ad, rt = o['itt'], o['adoption'], o['retreat']
-    mname = {'skeleton_king': '骷髅王', 'butcher': '屠夫'}
-    yes = lambda b: '满足' if b else ('无法评估（不挡采纳）' if b is None else '不满足')
+    mname = {'skeleton_king': 'Skeleton King', 'butcher': 'Butcher'}
+    yes = lambda b: 'met' if b else ('cannot be evaluated (does not block adoption)' if b is None else 'not met')
     L_ = []
     w = L_.append
     if o['mock']:
-        w('> **【模拟试跑】** 本报告用第 8 轮留出日志冒充「新」「旧」两臂，两臂其实是同一个模型（d9facts3）在不同种子上的对局，'
-          '按排序硬配成对。只为检验打分脚本能跑通、数字对得上，**不代表任何比较，不能引用**。\n')
-    w(f"# {o['label']}：打分报告\n")
+        w('> **[MOCK RUN]** This report uses round-8 held-out logs as stand-ins for the "new" and "old" arms; both arms are in fact the same model (d9facts3) playing different seeds, '
+          'forced into pairs by sorting. It only checks that the scoring script runs and the numbers add up; **it represents no comparison and must not be cited**.\n')
+    w(f"# {o['label']}: scoring report\n")
     inc = o['integrity']['pending'] and not o['final']
     ig = o['integrity']
     if ig.get('waves_unchecked') or ig.get('not_run'):
-        w('> **【未完成】** 以下批次还没有通过的逐波核对（check.json 退出码须为 0 或 3），或者还没跑，其成绩不能当正式数据：'
-          + '；'.join([f"{bb}（{ig['wave_checks'][bb]['why']}）" for bb in ig.get('waves_unchecked') or []]
-                     + [f'{b}（没跑）' for b in ig.get('not_run') or []]) + '\n')
-    w('## 一、结论\n')
-    w(f"- **判定：{ad['verdict']}**" + ('（**未完成**：有 A 类故障局还没补跑，见第七节）' if inc else ''))
+        w('> **[INCOMPLETE]** The batches below have not yet passed the per-wave check (check.json exit code must be 0 or 3), or have not been run; their results are not official data: '
+          + '; '.join([f"{bb} ({ig['wave_checks'][bb]['why']})" for bb in ig.get('waves_unchecked') or []]
+                     + [f'{b} (not run)' for b in ig.get('not_run') or []]) + '\n')
+    w('## 1. Conclusion\n')
+    w(f"- **Verdict: {ad['verdict']}**" + (' (**incomplete**: some type-A failure games have not been rerun yet; see section 7)' if inc else ''))
     diffs = [k for k, v in o['sensitivity'].items() if v['differs']]
     if diffs:
-        w(f"- **注意：敏感性分析与意向处理结论不同**（{'、'.join(diffs)}），以意向处理为准，见第六节。")
+        w(f"- **Note: the sensitivity analyses reach a different conclusion from intention-to-treat** ({', '.join(diffs)}); intention-to-treat governs, see section 6.")
     if o['integrity']['buy_sell_exact']:
-        w(f"- **代码缺陷：** 出现同一趟进城内买了又卖（{len(o['integrity']['buy_sell_exact'])} 局），第 9 轮菜单本应藏掉这类选项；结论需复核。")
-    w(f"- 击杀（两任务合计，意向处理）：新 {it['K_new']}，旧 {it['K_old']}；死亡：新 {it['D_new']}，旧 {it['D_old']}；"
-      f"屠夫任务越界：新 {it['V_new']}，旧 {it['V_old']}。")
+        w(f"- **Code defect:** items were bought and sold within the same town visit ({len(o['integrity']['buy_sell_exact'])} games), which the round-9 menu should have hidden; the conclusion needs review.")
+    w(f"- Kills (both missions, intention-to-treat): new {it['K_new']}, old {it['K_old']}; deaths: new {it['D_new']}, old {it['D_old']}; "
+      f"Butcher-mission boundary violations: new {it['V_new']}, old {it['V_old']}.")
     sl = it['seed_level']
-    w(f"- 确认性检验（种子层精确符号翻转，单侧，新优于旧）：{sl['n_seeds']} 个种子，新好 {sl['seeds_new_better']}、旧好 {sl['seeds_old_better']}、"
-      f"持平 {sl['seeds_tied']}；T={sl['T']}，p={sl['p_one_sided']:.4f}（α=0.05）。显著与否不改变判定。")
-    w('- 本考试只能检出约 30 个百分点以上的击杀率差；不显著不能解读为「持平」。')
+    w(f"- Confirmatory test (exact seed-level sign flip, one-sided, new better than old): {sl['n_seeds']} seeds, new better {sl['seeds_new_better']}, old better {sl['seeds_old_better']}, "
+      f"tied {sl['seeds_tied']}; T={sl['T']}, p={sl['p_one_sided']:.4f} (α=0.05). Significance does not change the verdict.")
+    w('- This exam can only detect kill-rate differences above about 30 percentage points; a non-significant result cannot be read as "equal".')
     an, ao = cfg['arms']['new'], cfg['arms']['old']   # round 9b: the arms come from exam9_config.json (new = d11facts5, v5)
-    w(f"- 比较的是整套：新模型 {an['tag']} 加第 {an['facts_version']} 版结论行，对旧模型 {ao['tag']} 加第 {ao['facts_version']} 版结论行，"
-      '两臂都用第 9 轮菜单和同一双手。'
-      '旧臂的成绩不能和第 8 轮留出的 17/30 相比，这次考试也说明不了第 9 轮菜单本身的作用。\n')
-    w('## 二、各任务配对结果\n')
-    w('| 任务 | 对数 | 都杀 | 只有新杀 | 只有旧杀 | 都没杀 | 新击杀率（Wilson 95%） | 旧击杀率（Wilson 95%） | 差（新−旧） | Newcombe 95% | Tango 95% | McNemar 精确双侧 p | 死亡 新/旧 |')
+    w(f"- The comparison is of the whole package: new model {an['tag']} with version {an['facts_version']} fact lines, against old model {ao['tag']} with version {ao['facts_version']} fact lines; "
+      'both arms use the round-9 menu and the same hands. '
+      "The old arm's results cannot be compared with the 17/30 of the round-8 hold-out, and this exam says nothing about the effect of the round-9 menu itself.\n")
+    w('## 2. Paired results per mission\n')
+    w('| Mission | Pairs | Both killed | Only new killed | Only old killed | Neither killed | New kill rate (Wilson 95%) | Old kill rate (Wilson 95%) | Difference (new − old) | Newcombe 95% | Tango 95% | McNemar exact two-sided p | Deaths new/old |')
     w('|---|---|---|---|---|---|---|---|---|---|---|---|---|')
     for m in L.MISSIONS:
         v = it['missions'][m]
         n = v['n']
-        dtxt = '—' if v['diff'] is None else '%+.0f 个百分点' % (100 * v['diff'])
+        dtxt = '—' if v['diff'] is None else '%+.0f percentage points' % (100 * v['diff'])
         w(f"| {mname[m]} | {n} | {v['both']} | {v['new_only']} | {v['old_only']} | {v['neither']} | "
-          f"{v['K_new']}/{n}（{fmt_ci(v['wilson_new'])}） | {v['K_old']}/{n}（{fmt_ci(v['wilson_old'])}） | "
+          f"{v['K_new']}/{n} ({fmt_ci(v['wilson_new'])}) | {v['K_old']}/{n} ({fmt_ci(v['wilson_old'])}) | "
           f"{dtxt} | {pp(v['newcombe_ci'])} | {pp(v['tango_ci'])} | "
           f"{v['mcnemar_p_two_sided']:.3f} | {v['D_new']}/{v['D_old']} |")
-    w('\n死亡的同样表格：\n')
-    w('| 任务 | 都死 | 只有新死 | 只有旧死 | 都没死 | 新死亡率（Wilson 95%） | 旧死亡率（Wilson 95%） | Newcombe 95%（新−旧） | Tango 95% | McNemar 精确双侧 p |')
+    w('\nThe same table for deaths:\n')
+    w('| Mission | Both died | Only new died | Only old died | Neither died | New death rate (Wilson 95%) | Old death rate (Wilson 95%) | Newcombe 95% (new − old) | Tango 95% | McNemar exact two-sided p |')
     w('|---|---|---|---|---|---|---|---|---|---|')
     for m in L.MISSIONS:
         v, n = it['missions'][m]['deaths'], it['missions'][m]['n']
-        w(f"| {mname[m]} | {v['both']} | {v['new_only']} | {v['old_only']} | {v['neither']} | {v['both'] + v['new_only']}/{n}（{fmt_ci(v['wilson_new'])}） | "
-          f"{v['both'] + v['old_only']}/{n}（{fmt_ci(v['wilson_old'])}） | {pp(v['newcombe_ci'])} | {pp(v['tango_ci'])} | {v['mcnemar_p_two_sided']:.3f} |")
-    w('\n以上 p 值和区间只作描述（4.2）；唯一的确认性检验在第三节。\n')
-    w('## 三、种子层确认性检验\n')
-    w(f"- 每个种子 D = 它各任务的（Y新 − Y旧）之和；{sl['nonzero']} 个种子 D≠0。统计量 T = ΣD = {sl['T']}。")
-    w(f"- 精确符号翻转：单侧 p = {sl['p_one_sided']:.4f}，双侧 p = {sl['p_two_sided']:.4f}（双侧只作参考）。")
-    w(f"- 逐种子 D：{', '.join(f'{k[-3:]}:{v:+d}' for k, v in sl['D_by_seed'].items())}\n")
-    w('## 四、采纳规则逐条\n')
+        w(f"| {mname[m]} | {v['both']} | {v['new_only']} | {v['old_only']} | {v['neither']} | {v['both'] + v['new_only']}/{n} ({fmt_ci(v['wilson_new'])}) | "
+          f"{v['both'] + v['old_only']}/{n} ({fmt_ci(v['wilson_old'])}) | {pp(v['newcombe_ci'])} | {pp(v['tango_ci'])} | {v['mcnemar_p_two_sided']:.3f} |")
+    w('\nThe p values and intervals above are descriptive only (4.2); the only confirmatory test is in section 3.\n')
+    w('## 3. Seed-level confirmatory test\n')
+    w(f"- For each seed, D = the sum over its missions of (Y_new − Y_old); {sl['nonzero']} seeds have D≠0. Statistic T = ΣD = {sl['T']}.")
+    w(f"- Exact sign flip: one-sided p = {sl['p_one_sided']:.4f}, two-sided p = {sl['p_two_sided']:.4f} (two-sided for reference only).")
+    w(f"- D per seed:{', '.join(f'{k[-3:]}:{v:+d}' for k, v in sl['D_by_seed'].items())}\n")
+    w('## 4. Adoption rules, one by one\n')
     ms = it['missions']
-    w(f"1. 击杀：合计 新 {it['K_new']} ≥ 旧 {it['K_old']}？每任务 新−旧 ≥ −1？"
-      f"（骷髅王 {ad['c1_per_mission_diff']['skeleton_king']:+d}，屠夫 {ad['c1_per_mission_diff']['butcher']:+d}）→ **{yes(ad['c1'])}**")
-    w(f"2. 死亡：合计 新 {it['D_new']} ≤ 旧 {it['D_old']}？→ **{yes(ad['c2'])}**")
-    w(f"3a. 屠夫任务越界（在 3 层或墓里做过决定）：新 {it['V_new']} ≤ 1 且（少于旧 {it['V_old']} 或为 0）？→ **{yes(ad['c3a'])}**"
-      + (f"（注：{ad['c3a_note']}）" if ad['c3a_note'] else ''))
+    w(f"1. Kills: total new {it['K_new']} ≥ old {it['K_old']}? Per mission new − old ≥ −1? "
+      f"(Skeleton King {ad['c1_per_mission_diff']['skeleton_king']:+d}, Butcher {ad['c1_per_mission_diff']['butcher']:+d}) → **{yes(ad['c1'])}**")
+    w(f"2. Deaths: total new {it['D_new']} ≤ old {it['D_old']}? → **{yes(ad['c2'])}**")
+    w(f"3a. Butcher-mission boundary violations (a decision made on level 3 or in the tomb): new {it['V_new']} ≤ 1 and (fewer than old {it['V_old']} or 0)? → **{yes(ad['c3a'])}**"
+      + (f" (note: {ad['c3a_note']})" if ad['c3a_note'] else ''))
     rn, ro = rt['new'], rt['old']
     f_ = lambda x: '—' if x is None else f'{100 * x:.1f}%'
-    w(f"3b. 撤退比例（地牢里、治疗药 ≤ 1 瓶、视野内没有活怪、菜单上有上楼或出墓选项的决定里，选了上楼或出墓的比例）：新 {rn['num']}/{rn['den']} = {f_(rn['pooled'])}"
-      f"（按局平均 {f_(rn['per_game_mean'])}，{rn['games_with_qualifying']} 局有合格决定）；旧 {ro['num']}/{ro['den']} = {f_(ro['pooled'])}"
-      f"（按局平均 {f_(ro['per_game_mean'])}）；门槛 80%，合格决定少于 {cfg['retreat']['min_decisions']} 个记无法评估 → **{yes(ad['c3b'])}**")
-    w(f"3c. 代码完整性（不是模型成绩）：同一趟进城内买了又卖（按 menu_bought 精确核对）{len(o['integrity']['buy_sell_exact'])} 局"
-      + ('' if o['integrity']['menu_bought_logged'] else '；**日志里没有 menu_bought 字段，精确核对不可用**') + '。')
-    w(f"\n判定表：1、2、3 都满足 → 采纳；1、2 满足而 3 不满足 → 不采纳，查原因；1 或 2 不满足 → 不采纳。显著性不改变任何一格；这批考试种子无论如何都算用掉了。\n")
-    w('## 五、分层\n')
-    w('| 层 | 对数 | 新杀（Wilson 95%） | 旧杀（Wilson 95%） | 只有新杀 | 只有旧杀 | McNemar 双侧 p | Newcombe 95% | Tango 95% | 死亡 新/旧 | 越界 新/旧 |')
+    w(f"3b. Retreat rate (among decisions in the dungeon with ≤ 1 heal potion, no live monster in view and an up-stairs or leave-tomb option on the menu, the share that chose up-stairs or leave-tomb): new {rn['num']}/{rn['den']} = {f_(rn['pooled'])}"
+      f" (per-game mean {f_(rn['per_game_mean'])}, {rn['games_with_qualifying']} games with qualifying decisions); old {ro['num']}/{ro['den']} = {f_(ro['pooled'])}"
+      f" (per-game mean {f_(ro['per_game_mean'])}); threshold 80%, fewer than {cfg['retreat']['min_decisions']} qualifying decisions counts as not evaluable → **{yes(ad['c3b'])}**")
+    w(f"3c. Code integrity (not a model result): bought and sold within the same town visit (exact check by menu_bought) in {len(o['integrity']['buy_sell_exact'])} games"
+      + ('' if o['integrity']['menu_bought_logged'] else '; **the logs have no menu_bought field, so the exact check is unavailable**') + '.')
+    w(f"\nDecision table: 1, 2 and 3 all met → adopt; 1 and 2 met but 3 not → do not adopt, investigate; 1 or 2 not met → do not adopt. Significance changes no cell; this batch of exam seeds counts as used either way.\n")
+    w('## 5. Strata\n')
+    w('| Stratum | Pairs | New kills (Wilson 95%) | Old kills (Wilson 95%) | Only new killed | Only old killed | McNemar two-sided p | Newcombe 95% | Tango 95% | Deaths new/old | Violations new/old |')
     w('|---|---|---|---|---|---|---|---|---|---|---|')
     for k, v in it['strata'].items():
-        w(f"| {k} | {v['n']} | {v['K_new']}（{fmt_ci(v['wilson_new'])}） | {v['K_old']}（{fmt_ci(v['wilson_old'])}） | {v['new_only']} | {v['old_only']} | "
+        w(f"| {k} | {v['n']} | {v['K_new']} ({fmt_ci(v['wilson_new'])}) | {v['K_old']} ({fmt_ci(v['wilson_old'])}) | {v['new_only']} | {v['old_only']} | "
           f"{v['mcnemar_p_two_sided']:.3f} | {pp(v['newcombe_ci'])} | {pp(v['tango_ci'])} | "
           f"{v['D_new']}/{v['D_old']} | {'—' if v['V_new'] is None else str(v['V_new']) + '/' + str(v['V_old'])} |")
     w('')
-    w('## 六、敏感性分析\n')
-    w('| 分析 | 对数 | 击杀 新/旧 | 死亡 新/旧 | 越界 新/旧 | 单侧 p | 判定 | 与意向处理不同？ |')
+    w('## 6. Sensitivity analyses\n')
+    w('| Analysis | Pairs | Kills new/old | Deaths new/old | Violations new/old | One-sided p | Verdict | Differs from intention-to-treat? |')
     w('|---|---|---|---|---|---|---|---|')
-    w(f"| 意向处理（主分析） | {it['n_pairs']} | {it['K_new']}/{it['K_old']} | {it['D_new']}/{it['D_old']} | {it['V_new']}/{it['V_old']} | {sl['p_one_sided']:.4f} | {ad['verdict']} | — |")
+    w(f"| Intention-to-treat (primary) | {it['n_pairs']} | {it['K_new']}/{it['K_old']} | {it['D_new']}/{it['D_old']} | {it['V_new']}/{it['V_old']} | {sl['p_one_sided']:.4f} | {ad['verdict']} | — |")
     for k, v in o['sensitivity'].items():
-        w(f"| {k} | {v['n_pairs']} | {v['K_new']}/{v['K_old']} | {v['D_new']}/{v['D_old']} | {v['V_new']}/{v['V_old']} | {v['p_one_sided']:.4f} | {v['verdict']} | {'是' if v['differs'] else '否'} |")
-    w('\n（撤退比例在敏感性分析里沿用全体数字。）\n')
-    w('## 七、故障与补跑\n')
+        w(f"| {k} | {v['n_pairs']} | {v['K_new']}/{v['K_old']} | {v['D_new']}/{v['D_old']} | {v['V_new']}/{v['V_old']} | {v['p_one_sided']:.4f} | {v['verdict']} | {'yes' if v['differs'] else 'no'} |")
+    w('\n(The retreat rate in the sensitivity analyses reuses the full-sample figures.)\n')
+    w('## 7. Failures and reruns\n')
     fails = [u for u in o['units'] if u['primary_cls'] != 'ok' or u['cls'] != 'ok']
     if not fails:
-        w('- 没有 A 类或 B 类故障，也没有人工停局。')
+        w('- No type-A or type-B failures and no manual stops.')
     for u in fails:
         mk = u.get('makeup')
-        s = f"- {u['arm']} {mname[u['mission']]} {u['seed']}：原局 {u['primary']} {u['primary_status']}（{u['primary_cls']}：{u['primary_why']}）"
+        s = f"- {u['arm']} {mname[u['mission']]} {u['seed']}: original game {u['primary']} {u['primary_status']} ({u['primary_cls']}: {u['primary_why']})"
         if mk:
             pf = mk['prefix']
-            s += (f"；补跑 {mk['game']} {mk['status']}（{mk['cls']}）；复现原局前 {pf['matched']}/{pf['original_rows']} 个决定"
-                  + ('，完全复现' if pf['reproduced'] else '，**未完全复现**'))
+            s += (f"; rerun {mk['game']} {mk['status']} ({mk['cls']}); matched {pf['matched']}/{pf['original_rows']} decisions of the original game's prefix"
+                  + (', fully reproduced' if pf['reproduced'] else ', **not fully reproduced**'))
         if u['flags']['pending']:
-            s += '；**待补跑**'
+            s += '; **rerun pending**'
         if u['flags']['a2']:
-            s += '；**二次失败，记 0**'
+            s += '; **second failure, scored 0**'
         if u['flags']['op_stop']:
-            s += '；人工停局（禁止），记 0'
+            s += '; manual stop (not allowed), scored 0'
         w(s)
     if o['integrity']['extra_makeups']:
-        w(f"- **同一单元出现计划外的补跑批次**（m1 以外的补跑波；只用 m1 或其最新整波重跑）：{o['integrity']['extra_makeups']}")
+        w(f"- **Unplanned rerun batches in the same unit** (rerun waves other than m1; only m1 or its latest whole-wave rerun is used): {o['integrity']['extra_makeups']}")
     if o['integrity']['voided_waves']:
-        w(f"- 按 3.3 作废、已整波重跑的批次（不计分）：{o['integrity']['voided_waves']}")
+        w(f"- Batches voided under 3.3 and rerun as whole waves (not scored): {o['integrity']['voided_waves']}")
     if o['integrity']['broker_restarts']:
-        w(f"- 推理进程死亡或重启记录：{o['integrity']['broker_restarts']}")
+        w(f"- Inference process deaths or restarts: {o['integrity']['broker_restarts']}")
     if o['integrity']['boundary_rows_disagree']:
-        w(f"- 越界判定（milestones）与决定行（scene≥3）不一致的局：{o['integrity']['boundary_rows_disagree']}")
+        w(f"- Games where the boundary verdict (milestones) disagrees with the decision rows (scene≥3): {o['integrity']['boundary_rows_disagree']}")
     w('')
-    w('## 八、次终点（只报数，不作判据）\n')
+    w('## 8. Secondary endpoints (reported only, not decision criteria)\n')
     for arm in ('new', 'old'):
         d = o['descriptive'][arm]
-        w(f"- **{'新' if arm == 'new' else '旧'}臂**：结局 {d['statuses']}；故障类别 {d['classes']}；决定 {d['decisions']} 个，"
-          f"菜单规则藏掉选项的决定 {d['menu_hidden_rows']} 个，不许撤销规则藏掉选项的决定 {d['undo_hidden_rows']} 个；"
-          f"低药事件结局 {d['low_potion_events']}；按名字的买了又卖：同趟 {d['buy_sell_same_visit_by_name']}、跨趟 {d['buy_sell_cross_visit_by_name']}；"
-          f"打转类型 {d['cycles']}；骷髅王任务杀了屠夫的种子 {d['butcher_killed_in_king_mission']}；屠夫任务杀了骷髅王的种子 {d['king_killed_in_butcher_mission']}；"
-          f"开局后回城 {d['town_trips']} 趟，其中白跑（没买卖修鉴、没回血）{d['wasted_trips']} 趟；跨趟买了又卖亏 {d['cross_visit_sell_loss_gold']} 金；"
-          f"各输出批次最长一局墙钟（分钟）{d['wall_minutes_by_batch']}。")
+        w(f"- **{'New' if arm == 'new' else 'Old'} arm**: outcomes {d['statuses']}; failure classes {d['classes']}; {d['decisions']} decisions, "
+          f"{d['menu_hidden_rows']} decisions with options hidden by the menu rules, {d['undo_hidden_rows']} with options hidden by the no-undo rule; "
+          f"low-potion event outcomes {d['low_potion_events']}; bought and sold by name: same visit {d['buy_sell_same_visit_by_name']}, across visits {d['buy_sell_cross_visit_by_name']}; "
+          f"loop types {d['cycles']}; Skeleton King mission seeds where the Butcher was killed {d['butcher_killed_in_king_mission']}; Butcher mission seeds where the Skeleton King was killed {d['king_killed_in_butcher_mission']}; "
+          f"{d['town_trips']} town trips after the start, {d['wasted_trips']} of them wasted (no buy/sell/repair/identify, no healing); cross-visit buy-then-sell loss {d['cross_visit_sell_loss_gold']} gold; "
+          f"longest game wall clock per output batch (minutes) {d['wall_minutes_by_batch']}.")
         for m in L.MISSIONS:
             v = d['missions'][m]
             b = v['boss_first_seen']
-            w(f"  - {mname[m]}：{v['games']} 局（含只作描述的额外局），杀 {v['kills']}，死 {v['deaths']}；击杀帧数（升序）{v['kill_ticks']}；"
-              f"第一次见到首领 {b['games']} 局，中位等级 {b['median_level']}、敏捷 {b['median_dexterity']}、药 {b['median_potions']}、帧 {b['median_tick']}；"
-              f"累计（帧：杀/死）{'，'.join(str(c['tick']) + '：' + str(c['kills']) + '/' + str(c['deaths']) for c in v['cumulative'])}")
+            w(f"  - {mname[m]}: {v['games']} games (including descriptive-only extra games), {v['kills']} kills, {v['deaths']} deaths; kill ticks (ascending) {v['kill_ticks']}; "
+              f"first sight of the boss in {b['games']} games, median level {b['median_level']}, dexterity {b['median_dexterity']}, potions {b['median_potions']}, tick {b['median_tick']}; "
+              f"cumulative (tick: kills/deaths) {', '.join(str(c['tick']) + ': ' + str(c['kills']) + '/' + str(c['deaths']) for c in v['cumulative'])}")
     for m in L.MISSIONS:
         v = o['kill_time_paired'][m]
-        w(f"- {mname[m]}：两臂都杀的 {v['n']} 个种子，击杀帧数差（新−旧）中位 {v['median_new_minus_old_ticks']}。")
+        w(f"- {mname[m]}: {v['n']} seeds killed by both arms, median kill-tick difference (new − old) {v['median_new_minus_old_ticks']}.")
     w('')
-    w('## 九、检出力（预注册 4.3 的精确计算）\n')
-    w('ρ 是两臂共享种子运气的比例，取 0–0.6；每格前一个数是单侧，后一个是双侧。')
-    w('| 设定 | +10pp | +20pp | +25pp | +30pp | +35pp |')
+    w('## 9. Power (exact calculation per pre-registration 4.3)\n')
+    w('ρ is the share of seed luck common to both arms, taken as 0–0.6; in each cell the first number is one-sided and the second two-sided.')
+    w('| Setting | +10pp | +20pp | +25pp | +30pp | +35pp |')
     w('|---|---|---|---|---|---|')
-    w('| 每个任务 16 对，旧臂击杀率 0.50 | .06–.07 / .02–.04 | .17–.21 / .11 | .26–.33 / .17–.20 | .38–.47 / .27–.32 | .51–.62 / .39–.46 |')
-    w('| 每个任务 16 对，旧臂击杀率 0.65 | .05–.07 / .02–.03 | .20–.21 / .10–.11 | .31–.35 / .20 | .48–.52 / .32–.33 | .71 / .51 |')
-    w('| 两个任务合并 32 对，旧臂 0.55 | .14–.17 / .08–.11 | .42–.55 / .29–.43 | .60–.74 / .46–.63 | — | — |')
-    w('\n击杀率差约 30 个百分点时，单个任务的检出力也只有一半左右；不显著不等于持平，显著与否不进入采纳规则。\n')
-    w('## 十、逐局表\n')
-    w('| 臂 | 任务 | 种子 | 用的局 | 结局 | 类别 | Y | 死 | 越界 | 决定 | 分钟 | 最深 | 撤退 分子/分母 |')
+    w('| 16 pairs per mission, old-arm kill rate 0.50 | .06–.07 / .02–.04 | .17–.21 / .11 | .26–.33 / .17–.20 | .38–.47 / .27–.32 | .51–.62 / .39–.46 |')
+    w('| 16 pairs per mission, old-arm kill rate 0.65 | .05–.07 / .02–.03 | .20–.21 / .10–.11 | .31–.35 / .20 | .48–.52 / .32–.33 | .71 / .51 |')
+    w('| both missions pooled, 32 pairs, old arm 0.55 | .14–.17 / .08–.11 | .42–.55 / .29–.43 | .60–.74 / .46–.63 | — | — |')
+    w('\nAt a kill-rate difference of about 30 percentage points, the power for a single mission is only about one half; non-significant does not mean equal, and significance does not enter the adoption rule.\n')
+    w('## 10. Per-game table\n')
+    w('| Arm | Mission | Seed | Game used | Outcome | Class | Y | Died | Violation | Decisions | Minutes | Deepest | Retreat num/den |')
     w('|---|---|---|---|---|---|---|---|---|---|---|---|---|')
     for u in sorted(o['units'], key=lambda u: (u['mission'], u['seed'], u['arm'])):
         w(f"| {u['arm']} | {mname[u['mission']]} | {u['seed']} | {u['used']} | {u['status']} | {u['cls']} | {u['y']} | {int(u['dead'])} | "
           f"{'' if u['boundary'] is None else int(u['boundary'])} | {u['decisions']} | {u['minutes']} | {u['deepest']} | {u['retreat_num']}/{u['retreat_den']} |")
     if o['extra']:
-        w('\n只进描述合计、不进配对的额外局：' + '；'.join(f"{e['arm']} {e['game']} {e['status']}" for e in o['extra']))
+        w('\nExtra games counted only in the descriptive totals, not paired: ' + '; '.join(f"{e['arm']} {e['game']} {e['status']}" for e in o['extra']))
     return '\n'.join(L_) + '\n'
 
 

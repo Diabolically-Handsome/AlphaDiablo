@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 
 RESOURCE_PROTOCOLS = ("off", "l2-town-v1")
 RESOURCE_PURCHASE_MODES = ("none", "heal", "potions", "armor", "full")
-# R17.1 chairman ruling 3 (2026-09-06). "veto-v1": the native seven-condition hard
+# R17.1 readiness rule 3 (2026-09-06). "veto-v1": the native seven-condition hard
 # gate vetoes L1->L2 and masks DIVE/a11 (the R18-R23 behaviour, kept bit-for-bit).
 # "coach-v03": the law is the six conditions clvl/AC/dmg/belt/durability/weapon
 # (HP excluded); the engine guard only records; the frozen forced-descent mask law

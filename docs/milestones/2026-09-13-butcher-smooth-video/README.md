@@ -42,16 +42,3 @@ python docs/milestones/2026-09-13-butcher-smooth-video/verify.py /path/to/butche
 The index identifies locally retained native frames; it does not distribute game
 assets or a complete runtime. The original milestone's mixed learned/scripted
 method, rule differences and evidence limitations remain unchanged.
-
-## 中文说明
-
-上一版卡顿，是因为每秒只录了5张不同画面，再重复成10帧，并不是您的
-播放器有问题。新版逐个游戏时刻录制，再用引擎自带的动画和镜头平滑绘制
-成60帧：走路、挥刀的中间动作都保留下来了，没有用AI猜画面。
-
-新版约90秒，包含两段连续的发育片段和完整屠夫战斗。片段之间有剪切，
-不是把整局一个多小时全部放进去；片头和片尾有短暂停留，没有声音。
-
-补录后的胜负、任务状态以及9份战斗、装备、补给记录都与原始胜局一致。
-模型没有重新训练，旧录像和旧证据也没有覆盖。这只是同一胜局录得更清楚，
-不是新增一场独立胜利。

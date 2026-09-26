@@ -1,16 +1,16 @@
-"""v23 组装体评测:冻结 H 经理 + {脚本|BC|PPO} FARM 工人(docs/prereg/PREREG-v23.md)。
+"""v23 assembled-agent evaluation: frozen H manager + {script|BC|PPO} FARM worker (docs/prereg/PREREG-v23.md).
 
-用法:
-  H7 基线:  .venv/bin/python train/eval_assembled.py --worker script --seeds 7000-7031
-  G0'' 回归:… --worker script --seeds 7000-7031 --check-probe docs/assets/window_econ_v23_probe.json
-  G1 BC 重放:… --worker bc --seeds 7000-7031
-  G3 初筛:  … --worker train/runs/<run>/ckpt/model_XXX_steps --seeds 7000-7015
-  金评(唯一一次):… --worker <胜者> --seeds 9000-9031 --board
-协议:argmax(经理 numpy 前向 = G0' 位级对账过的同一段代码)、3000 微步、
-回报 = 经理不折现账本。R4 哨兵(换层率/override/cap/τ̄)一并产出。
-R16(C3):--worker-decoding {argmax,sample},默认 argmax 逐位复现旧卷;
-sample = SB3 工人按训练分布采样(每局 model.set_random_seed(seed)、
-torch 单线程,逐位可复现),解码方式写入 meta.protocol.worker_decoding。
+Usage:
+  H7 baseline:  .venv/bin/python train/eval_assembled.py --worker script --seeds 7000-7031
+  G0'' regression: ... --worker script --seeds 7000-7031 --check-probe docs/assets/window_econ_v23_probe.json
+  G1 BC replay: ... --worker bc --seeds 7000-7031
+  G3 screen:  ... --worker train/runs/<run>/ckpt/model_XXX_steps --seeds 7000-7015
+  gold-standard evaluation (once only): ... --worker <winner> --seeds 9000-9031 --board
+Protocol: argmax (the manager's numpy forward = the same code reconciled bit for bit in G0'), 3000 micro-steps,
+return = the manager's undiscounted ledger. The R4 sentinels (level-change rate/override/cap/tau-bar) are produced as well.
+R16 (C3): --worker-decoding {argmax,sample}; the default argmax reproduces old exams bit for bit;
+sample = the SB3 worker samples from its training distribution (model.set_random_seed(seed) per episode,
+single-threaded torch, bit-reproducible), and the decoding mode is written to meta.protocol.worker_decoding.
 """
 from __future__ import annotations
 
@@ -62,7 +62,7 @@ LB = ROOT / "train" / f"leaderboard-assembled-v{PROTOCOL_VERSION}.md"
 OUTDIR = ROOT / "train" / "runs" / "eval-assembled"
 LB_LOCK = ROOT / "train" / "runs" / "eval-locks" / "leaderboard-assembled.lock"
 FARM = 0
-DIVE = 1   # R13 考试新法:farm-dive-v1 注册把工人回调同挂 DIVE 窗
+DIVE = 1   # R13 exam new law: the farm-dive-v1 registration also hooks the worker callback onto DIVE windows
 _NATIVE_RUNTIME = None
 _WORKER_OBSERVATION_VIEWS = frozenset({
     "raw-v4",
@@ -76,7 +76,7 @@ _WORKER_OBSERVATION_VIEWS = frozenset({
 _DUAL_WORKER_PG_AUDIT_SCHEMA_BY_CONTRACT_REVISION = {
     24: "diablogym-worker-onpolicy-pg/8",
     25: "diablogym-worker-onpolicy-pg/9",
-    # A4(2026-07-27):rev26 = kl_early_stopped 旗,audit schema /10。
+    # A4 (2026-07-27): rev26 = the kl_early_stopped flag, audit schema /10.
     26: "diablogym-worker-onpolicy-pg/10",
 }
 
@@ -109,7 +109,7 @@ def assembled_board_contract() -> dict:
 
 
 def _native_runtime(expected_runtime: dict | None = None):
-    """在身份冻结后才映射 bridge/engine，并立即核对实际加载路径。"""
+    """Map bridge/engine only after the identity is frozen, and immediately check the actually loaded path."""
     global _NATIVE_RUNTIME
     if _NATIVE_RUNTIME is None:
         from diablogym import NumpyManager, OptionsEnv, bridge
@@ -118,16 +118,16 @@ def _native_runtime(expected_runtime: dict | None = None):
 
         if actual_farm != FARM:
             raise EvalContractError(
-                f"OptionsEnv FARM 编号漂移:{actual_farm} != {FARM}")
+                f"OptionsEnv FARM index drift: {actual_farm} != {FARM}")
         if actual_dive != DIVE:
             raise EvalContractError(
-                f"OptionsEnv DIVE 编号漂移:{actual_dive} != {DIVE}")
-        # R16 新法锚:档案身份按"非默认才记"编码,故 CLI/contract 的默认值
-        # 必须与 OptionsEnv 旧法常量逐位一致,漂移即 fail-closed。
+                f"OptionsEnv DIVE index drift: {actual_dive} != {DIVE}")
+        # R16 new-law anchor: the archive identity is encoded as "record only non-defaults", so the CLI/contract defaults
+        # must match the OptionsEnv old-law constants bit for bit; any drift fails closed.
         from diablogym.options_env import FARM_SCENE_CAP as actual_scene_cap
         if actual_scene_cap != R16_ENVIRONMENT_DEFAULTS["farm_scene_cap"]:
             raise EvalContractError(
-                "OptionsEnv FARM_SCENE_CAP 与 R16_ENVIRONMENT_DEFAULTS 漂移:"
+                "OptionsEnv FARM_SCENE_CAP drifted from R16_ENVIRONMENT_DEFAULTS: "
                 f"{actual_scene_cap} != "
                 f"{R16_ENVIRONMENT_DEFAULTS['farm_scene_cap']}")
         _NATIVE_RUNTIME = (NumpyManager, OptionsEnv, bridge)
@@ -138,14 +138,14 @@ def _native_runtime(expected_runtime: dict | None = None):
                 expected_runtime["bridge"]["path"]).resolve()
             actual_path = pathlib.Path(loaded_bridge.__file__).resolve()
         except (AttributeError, KeyError, TypeError, ValueError) as exc:
-            raise EvalContractError("冻结的 bridge runtime identity 结构异常") from exc
+            raise EvalContractError("frozen bridge runtime identity structure is malformed") from exc
         if actual_path != expected_path:
             raise EvalContractError(
-                f"实际加载 bridge 路径与冻结身份不一致:{actual_path} != {expected_path}")
+                f"actually loaded bridge path differs from the frozen identity: {actual_path} != {expected_path}")
         loaded_engine_binary_path(expected_runtime["engine"]["path"])
         if runtime_identity(ROOT, actual_path) != expected_runtime:
             raise EvalContractError(
-                "native import 期间 bridge、engine、游戏内容或协议源码发生变化")
+                "bridge, engine, game content or protocol source changed during native import")
     return manager_class, env_class, loaded_bridge
 
 
@@ -157,7 +157,7 @@ def np_policy_from_sd(source: str | pathlib.Path | bytes,
     actual_sha256 = hashlib.sha256(payload).hexdigest()
     if expected_sha256 is not None and actual_sha256 != expected_sha256:
         raise ValueError(
-            f"BC state_dict SHA 不匹配:{actual_sha256} != {expected_sha256}")
+            f"BC state_dict SHA mismatch: {actual_sha256} != {expected_sha256}")
     sd = torch.load(io.BytesIO(payload), map_location="cpu", weights_only=True)
     required = (
         "mlp_extractor.policy_net.0.weight", "mlp_extractor.policy_net.0.bias",
@@ -166,15 +166,15 @@ def np_policy_from_sd(source: str | pathlib.Path | bytes,
     )
     if not isinstance(sd, dict) or any(k not in sd for k in required):
         missing = [k for k in required if not isinstance(sd, dict) or k not in sd]
-        raise ValueError(f"BC state_dict 缺少策略头键:{missing}")
+        raise ValueError(f"BC state_dict lacks policy-head keys: {missing}")
     tensors = [sd[k].detach().cpu() for k in required]
     if not all(torch.isfinite(t).all().item() for t in tensors):
-        raise ValueError("BC state_dict 含 NaN/Inf")
+        raise ValueError("BC state_dict contains NaN/Inf")
     w0, b0, w1, b1, wa, ba = tensors
     if (w0.ndim != 2 or tuple(w0.shape)[1] != 298 or b0.shape != w0.shape[:1]
             or w1.shape != (w0.shape[0], w0.shape[0]) or b1.shape != w0.shape[:1]
             or wa.shape != (15, w0.shape[0]) or ba.shape != (15,)):
-        raise ValueError("BC 工人策略形状异常(须 298→hidden→hidden→15)")
+        raise ValueError("BC worker policy shape is malformed (must be 298->hidden->hidden->15)")
     manager_class, _env_class, _bridge = _native_runtime()
     m = manager_class.__new__(manager_class)
     m.w0, m.b0, m.w1, m.b1, m.wa, m.ba = (
@@ -190,7 +190,7 @@ def capture_passed_bc(sd_path: pathlib.Path) -> tuple[bytes, bytes]:
         policy_payload = sd_path.read_bytes()
         report_payload = report.read_bytes()
     except OSError as exc:
-        raise ValueError(f"BC 闸门报告缺失/不可读:{report}") from exc
+        raise ValueError(f"BC gate report missing/unreadable: {report}") from exc
     from train_ppo import _validate_bc_report
     _validate_bc_report(
         sd_path, "data_gate", policy_payload=policy_payload,
@@ -237,7 +237,7 @@ def _canonical_bc_aux_demos_path(expected_sha256: str) -> pathlib.Path:
     elsewhere in the worktree are deliberately ignored.
     """
     if not _is_sha256(expected_sha256):
-        raise EvalContractError("Worker 发布回执 demos SHA 非法")
+        raise EvalContractError("Worker publication receipt demos SHA is illegal")
     candidates = (
         ROOT / "train" / "runs" / "bc-worker-v2-r2" / "demos.npz",
         ROOT / "train" / "runs" / "bc-worker-v2" / "demos.npz",
@@ -252,7 +252,7 @@ def _canonical_bc_aux_demos_path(expected_sha256: str) -> pathlib.Path:
             matches.append(path.resolve())
     if not matches:
         raise EvalContractError(
-            "找不到与 Worker 发布回执绑定的 canonical BC-v2 demos")
+            "no canonical BC-v2 demos bound to the Worker publication receipt found")
     return matches[0]
 
 
@@ -284,7 +284,7 @@ def _recompute_published_worker_evidence(
             teacher_path=None, teacher_sha256=None)
     except Exception as exc:
         raise EvalContractError(
-            "正式 Worker checkpoint 无法按当前 LeashedMaskablePPO 安全加载"
+            "the official Worker checkpoint cannot be safely loaded with the current LeashedMaskablePPO"
         ) from exc
 
     spec = _bc_aux_circuit_spec()
@@ -299,7 +299,7 @@ def _recompute_published_worker_evidence(
         == {"pi": [68, 68], "vf": [64, 64]}
     ):
         raise EvalContractError(
-            "Worker checkpoint 未绑定精确 rev11 custom policy/spec")
+            "Worker checkpoint is not bound to the exact rev11 custom policy/spec")
     try:
         # Existing-adapter branch performs the topology/class/spec closure
         # checks without changing any parameter.
@@ -350,27 +350,27 @@ def _recompute_published_worker_evidence(
         raise
     except Exception as exc:
         raise EvalContractError(
-            "正式 Worker checkpoint/canonical demos 独立证据重算失败"
+            "independent evidence recomputation of the official Worker checkpoint/canonical demos failed"
         ) from exc
 
 
 def capture_publication_expectations(
         path: str | pathlib.Path) -> tuple[dict, dict]:
-    """冻结本案预注册谱系子集；评测结束前必须按 SHA 复验。"""
+    """Freeze this case's pre-registered lineage subset; it must be re-verified by SHA before evaluation ends."""
     expected_path = pathlib.Path(path).resolve()
     try:
         payload = expected_path.read_bytes()
         document = strict_json_loads(payload)
     except (OSError, ValueError) as exc:
         raise EvalContractError(
-            f"publication expectations 缺失/不可读:{expected_path}") from exc
+            f"publication expectations missing/unreadable: {expected_path}") from exc
     if (not isinstance(document, dict)
             or set(document) != {"schema_version", "expected_provenance"}
             or document["schema_version"] != _PUBLICATION_EXPECTATIONS_SCHEMA
             or not isinstance(document["expected_provenance"], dict)
             or not document["expected_provenance"]):
         raise EvalContractError(
-            "publication expectations schema/字段非法")
+            "publication expectations schema/fields are illegal")
     return document["expected_provenance"], {
         "path": str(expected_path),
         "sha256": hashlib.sha256(payload).hexdigest(),
@@ -383,11 +383,11 @@ def verify_publication_expectations(identity: dict | None) -> None:
     path = pathlib.Path(identity["path"])
     if not path.is_file():
         raise EvalContractError(
-            f"评测期间 publication expectations 消失:{path}")
+            f"publication expectations disappeared during evaluation: {path}")
     actual = hashlib.sha256(path.read_bytes()).hexdigest()
     if actual != identity["sha256"]:
         raise EvalContractError(
-            "评测期间 publication expectations 发生变化:"
+            "publication expectations changed during evaluation: "
             f"{actual} != {identity['sha256']}")
 
 
@@ -396,11 +396,11 @@ def capture_published_worker(
         expected_manager_sha256: str,
         expected_implementation_sha256: str,
         expected_provenance: dict) -> bytes:
-    """复验正式 Worker 发布事务、训练契约和 liveness 全链。
+    """Re-verify the whole chain of the official Worker publication transaction, training contract and liveness.
 
-    一个 sibling JSON 的存在不等于正式候选。本函数独立对账 model SHA、
-    精确步数、当前实现、M29、checkpoint 内 rev11 契约、PASS preflight，
-    并要求其 provenance 命中发车前冻结的本案期望子集。
+    The existence of a sibling JSON does not make an official candidate. This function independently reconciles the model SHA,
+    exact step count, current implementation, M29, the rev11 contract inside the checkpoint and the PASS preflight,
+    and requires its provenance to match this case's expectation subset frozen before launch.
     """
     receipt_path = checkpoint.with_name(PUBLISHED_WORKER_RECEIPT_NAME)
     preflight_path = checkpoint.with_name("bc_aux_liveness_preflight.json")
@@ -413,7 +413,7 @@ def capture_published_worker(
             checkpoint_data = strict_json_loads(archive.read("data"))
     except (OSError, KeyError, ValueError, zipfile.BadZipFile) as exc:
         raise EvalContractError(
-            "正式 Worker 的 checkpoint/发布回执/liveness 不完整") from exc
+            "official Worker checkpoint/publication receipt/liveness is incomplete") from exc
 
     from train_ppo import (
         _BC_AUX_BEHAVIOR_RECEIPT_SCHEMA_VERSION,
@@ -436,43 +436,43 @@ def capture_published_worker(
     model_sha256 = hashlib.sha256(checkpoint_payload).hexdigest()
     step = checkpoint_num_timesteps_bytes(
         checkpoint_payload, str(checkpoint))
-    # A4(2026-07-27):契约升 rev26(kl_early_stopped 旗),认证域随升。
+    # A4 (2026-07-27): the contract moved to rev26 (the kl_early_stopped flag); the certified range moves with it.
     require(_BC_AUX_OBJECTIVE_REVISION == 11
             and _CONTRACT_REVISION in {
                 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26},
-            "评估器只认证 objective-rev11/contract-rev12-through-26")
+            "the evaluator only certifies objective-rev11/contract-rev12-through-26")
     require(isinstance(receipt, dict)
             and set(receipt) == _PUBLISHED_RECEIPT_KEYS,
-            "Worker 发布回执字段/schema 不精确")
+            "Worker publication receipt fields/schema are not exact")
     require(
         receipt["schema_version"]
         == _BC_AUX_BEHAVIOR_RECEIPT_SCHEMA_VERSION,
-        "Worker 发布回执 schema 过期")
+        "Worker publication receipt schema is outdated")
     require(receipt["publication"] == "PUBLISHED"
             and receipt["save_error"] is None,
-            "Worker 发布事务未成功完成")
+            "Worker publication transaction did not complete successfully")
     require(receipt["model_sha256"] == model_sha256,
-            "Worker 发布回执未绑定当前 checkpoint 字节")
+            "Worker publication receipt is not bound to the current checkpoint bytes")
     require(_is_plain_int(receipt["step"])
             and receipt["step"] == step,
-            "Worker 发布回执步数与 checkpoint 不一致")
+            "Worker publication receipt step count disagrees with the checkpoint")
     require(_is_plain_int(receipt["objective_revision"])
             and receipt["objective_revision"]
             == _BC_AUX_OBJECTIVE_REVISION,
-            "Worker 发布回执辅助目标 revision 过期")
+            "Worker publication receipt auxiliary objective revision is outdated")
     require(receipt["evaluation_scope"]
             == "original-bc-v2-heldout-episodes"
             and receipt["mask_mode"] == "bc-v2-recorded",
-            "Worker 最终行为门评估域/mask 口径异常")
+            "Worker final behavior gate evaluation domain/mask definition is malformed")
     require(_is_sha256(receipt["demos_sha256"])
             and _is_sha256(receipt["candidate_policy_head_sha256"]),
-            "Worker 发布回执缺 demos/策略头 SHA")
+            "Worker publication receipt lacks the demos/policy-head SHA")
     anchor = receipt["anchor"]
     require(isinstance(anchor, dict)
             and set(anchor) == {"identity", "policy_head_sha256"}
             and anchor["identity"] == "bc-aux-root-policy"
             and _is_sha256(anchor["policy_head_sha256"]),
-            "Worker 发布回执根策略锚异常")
+            "Worker publication receipt root policy anchor is malformed")
 
     try:
         provenance = _validate_publication_provenance(
@@ -481,23 +481,23 @@ def capture_published_worker(
             final_step=step)
     except ValueError as exc:
         raise EvalContractError(
-            f"Worker 发布谱系非法:{exc}") from exc
+            f"Worker publication lineage is illegal: {exc}") from exc
     require(provenance["implementation_sha256"]
             == expected_implementation_sha256,
-            "Worker 发布实现与当前训练/运行实现不一致")
+            "Worker publication implementation disagrees with the current training/runtime implementation")
     require(provenance["manager_npz_sha256"]
             == expected_manager_sha256,
-            "Worker 发布经理与本次评测经理不一致")
+            "Worker publication manager disagrees with this evaluation's manager")
     allowed_expectation_keys = set(provenance)
     require(set(expected_provenance).issubset(allowed_expectation_keys),
-            "publication expectations 含未知 provenance 键")
+            "publication expectations contain an unknown provenance key")
     mismatches = {
         key: (provenance.get(key), value)
         for key, value in expected_provenance.items()
         if provenance.get(key) != value
     }
     require(not mismatches,
-            f"Worker 发布谱系未命中预注册本案:{mismatches}")
+            f"Worker publication lineage does not match this pre-registered case: {mismatches}")
 
     evidence = receipt["exploration_evidence"]
     require(isinstance(evidence, dict)
@@ -507,7 +507,7 @@ def capture_published_worker(
                 "unexpected_sampled_a12", "minimum_expected_a12_mass",
                 "minimum_actual_a12_samples", "information_status", "reasons",
             },
-            "Worker 发布探索样本证据字段/schema 不精确")
+            "Worker publication exploration-sample evidence fields/schema are not exact")
     eligible_states = evidence.get("eligible_states")
     requested_a12 = evidence.get("requested_a12")
     sampled_a12 = evidence.get("sampled_a12")
@@ -541,14 +541,14 @@ def capture_published_worker(
             reported_min_actual, _BC_AUX_MIN_ACTUAL_A12_SAMPLES)
         and evidence.get("information_status") == "INFORMATIVE"
         and evidence.get("reasons") == [],
-        "Worker 发布探索样本证据不足/非法")
+        "Worker publication exploration-sample evidence is insufficient/illegal")
 
     contract = checkpoint_data.get("diablogym_contract")
     require(isinstance(contract, dict)
             and _is_plain_int(contract.get("contract_revision"))
             and contract.get("contract_revision")
             in {12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26},
-            "Worker checkpoint 不是受支持的 rev12-rev26 正式训练契约")
+            "Worker checkpoint is not a supported rev12-rev26 official training contract")
     if contract["contract_revision"] >= 24:
         try:
             from train_ppo import _validate_policy_source_roles
@@ -556,7 +556,7 @@ def capture_published_worker(
         except (RuntimeError, TypeError, ValueError) as exc:
             raise EvalContractError(
                 f"rev{contract['contract_revision']} Worker "
-                "policy source roles 未闭合") from exc
+                "policy source roles are not closed") from exc
     if contract["contract_revision"] >= 13:
         require(
             contract.get("artifact_scope") == "production"
@@ -566,12 +566,12 @@ def capture_published_worker(
                 contract.get("worker_additional_terminal_death_cost"))
             and float(contract.get("worker_additional_terminal_death_cost"))
             >= 0.0,
-            "rev13 Worker checkpoint 缺生产 scope/终局奖励契约",
+            "rev13 Worker checkpoint lacks the production scope/terminal reward contract",
         )
     if contract["contract_revision"] >= 14:
         require(
             contract.get("legacy_policy_observation_view") is False,
-            "rev14+ 正式 A12 Worker 必须保留注册的 gate overlay 观测",
+            "rev14+ official A12 Worker must keep the registered gate overlay observation",
         )
     if contract["contract_revision"] >= 16:
         clipping = contract.get("gradient_clipping")
@@ -624,19 +624,19 @@ def capture_published_worker(
                         critic_migration.get("source_checkpoint_sha256"))
                 )
             ),
-            "rev16 Worker checkpoint 缺经理视图/终止/bootstrap/裁剪契约",
+            "rev16 Worker checkpoint lacks the manager-view/termination/bootstrap/clipping contract",
         )
     if contract["contract_revision"] >= 17:
         require(
             contract.get("worker_policy_observation_view")
             == "legacy-v3-a12-overlay"
             and contract.get("actor_migration") == "disabled",
-            "rev17+ 正式 A12 Worker 必须绑定 overlay 且禁止 asymmetric migration",
+            "rev17+ official A12 Worker must bind the overlay and forbid asymmetric migration",
         )
     require(
         _canonical_json_sha256(contract)
         == provenance["training_contract_sha256"],
-        "Worker checkpoint 契约与发布谱系 SHA 不一致")
+        "Worker checkpoint contract disagrees with the publication lineage SHA")
     require(contract.get("mode") == "worker"
             and _is_plain_int(contract.get("max_steps"))
             and contract.get("max_steps") == PROTOCOL_MAX_STEPS
@@ -645,7 +645,7 @@ def capture_published_worker(
             and contract.get("observation_shape") == [298]
             and _is_plain_int(contract.get("action_n"))
             and contract.get("action_n") == 15,
-            "Worker checkpoint 环境/空间配方异常")
+            "Worker checkpoint environment/space recipe is malformed")
     require(contract.get("implementation_sha256")
             == provenance["implementation_sha256"]
             and contract.get("manager_npz_sha256")
@@ -655,11 +655,11 @@ def capture_published_worker(
             and contract.get("distill_beta")
             == provenance["distill_beta"]
             and contract.get("calib_record_only") is False,
-            "Worker checkpoint 实现/经理/教师/皮筋契约与回执不一致")
+            "Worker checkpoint implementation/manager/teacher/leash contract disagrees with the receipt")
     recipe = contract.get("algorithm_recipe")
     require(isinstance(recipe, dict)
             and recipe.get("target_kl") == provenance["target_kl"],
-            "Worker checkpoint target_kl 与发布谱系不一致")
+            "Worker checkpoint target_kl disagrees with the publication lineage")
     aux = contract.get("bc_aux")
     require(isinstance(aux, dict)
             and _is_plain_int(aux.get("objective_revision"))
@@ -689,7 +689,7 @@ def capture_published_worker(
                     _bc_aux_circuit_spec()["probability_max"],
             }
             and aux.get("liveness_preflight") is True,
-            "Worker checkpoint bc_aux 契约与发布谱系不一致")
+            "Worker checkpoint bc_aux contract disagrees with the publication lineage")
     policy_class_record = checkpoint_data.get("policy_class")
     policy_kwargs_record = checkpoint_data.get("policy_kwargs")
     require(
@@ -700,7 +700,7 @@ def capture_published_worker(
         == _bc_aux_circuit_spec()
         and policy_kwargs_record.get("net_arch")
         == {"pi": [68, 68], "vf": [64, 64]},
-        "Worker checkpoint metadata 未绑定 rev11 custom policy/spec")
+        "Worker checkpoint metadata is not bound to the rev11 custom policy/spec")
     require(_is_plain_int(checkpoint_data.get("num_timesteps"))
             and checkpoint_data.get("num_timesteps") == step
             and checkpoint_data.get("distill_beta")
@@ -743,10 +743,10 @@ def capture_published_worker(
                 checkpoint_data.get("_last_completed_ppo_rollout_steps"))
             and checkpoint_data.get("_last_completed_ppo_rollout_steps")
             == provenance["target_global_steps"],
-            "Worker checkpoint 运行态与发布谱系不一致")
+            "Worker checkpoint runtime state disagrees with the publication lineage")
 
     require(isinstance(receipt["metrics"], dict),
-            "Worker 发布回执 metrics 非对象")
+            "Worker publication receipt metrics is not an object")
     independently_observed = _recompute_published_worker_evidence(
         checkpoint_payload,
         demos_sha256=receipt["demos_sha256"],
@@ -757,7 +757,7 @@ def capture_published_worker(
         and independently_observed.get("anchor_policy_head_sha256")
         == anchor["policy_head_sha256"]
         and independently_observed.get("metrics") == receipt["metrics"],
-        "Worker 发布回执策略头/根锚/metrics 未绑定 checkpoint+demos 现场重算")
+        "Worker publication receipt policy head/root anchor/metrics are not bound to an on-site recomputation from checkpoint+demos")
     recomputed_gate = bc_aux_behavior_gate(
         independently_observed["metrics"], require_root_anchor=True,
         require_teacher_recall=False, require_deployable_a12=False)
@@ -769,15 +769,15 @@ def capture_published_worker(
         and reported_thresholds.get("deployable_a12_required") is False
         and reported_thresholds.get("deterministic_a12_episode_min") is None
         and reported_thresholds.get("deterministic_a12_margin_min") is None,
-        "Worker 发布回执未明确声明 deterministic a12 非发布门")
+        "Worker publication receipt does not explicitly declare deterministic a12 as a non-publication gate")
     require(receipt["gate"] == recomputed_gate
             and recomputed_gate["verdict"] == "PASS",
-            "Worker 发布安全行为硬门非 PASS 或与现场 metrics 不一致")
+            "Worker publication safety behavior hard gate is not PASS or disagrees with the on-site metrics")
 
     require(
         hashlib.sha256(preflight_payload).hexdigest()
         == provenance["bc_aux_liveness_preflight_sha256"],
-        "Worker liveness 回执 SHA 与发布谱系不一致")
+        "Worker liveness receipt SHA disagrees with the publication lineage")
     require(isinstance(preflight, dict)
             and preflight.get("schema_version")
             == _BC_AUX_LIVENESS_PREFLIGHT_SCHEMA_VERSION
@@ -792,7 +792,7 @@ def capture_published_worker(
             in {"first-install", "preserved-continuation"}
             and _is_plain_int(preflight.get("heldout_rows_consumed"))
             and preflight.get("heldout_rows_consumed") == 0,
-            "Worker liveness 回执状态/schema/隔离域异常")
+            "Worker liveness receipt status/schema/isolation domain is malformed")
     installation = preflight["installation"]
     expected_calibrations = 1 if installation == "first-install" else 0
     expected_topology_reset = installation == "first-install"
@@ -805,7 +805,7 @@ def capture_published_worker(
         "king_support": _BC_AUX_CIRCUIT_KING_SUPPORT,
     }
     require(preflight.get("circuit") == exact_circuit,
-            "Worker liveness 顶层 circuit spec 非当前 rev11 精确规范")
+            "Worker liveness top-level circuit spec is not the current exact rev11 spec")
     inputs = preflight.get("inputs")
     require(isinstance(inputs, dict)
             and inputs.get("resume_checkpoint_sha256")
@@ -816,7 +816,7 @@ def capture_published_worker(
             == provenance["manager_npz_sha256"]
             and inputs.get("implementation_sha256")
             == provenance["implementation_sha256"],
-            "Worker liveness 输入谱系不闭合")
+            "Worker liveness input lineage is not closed")
     config = preflight.get("config")
     leg_steps = provenance["target_global_steps"] - provenance["start_steps"]
     require(isinstance(config, dict)
@@ -840,7 +840,7 @@ def capture_published_worker(
             and isinstance(config.get("reset_optimizer"), bool)
             and config.get("reset_optimizer")
             is provenance["optimizer_reset"],
-            "Worker liveness 配方与正式腿不一致")
+            "Worker liveness recipe disagrees with the official leg")
     calls = preflight.get("calls")
     require(isinstance(calls, dict)
             and _is_plain_int(calls.get("aux_optimizer_calls"))
@@ -855,7 +855,7 @@ def capture_published_worker(
             == expected_calibrations
             and _is_plain_int(calls.get("trainable_adapter_parameters"))
             and calls.get("trainable_adapter_parameters") == 5,
-            "Worker structural liveness 调用账不闭合")
+            "Worker structural liveness call ledger is not closed")
     require(
         _is_plain_int(config.get("n_steps"))
         and config.get("n_steps") > 0
@@ -881,7 +881,7 @@ def capture_published_worker(
         and _is_plain_int(config.get("trainable_adapter_parameters"))
         and config.get("trainable_adapter_parameters")
         == calls.get("trainable_adapter_parameters") == 5,
-        "Worker liveness rollout/调用/参数计数不闭合")
+        "Worker liveness rollout/call/parameter counts are not closed")
     canary = preflight.get("policy_gradient_canary")
     require(
         isinstance(canary, dict)
@@ -901,7 +901,7 @@ def capture_published_worker(
         and canary.get("state_restored") is True
         and _is_sha256(canary.get("start_policy_head_sha256"))
         and _is_sha256(canary.get("stepped_policy_head_sha256")),
-        "Worker liveness policy-gradient canary schema/隔离账异常")
+        "Worker liveness policy-gradient canary schema/isolation ledger is malformed")
     for key in (
             "probability_12_before", "probability_12_after",
             "probability_12_delta", "gate_bias_before", "gate_bias_after",
@@ -909,7 +909,7 @@ def capture_published_worker(
             "gradient_norm_before_clip"):
         require(
             _finite_number(canary.get(key)),
-            f"Worker liveness policy-gradient canary {key} 非有限")
+            f"Worker liveness policy-gradient canary {key} is not finite")
     require(
         0.0 < canary["probability_12_before"] < 1.0
         and canary["start_policy_head_sha256"]
@@ -936,13 +936,13 @@ def capture_published_worker(
                 != canary["start_policy_head_sha256"]
             )
         ),
-        "Worker liveness policy-gradient canary 未证明 optimizer 可提升 p(a12)")
+        "Worker liveness policy-gradient canary did not prove the optimizer can raise p(a12)")
     optimizer = preflight.get("optimizer")
     require(
         isinstance(optimizer, dict)
         and optimizer.get("reset_after_topology_change")
         is expected_topology_reset,
-        "Worker liveness optimizer 拓扑重置状态与安装类型不一致")
+        "Worker liveness optimizer topology-reset state disagrees with the installed type")
     policy = preflight.get("policy")
     require(
         isinstance(policy, dict)
@@ -959,14 +959,14 @@ def capture_published_worker(
         == (64 if installation == "first-install" else 68)
         and _is_plain_int(policy.get("actor_width_after"))
         and policy.get("actor_width_after") == 68,
-        "Worker liveness policy 拓扑/哈希账不闭合")
+        "Worker liveness policy topology/hash ledger is not closed")
     calibration = preflight.get("calibration")
     require(
         isinstance(calibration, dict)
         and calibration.get("initializer") == expected_initializer
         and calibration.get("candidate_policy_head_sha256")
         == policy.get("grafted_head_sha256"),
-        "Worker liveness calibration/continuation 身份不闭合")
+        "Worker liveness calibration/continuation identity is not closed")
     liveness_metrics = preflight.get("metrics")
     liveness_gate = preflight.get("gate")
     recomputed_liveness_gate = bc_aux_behavior_gate(
@@ -978,7 +978,7 @@ def capture_published_worker(
         and calibration.get("validation_gate") == liveness_gate
         and liveness_gate == recomputed_liveness_gate
         and recomputed_liveness_gate.get("verdict") == "PASS",
-        "Worker liveness 行为门未由其 metrics 现场重算为 PASS")
+        "Worker liveness behavior gate was not recomputed on site as PASS from its metrics")
     return receipt_payload
 
 
@@ -1003,10 +1003,10 @@ def _asymmetric_worker_observation_dim_for_revision(
         if not _is_plain_int(current_observation_dim) \
                 or current_observation_dim <= 0:
             raise EvalContractError(
-                "rev22+ current asymmetric observation dim 非法")
+                "rev22+ current asymmetric observation dim is illegal")
         return current_observation_dim
     raise EvalContractError(
-        f"不支持的 asymmetric Worker contract revision:"
+        f"unsupported asymmetric Worker contract revision: "
         f"{contract_revision!r}")
 
 
@@ -1061,8 +1061,8 @@ def _validate_asymmetric_worker_runtime_state(
     )
     if not state_closed:
         raise EvalContractError(
-            "asymmetric Worker checkpoint 尚未完成可部署 actor 训练，"
-            f"或不在完整 PPO 更新边界:{fields}")
+            "asymmetric Worker checkpoint has not finished deployable actor training, "
+            f"or is not at a full PPO update boundary: {fields}")
 
     if contract_revision >= 22:
         try:
@@ -1075,8 +1075,8 @@ def _validate_asymmetric_worker_runtime_state(
             context_closed = False
         if not context_closed:
             raise EvalContractError(
-                "rev22+ asymmetric Worker 的结构化 actor/critic "
-                "runtime evidence 未闭合")
+                "rev22+ asymmetric Worker structured actor/critic "
+                "runtime evidence is not closed")
         return
 
     # rev20/21 historical checkpoints used the old dense projection/fusion
@@ -1153,8 +1153,8 @@ def _validate_asymmetric_worker_runtime_state(
         context_closed = False
     if not context_closed:
         raise EvalContractError(
-            "asymmetric Worker checkpoint 的 actor context "
-            "仍关闭、为零或不能产生有限动作效应")
+            "asymmetric Worker checkpoint actor context "
+            "is still closed, zero, or cannot produce a finite action effect")
 
 
 def load_worker(
@@ -1164,19 +1164,19 @@ def load_worker(
         expected_implementation_sha256: str | None = None,
         expected_provenance: dict | None = None,
         worker_decoding: str = "argmax"):
-    """返回 (workers、标签、身份清单)。spec ∈ script | bc | *.npz | SB3 zip。
+    """Return (workers, label, identity manifest). spec in script | bc | *.npz | SB3 zip.
 
-    worker_decoding(R16/C3):argmax = 旧法逐位不变;sample 只对 SB3
-    checkpoint 有定义(numpy/BC/script 工人没有可采样的 torch 分布)。
+    worker_decoding (R16/C3): argmax = old law, bit-identical; sample is defined only for SB3
+    checkpoints (numpy/BC/script workers have no torch distribution to sample from).
     """
     if worker_decoding not in ("argmax", "sample"):
         raise EvalContractError(
-            f"worker_decoding 只允许 argmax/sample: {worker_decoding!r}")
+            f"worker_decoding only allows argmax/sample: {worker_decoding!r}")
     if worker_decoding == "sample" and (
             spec in {"script", "bc"}
             or pathlib.Path(spec).suffix.lower() == ".npz"):
         raise EvalContractError(
-            "--worker-decoding sample 只适用于 SB3 checkpoint 工人")
+            "--worker-decoding sample only applies to SB3 checkpoint workers")
     if spec == "script":
         return None, "script", script_worker_identity(protocol_bundle_sha256)
     if spec == "bc":
@@ -1195,12 +1195,12 @@ def load_worker(
             policy_mask = np.asarray(raw_mask, dtype=bool)
             if policy_mask.shape != (15,):
                 raise EvalContractError(
-                    "BC Worker 评测动作掩码必须为 (15,)")
+                    "BC Worker evaluation action mask must be (15,)")
             policy_mask = policy_mask.copy()
             policy_mask[12] = False
             if not policy_mask.any():
                 raise EvalContractError(
-                    "BC Worker 动作掩码应用永久 a12 掩码后全为 False")
+                    "BC Worker action mask is all False after applying the permanent a12 mask")
             return int(np.argmax(np.where(policy_mask, logits, -np.inf)))
 
         # OptionsEnv must construct this view from lossless native raw state;
@@ -1211,7 +1211,7 @@ def load_worker(
     if pathlib.Path(spec).suffix.lower() == ".npz":
         path = pathlib.Path(spec).resolve()
         manager_class, _env_class, _bridge = _native_runtime()
-        net = manager_class(path)  # 单次读取：同一字节串用于身份与前向。
+        net = manager_class(path)  # Single read: the same bytes serve both identity and forward pass.
         identity = {
             "kind": "numpy_policy", "path": str(path),
             "sha256": net.source_sha256, "num_timesteps": None,
@@ -1230,7 +1230,7 @@ def load_worker(
                 or expected_implementation_sha256 is None
                 or expected_provenance is None):
             raise EvalContractError(
-                "正式 Worker 评测缺经理/实现/预注册谱系期望")
+                "official Worker evaluation lacks manager/implementation/pre-registered lineage expectations")
         receipt_payload = capture_published_worker(
             checkpoint, checkpoint_payload,
             expected_manager_sha256=expected_manager_sha256,
@@ -1239,8 +1239,8 @@ def load_worker(
         receipt_sha256 = hashlib.sha256(receipt_payload).hexdigest()
     elif receipt_path.is_file():
         raise EvalContractError(
-            "检测到带发布回执的 SB3 Worker；必须显式携 "
-            "--require-published-worker 与 --publication-expectations")
+            "detected an SB3 Worker with a publication receipt; must explicitly pass "
+            "--require-published-worker and --publication-expectations")
     identity = {
         "kind": "sb3_checkpoint", "path": str(checkpoint),
         "sha256": hashlib.sha256(checkpoint_payload).hexdigest(),
@@ -1293,11 +1293,11 @@ def load_worker(
             ):
                 raise ValueError(
                     f"rev{contract_revision} Worker "
-                    "timeout boundary/reward contract 漂移")
+                    "timeout boundary/reward contract drift")
         except (RuntimeError, TypeError, ValueError) as exc:
             raise EvalContractError(
                 f"rev{contract_revision} Worker "
-                "policy source/timeout roles 未闭合") from exc
+                "policy source/timeout roles are not closed") from exc
     if (
         asymmetric_policy
         and contract_revision in {17, 18, 19, 20, 21}
@@ -1319,32 +1319,32 @@ def load_worker(
         if not isinstance(legacy_policy_view, bool):
             raise EvalContractError(
                 f"rev{contract_revision} Worker checkpoint "
-                "缺显式 policy observation view")
+                "lacks an explicit policy observation view")
         if custom_a12_policy:
             if legacy_policy_view:
                 raise EvalContractError(
-                    "A12 custom policy 必须由环境提供 legacy-v3-a12-overlay")
+                    "A12 custom policy must get legacy-v3-a12-overlay from the environment")
         elif not legacy_policy_view:
             raise EvalContractError(
-                f"rev{contract_revision} ordinary Worker 必须使用完整 protocol-v3 "
+                f"rev{contract_revision} ordinary Worker must use the full protocol-v3 "
                 "policy observation view")
         drink_sovereignty = contract.get("drink_sovereignty")
         if not isinstance(drink_sovereignty, bool):
             raise EvalContractError(
                 f"rev{contract_revision} Worker checkpoint "
-                "缺显式 drink_sovereignty")
+                "lacks an explicit drink_sovereignty")
         if custom_a12_policy and drink_sovereignty is not True:
             raise EvalContractError(
                 f"rev{contract_revision} A12 custom Worker "
-                "必须启用 drink_sovereignty")
+                "must enable drink_sovereignty")
         force_action12_mask = (
             not custom_a12_policy
             and drink_sovereignty is False)
         worker_policy_view = (
             "legacy-v3-a12-overlay"
             if custom_a12_policy else "legacy-v3")
-    # A4(2026-07-27):rev26 = rev25 + kl_early_stopped 旗(audit schema /10),
-    # 装载语义与 rev25 同族。
+    # A4 (2026-07-27): rev26 = rev25 + the kl_early_stopped flag (audit schema /10);
+    # loading semantics are the same family as rev25.
     elif contract_revision in {17, 18, 19, 20, 21, 22, 23, 24, 25, 26}:
         legacy_policy_view = contract.get(
             "legacy_policy_observation_view")
@@ -1370,7 +1370,7 @@ def load_worker(
         ):
             raise EvalContractError(
                 f"rev{contract_revision} Worker "
-                "policy class/view/legacy flag 未闭合")
+                "policy class/view/legacy flag is not closed")
         actor_migration = contract.get("actor_migration")
         if asymmetric_policy:
             expected_asymmetric_shape = (
@@ -1389,7 +1389,7 @@ def load_worker(
                         TypeError, ValueError) as exc:
                     raise EvalContractError(
                         "rev22+ asymmetric Worker runtime evidence "
-                        "无法生成") from exc
+                        "cannot be generated") from exc
             expected_actor_method = (
                 "copy-v28-root-plus-zero-structured-centered-context-v3"
                 if contract_revision >= 22
@@ -1479,7 +1479,7 @@ def load_worker(
             ):
                 raise EvalContractError(
                     f"rev{contract_revision} asymmetric Worker "
-                    f"缺 {expected_asymmetric_shape} 维 actor migration 契约")
+                    f"lacks the {expected_asymmetric_shape}-dim actor migration contract")
             if contract_revision >= 21:
                 distillation = contract.get("distillation")
                 beta = contract.get("distill_beta")
@@ -1534,7 +1534,7 @@ def load_worker(
                 ):
                     raise EvalContractError(
                         "rev21+ asymmetric Worker distillation "
-                        "scope/schedule 未闭合")
+                        "scope/schedule is not closed")
             if (
                 contract_revision
                 in _DUAL_WORKER_PG_AUDIT_SCHEMA_BY_CONTRACT_REVISION
@@ -1557,7 +1557,7 @@ def load_worker(
                     raise EvalContractError(
                         f"rev{contract_revision} "
                         "actor/critic/layout/PG/clip/source-role "
-                        "完整契约未闭合") from exc
+                        "full contract is not closed") from exc
             if contract_revision >= 23:
                 expected_action14_bonus = contract.get(
                     "worker_action14_logit_bonus")
@@ -1574,25 +1574,25 @@ def load_worker(
                     )
                 ):
                     raise EvalContractError(
-                        "rev23+ action14 logit bonus 的 checkpoint "
-                        "运行态与训练契约不一致:"
+                        "rev23+ action14 logit bonus checkpoint "
+                        "runtime state disagrees with the training contract: "
                         f"policy={actual_action14_bonus!r},"
                         f"contract={expected_action14_bonus!r}")
             _validate_asymmetric_worker_runtime_state(
                 model, contract_revision=contract_revision)
         elif actor_migration != "disabled":
             raise EvalContractError(
-                f"rev{contract_revision} 非 asymmetric Worker "
-                "携带 actor migration")
+                f"rev{contract_revision} non-asymmetric Worker "
+                "carries an actor migration")
         drink_sovereignty = contract.get("drink_sovereignty")
         if not isinstance(drink_sovereignty, bool):
             raise EvalContractError(
                 f"rev{contract_revision} Worker checkpoint "
-                "缺显式 drink_sovereignty")
+                "lacks an explicit drink_sovereignty")
         if custom_a12_policy and drink_sovereignty is not True:
             raise EvalContractError(
                 f"rev{contract_revision} A12 custom Worker "
-                "必须启用 drink_sovereignty")
+                "must enable drink_sovereignty")
         force_action12_mask = (
             not custom_a12_policy
             and drink_sovereignty is False)
@@ -1606,11 +1606,11 @@ def load_worker(
             if custom_a12_policy else "legacy-v3")
     else:
         raise EvalContractError(
-            f"不支持的 Worker training contract revision:{contract_revision!r}")
+            f"unsupported Worker training contract revision: {contract_revision!r}")
 
-    # R16(C3):默认 argmax 传 deterministic=True,与旧法逐位同一调用;
-    # sample 走 predict(deterministic=False) = 训练时的同一 masked
-    # Categorical 采样(torch 全局 RNG,由 evaluate() 逐局定种)。
+    # R16 (C3): the default argmax passes deterministic=True, bit-identical to the old-law call;
+    # sample goes through predict(deterministic=False) = the same masked
+    # Categorical sampling as in training (the global torch RNG, seeded per episode by evaluate()).
     deterministic_decoding = worker_decoding == "argmax"
 
     def w(policy_obs, mask):
@@ -1619,7 +1619,7 @@ def load_worker(
             policy_mask = np.asarray(mask, dtype=bool)
             if policy_mask.shape != (15,):
                 raise EvalContractError(
-                    "legacy Worker 评测动作掩码必须为 (15,)")
+                    "legacy Worker evaluation action mask must be (15,)")
             policy_mask = policy_mask.copy()
             # V28/KING were trained with worker-owned action12 permanently
             # masked.  Its latent row is untrained and the rev9 candidate
@@ -1641,8 +1641,8 @@ def load_worker(
         "permanently-masked" if force_action12_mask else "environment-mask")
     w.diablogym_worker_decoding = worker_decoding
     if worker_decoding == "sample":
-        # 逐局定种钩子:python/numpy/torch 全局 RNG + action_space 一并按
-        # 该局 seed 复位(SB3 set_random_seed;env=None 故不触及环境)。
+        # Per-episode seeding hook: the global python/numpy/torch RNGs and action_space are all reset to
+        # that episode's seed (SB3 set_random_seed; env=None, so the environment is not touched).
         def _episode_reseed(seed: int) -> None:
             model.set_random_seed(int(seed))
         w.diablogym_worker_episode_reseed = _episode_reseed
@@ -1654,40 +1654,40 @@ def parse_seeds(s: str):
         lo_s, hi_s = s.split("-", 1)
         lo, hi = int(lo_s), int(hi_s)
     except (TypeError, ValueError):
-        raise argparse.ArgumentTypeError("种子范围须为 LO-HI(例如 7000-7031)")
+        raise argparse.ArgumentTypeError("seed range must be LO-HI (e.g. 7000-7031)")
     if lo < 0 or hi < lo or hi > UINT32_MAX:
         raise argparse.ArgumentTypeError(
-            f"种子范围须满足 0 <= LO <= HI <= {UINT32_MAX}")
+            f"seed range must satisfy 0 <= LO <= HI <= {UINT32_MAX}")
     return list(range(lo, hi + 1))
 
 
 def safe_tag(tag: str) -> str:
-    """档案标签只能是文件名，禁止路径穿越或意外写到 OUTDIR 之外。"""
+    """An archive tag may only be a file name; path traversal or writing outside OUTDIR is forbidden."""
     if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", tag) or tag in {".", ".."}:
-        raise argparse.ArgumentTypeError("tag 只能包含字母、数字、点、下划线和连字符")
+        raise argparse.ArgumentTypeError("tag may contain only letters, digits, dots, underscores and hyphens")
     return tag
 
 
 def terminal_kind(raw: dict, info: dict, done: bool, trunc: bool,
                   micro_steps: int) -> str:
-    """把 Gym 边界压成互斥、可审计的终局类别。
+    """Squash the Gym boundary into mutually exclusive, auditable terminal categories.
 
-    顺序刻意让真实死亡/胜利/game_over 优先于同拍耗尽预算。idle 时限可安全
-    bootstrap；动画未结算的预算边界则是 fail-closed termination。
-    未知边界一律拒绝落档，不能伪装成普通存活截断。
+    The order deliberately lets a real death/victory/game_over take precedence over budget exhaustion on the same beat. An idle time limit can safely
+    bootstrap; a budget boundary with an unresolved animation is a fail-closed termination.
+    Unknown boundaries are never archived; they cannot pose as an ordinary survival truncation.
     """
     if bool(done) == bool(trunc):
         raise EvalContractError(
-            f"终局 terminated/truncated 必须互斥: done={done}, trunc={trunc}")
+            f"terminal terminated/truncated must be mutually exclusive: done={done}, trunc={trunc}")
     unsettled = info.get("unsettled_budget_terminal")
     bootstrap_safe = info.get("time_limit_bootstrap_safe")
     decision_idle = info.get("decision_idle")
 
     def native_terminal(kind: str) -> str:
         if not done or trunc:
-            raise EvalContractError(f"{kind} 终局必须是 terminated，而不是 truncated")
+            raise EvalContractError(f"{kind} terminal must be terminated, not truncated")
         if unsettled is True or bootstrap_safe is True:
-            raise EvalContractError(f"{kind} 与时限终局标记冲突")
+            raise EvalContractError(f"{kind} conflicts with the time-limit terminal flag")
         return kind
 
     if raw.get("dead"):
@@ -1701,7 +1701,7 @@ def terminal_kind(raw: dict, info: dict, done: bool, trunc: bool,
                 or info.get("budget_exhausted") is not True
                 or bootstrap_safe is not False
                 or decision_idle is not False):
-            raise EvalContractError("unsettled budget terminal 账本不一致")
+            raise EvalContractError("unsettled budget terminal ledger is inconsistent")
         return "time_limit_unsettled"
     if trunc:
         if (info.get("budget_exhausted") is not True
@@ -1709,10 +1709,10 @@ def terminal_kind(raw: dict, info: dict, done: bool, trunc: bool,
                 or unsettled is not False
                 or decision_idle is not True
                 or micro_steps != PROTOCOL_MAX_STEPS):
-            raise EvalContractError("idle time-limit truncation 账本不一致")
+            raise EvalContractError("idle time-limit truncation ledger is inconsistent")
         return "time_limit_idle"
     raise EvalContractError(
-        "无法分类非死亡终局：既非 victory/game_over，也非已认证时限边界")
+        "cannot classify a non-death terminal: neither victory/game_over nor a certified time-limit boundary")
 
 
 def _action14_option_receipt(extra: dict) -> tuple[int, int, int]:
@@ -1724,7 +1724,7 @@ def _action14_option_receipt(extra: dict) -> tuple[int, int, int]:
     )
     if not isinstance(extra, dict) or any(key not in extra for key in keys):
         raise EvalContractError(
-            "option_extra 缺 action14 原生因果回执分账")
+            "option_extra lacks the action14 native causal receipt split")
     requests, successes, utility_delta = (
         extra[key] for key in keys)
     if (
@@ -1737,7 +1737,7 @@ def _action14_option_receipt(extra: dict) -> tuple[int, int, int]:
         or (successes == 0) != (utility_delta == 0)
     ):
         raise EvalContractError(
-            "option_extra action14 原生因果回执不守恒")
+            "option_extra action14 native causal receipts do not balance")
     return requests, successes, utility_delta
 
 
@@ -1749,36 +1749,36 @@ def evaluate(
     if manager_policy_observation_view is None:
         if manager_npz is not None:
             raise EvalContractError(
-                "自定义 manager_npz 必须显式声明 "
+                "a custom manager_npz must explicitly declare "
                 "manager_policy_observation_view")
         manager_policy_observation_view = "legacy-v3"
     if manager_policy_observation_view not in {"legacy-v3", "raw-v4"}:
         raise EvalContractError(
-            "manager_policy_observation_view 只允许 legacy-v3/raw-v4")
+            "manager_policy_observation_view only allows legacy-v3/raw-v4")
     manager_class, env_class, _bridge = _native_runtime()
     manager_path = pathlib.Path(manager_npz) if manager_npz else NPZ
     expected_manager_sha256 = manager_sha256 or (NPZ_SHA if not manager_npz else None)
     mgr = manager_class(
         str(manager_path), expected_sha256=expected_manager_sha256)
-    # evaluate() 也会被测试/法证脚本在同一进程重复调用。不要原地包裹调用方的
-    # workers 字典，否则第二次调用会叠加 instrumentation，甚至闭包到旧 env。
+    # evaluate() is also called repeatedly in one process by tests/forensic scripts. Do not wrap the caller's
+    # workers dict in place, or a second call would stack instrumentation and even close over an old env.
     if worker_window_registration not in ("farm-only", "farm-dive-v1"):
         raise EvalContractError(
-            "worker_window_registration 必须是 farm-only/farm-dive-v1,"
-            f"收到 {worker_window_registration!r}")
+            "worker_window_registration must be farm-only/farm-dive-v1, "
+            f"got {worker_window_registration!r}")
     active_workers = dict(workers) if workers else None
     if worker_window_registration == "farm-dive-v1":
-        # R13 考试新法:工人回调同挂 DIVE 窗(主权移交考场侧)。script
-        # 工人无 callback 可挂,farm-dive-v1 对其无意义,fail-closed。
+        # R13 exam new law: the worker callback is also hooked onto DIVE windows (control handed over on the exam side). The script
+        # worker has no callback to hook, so farm-dive-v1 is meaningless for it; fail closed.
         if not active_workers:
             raise EvalContractError(
-                "farm-dive-v1 注册需要工人 callback(script 工人不适用)")
+                "farm-dive-v1 registration needs a worker callback (not applicable to the script worker)")
         active_workers[DIVE] = active_workers[FARM]
     drink_sovereignty = True
     worker_observation_view = "raw-v4"
     if active_workers:
         if FARM not in active_workers:
-            raise EvalContractError("Worker 映射缺少 FARM callback")
+            raise EvalContractError("Worker mapping lacks a FARM callback")
         worker_observation_view = getattr(
             active_workers[FARM],
             "diablogym_worker_observation_view",
@@ -1786,7 +1786,7 @@ def evaluate(
         )
         if worker_observation_view not in _WORKER_OBSERVATION_VIEWS:
             raise EvalContractError(
-                "Worker callback 缺少有效的 observation deployment contract:"
+                "Worker callback lacks a valid observation deployment contract: "
                 f"{worker_observation_view!r}"
             )
         action12_mode = getattr(
@@ -1800,19 +1800,19 @@ def evaluate(
             drink_sovereignty = True
         else:
             raise EvalContractError(
-                "Worker callback 缺少有效的 action12 deployment contract:"
+                "Worker callback lacks a valid action12 deployment contract: "
                 f"{action12_mode!r}")
-    # R16(C3):解码方式必须与装载时一致(fail-closed),sample 需要逐局定种
-    # 钩子。默认 argmax 下本段只读属性,不触碰任何运行态。
+    # R16 (C3): the decoding mode must match the one used at load time (fail closed); sample needs a per-episode seeding
+    # hook. Under the default argmax this block only reads attributes and touches no runtime state.
     if worker_decoding not in ("argmax", "sample"):
         raise EvalContractError(
-            f"worker_decoding 只允许 argmax/sample: {worker_decoding!r}")
+            f"worker_decoding only allows argmax/sample: {worker_decoding!r}")
     declared_decoding = (
         getattr(active_workers[FARM], "diablogym_worker_decoding", "argmax")
         if active_workers else "argmax")
     if declared_decoding != worker_decoding:
         raise EvalContractError(
-            "Worker callback 解码方式与评测请求不一致:"
+            "Worker callback decoding mode disagrees with the evaluation request: "
             f"callback={declared_decoding!r},evaluate={worker_decoding!r}")
     episode_reseed = None
     if worker_decoding == "sample":
@@ -1820,10 +1820,10 @@ def evaluate(
             active_workers[FARM], "diablogym_worker_episode_reseed", None)
         if not callable(episode_reseed):
             raise EvalContractError(
-                "sample 解码的 Worker callback 缺少逐局定种钩子")
+                "sample-decoding Worker callback lacks a per-episode seeding hook")
         import torch
-        # 单线程前向:消除多线程归约顺序对 logits 末位的扰动,使采样流
-        # 在同 seed 下跨进程逐位可复现。
+        # Single-threaded forward pass: removes the perturbation of multithreaded reduction order on the last bits of the logits, so the sampling stream
+        # is bit-reproducible across processes under the same seed.
         torch.set_num_threads(1)
     # The frozen M29 manager was trained on the complete protocol-v3 base and
     # legacy clock extras.  OptionsEnv defaults to raw-v4 for newly trained
@@ -1837,22 +1837,22 @@ def evaluate(
         reward_economy=reward_economy,
     )
     if worker_window_registration == "farm-dive-v1":
-        # 旗关路径连关键字都不出现,构造调用与旧法逐位同构
+        # With the flag off not even the keyword appears, so the constructor call is bit-for-bit isomorphic to the old law
         env_kwargs["dive_live_sovereignty"] = True
     if r16_environment:
-        # R16 新法锚:只把非默认开关直通构造器(farm_scene_cap /
-        # reset_layer_clock_on_window 由 OptionsEnv 具名消费,其余经
-        # **env_kwargs 到 DiabloGymEnv);全默认时 env_kwargs 一个键都不多。
-        # validate_r16_environment 同时排除显式默认值与未知键(fail-closed)。
+        # R16 new-law anchor: pass only non-default switches through to the constructor (farm_scene_cap /
+        # reset_layer_clock_on_window are consumed by name by OptionsEnv, the rest go via
+        # **env_kwargs to DiabloGymEnv); with all defaults env_kwargs has not a single extra key.
+        # validate_r16_environment also rules out explicit default values and unknown keys (fail closed).
         env_kwargs.update(validate_r16_environment(dict(r16_environment)))
     env = env_class(**env_kwargs)
     engage = None
     if active_workers:
-        # 参与度取证(2026-07-10 法证会审的后续):调用数/动作直方/与脚本分歧率,
-        # 让评测文件自带"worker 真的在开车"的证据,顺带量出 PPO 漂离教师的距离。
-        # action14 另做完整机会→请求→原生效用增长链；旧正式档案虽然有动作
-        # 直方，却无法区分“从未出现可换装目标”和“有目标但策略永远忽略”，
-        # 也无法证明一次请求真的穿上了装备。
+        # Engagement evidence (follow-up to the 2026-07-10 forensic review): call count/action histogram/divergence rate from the script,
+        # so the evaluation file carries its own evidence that "the worker really is driving", and measures how far PPO drifted from the teacher.
+        # action14 additionally gets the full opportunity -> request -> native utility gain chain; the old official archives had an action
+        # histogram but could not tell "a gear-swap target never appeared" from "there was a target but the policy always ignored it",
+        # nor prove that a request really equipped the item.
         from diablogym.options_env import dispatch
         inner = active_workers[FARM]
         engage = {
@@ -1870,7 +1870,7 @@ def evaluate(
             live_mask = np.asarray(mask, dtype=bool)
             if live_mask.shape != (15,):
                 raise EvalContractError(
-                    "Worker 参与度动作掩码必须为 (15,)")
+                    "Worker engagement action mask must be (15,)")
             a = int(_inner(obs, mask))
             engage["calls"] += 1
             engage["hist"][int(a)] += 1
@@ -1879,13 +1879,13 @@ def evaluate(
             if a == 14:
                 if not bool(live_mask[14]):
                     raise EvalContractError(
-                        "Worker 请求 action14 时环境掩码为假")
+                        "environment mask was False when the Worker requested action14")
                 engage["action14_requests"] += 1
             script_mask, nearest = env.env.controller_action_context()
             script_mask = np.asarray(script_mask, dtype=bool)
-            # R13:分歧参照系按当前窗口模式取正典脚本(farm-only 注册下
-            # instrumented 只会在 FARM 窗被调用,mode 恒为 farm,旧口径
-            # 逐位不变)。
+            # R13: the divergence reference takes the canonical script for the current window mode (under farm-only registration
+            # instrumented is only called in FARM windows, mode is always farm, and the old definition stays
+            # bit-identical).
             _win = getattr(env, "_win", None) or {}
             s = dispatch(
                 ("farm", "dive", "resupply")[int(_win.get("opt", FARM))],
@@ -1907,19 +1907,19 @@ def evaluate(
                 "diablogym_worker_action12_mode"):
             if hasattr(inner, attribute):
                 setattr(instrumented, attribute, getattr(inner, attribute))
-        # R13:凡指向同一 inner 的注册键(FARM,或 farm-dive-v1 下的 DIVE)
-        # 统一替换为同一 instrumented——engage 计数器共享,action14 原生
-        # 回执对账(receipt_requests==requests)在双注册下自然闭合。
-        # farm-only 注册下本循环恰替换 FARM 一键,旧口径逐位不变。
+            # R13: every registration key pointing to the same inner (FARM, or DIVE under farm-dive-v1)
+            # is replaced by the same instrumented: the engage counters are shared, and the action14 native
+            # receipt reconciliation (receipt_requests==requests) closes naturally under dual registration.
+            # Under farm-only registration this loop replaces exactly the FARM key; the old definition stays bit-identical.
         for _key in [k for k, v in active_workers.items() if v is inner]:
-            active_workers[_key] = instrumented   # env 持同一 dict 引用,替换副本生效
+            active_workers[_key] = instrumented   # env holds the same dict reference, so replacing in the copy takes effect
     rows = []
     try:
         for seed in seeds:
             obs, _ = env.reset(seed=seed)
             if episode_reseed is not None:
-                # 局开始时以该局 seed 确定性播种工人采样 RNG(FARM/DIVE 双
-                # 注册指向同一 callback,共享同一条流)。
+                # At episode start seed the worker sampling RNG deterministically with the episode seed (the FARM/DIVE dual
+                # registration points to the same callback and shares one stream).
                 episode_reseed(seed)
             done = trunc = False
             R = 0.0
@@ -1952,7 +1952,7 @@ def evaluate(
                     dry = oe["dry"]
                     if not isinstance(dry, bool):
                         raise EvalContractError(
-                            "option_extra.dry 必须是精确 bool")
+                            "option_extra.dry must be an exact bool")
                     stratum = farm_dry if dry else farm_fresh
                     farm["n"] += 1
                     stratum["n"] += 1
@@ -1981,7 +1981,7 @@ def evaluate(
             ending = terminal_kind(
                 raw, final_info, bool(done), bool(trunc), micro_steps)
             rows.append({
-                # 档案保留完整 Python float；只有终端显示/聚合展示才圆整。
+                # The archive keeps full Python floats; only terminal display/aggregate display rounds.
                 "seed": seed, "ret": float(R),
                 "depth": raw["dungeon_level"],
                 "died": bool(raw.get("dead")), "kills": env.env._ep_kills,
@@ -1989,8 +1989,8 @@ def evaluate(
                 "farm_r": float(farm["r"]),
                 "farm_w": float(farm["w"]),
                 "farm_bonus": float(farm["bonus"]),
-                # 总账直接由 dry/fresh 两层分账生成，使正式档案中的
-                # 守恒关系按 JSON float 精确成立，而不是依赖近似容差。
+                # The totals are produced directly from the dry/fresh two-layer split, so in the official archive the
+                # conservation relations hold exactly on JSON floats instead of relying on an approximate tolerance.
                 "farm_worker_wage": float(
                     farm_dry["worker_wage"] + farm_fresh["worker_wage"]),
                 "farm_kills": int(farm["kills"]),
@@ -2017,7 +2017,7 @@ def evaluate(
                 "farm_n": farm["n"],
                 "farm_tau_mean": (
                     farm["tau"] / max(1, farm["n"])),
-                # 分子与均值均保留原精度；格式化只发生在控制台/榜单。
+                # Numerators and means keep full precision; formatting happens only on the console/board.
                 "farm_tau_sum": farm["tau"],
                 "farm_descend": farm["descend"], "windows": allw["n"],
                 "beats": allw["beats"], "overrides": allw["overrides"],
@@ -2030,9 +2030,9 @@ def evaluate(
         try:
             env.close()
         finally:
-            # OptionsEnv 持有 active_workers，而 instrumentation 闭包又捕获
-            # env；主动清空评测专用副本，打断 env→dict→fn→env 环。调用方
-            # 原 workers 从未被修改。
+            # OptionsEnv holds active_workers, while the instrumentation closure captures
+            # env; clear the evaluation-only copy explicitly to break the env->dict->fn->env cycle. The caller's
+            # original workers were never modified.
             if active_workers is not None:
                 active_workers.clear()
     if engage is not None:
@@ -2041,7 +2041,7 @@ def evaluate(
             != engage["action14_requests"]
         ):
             raise EvalContractError(
-                "action14 callback 请求数与 Options 原生回执请求数不闭合:"
+                "action14 callback request count and Options native receipt request count do not close: "
                 f"{engage['action14_requests']} != "
                 f"{engage['_action14_receipt_requests']}")
         engage.pop("_action14_receipt_requests")
@@ -2053,17 +2053,17 @@ def digest(rows):
 
 
 def compare_probe_rows(rows, reference_rows):
-    """G0'' 对账；两侧 seed 必须精确为同一个集合，禁止子集假 PASS。"""
+    """G0'' reconciliation; both sides' seeds must be exactly the same set, so a subset cannot fake a PASS."""
     current = {row["seed"]: row for row in rows}
     reference = {row["seed"]: row for row in reference_rows}
     if len(current) != len(rows):
-        raise ValueError("G0'' 当前评测含重复 seed")
+        raise ValueError("G0'' current evaluation contains a duplicate seed")
     if len(reference) != len(reference_rows):
-        raise ValueError("G0'' 参考档案含重复 seed")
+        raise ValueError("G0'' reference archive contains a duplicate seed")
     if set(current) != set(reference):
         missing = sorted(set(current) - set(reference))
         extra = sorted(set(reference) - set(current))
-        raise ValueError(f"G0'' seed 集合不精确一致:参考缺 {missing},参考多 {extra}")
+        raise ValueError(f"G0'' seed sets are not exactly equal: reference lacks {missing}, reference has extra {extra}")
     bad = []
     for seed in sorted(current):
         row, expected = current[seed], reference[seed]
@@ -2077,53 +2077,53 @@ def compare_probe_rows(rows, reference_rows):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--worker", required=True, help="script | bc | *.npz | ckpt 路径")
+    ap.add_argument("--worker", required=True, help="script | bc | *.npz | ckpt path")
     ap.add_argument("--manager-npz", default=None,
-                    help="v25:经理 npz(默认 v22-h——旧档回归口径不变)")
+                    help="v25: manager npz (default v22-h; the regression definition for old archives is unchanged)")
     ap.add_argument(
         "--manager-policy-observation-view",
         choices=["legacy-v3", "raw-v4"],
         default=None,
-        help="经理策略输入语义；默认冻结 v22-h/M29 为 legacy-v3。"
-             "任何自定义 --manager-npz 必须显式声明，禁止按 303 维猜测",
+        help="Manager policy input semantics; the frozen default v22-h/M29 is legacy-v3. "
+             "Any custom --manager-npz must declare it explicitly; guessing from 303 dims is forbidden",
     )
     ap.add_argument("--seeds", type=parse_seeds, default=parse_seeds("7000-7031"))
     ap.add_argument("--board", action="store_true",
-                    help=f"金评后写 {LB.name}（旧 leaderboard-hier.md 只读）")
+                    help=f"write {LB.name} after the gold-standard evaluation (the old leaderboard-hier.md is read-only)")
     ap.add_argument("--check-probe", default=None,
-                    help="G0'':对 v23 前探针存档逐种子回归(ret±0.6/depth/died 全等)")
+                    help="G0'': per-seed regression against the pre-v23 probe archive (ret +/-0.6/depth/died all equal)")
     ap.add_argument(
         "--require-published-worker", action="store_true",
-        help="SB3 候选必须复验 PUBLISHED 行为门、rev11 checkpoint 契约、"
-             "PASS liveness 与预注册谱系")
+        help="An SB3 candidate must re-verify the PUBLISHED behavior gate, the rev11 checkpoint contract, "
+             "PASS liveness and the pre-registered lineage")
     ap.add_argument(
         "--publication-expectations", default=None,
-        help="发车前冻结的 publication expectations JSON；与"
-             "--require-published-worker 必须同时给定")
+        help="publication expectations JSON frozen before launch; must be given together with "
+             "--require-published-worker")
     ap.add_argument("--tag", type=safe_tag, default=None)
     ap.add_argument("--reward-economy", default="v1",
                     choices=("v1", "v2", "v3", "v3b", "v4"),
-                    help="R10 奖励经济法案(v1=历史逐位不变;v2=深度经济;"
-                         "v4=R16 v2 同源 + idle_counts_micro_beats + "
-                         "idle_reset_on_kill)。只改回报记账,不改动作/掩码/"
-                         "观测协议")
-    # R16 新法锚:环境侧/教室侧开关。全部默认 = 旧法逐位不变(连 env_kwargs
-    # 关键字都不出现);任一非默认时进入 meta.protocol.r16_environment。
+                    help="R10 reward-economy act (v1 = historical, bit-identical; v2 = depth economy; "
+                         "v4 = same source as R16 v2 + idle_counts_micro_beats + "
+                         "idle_reset_on_kill). Changes only the return bookkeeping, not the action/mask/"
+                         "observation protocol")
+    # R16 new-law anchor: environment-side/classroom-side switches. All defaults = old law, bit-identical (not even the env_kwargs
+    # keywords appear); any non-default value enters meta.protocol.r16_environment.
     ap.add_argument("--explore-global-hunt", action="store_true",
-                    help="DiabloGymEnv explore_global_hunt(R16 主力:窗内"
-                         "无可见怪时全图 BFS 朝最近存活怪推进)")
+                    help="DiabloGymEnv explore_global_hunt (the main R16 lever: when no monster is visible"
+                         " in the window, BFS across the whole map toward the nearest living monster)")
     ap.add_argument("--explore-global-fallback", action="store_true",
                     help="DiabloGymEnv explore_global_fallback(C5)")
     ap.add_argument("--progress-far-tiles", type=int,
                     default=R16_ENVIRONMENT_DEFAULTS["progress_far_tiles"],
-                    help="DiabloGymEnv progress_far_tiles(C6;默认 0 = 旧法)")
+                    help="DiabloGymEnv progress_far_tiles (C6; default 0 = old law)")
     ap.add_argument("--farm-scene-cap", type=int,
                     default=R16_ENVIRONMENT_DEFAULTS["farm_scene_cap"],
-                    help="OptionsEnv farm_scene_cap(默认 1800 = "
-                         "options_env.FARM_SCENE_CAP 旧法)")
+                    help="OptionsEnv farm_scene_cap (default 1800 = "
+                         "the options_env.FARM_SCENE_CAP old law)")
     ap.add_argument("--reset-layer-clock-on-window", action="store_true",
-                    help="OptionsEnv reset_layer_clock_on_window(FARM 开窗"
-                         "清零无进展钟)")
+                    help="OptionsEnv reset_layer_clock_on_window (opening a FARM window"
+                         " resets the no-progress clock)")
     ap.add_argument("--resource-protocol", default="off",
                     choices=("off", "l2-town-v1"))
     ap.add_argument("--resource-purchase-mode", default="full",
@@ -2164,30 +2164,30 @@ def main():
                     help="Explicit bounded a11 blocker combat; requires resource protocol")
     ap.add_argument("--worker-window-registration", default="farm-only",
                     choices=("farm-only", "farm-dive-v1"),
-                    help="R13 考试新法(默认 farm-only 逐位复现旧卷):"
-                         "farm-dive-v1 把工人回调同挂 DIVE 窗并激活窗内"
-                         "主权移交——工人首次在考卷上亲自开 DIVE 车")
+                    help="R13 exam new law (default farm-only reproduces old exams bit for bit): "
+                         "farm-dive-v1 also hooks the worker callback onto DIVE windows and activates the in-window "
+                         "control handover: the worker drives DIVE itself on the exam for the first time")
     ap.add_argument("--worker-decoding", default="argmax",
                     choices=("argmax", "sample"),
-                    help="R16(C3)工人解码(默认 argmax 逐位复现旧卷):"
-                         "sample = SB3 工人 predict(deterministic=False),"
-                         "每局以该局 seed 播种 torch/numpy RNG、torch 单线程;"
-                         "写入 meta.protocol.worker_decoding")
+                    help="R16 (C3) worker decoding (default argmax reproduces old exams bit for bit): "
+                         "sample = SB3 worker predict(deterministic=False), "
+                         "each episode seeds the torch/numpy RNGs with its seed, single-threaded torch; "
+                         "written to meta.protocol.worker_decoding")
     args = ap.parse_args()
     if (args.worker_window_registration == "farm-dive-v1"
             and args.worker == "script"):
         ap.error("--worker-window-registration farm-dive-v1 "
-                 "不适用于 script 工人(无 callback 可挂)")
+                 "does not apply to the script worker (no callback to hook)")
     if args.worker_decoding == "sample":
         if (args.worker in {"script", "bc"}
                 or pathlib.Path(args.worker).suffix.lower() == ".npz"):
-            ap.error("--worker-decoding sample 只适用于 SB3 checkpoint 工人")
+            ap.error("--worker-decoding sample only applies to SB3 checkpoint workers")
         if args.board:
-            ap.error("--board 金评协议为 argmax,拒绝 sample 解码上榜")
+            ap.error("--board gold-standard protocol is argmax; refusing to put sample decoding on the board")
     if args.progress_far_tiles < 0:
-        ap.error("--progress-far-tiles 必须是非负整数(0 = 旧法)")
+        ap.error("--progress-far-tiles must be a non-negative integer (0 = old law)")
     if args.farm_scene_cap <= 0:
-        ap.error("--farm-scene-cap 必须是正整数(1800 = 旧法)")
+        ap.error("--farm-scene-cap must be a positive integer (1800 = old law)")
     try:
         validate_resource_service_config(args.resource_protocol,
                                          args.resource_purchase_mode,
@@ -2205,7 +2205,7 @@ def main():
         ap.error("--resource-retreat retreat-v1 requires "
                  "--resource-protocol l2-town-v1 and "
                  "--resource-readiness-law coach-v03")
-    # R18-B5 (2026-09-07):传送是撤退的载具,除教室之外还要那部撤退法。
+    # R18-B5 (2026-09-07): the portal is the retreat's carrier; besides the classroom it also needs that retreat law.
     if (args.resource_portal != "off"
             and (args.resource_protocol != "l2-town-v1"
                  or args.resource_readiness_law != "coach-v03")):
@@ -2215,25 +2215,25 @@ def main():
     if args.resource_portal != "off" and args.resource_retreat != "retreat-v1":
         ap.error("--resource-portal portal-v1 requires "
                  "--resource-retreat retreat-v1")
-    # R18-B5 复核修正 (2026-09-07):l1-only 只作用于 a10 全图寻怪的闸,
-    # 寻怪不开时它是空操作;不许铸出一份为没跑过的法作证的档案身份。
+    # R18-B5 review fix (2026-09-07): l1-only only acts on the gate of the a10 whole-map monster search,
+    # so with the search off it is a no-op; never mint an archive identity that testifies for a law that did not run.
     if args.hunt_scope != "all" and not args.explore_global_hunt:
         ap.error("--hunt-scope l1-only requires --explore-global-hunt")
-    # R18-B6 (2026-09-07):扫箱/鉴定/武器升级三条法都活在 loot 经济的进城
-    # 行程里,这三条 ap.error 复刻 OptionsEnv 构造器的三个 validator 的措辞。
-    # 复核修正(同日):"逐字"只对前两条成立。validate_sweep_protocol /
-    # validate_identify_protocol 的词汇表就是 ("off","sweep-v1") /
-    # ("off","cain-v1"),与上面的 choices= 逐字同款;而
-    # resource_weapon_upgrade.RESOURCE_WEAPON_UPGRADES 是
-    # ("off","dry-v1","smith-v1"),本文件的 choices= 与 eval_contract 的
-    # validate_r16_environment 都**故意**比它窄一个值。理由与训练侧同一条:
-    # dry-v1 不发命令、不走微步、不做 native 调用,其行数据与 control 臂逐位
-    # 相同,给它铸一份档案身份就是为一个与缺省世界逐位相同的环境作伪证
-    # ——正是 hunt_scope l1-only 复核修正关掉的那条口子。故这条窄化是刻意
-    # 带进部署侧的,不是疏漏;要考核 dry-v1 反事实臂需要先给它一条自己的
-    # 身份裁定(B6-REPORT.md 开放问题 2)。
-    # 注意 args.resource_weapon_upgrade 的 choices= 已在上面把 dry-v1 挡在
-    # 解析层,所以下面这三条只会看到 off/法名。
+    # R18-B6 (2026-09-07): the chest sweep/identify/weapon-upgrade laws all live in the loot economy's town
+    # trips; these three ap.error calls copy the wording of the three validators of the OptionsEnv constructor.
+    # Review fix (same day): "verbatim" holds only for the first two. The vocabularies of validate_sweep_protocol /
+    # validate_identify_protocol are ("off","sweep-v1") /
+    # ("off","cain-v1"), verbatim the same as the choices= above; but
+    # resource_weapon_upgrade.RESOURCE_WEAPON_UPGRADES is
+    # ("off","dry-v1","smith-v1"), and both this file's choices= and eval_contract's
+    # validate_r16_environment are **deliberately** one value narrower. The reason is the same as on the training side:
+    # dry-v1 sends no command, takes no micro-step and makes no native call, so its row data are bit-identical to the control arm;
+    # minting an archive identity for it would falsely testify for an environment bit-identical to the default world,
+    # exactly the hole the hunt_scope l1-only review fix closed. So this narrowing was carried
+    # into the deployment side on purpose, not by oversight; examining a dry-v1 counterfactual arm first needs its own
+    # identity decision (B6-REPORT.md open question 2).
+    # Note the choices= of args.resource_weapon_upgrade already stops dry-v1 at the
+    # parsing layer above, so the three checks below only ever see off or a law name.
     for flag, law, value in (("--resource-sweep", "sweep-v1", args.resource_sweep),
                              ("--resource-identify", "cain-v1", args.resource_identify),
                              ("--resource-weapon-upgrade", "smith-v1",
@@ -2261,38 +2261,38 @@ def main():
         "resource_readiness_law": args.resource_readiness_law,
         "resource_retreat": args.resource_retreat,
         "resource_portal": args.resource_portal,
-        # R18-B6 (2026-09-07):三条 loot 行程法进档案身份;默认 off 被
-        # 「非默认才记」过滤掉,旧卷逐字节不变。
+        # R18-B6 (2026-09-07): the three loot-trip laws enter the archive identity; the default off is
+        # filtered out by "record only non-defaults", so old exams stay byte-identical.
         "resource_sweep": args.resource_sweep,
         "resource_identify": args.resource_identify,
         "resource_weapon_upgrade": args.resource_weapon_upgrade,
         "dive_blocker_recovery": args.dive_blocker_recovery,
     }
-    # 身份只记非默认键;全默认 ⇒ 空字典 ⇒ env_kwargs/meta 逐字节不变。
+    # The identity records only non-default keys; all defaults => empty dict => env_kwargs/meta byte-identical.
     r16_environment = {
         key: value for key, value in requested_r16.items()
         if value != R16_ENVIRONMENT_DEFAULTS[key]}
     if r16_environment and args.board:
-        ap.error("--board 金评协议为旧法环境,拒绝 R16 环境开关上榜")
+        ap.error("--board gold-standard protocol is the old-law environment; refusing to put R16 environment switches on the board")
     if bool(args.require_published_worker) != bool(
             args.publication_expectations):
-        ap.error("--require-published-worker 与 --publication-expectations "
-                 "必须同时给定")
+        ap.error("--require-published-worker and --publication-expectations "
+                 "must be given together")
     if (args.require_published_worker
             and (args.worker in {"script", "bc"}
                  or pathlib.Path(args.worker).suffix.lower() == ".npz")):
-        ap.error("--require-published-worker 只适用于 SB3 checkpoint")
+        ap.error("--require-published-worker only applies to SB3 checkpoints")
     if args.manager_npz and args.manager_policy_observation_view is None:
-        ap.error("自定义 --manager-npz 必须同时给出"
+        ap.error("a custom --manager-npz must be given together with"
                  " --manager-policy-observation-view")
     manager_policy_observation_view = (
         args.manager_policy_observation_view or "legacy-v3")
 
-    # CLI 必须是尚未映射原生扩展的新进程；否则磁盘 SHA 无法证明已映射页的
-    # 字节身份。所有官方驱动均以子进程启动本入口。
+    # The CLI must be a fresh process that has not mapped the native extension yet; otherwise the on-disk SHA cannot prove the byte
+    # identity of the mapped pages. All official drivers start this entry point as a subprocess.
     if "_diablogym" in sys.modules:
         raise EvalContractError(
-            "eval_assembled 必须在未预载 diablogym bridge 的新进程中运行")
+            "eval_assembled must run in a fresh process that has not preloaded the diablogym bridge")
 
     seeds = args.seeds
     seed_label = f"{seeds[0]}-{seeds[-1]}"
@@ -2304,28 +2304,28 @@ def main():
     OUTDIR.mkdir(parents=True, exist_ok=True)
     out_path = OUTDIR / f"{tag}.json"
     if args.board and seeds != list(range(9000, 9032)):
-        ap.error("--board 只允许金评种子 9000-9031，拒绝用探针池污染排行榜")
+        ap.error("--board only allows the gold-standard seeds 9000-9031; refusing to pollute the leaderboard with the probe pool")
     board_contract = assembled_board_contract() if args.board else None
     if board_contract is not None:
         ensure_leaderboard_compatible(
             LB, board_contract, initial_text=ASSEMBLED_LEADERBOARD_HEADER)
-    board_guard = (exclusive_lock(OUTDIR / ".gold-evaluation.lock", "金评发车")
+    board_guard = (exclusive_lock(OUTDIR / ".gold-evaluation.lock", "gold-standard evaluation launch")
                    if args.board else contextlib.nullcontext())
     try:
-        # 从发车前一直持有到原子 commit 与读后复验完成；同 tag 的并发进程
-        # 无法同时越过 exists 检查再互相 os.replace。
+        # Held from before launch until the atomic commit and the read-back re-verification finish; concurrent processes with the same tag
+        # cannot both pass the exists check and then os.replace each other.
         with reserve_output(out_path), board_guard:
             bridge_path = bridge_binary_path(ROOT)
             runtime = runtime_identity(ROOT, bridge_path)
             if (board_contract is not None
                     and board_contract["runtime"] != runtime):
-                raise EvalContractError("组装体榜合同与评测 runtime 冻结结果不一致")
+                raise EvalContractError("assembled-agent board contract disagrees with the frozen evaluation runtime")
             _native_runtime(runtime)
             manager_path = pathlib.Path(args.manager_npz).resolve() if args.manager_npz else NPZ
             manager_id = file_identity("numpy_policy", manager_path)
             if not args.manager_npz and manager_id["sha256"] != NPZ_SHA:
                 raise EvalContractError(
-                    f"默认经理 npz sha 漂移:{manager_id['sha256']} != {NPZ_SHA}")
+                    f"default manager npz sha drift: {manager_id['sha256']} != {NPZ_SHA}")
             expected_provenance = None
             expectations_identity = None
             if args.publication_expectations:
@@ -2346,15 +2346,15 @@ def main():
                 expected_provenance=expected_provenance,
                 worker_decoding=args.worker_decoding)
             if loaded_label != label:
-                raise EvalContractError("worker 标签推导与加载结果不一致")
+                raise EvalContractError("worker label derivation disagrees with the load result")
             if args.worker_decoding != "argmax":
-                print(f"  工人解码:{args.worker_decoding}"
-                      "(逐局 set_random_seed(seed),torch 单线程)")
+                print(f"  worker decoding: {args.worker_decoding}"
+                      " (set_random_seed(seed) per episode, single-threaded torch)")
             if r16_environment:
-                print(f"  R16 环境开关(非默认):{r16_environment}")
+                print(f"  R16 environment switches (non-default): {r16_environment}")
 
-            # 使用身份清单中已经 resolve 的同一文件，避免自定义 symlink 在
-            # 哈希与实际 NumpyManager.load 之间改指向。
+            # Use the same file already resolved in the identity manifest, so a custom symlink cannot change its target between
+            # the hash and the actual NumpyManager.load.
             rows, engage = evaluate(
                 workers, seeds, manager_npz=str(manager_path),
                 manager_sha256=manager_id["sha256"],
@@ -2380,34 +2380,34 @@ def main():
                     engage["action14_native_successes"])
                 agg["worker_action14_gear_utility_delta"] = (
                     engage["action14_gear_utility_delta"])
-                print(f"  参与度:worker 调用 {engage['calls']},"
-                      f"动作直方 {agg['worker_action_hist']},"
-                      f"与脚本分歧率 {agg['script_divergence_rate']:.4f}")
+                print(f"  engagement: worker calls {engage['calls']}, "
+                      f"action histogram {agg['worker_action_hist']}, "
+                      f"divergence rate from script {agg['script_divergence_rate']:.4f}")
                 print(
-                    "  换装账:"
-                    f"机会 {agg['worker_action14_mask_opportunities']}, "
-                    f"请求 {agg['worker_action14_requests']}, "
-                    f"原生成功 {agg['worker_action14_native_successes']}, "
-                    "效用增量 "
+                    "  gear-swap ledger: "
+                    f"opportunities {agg['worker_action14_mask_opportunities']}, "
+                    f"requests {agg['worker_action14_requests']}, "
+                    f"native successes {agg['worker_action14_native_successes']}, "
+                    "utility gain "
                     f"{agg['worker_action14_gear_utility_delta']}"
                 )
             print(f"{tag}: ret {agg['ret_mean']:.1f} "
                   f"(med {agg['ret_median']:.2f}) "
                   f"died {agg['died']}/{agg['n']} depth_med {agg['depth_median']} | "
-                  f"R4: 换层率 {agg['farm_descend_rate']:.4f} "
+                  f"R4: level-change rate {agg['farm_descend_rate']:.4f} "
                   f"override {agg['override_rate']:.4f} "
                   f"cap {agg['cap_rate']:.4f} "
                   f"farmτ̄ {agg['farm_tau_mean']:.1f}")
             print(
-                "  药水账:"
-                f"主动饮/局 {agg['farm_voluntary_drinks_mean']:.3f}, "
-                "反射尝试/成功每局 "
+                "  potion ledger: "
+                f"active drinks/episode {agg['farm_voluntary_drinks_mean']:.3f}, "
+                "reflex attempts/successes per episode "
                 f"{agg['farm_reflex_drain_attempts_mean']:.3f}/"
                 f"{agg['farm_reflex_drains_mean']:.3f}, "
-                f"多饮窗率 {agg['farm_multi_drink_window_rate']:.6f}, "
-                "单窗主动饮最大 "
+                f"multi-drink window rate {agg['farm_multi_drink_window_rate']:.6f}, "
+                "max active drinks in one window "
                 f"{max(row['farm_max_voluntary_drinks_per_window'] for row in rows)}, "
-                f"终局腰带治疗均值 {agg['ending_belt_heals_mean']:.3f}"
+                f"mean ending belt heals {agg['ending_belt_heals_mean']:.3f}"
             )
 
             if args.check_probe:
@@ -2416,19 +2416,19 @@ def main():
                 try:
                     ref_rows = probe_doc["argmax_episodes"]
                 except (KeyError, TypeError) as exc:
-                    raise ValueError("G0'' 参考档案缺少 argmax_episodes") from exc
+                    raise ValueError("G0'' reference archive lacks argmax_episodes") from exc
                 bad = compare_probe_rows(rows, ref_rows)
-                print(f"G0'' 回归:{len(rows) - len(bad)}/{len(rows)} 一致"
-                      + (f";失配 {bad}" if bad else " —— PASS"))
+                print(f"G0'' regression: {len(rows) - len(bad)}/{len(rows)} match"
+                      + (f"; mismatches {bad}" if bad else " -- PASS"))
                 if bad:
                     raise SystemExit(1)
 
-            # 文件型输入和运行时代码在长评测期间若被替换，本档案必须作废。
+            # If file inputs or runtime code are replaced during a long evaluation, this archive must be voided.
             verify_file_identity(worker_id)
             verify_file_identity(manager_id)
             verify_publication_expectations(expectations_identity)
             if runtime_identity(ROOT, bridge_path) != runtime:
-                raise EvalContractError("评测期间 bridge、engine 或协议源码发生变化")
+                raise EvalContractError("bridge, engine or protocol source changed during evaluation")
 
             document = {
                 "schema_version": SCHEMA_VERSION,
@@ -2443,16 +2443,16 @@ def main():
                 {"worker": worker_id, "manager": manager_id, "runtime": runtime},
                 tag=tag, seeds=seeds)
             if args.worker_decoding != "argmax":
-                # 默认 argmax 下 expected 字典逐键不变;sample 档案读后复验
-                # 必须核对 meta.protocol.worker_decoding 声明。
+                # Under the default argmax the expected dict is unchanged key by key; the read-back re-verification of a sample archive
+                # must check the meta.protocol.worker_decoding declaration.
                 expected["expected_worker_decoding"] = args.worker_decoding
             if r16_environment:
-                # 同理:R16 新法锚读后复验必须核对 r16_environment 声明。
+                # Likewise: the R16 new-law anchor's read-back re-verification must check the r16_environment declaration.
                 expected["expected_r16_environment"] = dict(r16_environment)
             validate_eval_archive(document, **expected)
             payload = json.dumps(document, ensure_ascii=False, indent=1, allow_nan=False)
 
-            # 同目录临时文件 + fsync + os.replace：SIGKILL 不留下半截正式 JSON。
+            # Temp file in the same directory + fsync + os.replace: SIGKILL leaves no half-written official JSON.
             tmp = out_path.with_name(f".{out_path.name}.{os.getpid()}.tmp")
             try:
                 with open(tmp, "w", encoding="utf-8") as stream:
@@ -2469,12 +2469,12 @@ def main():
                 verify_publication_expectations(expectations_identity)
                 if runtime_identity(ROOT, bridge_path) != runtime:
                     raise EvalContractError(
-                        "档案提交期间 bridge、engine 或协议源码发生变化")
+                        "bridge, engine or protocol source changed while committing the archive")
             except Exception:
                 out_path.rename(out_path.with_suffix(f".{time.time_ns()}.void"))
                 raise
             agg = loaded["agg"]
-            print(f"已存并复验 {out_path}")
+            print(f"saved and re-verified {out_path}")
 
             if args.board:
                 archive_sha = hashlib.sha256(out_path.read_bytes()).hexdigest()
@@ -2485,7 +2485,7 @@ def main():
                     f"{agg['died']}/{agg['n']} | {agg['depth_median']} | "
                     f"worker={worker_id['kind']}; L3+ {agg['l3']}; "
                     f"kills {agg['kills_mean']:.1f}; "
-                    f"换层率 {agg['farm_descend_rate']:.4f}; "
+                    f"level-change rate {agg['farm_descend_rate']:.4f}; "
                     f"override {agg['override_rate']:.4f} |")
                 row = assembled_leaderboard_row(
                     visible, row_key=row_key, contract=board_contract,
@@ -2496,9 +2496,9 @@ def main():
                     LB, {row_key: row}, contract=board_contract,
                     initial_text=ASSEMBLED_LEADERBOARD_HEADER,
                     lock_path=LB_LOCK)
-                print(f"已写入 {LB.name}")
+                print(f"wrote {LB.name}")
     except OutputReservationError as exc:
-        ap.error(f"{exc}（请等待并发评测结束，或按重启协议归档旧结果）")
+        ap.error(f"{exc} (wait for the concurrent evaluation to finish, or archive the old result per the restart protocol)")
 
 
 if __name__ == "__main__":

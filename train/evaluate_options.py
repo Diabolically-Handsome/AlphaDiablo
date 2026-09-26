@@ -1,10 +1,10 @@
-"""分层/平面双路径版本化评测（榜单版本取自 PROTOCOL_VERSION）。
+"""Versioned evaluation for the hierarchical and flat paths (the board version comes from PROTOCOL_VERSION).
 
-用法:
-  分层臂:.venv/bin/python train/evaluate_options.py train/runs/<run>/model_final --options
-  平面臂:.venv/bin/python train/evaluate_options.py train/runs/<run>/model_final --flat-clock
-协议:32 种子 9000-9031、argmax+掩码、3000 微步、空载、引擎钉死、
-回报 = 未折现局回报(神谕账本口径)。
+Usage:
+  hierarchical arm: .venv/bin/python train/evaluate_options.py train/runs/<run>/model_final --options
+  flat arm: .venv/bin/python train/evaluate_options.py train/runs/<run>/model_final --flat-clock
+Protocol: 32 seeds 9000-9031, argmax + masks, 3000 micro-steps, idle machine, engine pinned,
+return = undiscounted episode return (the oracle-ledger definition).
 """
 from __future__ import annotations
 
@@ -114,7 +114,7 @@ def evaluate(model_path: str, hier: bool, *,
                     seq = oe["mode_seq"]
             ex = validated_episode_extra(info, seed)
             if not math.isfinite(R):
-                raise RuntimeError(f"seed {seed} 累计回报含 NaN/Inf")
+                raise RuntimeError(f"seed {seed} cumulative return contains NaN/Inf")
             raw = env.env._raw
             rows.append({"seed": seed, "ret": round(R, 2),
                          "depth": ex["depth"],
@@ -155,8 +155,8 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("model_path")
     mode = ap.add_mutually_exclusive_group(required=True)
-    mode.add_argument("--options", action="store_true", help="评估分层经理")
-    mode.add_argument("--flat-clock", action="store_true", help="评估平面+停滞钟策略")
+    mode.add_argument("--options", action="store_true", help="evaluate the hierarchical manager")
+    mode.add_argument("--flat-clock", action="store_true", help="evaluate the flat + stall-clock policy")
     args = ap.parse_args()
     model_path = args.model_path
     hier = args.options
@@ -166,13 +166,13 @@ def main():
     agg, rows = evaluate(model_path, hier, contract=contract)
     if (agg.get("contract") != contract
             or agg.get("contract_sha256") != contract_sha256(contract)):
-        raise RuntimeError("层级评估结果未绑定发车前 standalone contract")
+        raise RuntimeError("hierarchical evaluation result is not bound to the pre-launch standalone contract")
     name = pathlib.Path(model_path).parent.name or pathlib.Path(model_path).stem
     row_key = versioned_row_key(name, agg["model_sha256"])
     print(f"{name}: ret {agg['ret_mean']} (med {agg['ret_median']}) died {agg['died']}/32 "
           f"depth_med {agg['depth_median']} L3+ {agg['l3']} kills {agg['kills_mean']}")
     if hier:
-        print(f"  选项份额 {agg['opt_share']} 终止原因 {agg['reasons']} 螺旋序列局数 {agg['spiral_seqs']}/32")
+        print(f"  option share {agg['opt_share']} termination reasons {agg['reasons']} spiral-sequence episodes {agg['spiral_seqs']}/32")
     note = ("hier" if hier else "flat+clock")
     visible = (f"| {row_key} | {agg['ret_mean']} | {agg['ret_median']} | "
                f"{agg['died']}/32 | {agg['depth_median']} | {note}; "
@@ -183,7 +183,7 @@ def main():
     upsert_leaderboard_rows(
         LB, {row_key: row}, contract=contract,
         initial_text=LEADERBOARD_HEADER, lock_path=LB_LOCK)
-    print(f"已写入 {LB.name}")
+    print(f"wrote {LB.name}")
 
 
 if __name__ == "__main__":

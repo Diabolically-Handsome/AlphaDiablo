@@ -6,7 +6,7 @@ index 753d0ea..140f07e 100644
  	AddSLine(5);
  }
  
-+// R18-H (2026-09-07) 凯恩鉴定: the list predicate and its 100-gold quote are
++// R18-H (2026-09-07) Cain identify: the list predicate and its 100-gold quote are
 +// the shared kernel's, so the GUI and act_identify can never disagree.
  bool IdItemOk(Item *i)
  {
@@ -34,7 +34,7 @@ index 753d0ea..140f07e 100644
  	return { StoreBuyStatus::Success, *price };
  }
  
-+// R18-H (2026-09-07) 凯恩鉴定: Cain identifies one carried or worn magic item
++// R18-H (2026-09-07) Cain identify: Cain identifies one carried or worn magic item
 +// for a fixed fee. StartStorytellerIdentify lists exactly IdItemOk items and
 +// quotes StorytellerIdentifyPrice; StorytellerIdentifyEnter refuses when the
 +// player cannot afford it; StorytellerIdentifyItem then flips _iIdentified on
@@ -110,7 +110,7 @@ index adb8718..0a4f0f1 100644
      uint32_t expectedSeed, uint16_t expectedCreateInfo, int expectedBaseId,
      int expectedDurability, int expectedPrice);
  
-+/** R18-H (2026-09-07) 凯恩鉴定: Cain's fixed identify fee. The storyteller UI
++/** R18-H (2026-09-07) Cain identify: Cain's fixed identify fee. The storyteller UI
 + * quotes it by overwriting the listed copy's value in AddStoreHoldId; naming it
 + * here keeps the GUI list and the shared kernel below on one number.
 + */

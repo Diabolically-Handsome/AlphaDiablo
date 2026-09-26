@@ -1,28 +1,28 @@
-"""内容案 E2 乙1′ 采集件之自包含快速回归(PREREG-内容案-课⑤x④乙 E2/E7;
-不启动引擎/训练)。
+"""Self-contained fast regression for the content-case E2 B1' collection component (PREREG-v33-content-case E2/E7;
+no engine or training is started).
 
-覆盖(E2 施工面逐字):
-- 教师 v2 触发谓词真值表(hp 边界 0.5 闭 / 0.65 开；旧 0.70 OC 禁用;
-  belt 前置);
-- 教师预防饮目标只依 298 维可见 hp/mask/主动饮位，同观测不受隐藏历史
-  影响；overridden 拍剔除后下一可见带内态仍保持 a12；反射态 fail-loud;
-- 禁采断言世代条件化镜像:v1 禁 (11,12) 原封 / v2 禁 11 允 12 分别成文;
-- v2 demos schema 逐样本 masks(env.action_masks() 现场捕获逐字入档,
-  反推口径系第二真源禁用;m[11] 恒 False、标签须在掩码内);
-- n₁₂ 闸与 recall 门计算件(分母 = held-out 实标 a12 态;fail-closed
-  零覆盖记 0.0 不消失;逐局分解 / 12/13 类占比 / 腰带经济读数);
-- v1/v2 回执验证器互斥(v1 验证器对 v2 件必炸,反向亦然)+ v2 篡改矩阵
-  (含 rev4 十二附二④ 补铸之 demos 实测字节断言,镜像 policy 侧形制);
-- main_v2 回执键集合恰等 + FAIL 拒写权重 + 类加权重试限 v1 面质量闸
-  (n₁₂/recall_12 永不触发——类加权系 N12 已除名预案);
-- v1/v2 候选选择使用训练局内的独立 validation；篡改 final held-out 标签
-  不改变 retry 决策、类权或所选模型；
-- v1 面回归零破坏(canonical 路径 / schema_version=1 / 采集行为原封);
-- 方案甲(2026-07-19 亲批):v2 采集局数 ×3；当前 v1/v2 active registry 为
-  未查看的 2142000..2142127 / 2143000..2143383 固定池，旧 2100000 /
-  2101000 池保持 burned + v2 主训类平衡加权 CE
-  (w_c = N/(K·n_c) 手算恒等;v1 调用路径不加权)+ 回执新字段
-  (collection_episodes / class_weights)与验证器篡改矩阵。
+Covers (the E2 implementation surface, verbatim):
+- truth table of the teacher v2 trigger predicate (hp boundary 0.5 closed / 0.65 open; the old 0.70 OC disabled;
+    belt precondition);
+- the teacher's preventive-drink target depends only on the 298-dim visible hp/mask/active-drink slot, so the same observation
+    is not affected by hidden history; after overridden ticks are dropped, the next visible in-band state still keeps a12; reflex states fail loud;
+- the forbidden-action assertion mirrored per generation: v1 forbids (11,12) unchanged / v2 forbids 11 and allows 12, written separately;
+- per-sample masks in the v2 demos schema (env.action_masks() captured live and archived verbatim;
+    reconstructing them is banned as a second source of truth; m[11] always False, labels must be inside the mask);
+- the n12 gate and recall-gate computations (denominator = held-out states truly labelled a12; fail-closed:
+    zero coverage is recorded as 0.0, not dropped; per-episode breakdown / class-12/13 shares / belt-economy readings);
+- mutual exclusion of the v1/v2 receipt validators (the v1 validator must fail on a v2 artifact and vice versa) + the v2 tampering matrix
+    (including the measured-bytes assertion on demos added by rev4 item 12, annex 2.4, mirroring the policy-side form);
+- the main_v2 receipt key set is exact + FAIL refuses to write weights + the class-weighted retry is limited to the v1-surface quality gate
+    (n12/recall_12 never trigger it: class weighting as an N12 fallback plan was withdrawn);
+- v1/v2 candidate selection uses an independent validation split from the training episodes; tampering with final held-out labels
+    does not change the retry decision, class weights or the selected model;
+- zero breakage of the v1 surface (canonical path / schema_version=1 / collection behaviour unchanged);
+- plan A (approved 2026-07-19): v2 collection episodes x3; the current v1/v2 active registry is
+    the unseen fixed pools 2142000..2142127 / 2143000..2143383, the old 2100000 /
+    2101000 pools stay burned + class-balanced weighted CE for v2 main training
+    (w_c = N/(K*n_c), a hand-computed identity; the v1 call path is not weighted) + new receipt fields
+    (collection_episodes / class_weights) and the validator tampering matrix.
 """
 
 from __future__ import annotations
@@ -78,7 +78,7 @@ BC_WORKER_SHA = hashlib.sha256(BC_WORKER.read_bytes()).hexdigest()
 
 def _raw(hp=100, max_hp=100, belt=0, monsters=(), floor_items=(),
          progression=()):
-    """免引擎 raw 字典:dispatch/谓词消费的最小键集。"""
+    """Engine-free raw dict: the minimal key set consumed by dispatch and the predicate."""
     return {"hp": hp, "max_hp": max_hp, "belt_heals": belt,
             "player_x": 0, "player_y": 0,
             "monsters": list(monsters), "floor_items": list(floor_items),
@@ -86,13 +86,13 @@ def _raw(hp=100, max_hp=100, belt=0, monsters=(), floor_items=(),
 
 
 def _in_band(belt=2, **kw):
-    """预防带内态(hp=0.55)+ 贴身怪(dispatch 农期非 12 分支 → 9)。"""
+    """In-band preventive state (hp=0.55) + adjacent monster (dispatch farm phase, non-12 branch -> 9)."""
     return _raw(hp=55, max_hp=100, belt=belt,
                 monsters=[{"x": 1, "y": 0}], **kw)
 
 
 def _out_band():
-    """带外常态(hp 满、空腰带、空场)→ dispatch 农期兜底 10。"""
+    """Out-of-band normal state (full hp, empty belt, empty field) -> dispatch farm-phase fallback 10."""
     return _raw(hp=100, max_hp=100, belt=0)
 
 
@@ -115,7 +115,7 @@ def _visible_masks(raw, gear=False):
 
 
 def _teacher_env(raw, gear=False, prior_window_drink=False):
-    """TeacherV2.action 消费的最小 env 壳(免引擎)。"""
+    """Minimal env shell consumed by TeacherV2.action (engine-free)."""
     base_masks = _visible_masks(raw, gear)
     obs = _visible_obs(raw, prior_window_drink)
     base = types.SimpleNamespace(_raw=raw, action_masks=lambda: base_masks)
@@ -126,16 +126,16 @@ def _teacher_env(raw, gear=False, prior_window_drink=False):
 
 def _default_worker_masks():
     m = np.ones(15, dtype=bool)
-    m[11] = False   # 11 恒掩归经理(worker 视角)
+    m[11] = False   # 11 is always masked and belongs to the manager (worker view)
     return m
 
 
 class _ScriptedEnv:
-    """免引擎 WorkerWindowEnv 替身:按脚本回放窗口拍序列。
+    """Engine-free stand-in for WorkerWindowEnv: replays window tick sequences from a script.
 
-    script_for_seed(seed) → [窗1拍列表, 窗2拍列表, ...];每拍 = dict(
-    raw=..., overridden=False, mask=None)。窗内末拍 term=True;窗序尽
-    next_window → None(绝不滚新局,与真环境同款纪律)。
+    script_for_seed(seed) -> [ticks of window 1, ticks of window 2, ...]; each tick = dict(
+    raw=..., overridden=False, mask=None). The last tick of a window has term=True; when the windows run out
+    next_window -> None (never rolls a new episode, the same discipline as the real environment).
     """
 
     def __init__(self, script_for_seed):
@@ -186,7 +186,7 @@ class _ScriptedEnv:
         window_id = self._w
         episode_end = last and self._w == len(self._windows) - 1
         if last and not episode_end:
-            # v4：自然 FARM 边界 nonterminal，obs2 已是下一窗首态。
+            # v4: a natural FARM boundary is nonterminal, and obs2 is already the first state of the next window.
             self._w += 1
             self._b = 0
             self._voluntary_drinks = 0
@@ -202,8 +202,8 @@ class _ScriptedEnv:
         }
 
     def next_window(self):
-        # 新协议只在底层局 terminal 后被 collect_v2 调用；自然窗口转换已经
-        # 由 step(nonterminal)+farm_window_end 完成。
+        # The new protocol calls collect_v2 only after an underlying episode terminal; natural window transitions are already
+        # handled by step(nonterminal)+farm_window_end.
         if self._w >= len(self._windows) - 1:
             return None
         self._w += 1
@@ -219,7 +219,7 @@ class _ScriptedEnv:
 
 
 class _PatchMixin:
-    """unittest 侧 monkeypatch(bc_worker 模块属性,addCleanup 复位)。"""
+    """unittest-side monkeypatch (bc_worker module attributes, restored with addCleanup)."""
 
     def _patch(self, name, value):
         original = getattr(bc_worker, name)
@@ -234,25 +234,25 @@ class _PatchMixin:
 
 
 class TriggerPredicateTests(unittest.TestCase):
-    """E2①:教师 v2 可见谓词真值表(hp 边界 + 每窗主动饮位)。"""
+    """E2-1: truth table of the teacher v2 visible predicate (hp boundaries + the per-window active-drink slot)."""
 
     def test_truth_table_main_threshold(self):
         t = teacher_v2_preventive_trigger
         def hit(raw, *, prior=False):
             return t(_visible_obs(raw, prior), _visible_masks(raw))
 
-        self.assertTrue(hit(_raw(hp=50, max_hp=100, belt=1)))   # 下界闭
-        self.assertTrue(hit(_raw(hp=64, max_hp=100, belt=3)))   # 带内
-        self.assertFalse(hit(_raw(hp=49, max_hp=100, belt=1)))  # 反射域/mask 关
-        self.assertFalse(hit(_raw(hp=65, max_hp=100, belt=1)))  # 上界开
+        self.assertTrue(hit(_raw(hp=50, max_hp=100, belt=1)))   # lower bound closed
+        self.assertTrue(hit(_raw(hp=64, max_hp=100, belt=3)))   # in band
+        self.assertFalse(hit(_raw(hp=49, max_hp=100, belt=1)))  # reflex domain / mask closed
+        self.assertFalse(hit(_raw(hp=65, max_hp=100, belt=1)))  # upper bound open
         self.assertFalse(hit(_raw(hp=100, max_hp=100, belt=8)))
         self.assertFalse(hit(_raw(hp=60, max_hp=100, belt=0)))  # live m12=False
-        self.assertTrue(hit(_raw(hp=1, max_hp=2, belt=1)))      # 比例口径
+        self.assertTrue(hit(_raw(hp=1, max_hp=2, belt=1)))      # ratio criterion
         self.assertFalse(hit(
             _raw(hp=60, max_hp=100, belt=1), prior=True))
 
     def test_runtime_safety_envelope_keeps_main_threshold_hard_negatives(self):
-        """线上 mask 到 0.75，但唯一注册教师止于 0.65。"""
+        """The live mask goes up to 0.75, but the only registered teacher stops at 0.65."""
         fixture = OptionsEnv.__new__(OptionsEnv)
         fixture.drink_sovereignty = True
         fixture._win = {"voluntary_drinks": 0}
@@ -261,15 +261,15 @@ class TriggerPredicateTests(unittest.TestCase):
         fixture.env = types.SimpleNamespace(
             _raw=raw, action_masks=lambda: base_masks)
 
-        # 旧 OC 区仍是线上合法动作，但已经不再是教师正例。
+        # The old OC range is still a legal live action, but no longer a teacher positive.
         self.assertFalse(
             teacher_v2_preventive_trigger(
                 _visible_obs(raw), _visible_masks(raw),
                 _PREVENTIVE_THRESHOLD_MAIN))
         self.assertTrue(fixture._worker_masks()[12])
 
-        # [0.65,0.75) 是真实 m12=True hard-negative 裁量区，而不是
-        # “mask 已替策略作答”。
+        # [0.65,0.75) is a real m12=True hard-negative discretion range, not
+        # "the mask has already answered for the policy".
         for hp in (65, 69, 70, 74):
             fixture.env._raw = _raw(hp=hp, max_hp=100, belt=1)
             self.assertFalse(
@@ -295,16 +295,16 @@ class TriggerPredicateTests(unittest.TestCase):
 
 
 class TeacherV2ObservableTargetTests(unittest.TestCase):
-    """E2①:预防饮目标必须是当前可见状态的纯函数。"""
+    """E2-1: the preventive-drink target must be a pure function of the current visible state."""
 
     def test_unregistered_threshold_rejected(self):
         for bad in (0.6, 0.70, 0.75, 0.5, 1.0):
-            with self.assertRaisesRegex(ValueError, "未注册"):
+            with self.assertRaisesRegex(ValueError, "not registered"):
                 TeacherV2(bad)
         TeacherV2(0.65)
 
     def test_preventive_branch_is_preposed_before_dispatch(self):
-        # 带内 + 贴身怪:dispatch 会出 9,前置分支必须先出 12。
+        # in band + adjacent monster: dispatch would give 9, the preceding branch must give 12 first.
         teacher = TeacherV2()
         teacher.begin_window()
         self.assertEqual(teacher.action(_teacher_env(_in_band())), 12)
@@ -334,10 +334,10 @@ class TeacherV2ObservableTargetTests(unittest.TestCase):
         self.assertEqual(teacher.action(env), 12)
 
     def test_reflex_state_fails_loud(self):
-        # hp<0.5∧belt>0 反射态原理上不可见(排水兜底);见到即禁静默采。
+        # A reflex state hp<0.5 and belt>0 is in principle not visible (the drain covers it); if seen, silent collection is forbidden.
         teacher = TeacherV2()
         teacher.begin_window()
-        with self.assertRaisesRegex(RuntimeError, "排水失守"):
+        with self.assertRaisesRegex(RuntimeError, "drain breached"):
             teacher.action(_teacher_env(_raw(hp=40, max_hp=100, belt=1)))
 
     def test_out_of_band_delegates_to_dispatch_verbatim(self):
@@ -352,7 +352,7 @@ class TeacherV2ObservableTargetTests(unittest.TestCase):
 
 
 class GenerationConditionedForbiddenTests(_PatchMixin, unittest.TestCase):
-    """E2③:禁采断言世代条件化(v1 禁 (11,12) 原封;v2 禁 11 允 12)。"""
+    """E2-3: the forbidden-action assertion conditioned on generation (v1 forbids (11,12) unchanged; v2 forbids 11 and allows 12)."""
 
     def test_generation_table(self):
         self.assertEqual(forbidden_actions_for_generation(1), (11, 12))
@@ -362,31 +362,31 @@ class GenerationConditionedForbiddenTests(_PatchMixin, unittest.TestCase):
         self.assertEqual(TEACHER_GENERATION_V1, 1)
         self.assertEqual(TEACHER_GENERATION_V2, 2)
         for bad in (0, 3, "1"):
-            with self.assertRaisesRegex(ValueError, "未知教师世代"):
+            with self.assertRaisesRegex(ValueError, "unknown teacher generation"):
                 forbidden_actions_for_generation(bad)
 
     def test_v1_source_assertion_verbatim(self):
-        # v1 路径断言原封(源文级镜像,防被"共用助手"静默改写)。
+        # The v1 path assertion is unchanged (source-level mirror, guarding against silent rewriting by a "shared helper").
         src = BC_WORKER.read_text()
         self.assertIn("np.isin(labels, _WORKER_BC_FORBIDDEN_ACTIONS).any()", src)
-        self.assertIn("示范集含禁采动作 11/12", src)
+        self.assertIn("demo set contains forbidden actions 11/12", src)
 
     def test_v1_collect_rejects_a12_pool(self):
-        # v1 教师系 dispatch 直连:反射态 → 12 入池 → 禁采断言必炸。
+        # The v1 teacher is dispatch directly: reflex state -> 12 enters the pool -> the forbidden-action assertion must fire.
         self._install_env(lambda seed: [[{"raw": _raw(hp=40, max_hp=100,
                                                       belt=1)}]])
-        with self.assertRaisesRegex(RuntimeError, "禁采动作 11/12"):
+        with self.assertRaisesRegex(RuntimeError, "forbidden actions 11/12"):
             bc_worker.collect()
 
     def test_v2_collect_admits_a12(self):
         self._install_env(
             lambda seed: [[{"raw": _in_band()}, {"raw": _out_band()}]])
         X, labels, groups, masks, belts = bc_worker.collect_v2()
-        # 方案甲 a:v2 采集环消费 DEMO_SEEDS_V2(×3 延拓)
+        # plan A (a): the v2 collection loop consumes DEMO_SEEDS_V2 (x3 extension)
         n = 2 * len(bc_worker.DEMO_SEEDS_V2)
         self.assertEqual(X.shape, (n, 298))
         self.assertEqual(labels.shape, (n,))
-        # 每局一窗:窗首带内态实标 12,次拍带外 → 10;真实入池非反事实。
+        # One window per episode: the in-band first state of the window is truly labelled 12, the next tick is out of band -> 10; really pooled, not counterfactual.
         self.assertEqual(list(labels[:2]), [12, 10])
         self.assertEqual(int((labels == 12).sum()),
                          len(bc_worker.DEMO_SEEDS_V2))
@@ -394,16 +394,16 @@ class GenerationConditionedForbiddenTests(_PatchMixin, unittest.TestCase):
                                        np.asarray(bc_worker.DEMO_SEEDS_V2)))
 
     def test_v2_collect_rejects_a11_pool(self):
-        # dispatch 农期原生不出 11;以 monkeypatch 注入 11 镜像 v2 禁采面。
+        # dispatch never emits 11 in the farm phase natively; inject 11 with monkeypatch to mirror the v2 forbidden-action surface.
         mask_11_open = _default_worker_masks()
-        mask_11_open[11] = True   # 先绕过掩码守卫,专测标签级禁采断言
+        mask_11_open[11] = True   # bypass the mask guard first, to test the label-level forbidden-action assertion on its own
         self._install_env(
             lambda seed: [[{"raw": _out_band(), "mask": mask_11_open}]])
         self._patch(
             "dispatch",
             lambda mode, raw, gear, action_mask=None: 11,
         )
-        with self.assertRaisesRegex(RuntimeError, "禁采动作 11"):
+        with self.assertRaisesRegex(RuntimeError, "forbidden action 11"):
             bc_worker.collect_v2()
 
     def test_v2_explicit_manager_is_used_and_bound_in_provenance(self):
@@ -434,7 +434,7 @@ class GenerationConditionedForbiddenTests(_PatchMixin, unittest.TestCase):
             hashlib.sha256(b"manager-distribution-B").hexdigest())
 
     def test_v2_overridden_proposal_does_not_poison_next_visible_label(self):
-        # 被保险丝拒绝/原生无效果的拍都剔除；同窗下一相同可见态仍须标 a12。
+        # Ticks refused by the fuse or without native effect are dropped; the next identical visible state in the same window must still be labelled a12.
         def script(seed):
             if seed == bc_worker.DEMO_SEEDS_V2[0]:
                 return [[{"raw": _in_band(), "overridden": True},
@@ -466,12 +466,12 @@ class GenerationConditionedForbiddenTests(_PatchMixin, unittest.TestCase):
 
 
 class MasksSchemaTests(_PatchMixin, unittest.TestCase):
-    """E2⑤:v2 demos 逐样本 masks——现场捕获系唯一真源(反推禁用)。"""
+    """E2-5: per-sample masks in v2 demos; the live capture is the only source of truth (reconstruction banned)."""
 
     def test_masks_captured_verbatim_from_action_masks(self):
         mask_a = _default_worker_masks()
         mask_b = _default_worker_masks()
-        mask_b[[3, 7]] = False   # 可辨识花纹:捕获必须逐字,非自 obs 反推
+        mask_b[[3, 7]] = False   # a distinguishable pattern: the capture must be verbatim, not reconstructed from obs
         self._install_env(lambda seed: [[{"raw": _in_band(), "mask": mask_a},
                                          {"raw": _out_band(), "mask": mask_b}]])
         _, labels, _, masks, _ = bc_worker.collect_v2()
@@ -479,14 +479,14 @@ class MasksSchemaTests(_PatchMixin, unittest.TestCase):
         self.assertEqual(masks.shape, (2 * len(bc_worker.DEMO_SEEDS_V2), 15))
         self.assertTrue(np.array_equal(masks[0], mask_a))
         self.assertTrue(np.array_equal(masks[1], mask_b))
-        self.assertTrue(masks[labels == 12][:, 12].all())   # a12 对 m[12]=True
-        self.assertFalse(masks[:, 11].any())                # 11 恒掩归经理
+        self.assertTrue(masks[labels == 12][:, 12].all())   # a12 pairs have m[12]=True
+        self.assertFalse(masks[:, 11].any())                # 11 always masked, belongs to the manager
 
     def test_collect_v2_rejects_proposal_outside_live_mask(self):
         blocked = _default_worker_masks()
-        blocked[12] = False   # 现场掩码不含 12,预防提案即 on-manifold 破坏
+        blocked[12] = False   # the live mask excludes 12, so a preventive proposal would break on-manifold
         self._install_env(lambda seed: [[{"raw": _in_band(), "mask": blocked}]])
-        with self.assertRaisesRegex(RuntimeError, "不在现场掩码内"):
+        with self.assertRaisesRegex(RuntimeError, "not in the live mask"):
             bc_worker.collect_v2()
 
     def test_save_demos_v2_schema_and_guards(self):
@@ -513,27 +513,27 @@ class MasksSchemaTests(_PatchMixin, unittest.TestCase):
                 self.assertEqual(z["teacher_generation"].item(), 2)
                 self.assertEqual(z["preventive_threshold"].item(), 0.65)
             bad_label = masks.copy()
-            bad_label[0, 12] = False   # a12 样本 m[12] 必须 True
-            with self.assertRaisesRegex(RuntimeError, "不在掩码内"):
+            bad_label[0, 12] = False   # an a12 sample must have m[12] True
+            with self.assertRaisesRegex(RuntimeError, "not in the mask"):
                 _save_demos_v2(
                     out, X, labels, groups, bad_label, provenance)
             bad_11 = masks.copy()
             bad_11[2, 11] = True
-            with self.assertRaisesRegex(RuntimeError, r"m\[11\] 必须恒 False"):
+            with self.assertRaisesRegex(RuntimeError, r"m\[11\] must be always False"):
                 _save_demos_v2(
                     out, X, labels, groups, bad_11, provenance)
-            with self.assertRaisesRegex(RuntimeError, "形状/dtype"):
+            with self.assertRaisesRegex(RuntimeError, "shape/dtype"):
                 _save_demos_v2(out, X, labels, groups,
                                masks.astype(np.int64), provenance)
-            with self.assertRaisesRegex(RuntimeError, "形状/dtype"):
+            with self.assertRaisesRegex(RuntimeError, "shape/dtype"):
                 _save_demos_v2(
                     out, X, labels, groups, masks[:, :14], provenance)
-            with self.assertRaisesRegex(RuntimeError, "provenance 缺字段"):
+            with self.assertRaisesRegex(RuntimeError, "provenance missing fields"):
                 _save_demos_v2(out, X, labels, groups, masks, {})
 
 
 class HeldoutSelectionIsolationTests(unittest.TestCase):
-    """final held-out 只能做最终闸，不能选择 v1/v2 候选。"""
+    """The final held-out split can only serve as the final gate; it cannot select v1/v2 candidates."""
 
     @staticmethod
     def _selection_fixture():
@@ -542,7 +542,7 @@ class HeldoutSelectionIsolationTests(unittest.TestCase):
         fit, validation, _ = bc_worker._split_fit_validation_by_episode(groups)
         _, heldout, _ = bc_worker.split_by_episode(groups)
         labels = np.full(len(groups), 9, dtype=np.int64)
-        # 零特征 fit 只见 9、validation 只见 10，稳定触发唯一 retry。
+        # A zero-feature fit sees only 9 and validation only 10, which reliably triggers the single retry.
         labels[validation] = 10
         changed = labels.copy()
         changed[heldout] = 14
@@ -560,7 +560,7 @@ class HeldoutSelectionIsolationTests(unittest.TestCase):
         for key in left:
             self.assertTrue(
                 torch.equal(left[key], right[key]),
-                f"候选张量受 final held-out 标签影响:{key}")
+                f"candidate tensor affected by final held-out labels: {key}")
 
     def test_nested_split_is_disjoint_deterministic_and_exhaustive(self):
         _, _, _, groups, fit, validation, heldout = (
@@ -579,7 +579,7 @@ class HeldoutSelectionIsolationTests(unittest.TestCase):
             np.arange(len(groups)))
 
     def test_preselection_coverage_ignores_every_final_domain_value(self):
-        """候选冻结前的覆盖诊断只消费 fit/validation 三张量切片。"""
+        """Coverage diagnostics before the candidate freeze consume only the fit/validation three-tensor slices."""
         groups = np.repeat(np.arange(30, dtype=np.int64), 8)
         n = len(groups)
         X = np.zeros((n, 298), dtype=np.float32)
@@ -604,8 +604,8 @@ class HeldoutSelectionIsolationTests(unittest.TestCase):
             X, labels, groups, masks,
             scopes=("fit", "validation"))
 
-        # 分别毒化 final 的 X/Y/masks。若预选诊断读取任一 final 值，
-        # 结果会漂移或触发覆盖门；显式 preselection scopes 必须逐次恒等。
+        # Poison the final X/Y/masks separately. If the preselection diagnostics read any final value,
+        # the result would drift or trip the coverage gate; the explicit preselection scopes must be identical every time.
         poisoned_x = X.copy()
         poisoned_x[final, WORKER_DRINK_LATCH_FEATURE] = -999.0
         poisoned_y = labels.copy()
@@ -624,7 +624,7 @@ class HeldoutSelectionIsolationTests(unittest.TestCase):
                     scopes=("fit", "validation")),
                 expected,
             )
-        with self.assertRaisesRegex(ValueError, "final 域缺少"):
+        with self.assertRaisesRegex(ValueError, "final domain lacks"):
             bc_worker._bc_v2_post_drink_coverage(
                 poisoned_x, poisoned_y, groups, poisoned_masks,
                 scopes=("final",))
@@ -699,10 +699,10 @@ class HeldoutSelectionIsolationTests(unittest.TestCase):
             bc_worker._require_v1_action14_coverage(labels, groups),
             {"labels": 64, "episodes": 16})
 
-        with self.assertRaisesRegex(RuntimeError, "a14 严格升级覆盖不足"):
+        with self.assertRaisesRegex(RuntimeError, "a14 strict-upgrade coverage insufficient"):
             bc_worker._require_v1_action14_coverage(
                 labels[:-1], groups[:-1])
-        with self.assertRaisesRegex(RuntimeError, "a14 严格升级覆盖不足"):
+        with self.assertRaisesRegex(RuntimeError, "a14 strict-upgrade coverage insufficient"):
             bc_worker._require_v1_action14_coverage(
                 labels, np.repeat(np.arange(15, dtype=np.int64), [5] * 4 + [4] * 10 + [4]))
 
@@ -801,7 +801,7 @@ class HeldoutSelectionIsolationTests(unittest.TestCase):
 
 
 class FinalHoldoutOneShotTests(_PatchMixin, unittest.TestCase):
-    """final pool 一旦开始读取，就不能靠归档或重跑重新变成“盲池”。"""
+    """Once the final pool starts being read, it cannot become a "blind pool" again by archiving or rerunning."""
 
     @staticmethod
     def _provenance():
@@ -843,7 +843,7 @@ class FinalHoldoutOneShotTests(_PatchMixin, unittest.TestCase):
             self.assertEqual(
                 marker.parent, runs / "_bc_final_holdout_registry")
 
-            # canonical 文件移进 _previous 不得带走独立 one-shot marker。
+            # Moving the canonical file into _previous must not take the independent one-shot marker with it.
             canonical = out / _BC_V2_REPORT_NAME
             canonical.write_text(json.dumps({"data_gate": "FAIL"}))
             archive = out / "_previous" / "attempt-1"
@@ -851,8 +851,8 @@ class FinalHoldoutOneShotTests(_PatchMixin, unittest.TestCase):
             canonical.replace(archive / canonical.name)
             self.assertTrue(marker.is_file())
 
-            # 整个 bundle 搬走后，在原 artifact 路径新建空目录也不能把同池
-            # 伪装成未使用；registry 是 bundle 的稳定 sibling。
+            # After the whole bundle is moved away, creating an empty directory at the original artifact path must not disguise the same pool
+            # as unused; the registry is a stable sibling of the bundle.
             moved = pathlib.Path(directory) / "archived-bc-worker-v2"
             out.replace(moved)
             out.mkdir()
@@ -860,10 +860,10 @@ class FinalHoldoutOneShotTests(_PatchMixin, unittest.TestCase):
                 out, TEACHER_GENERATION_V2, seeds)
             self.assertEqual(marker_after_move, marker)
             with self.assertRaisesRegex(
-                    RuntimeError, "禁止同池再次采集/评分"):
+                    RuntimeError, "collecting/scoring the same pool again is forbidden"):
                 bc_worker._assert_final_holdout_unused(
                     out, TEACHER_GENERATION_V2, seeds)
-            with self.assertRaisesRegex(RuntimeError, "one-shot marker 已存在"):
+            with self.assertRaisesRegex(RuntimeError, "one-shot marker already exists"):
                 bc_worker._mark_final_holdout_started(
                     out, TEACHER_GENERATION_V2, seeds,
                     self._provenance())
@@ -896,7 +896,7 @@ class FinalHoldoutOneShotTests(_PatchMixin, unittest.TestCase):
                 **self._provenance(),
             }))
             with self.assertRaisesRegex(
-                    RuntimeError, "禁止 direct CLI 重试或归档绕过"):
+                    RuntimeError, "direct CLI retry or archive bypass is forbidden"):
                 bc_worker.begin_output_attempt_v2(self._provenance())
             self.assertFalse((out / _BC_V2_REPORT_NAME).exists())
 
@@ -916,13 +916,13 @@ class FinalHoldoutOneShotTests(_PatchMixin, unittest.TestCase):
             )
             for generation, seeds in cases:
                 with self.subTest(generation=generation, seeds=seeds):
-                    with self.assertRaisesRegex(ValueError, "部分/全部重叠"):
+                    with self.assertRaisesRegex(ValueError, "partially/fully overlap"):
                         train_ppo._assert_bc_final_holdout_pool_disjoint(
                             out, generation, seeds)
                     marker, _, _ = bc_worker._final_holdout_marker_path(
                         out, generation, seeds)
                     self.assertFalse(marker.exists())
-                    with self.assertRaisesRegex(ValueError, "部分/全部重叠"):
+                    with self.assertRaisesRegex(ValueError, "partially/fully overlap"):
                         bc_worker._mark_final_holdout_started(
                             out, generation, seeds, self._provenance())
                     self.assertFalse(marker.exists())
@@ -933,7 +933,7 @@ class FinalHoldoutOneShotTests(_PatchMixin, unittest.TestCase):
             registry = out.parent / "_bc_final_holdout_registry"
             registry.mkdir(parents=True)
             (registry / "broken.json").write_text("{")
-            with self.assertRaisesRegex(ValueError, "不可解析"):
+            with self.assertRaisesRegex(ValueError, "unparseable"):
                 train_ppo._assert_bc_final_holdout_pool_disjoint(
                     out, TEACHER_GENERATION_V1, [6_000, 6_001])
 
@@ -964,7 +964,7 @@ class FinalHoldoutOneShotTests(_PatchMixin, unittest.TestCase):
                 record.pop("marker_sha256")
                 mutate(record)
                 marker.write_text(json.dumps(record))
-                with self.assertRaisesRegex(ValueError, "身份非法"):
+                with self.assertRaisesRegex(ValueError, "identity invalid"):
                     train_ppo._assert_bc_final_holdout_pool_disjoint(
                         out, TEACHER_GENERATION_V1, [8_000, 8_001])
 
@@ -974,13 +974,13 @@ class FinalHoldoutOneShotTests(_PatchMixin, unittest.TestCase):
             registry = out.parent / "_bc_final_holdout_registry"
             registry.mkdir(parents=True)
             (registry / "orphan.tmp").write_bytes(b"partial marker")
-            with self.assertRaisesRegex(ValueError, "未知残件"):
+            with self.assertRaisesRegex(ValueError, "unknown leftovers"):
                 train_ppo._assert_bc_final_holdout_pool_disjoint(
                     out, TEACHER_GENERATION_V1, [9_000, 9_001])
 
 
 class N12RecallGateTests(unittest.TestCase):
-    """E2⑥:n₁₂ 闸与 recall 门计算件(fail-closed;逐局分解;经济读数)。"""
+    """E2-6: the n12 gate and recall-gate computations (fail-closed; per-episode breakdown; economy readings)."""
 
     def test_n12_readings_breakdown_and_shares(self):
         labels = np.asarray([12, 9, 13, 12, 9], dtype=np.int64)
@@ -1000,11 +1000,11 @@ class N12RecallGateTests(unittest.TestCase):
         groups = np.asarray([100, 100, 101], dtype=np.int64)
         belts = np.asarray([0, 1, 2], dtype=np.int64)
         r = _n12_readings(labels, groups, belts)
-        self.assertEqual(r["n12"], 0)                       # 记 0 不消失
+        self.assertEqual(r["n12"], 0)                       # recorded as 0, not dropped
         self.assertEqual(r["n12_by_episode"], {})
         self.assertEqual(r["class_share_12"], 0.0)
         self.assertEqual(r["belt_economy"]["belt_mean_at_a12"], 0.0)
-        self.assertLess(r["n12"], _N12_GATE_MIN)            # 闸必拦
+        self.assertLess(r["n12"], _N12_GATE_MIN)            # the gate must stop it
 
     @staticmethod
     def _fixed_model(pred_rows):
@@ -1024,7 +1024,7 @@ class N12RecallGateTests(unittest.TestCase):
         return ho, holdout_episodes
 
     def test_recall12_denominator_is_held_out_labeled_a12_states(self):
-        # 8 局各 2 对;held-out 局(确定性 rng(23) 切分)内 1 对实标 a12。
+        # 8 episodes with 2 pairs each; in the held-out episodes (deterministic rng(23) split) 1 pair is truly labelled a12.
         episodes = np.arange(100, 108, dtype=np.int64)
         groups = np.repeat(episodes, 2)
         _, holdout_episodes = self._split(groups)
@@ -1034,14 +1034,14 @@ class N12RecallGateTests(unittest.TestCase):
         ).astype(np.int64)
         X = np.zeros((len(groups), 4), dtype=np.float32)
         ho, _ = self._split(groups)
-        # held-out 序:局内首对系 a12 → 命中模型第 0 行出 12 → recall 1.0
+        # held-out order: the first pair of the episode is a12 -> the model's row 0 hits 12 -> recall 1.0
         model = self._fixed_model([12] + [9] * (len(ho) - 1))
         masks = np.tile(_default_worker_masks(), (len(groups), 1))
         recall, denominator = _recall12_from_model(
             model, X, labels, groups, masks)
         self.assertEqual(denominator, 1)
         self.assertEqual(recall, 1.0)
-        # 同分母、argmax 脱靶 → 0.0(度量 = held-out argmax 命中)
+        # same denominator, argmax misses -> 0.0 (metric = held-out argmax hits)
         miss = self._fixed_model([9] * len(ho))
         recall_miss, denom_miss = _recall12_from_model(
             miss, X, labels, groups, masks)
@@ -1049,8 +1049,8 @@ class N12RecallGateTests(unittest.TestCase):
         self.assertEqual(recall_miss, 0.0)
 
     def test_recall12_zero_coverage_fail_closed(self):
-        # held-out 局零 a12 覆盖:记 0.0 不消失(承 bc_worker 类召回先例),
-        # 分母 0 在册 → recall 门必拦,禁 all([]) 式静默 PASS。
+        # zero a12 coverage in the held-out episodes: recorded as 0.0, not dropped (following the bc_worker class-recall precedent);
+        # a denominator of 0 is on record -> the recall gate must stop it; no silent all([])-style PASS.
         episodes = np.arange(100, 108, dtype=np.int64)
         groups = np.repeat(episodes, 2)
         _, holdout_episodes = self._split(groups)
@@ -1068,11 +1068,11 @@ class N12RecallGateTests(unittest.TestCase):
 
 
 class A12CalibrationTests(unittest.TestCase):
-    """稀有类校准必须改变实际六张量，并在未看 held-out 时变得可达。"""
+    """Rare-class calibration must change the actual six tensors and become reachable without looking at held-out data."""
 
     def test_unreserved_random_model_is_rejected_before_destructive_wiring(self):
         model = bc_worker.PiHead(298)
-        with self.assertRaisesRegex(RuntimeError, "曾参与普通 CE"):
+        with self.assertRaisesRegex(RuntimeError, "took part in ordinary CE"):
             bc_worker._wire_a12_teacher_boundary(model, 0.65)
 
     def test_reserved_path_keeps_every_non12_logit_bitwise_equal(self):
@@ -1095,7 +1095,7 @@ class A12CalibrationTests(unittest.TestCase):
             before[:, ordinary], after[:, ordinary]))
 
     def test_exact_upper_boundary_separates_real_neighboring_states(self):
-        """真实相邻 HP 格点：.648936 为正，.651163 合法负例概率须安全。"""
+        """Real adjacent HP grid points: .648936 is positive; the probability of the legal negative .651163 must be safe."""
         query = np.zeros((2, 298), dtype=np.float32)
         query[:, 0] = np.asarray([0.648936, 0.651163], dtype=np.float32)
         masks = np.tile(_default_worker_masks(), (2, 1))
@@ -1112,8 +1112,8 @@ class A12CalibrationTests(unittest.TestCase):
             model.head.bias[9] = 0.0
         bc_worker._wire_a12_teacher_boundary(model, 0.65)
 
-        # 只用正例一侧选一个固定 margin；随后以最终六张量同源前向
-        # 检验另一侧，防把旧的 0.652 中心重新带回来。
+        # Choose a fixed margin from the positive side only; then check the other side with a forward pass from the same
+        # final six tensors, so the old 0.652 centre cannot be brought back.
         with torch.no_grad():
             raw = model(torch.from_numpy(query))
             positive_margin = raw[0, 12] - raw[0, 9]
@@ -1167,9 +1167,9 @@ class A12CalibrationTests(unittest.TestCase):
         self.assertGreaterEqual(after["recall_12"], 0.25)
         self.assertLessEqual(after["fpr_12"], train_ppo._A12_FPR_MAX)
 
-        # validation 与 final-heldout 标签即使整体改写，也不能改变
-        # tau/bias 校准选型或最终六张量；它们只能在候选冻结后的各自 gate
-        # 产生不同结论。
+        # Even if the validation and final-heldout labels are rewritten wholesale, they must not change
+        # the tau/bias calibration choice or the final six tensors; they may only lead to different conclusions
+        # at their own gates after the candidate freeze.
         changed_labels = labels.copy()
         _, validation, _ = bc_worker._split_fit_validation_by_episode(groups)
         _, heldout, _ = bc_worker.split_by_episode(groups)
@@ -1189,7 +1189,7 @@ class A12CalibrationTests(unittest.TestCase):
         for key in original_sd:
             self.assertTrue(
                 torch.equal(original_sd[key], changed_sd[key]),
-                f"a12 校准张量受 final held-out 标签影响:{key}")
+                f"a12 calibration tensor affected by final held-out labels: {key}")
 
     def test_calibration_receipt_uses_exact_deployed_forward_and_bias(self):
         for competing_bias in (-19.7, 16.0):
@@ -1208,8 +1208,8 @@ class A12CalibrationTests(unittest.TestCase):
                 with torch.no_grad():
                     for parameter in model.parameters():
                         parameter.zero_()
-                    # -19.7 复现回执/float32 ULP 拒真；16.0 复现旧
-                    # margin 捷径把 9/12 tie 错算成 action12。
+                    # -19.7 reproduces the receipt / a float32 ULP rejects the truth; 16.0 reproduces the old
+                    # margin shortcut that miscounts a 9/12 tie as action12.
                     model.head.bias[9] = competing_bias
                 calibration = bc_worker._calibrate_a12_policy(
                     model, X, labels, groups, masks, 0.65)
@@ -1295,7 +1295,7 @@ def _v2_pass_record(policy_bytes=b"v2-policy", impl_sha="a" * 64, **overrides):
         "class_share_12": 0.02, "class_share_13": 0.03,
         "belt_economy": {"belt_mean_at_a12": 2.5, "belt_mean_overall": 3.0,
                          "a13_pairs": 30},
-        # 方案甲回执新字段(2026-07-19 亲批)
+        # new plan-A receipt fields (approved 2026-07-19)
         "collection_episodes": 384,
         "class_weights": {"9": 0.520833, "12": 40.0},
         "data_gate": "PASS",
@@ -1313,7 +1313,7 @@ def _v2_pass_record(policy_bytes=b"v2-policy", impl_sha="a" * 64, **overrides):
 
 
 def _bind_v2_final_holdout_marker(policy: pathlib.Path, report: dict):
-    """写生产同构 marker，并把 PASS 回执精确绑定到其稳定字节。"""
+    """Write a marker isomorphic to production and bind the PASS receipt exactly to its stable bytes."""
     marker, spec, pool_sha256 = train_ppo._bc_final_holdout_marker_path(
         policy.parent, TEACHER_GENERATION_V2, bc_worker.DEMO_SEEDS_V2)
     provenance_keys = {
@@ -1343,13 +1343,13 @@ def _bind_v2_final_holdout_marker(policy: pathlib.Path, report: dict):
 
 
 class ValidatorIsolationTests(unittest.TestCase):
-    """E2④:回执 schema 隔离——v1/v2 验证器互斥,v2 篡改矩阵 fail-loud。"""
+    """E2-4: receipt schema isolation: the v1/v2 validators are mutually exclusive, and the v2 tampering matrix fails loud."""
 
     def test_v2_schema_identifier_is_isolated_from_v1(self):
-        self.assertEqual(train_ppo._BC_REPORT_SCHEMA_VERSION, 1)  # v1 一字不动
+        self.assertEqual(train_ppo._BC_REPORT_SCHEMA_VERSION, 1)  # v1 unchanged, not a single character
         self.assertNotEqual(_BC_V2_REPORT_SCHEMA_VERSION, 1)
-        self.assertIsInstance(_BC_V2_REPORT_SCHEMA_VERSION, str)  # 非 int:v1
-        # 验证器 _is_plain_int 断言对 v2 件双重不相容
+        self.assertIsInstance(_BC_V2_REPORT_SCHEMA_VERSION, str)  # not an int: the v1
+        # validator's _is_plain_int assertion is doubly incompatible with a v2 artifact
         self.assertEqual(_BC_V2_REPORT_NAME, "bc_report_v2.json")
         self.assertNotEqual(_BC_V2_REPORT_NAME, "bc_report.json")
         self.assertNotEqual(set(_BC_V2_PASS_KEYS),
@@ -1361,7 +1361,7 @@ class ValidatorIsolationTests(unittest.TestCase):
                 pathlib.Path(d) / "runs" / "bc-worker-v2" / "policy_sd.pt")
             policy.parent.mkdir(parents=True)
             policy.write_bytes(b"v2-policy")
-            # 修①a(rev4 十二附二④):demos 实测字节断言在位——正例须落实件
+            # fix 1a (rev4 item 12, annex 2.4): the measured-bytes assertion on demos is active; a positive case needs a real file
             (policy.with_name("demos.npz")).write_bytes(b"v2-demos")
             rec = _v2_pass_record(
                 demos_sha256=hashlib.sha256(b"v2-demos").hexdigest())
@@ -1385,17 +1385,17 @@ class ValidatorIsolationTests(unittest.TestCase):
                 expected_manager_sha256="c" * 64)
             self.assertEqual(out["manager_npz_sha256"], "c" * 64)
             with self.assertRaisesRegex(
-                    ValueError, "经理身份与训练经理不一致"):
+                    ValueError, "manager identity disagrees with the training manager"):
                 _validate_bc_v2_report(
                     p, "a" * 64, report_payload=payload,
                     policy_payload=b"v2-policy", demos_payload=b"v2-demos",
                     expected_manager_sha256="d" * 64)
 
     def test_v1_validator_blows_on_v2_receipt(self):
-        # v1 验证器(train_ppo._validate_bc_report)系键集合精确等断言,
-        # 对 v2 件必炸——喂 payload 免路径依赖。
+        # The v1 validator (train_ppo._validate_bc_report) asserts an exact key set
+        # and must fail on a v2 artifact; the payload is fed directly to avoid path dependence.
         payload = json.dumps(_v2_pass_record()).encode()
-        with self.assertRaisesRegex(ValueError, "字段/schema 不匹配"):
+        with self.assertRaisesRegex(ValueError, "fields/schema mismatch"):
             train_ppo._validate_bc_report(
                 pathlib.Path("/nonexistent/policy_sd.pt"), "data_gate",
                 report_payload=payload, policy_payload=b"x")
@@ -1403,7 +1403,7 @@ class ValidatorIsolationTests(unittest.TestCase):
     def test_v2_validator_blows_on_v1_receipt(self):
         v1_shaped = {key: 0 for key in train_ppo._BC_PASS_KEYS["data_gate"]}
         v1_shaped["schema_version"] = 1
-        with self.assertRaisesRegex(ValueError, "互斥"):
+        with self.assertRaisesRegex(ValueError, "mutually exclusive"):
             _validate_bc_v2_report(
                 pathlib.Path("/nonexistent/policy_sd.pt"), "a" * 64,
                 report_payload=json.dumps(v1_shaped).encode(),
@@ -1420,32 +1420,32 @@ class ValidatorIsolationTests(unittest.TestCase):
                 return json.dumps(rec).encode()
 
             cases = (
-                (dict(schema_version=1), "schema 标识不符"),
-                (dict(teacher_generation=1), "teacher_generation 必须为 2"),
-                (dict(preventive_threshold=0.6), "预防阈未注册"),
-                (dict(data_gate="FAIL"), "拒绝采信"),
-                (dict(data_gate="RUNNING"), "拒绝采信"),
-                (dict(n12=121), "n₁₂ 闸不满足"),
-                (dict(n12=True), "n₁₂ 闸不满足"),
-                (dict(recall_12=0.4), "recall 门不满足"),
-                (dict(protocol_version=PROTOCOL_VERSION + 1), "协议过期"),
-                (dict(generator_sha256="e" * 64), "生成器已漂移"),
+                (dict(schema_version=1), "schema identifier mismatch"),
+                (dict(teacher_generation=1), "teacher_generation must be 2"),
+                (dict(preventive_threshold=0.6), "preventive threshold not registered"),
+                (dict(data_gate="FAIL"), "refusing to accept"),
+                (dict(data_gate="RUNNING"), "refusing to accept"),
+                (dict(n12=121), "n₁₂ gate not met"),
+                (dict(n12=True), "n₁₂ gate not met"),
+                (dict(recall_12=0.4), "recall gate not met"),
+                (dict(protocol_version=PROTOCOL_VERSION + 1), "protocol outdated"),
+                (dict(generator_sha256="e" * 64), "generator has drifted"),
                 (dict(implementation_sha256="f" * 64),
-                 "身份与当前运行时不一致"),
-                # 方案甲回执新字段篡改矩阵(2026-07-19 亲批)
-                (dict(collection_episodes=0), "collection_episodes 非法"),
-                (dict(collection_episodes=True), "collection_episodes 非法"),
+                 "identity disagrees with the current runtime"),
+                # tampering matrix for the new plan-A receipt fields (approved 2026-07-19)
+                (dict(collection_episodes=0), "collection_episodes invalid"),
+                (dict(collection_episodes=True), "collection_episodes invalid"),
                 (dict(collection_episodes="384"),
-                 "collection_episodes 非法"),
-                (dict(class_weights={}), "class_weights 必须是非空对象"),
+                 "collection_episodes invalid"),
+                (dict(class_weights={}), "class_weights must be a non-empty object"),
                 (dict(class_weights=[0.5]),
-                 "class_weights 必须是非空对象"),
-                (dict(class_weights={"16": 1.0}), "class_weights 键非法"),
-                (dict(class_weights={"x": 1.0}), "键必须是动作编号"),
+                 "class_weights must be a non-empty object"),
+                (dict(class_weights={"16": 1.0}), "class_weights key invalid"),
+                (dict(class_weights={"x": 1.0}), "keys must be action numbers"),
                 (dict(class_weights={"9": 0}),
-                 r"class_weights\['9'\] 非法"),
+                 r"class_weights\['9'\] invalid"),
                 (dict(class_weights={"9": True}),
-                 r"class_weights\['9'\] 非法"),
+                 r"class_weights\['9'\] invalid"),
             )
             for overrides, message in cases:
                 with self.assertRaisesRegex(ValueError, message,
@@ -1455,35 +1455,35 @@ class ValidatorIsolationTests(unittest.TestCase):
                         report_payload=payload(**overrides),
                         policy_payload=b"v2-policy")
 
-            # PASS 回执必须同时绑定 pool 身份和 marker 的真实字节哈希。
+            # The PASS receipt must bind both the pool identity and the real byte hash of the marker.
             marker_hash_tamper = _v2_pass_record()
             _bind_v2_final_holdout_marker(p, marker_hash_tamper)
             marker_hash_tamper["final_holdout_marker_sha256"] = "0" * 64
             with self.assertRaisesRegex(
-                    ValueError, "PASS report 未精确绑定"):
+                    ValueError, "PASS report not exactly bound"):
                 _validate_bc_v2_report(
                     p, "a" * 64,
                     report_payload=json.dumps(marker_hash_tamper).encode(),
                     policy_payload=b"v2-policy")
 
-            # 权重字节篡改 → SHA 绑定必炸
-            with self.assertRaisesRegex(ValueError, "SHA 不匹配"):
+            # tampered weight bytes -> the SHA binding must fail
+            with self.assertRaisesRegex(ValueError, "SHA does not match"):
                 _validate_bc_v2_report(
                     p, "a" * 64, report_payload=payload(),
                     policy_payload=b"tampered")
-            # demos 实测字节断言(镜像 policy 侧形制)。
+            # measured-bytes assertion on demos (mirrors the policy-side form).
             with self.assertRaisesRegex(
-                    ValueError, "demos 与回执 SHA 不匹配"):
+                    ValueError, "demos SHA does not match the receipt"):
                 _validate_bc_v2_report(
                     p, "a" * 64, report_payload=payload(),
                     policy_payload=b"v2-policy",
                     demos_payload=b"tampered-demos")
-            # demos 缺失/不可读(无 payload 且路径无实件)必须 fail-loud。
-            with self.assertRaisesRegex(ValueError, "demos 缺失/不可读"):
+            # demos missing/unreadable (no payload and no real file at the path) must fail loud.
+            with self.assertRaisesRegex(ValueError, "demos missing/unreadable"):
                 _validate_bc_v2_report(
                     p, "a" * 64, report_payload=payload(),
                     policy_payload=b"v2-policy")
-            # demos 实测字节恒等 → 全链绿。
+            # demos bytes measured identical -> the whole chain is green.
             good = _v2_pass_record(
                 demos_sha256=hashlib.sha256(b"v2-demos").hexdigest())
             _bind_v2_final_holdout_marker(p, good)
@@ -1491,13 +1491,13 @@ class ValidatorIsolationTests(unittest.TestCase):
                 p, "a" * 64, report_payload=json.dumps(good).encode(),
                 policy_payload=b"v2-policy", demos_payload=b"v2-demos")
             self.assertEqual(out["n12"], 244)
-            # 缺键/多键 → 键集合精确等必炸
+            # missing/extra keys -> the exact key-set equality must fail
             missing = _v2_pass_record()
             missing.pop("demos_sha256")
             extra = _v2_pass_record()
             extra["surprise"] = 1
             for rec in (missing, extra):
-                with self.assertRaisesRegex(ValueError, "字段/schema 不匹配"):
+                with self.assertRaisesRegex(ValueError, "fields/schema mismatch"):
                     _validate_bc_v2_report(
                         p, "a" * 64,
                         report_payload=json.dumps(rec).encode(),
@@ -1505,7 +1505,7 @@ class ValidatorIsolationTests(unittest.TestCase):
 
 
 class MainV2ReceiptTests(_PatchMixin, unittest.TestCase):
-    """E2②④⑥:main_v2 回执键集合恰等、FAIL 拒写权重、重试触发面钉死。"""
+    """E2-2/4/6: the main_v2 receipt key set is exact, FAIL refuses to write weights, and the retry trigger surface is pinned."""
 
     @staticmethod
     def _dataset(n12=140, per_episode=1000):
@@ -1538,7 +1538,7 @@ class MainV2ReceiptTests(_PatchMixin, unittest.TestCase):
     def _run(self, tmp, dataset, top1_seq=(0.99,), recall=0.8,
              post_calibration_score=(0.99, {9: 0.99})):
         calls = []
-        self.train_calls = calls   # 先挂 self:main_v2 中途抛时调用记录仍可查
+        self.train_calls = calls   # attach to self first: the call record stays inspectable if main_v2 raises midway
         self.train_epochs = []
         self.train_masks = []
         self.final_score_calls = 0
@@ -1566,7 +1566,7 @@ class MainV2ReceiptTests(_PatchMixin, unittest.TestCase):
                 bc_worker.DEMO_SEEDS_V2)
             self.assertTrue(
                 marker.is_file(),
-                "final-pool marker 必须在 collect/首次 reset 前落盘")
+                "the final-pool marker must be written before collect / the first reset")
             marker_record = json.loads(marker.read_text())
             self.assertEqual(
                 marker_record["consumption_stage"],
@@ -1702,7 +1702,7 @@ class MainV2ReceiptTests(_PatchMixin, unittest.TestCase):
             self.assertEqual(rec["n12"], 140)
             self.assertEqual(rec["n12_gate_min"], 122)
             self.assertEqual(rec["recall_12"], 0.8)
-            # 方案甲回执新字段:实测采集局数 + 主训类平衡权重逐类摘要
+            # new plan-A receipt fields: the measured number of collection episodes + a per-class summary of the class-balanced weights of main training
             _, labels, groups, _, _ = dataset
             self.assertEqual(rec["collection_episodes"],
                              int(np.unique(groups).size))
@@ -1717,30 +1717,30 @@ class MainV2ReceiptTests(_PatchMixin, unittest.TestCase):
             self.assertEqual(
                 rec["policy_sha256"],
                 hashlib.sha256(policy.read_bytes()).hexdigest())
-            # 全环闭合:主权产物过 v2 专用验证器
+            # the whole loop closes: the sovereignty artifacts pass the dedicated v2 validator
             out = _validate_bc_v2_report(policy, "a" * 64)
             self.assertEqual(out["n12"], 140)
-            # demos 落 v2 目录且携 masks(独立目录,v1 canonical 不涉)
+            # demos land in the v2 directory and carry masks (separate directory, v1 canonical not involved)
             with np.load(self.output_dir / "demos.npz") as z:
                 self.assertIn("masks", z.files)
 
     def test_n12_gate_fail_refuses_policy_and_disables_old_oc(self):
         with tempfile.TemporaryDirectory() as d:
-            with self.assertRaisesRegex(RuntimeError, "独立 fresh pool"):
+            with self.assertRaisesRegex(RuntimeError, "independent fresh pool"):
                 self._run(d, self._dataset(n12=121))
             rec = self._report(d)
             self.assertEqual(rec["data_gate"], "FAIL")
-            self.assertEqual(rec["n12"], 121)   # FAIL 回执读数在册不消失
+            self.assertEqual(rec["n12"], 121)   # the FAIL receipt's readings stay on record, not dropped
             self.assertFalse((self.output_dir / "policy_sd.pt").exists())
 
     def test_recall12_fail_never_triggers_class_weighted_retry(self):
-        # 类加权系 N12 已除名预案(方案甲 2026-07-19 亲批后:主训即类平衡
-        # 加权);recall_12 失守仍只 FAIL 不重训。
+        # Class weighting as an N12 fallback plan was withdrawn (after plan A was approved on 2026-07-19, main training is already
+        # class-balanced); a failing recall_12 still only FAILs, with no retraining.
         with tempfile.TemporaryDirectory() as d:
             with self.assertRaisesRegex(
                     RuntimeError, "post-calibration validation FAIL"):
                 self._run(d, self._dataset(), recall=0.4)
-            self.assertEqual(len(self.train_calls), 1)   # 只训一次,零重试
+            self.assertEqual(len(self.train_calls), 1)   # trained once, zero retries
             rec = self._report(d)
             self.assertIs(rec["class_weighted_retry"], False)
             self.assertEqual(
@@ -1752,14 +1752,14 @@ class MainV2ReceiptTests(_PatchMixin, unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             dataset = self._dataset()
             calls = self._run(d, dataset, top1_seq=(0.90, 0.99))
-            self.assertEqual(len(calls), 2)             # 唯一重试
-            # 方案甲 b:v2 主训即类平衡加权(非 None),权重恒等标准平衡式
+            self.assertEqual(len(calls), 2)             # the single retry
+            # plan A (b): v2 main training is already class-balanced (not None); the weights equal the standard balanced formula
             _, labels, groups, _, _ = dataset
             fit, _, _ = bc_worker._split_fit_validation_by_episode(groups)
             self.assertIsNotNone(calls[0])
             np.testing.assert_allclose(
                 calls[0], bc_worker._balanced_class_weights(labels[fit]))
-            self.assertIsNotNone(calls[1])              # 第二发系类加权重试
+            self.assertIsNotNone(calls[1])              # the second call is the class-weighted retry
             self.assertEqual(
                 self.train_epochs,
                 [bc_worker._BC_PRIMARY_EPOCHS,
@@ -1767,7 +1767,7 @@ class MainV2ReceiptTests(_PatchMixin, unittest.TestCase):
             self.assertIs(self._report(d)["class_weighted_retry"], True)
 
     def test_v2_primary_train_call_is_class_balanced(self):
-        # 方案甲 b 正例:PASS 路径主训一次即类平衡加权,零重试。
+        # plan A (b) positive case: on the PASS path main training runs once, class-balanced, with zero retries.
         with tempfile.TemporaryDirectory() as d:
             dataset = self._dataset()
             calls = self._run(d, dataset)
@@ -1815,19 +1815,19 @@ class MainV2ReceiptTests(_PatchMixin, unittest.TestCase):
     def test_unregistered_threshold_rejected_before_any_output(self):
         with tempfile.TemporaryDirectory() as d:
             self._patch("OUT_V2", pathlib.Path(d))
-            with self.assertRaisesRegex(ValueError, "未注册"):
+            with self.assertRaisesRegex(ValueError, "not registered"):
                 bc_worker.main_v2(0.6)
             self.assertEqual(list(pathlib.Path(d).iterdir()), [])
 
 
 class PlanAExpansionTests(_PatchMixin, unittest.TestCase):
-    """方案甲 a(2026-07-19 亲批):v2 采集局数 ×3 + 种子确定性延拓。"""
+    """Plan A (a) (approved 2026-07-19): v2 collection episodes x3 + deterministic seed extension."""
 
     def test_factor_constant_and_seed_extension_rule(self):
         self.assertEqual(bc_worker._V2_COLLECTION_EPISODE_FACTOR, 3)
         self.assertEqual(len(bc_worker.DEMO_SEEDS_V2),
                          3 * len(bc_worker.DEMO_SEEDS))
-        # 当前数据污染隔离：v2 使用与全部已打开 predecessor 完全不相交的新池。
+        # Current data-contamination isolation: v2 uses a new pool completely disjoint from every predecessor that was opened.
         self.assertEqual(bc_worker.DEMO_SEEDS_V2,
                          list(range(2_143_000, 2_143_384)))
         self.assertEqual(bc_worker.DEMO_SEEDS_V2[0], 2_143_000)
@@ -1836,8 +1836,8 @@ class PlanAExpansionTests(_PatchMixin, unittest.TestCase):
             bc_worker.DEMO_SEEDS))
 
     def test_v1_episode_count_and_seed_discipline_unaffected(self):
-        # v1 局数纪律仍为 128;active registry 换用未查看的 2108000..2108127
-        # (2_102 段 2026-07-27 崩溃烧毁,append-only 推进)。
+        # The v1 episode discipline is still 128; the active registry switches to the unseen 2108000..2108127
+        # (the 2_102 range was burned by a crash on 2026-07-27; append-only advance).
         self.assertEqual(
             list(bc_worker.DEMO_SEEDS),
             list(range(2_142_000, 2_142_128)),
@@ -1845,7 +1845,7 @@ class PlanAExpansionTests(_PatchMixin, unittest.TestCase):
         self.assertEqual(len(bc_worker.DEMO_SEEDS), 128)
         self.assertEqual(tuple(train_ppo._WORKER_BC_DEMO_SEEDS),
                          tuple(range(2_142_000, 2_142_128)))
-        # 源文级镜像:v1 采集环仍消费 DEMO_SEEDS,v2 采集环消费 DEMO_SEEDS_V2
+        # Source-level mirror: the v1 collection loop still consumes DEMO_SEEDS, the v2 loop consumes DEMO_SEEDS_V2
         src = BC_WORKER.read_text()
         self.assertIn("for i, seed in enumerate(DEMO_SEEDS):", src)
         self.assertIn("for i, seed in enumerate(DEMO_SEEDS_V2):", src)
@@ -1892,10 +1892,10 @@ class PlanAExpansionTests(_PatchMixin, unittest.TestCase):
 
 
 class PlanAClassWeightTests(unittest.TestCase):
-    """方案甲 b(2026-07-19 亲批):类平衡权重 w_c = N/(K·n_c) 计算件。"""
+    """Plan A (b) (approved 2026-07-19): the class-balanced weight computation w_c = N/(K*n_c)."""
 
     def test_balanced_formula_hand_identity(self):
-        # 手算:N=12, K=3;n_9=6, n_10=4, n_12=2
+        # by hand: N=12, K=3; n_9=6, n_10=4, n_12=2
         # → w_9 = 12/(3·6) = 2/3, w_10 = 12/(3·4) = 1, w_12 = 12/(3·2) = 2
         labels = np.asarray([9] * 6 + [10] * 4 + [12] * 2, dtype=np.int64)
         w = bc_worker._balanced_class_weights(labels)
@@ -1903,7 +1903,7 @@ class PlanAClassWeightTests(unittest.TestCase):
         self.assertAlmostEqual(w[9], 12 / (3 * 6))
         self.assertAlmostEqual(w[10], 12 / (3 * 4))
         self.assertAlmostEqual(w[12], 12 / (3 * 2))
-        # 类集 = 实际出现类:未出现类记 0.0(占位,CE 不消费)
+        # class set = classes that actually occur: absent classes get 0.0 (placeholder, not consumed by CE)
         for absent in (0, 1, 5, 11, 13, 14):
             self.assertEqual(w[absent], 0.0)
 
@@ -1916,18 +1916,18 @@ class PlanAClassWeightTests(unittest.TestCase):
         w1 = bc_worker._balanced_class_weights(labels)
         w2 = bc_worker._balanced_class_weights(labels)
         self.assertTrue(np.array_equal(w1, w2))
-        # 与标签顺序无关(纯计数算术)
+        # independent of label order (pure counting arithmetic)
         w3 = bc_worker._balanced_class_weights(np.sort(labels))
         self.assertTrue(np.array_equal(w1, w3))
 
     def test_empty_labels_fail_loud(self):
-        with self.assertRaisesRegex(RuntimeError, "空标签集"):
+        with self.assertRaisesRegex(RuntimeError, "empty label set"):
             bc_worker._balanced_class_weights(
                 np.asarray([], dtype=np.int64))
 
 
 class V1TrainPathUnweightedTests(_PatchMixin, unittest.TestCase):
-    """方案甲 b 铁律面:v1 训练路径零触碰(v1 调用不传权)。"""
+    """Plan A (b) hard rule: the v1 training path is untouched (v1 calls pass no weights)."""
 
     def test_train_bc_shared_function_default_is_none(self):
         import inspect
@@ -1936,7 +1936,7 @@ class V1TrainPathUnweightedTests(_PatchMixin, unittest.TestCase):
 
     def test_call_sites_verbatim_v1_unweighted_v2_weighted(self):
         src = BC_WORKER.read_text()
-        # v1 主训调用零加权原封;v2 主训调用系类平衡加权(方案甲 b)
+        # the v1 main-training call stays unweighted; the v2 main-training call is class-balanced (plan A (b))
         self.assertIn(
             "model, top1, recalls = train_bc(\n"
             "        X, Y, groups,\n"
@@ -1969,7 +1969,7 @@ class V1TrainPathUnweightedTests(_PatchMixin, unittest.TestCase):
             labels = np.full(n, 9, dtype=np.int64)
             labels.reshape(len(episodes), 8)[:, :4] = 14
             X_rows = np.zeros((n, 298), dtype=np.float32)
-            X_rows[:, 0] = np.arange(n, dtype=np.float32) / n  # A2:行唯一化
+            X_rows[:, 0] = np.arange(n, dtype=np.float32) / n  # A2: make each row unique
             dataset = (X_rows, labels, groups)
 
             def fake_collect():
@@ -2000,19 +2000,19 @@ class V1TrainPathUnweightedTests(_PatchMixin, unittest.TestCase):
                 "manager_npz_sha256": "c" * 64})
             bc_worker.main()
             self.assertTrue(collect_saw_marker)
-            self.assertEqual(len(calls), 1)     # 主训一次
-            self.assertIsNone(calls[0])         # v1 调用不传权(方案甲铁律)
+            self.assertEqual(len(calls), 1)     # main training once
+            self.assertIsNone(calls[0])         # v1 calls pass no weights (plan A hard rule)
             rec = json.loads(
                 (out / "bc_report.json").read_text())
             self.assertIs(rec["class_weighted_retry"], False)
-            # v1 回执面原封:方案甲新字段只入 v2 回执,禁漏入 v1
+            # the v1 receipt surface is unchanged: the new plan-A fields go only into the v2 receipt and must not leak into v1
             self.assertNotIn("collection_episodes", rec)
             self.assertNotIn("class_weights", rec)
 
     def test_v1_below_line_quality_records_and_publishes_a2(self):
-        # A2 修正案(2026-07-27 批):候选质量线只记不裁——线下质量仍触发
-        # 唯一一次类权重试,之后照常进入 final 评分并发布;报告 data_gate
-        # 由 demos-validity 决定,质量读数原字段落档。
+        # Amendment A2 (approved 2026-07-27): the candidate quality line is recorded, not enforced; below-line quality still triggers
+        # the single class-weight retry, after which final scoring and publication proceed as usual; the report's data_gate
+        # is decided by demos validity, and the quality readings are archived in their original fields.
         with tempfile.TemporaryDirectory() as d:
             epochs_seen = []
             final_calls = 0
@@ -2074,7 +2074,7 @@ class V1TrainPathUnweightedTests(_PatchMixin, unittest.TestCase):
 
 
 class V1SurfaceRegressionTests(_PatchMixin, unittest.TestCase):
-    """E2 铁律:v1 面回归零破坏(canonical 路径 / 回执 schema / 采集行为)。"""
+    """E2 hard rule: zero breakage of the v1 surface (canonical path / receipt schema / collection behaviour)."""
 
     def test_canonical_paths_isolated(self):
         self.assertEqual(bc_worker.OUT,
@@ -2085,14 +2085,14 @@ class V1SurfaceRegressionTests(_PatchMixin, unittest.TestCase):
 
     def test_v1_report_surface_verbatim(self):
         src = BC_WORKER.read_text()
-        # v1 回执文件名/schema 键源文原封(_previous 归档互斥规避之根据)
+        # the v1 receipt file name and schema keys are unchanged in the source (the basis for avoiding the _previous archive exclusion)
         self.assertIn('"schema_version": _BC_REPORT_SCHEMA_VERSION,', src)
         self.assertIn('(OUT / "bc_report.json").write_text', src)
         self.assertIn('tmp.replace(OUT / "bc_report.json")', src)
         self.assertEqual(train_ppo._BC_REPORT_SCHEMA_VERSION, 1)
 
     def test_v1_collect_behavior_unchanged(self):
-        # 干净脚本(dispatch → 10)+ fuse/no-effect 各一发，二者都不得入池。
+        # Clean script (dispatch -> 10) + one fuse and one no-effect tick; neither may enter the pool.
         def script(seed):
             if seed == bc_worker.DEMO_SEEDS[0]:
                 return [[{"raw": _out_band(), "overridden": True},
@@ -2112,7 +2112,7 @@ class V1SurfaceRegressionTests(_PatchMixin, unittest.TestCase):
             [sys.executable, str(BC_WORKER), "--preventive-threshold", "0.65"],
             text=True, capture_output=True, check=False)
         self.assertNotEqual(run.returncode, 0)
-        self.assertIn("仅与 --v2 同用", run.stderr)
+        self.assertIn("only with --v2", run.stderr)
         for threshold in ("0.70", "0.8"):
             bad = subprocess.run(
                 [sys.executable, str(BC_WORKER), "--v2",
@@ -2120,7 +2120,7 @@ class V1SurfaceRegressionTests(_PatchMixin, unittest.TestCase):
                 text=True, capture_output=True, check=False)
             self.assertNotEqual(
                 bad.returncode, 0,
-                f"未注册阈 {threshold} 必须由 argparse choices 拦截")
+                f"unregistered threshold {threshold} must be stopped by argparse choices")
         help_run = subprocess.run(
             [sys.executable, str(BC_WORKER), "--help"],
             text=True, capture_output=True, check=False)

@@ -1,113 +1,151 @@
-# R17 预注册草案(2026-09-06)— 资源通道"按实际建成" + Gate T0
+# R17 pre-registration draft (2026-09-06): the resource channel "as actually built" + Gate T0
 
-状态:**草案,未冻结**。主席说"冻结"后计算 sha256 入台账,任何字节改动即作废重冻。
-依据:`r17-DIRECTION-PANEL-20260902.md`(面板骨架 §四)、`r17-0-VERDICT-20260906.md`、
-主席裁决 1–6(台账 2026-09-06 第 443/444 行)、双向闸门(第 451 行)、追溯登记(452–458 行)、
-`~/r17_work/review/R18-R23-REVIEW-20260906.md` 与 `READINESS-LAW-COMPARISON-20260906.md`。
+Status: **draft, not frozen**. Once it is frozen, its sha256 goes into the ledger, and any byte change voids
+it and requires a new freeze.
+Basis: [`r17-DIRECTION-PANEL-20260902.md`](r17-DIRECTION-PANEL-20260902.md) (the panel skeleton, §4),
+[`r17-0-VERDICT-20260906.md`](r17-0-VERDICT-20260906.md), decisions 1-6 (ledger of 2026-09-06, lines
+443/444), the two-way gate (line 451), the retroactive registrations (lines 452-458), and two review memos
+of 2026-09-06 (a review of R18-R23 and a comparison of readiness laws; ledger and memos not published).
 
-## 一、案由
+## 1. Rationale
 
-R16 把根因链推进到"清空却未达标"的死局;R17.0 实测经理在部署中几乎无关(四种脚本经理存活
-17/17/17/16),杠杆必须是环境可供性。并行 AI(R17.1-A..F,均未认证)已把面板要的物理可供性造出:
-拾金、上楼回城、免 UI 买/穿/修、Pepin 治疗、城镇宏;并量出回城一趟 614–1263 拍(中位约 780),
-回来时达标仅 17%–23%,未达标者 70/104 为纯现金不足。**Gate T0 从未运行。** 本预注册把通道按
-实际建成的形态与主席裁决的战备法一并冻结,只做一件事:用零训练的因子探针回答"手造好之后,
-L2 危险度降不降",并以此作为发射任何训练臂的唯一判据。
+R16 pushed the root-cause chain to the dead end of "cleared but not ready"; R17.0 measured that the manager
+hardly matters in deployment (survival 17/17/17/16 under four scripted managers), so the lever must be the
+affordances of the environment. A separate line of work (R17.1-A..F, all not certified) has built the
+physical affordances the panel asked for: picking up gold, going upstairs back to town, buying / equipping
+/ repairing without the UI, healing at Pepin, and town macros; it measured a town round trip at 614-1263
+steps (median about 780), with only 17%-23% of returns meeting the bar, and 70/104 of the misses due purely
+to lack of cash. **Gate T0 has never run.** This pre-registration freezes the channel in the form in which
+it was actually built, together with the readiness law as decided, and does only one thing: answer, with a
+zero-training factorial probe, "once the hands are built, does the danger of L2 go down?", and use that as
+the only criterion for launching any training arm.
 
-## 二、法(冻结项)
+## 2. Rules (frozen items)
 
-1. **资源协议** `resource_protocol = l2-town-v1`;购买模式五档 `none / heal / potions / armor / full`
-   (T0 的因子)。
-2. **战备法** `resource_readiness_law = coach-v03`(主席裁决 3):L1→L2 战备六条
-   clvl≥2、AC≥9、dmg≥6、腰带即时药≥4、四槽(头/左手/右手/胸)最低耐久≥15、一件可用武器;
-   **HP 不入法**,只用于喝药反射/失血计价与经理回城触发(回城触发沿用原生七条判定,含 HP≥80%)。
-   引擎 `ResourceTransitionGuard` 的 L1→L2 分支为 advisory:只写回执(`reason ∈ {ready, forced_unready}`,
-   `pretransition_ready_law`),不否决;`target>2` 同为 advisory(`deeper_advisory`),L3+ 由 Python 层表
-   (v0.2 十六层)裁量。**强制下楼逃生口按面板裁决保留**:`m[FARM] = not forced_dive`(冻结法原文),
-   forced-unready 下楼单独统计、不付托管(托管按 `pretransition_ready_law` 兑付)。
-3. **服务配方** `resource_service_policy = sustain-v6`(并行 AI 已评测过的最完整形态:1500 拍行程上限、
-   拾金窗 450 拍、买甲/穿甲/卸装保战备/修理/买药/免费治疗),FARM 触发 3600 拍不变(R19 配对结果不支持 1800)。
-   **决定点 A**:主席可改为 legacy-v1(600 拍上限)——但 R19 实测 0/48 行程能在 600 拍内完成,该配方下
-   T0 只会测到零往返。
-4. **时钟** 沿用冻结 6000 拍(`worker_time_protocol = legacy`),**不用** completion-l2-v1(12000 拍),以与
-   A0′ 及 R16 部署可比。
-5. **部署形态**(R16 形态不变):工人 7e31dc54(R16 修宪工人)与认证工人;主权开;经济 v4;hunt 开;
-   farm_scene_cap 3600;窗口清钟;采样解码;协议开时经理 = `resource_option_choice`(脚本),协议关时经理 =
-   readiness-v3 教练(A0′ 形态)。
-6. **考卷协议** 3000 拍旧形态不变;六卷锚按新协议 bundle 重铸为**新文件** `r17-anchor-{xdevil,xm29,xm29full}-{a,b}`
-   (协议关,R16 考试旗),旧 `r16-anchor-*` 文件永不覆盖。
-7. **种子** T0 池 = **2_133(2133000–2133047)**,2026-09-06 登记、未消耗;A0′ 在同池重探(配对设计)。
-   处女池 2_116–119、2_126–128 零接触;2_129 已宣布烧毁。
+1. **Resource protocol** `resource_protocol = l2-town-v1`; five purchase modes `none / heal / potions /
+   armor / full` (the factor of T0).
+2. **Readiness law** `resource_readiness_law = coach-v03` (decision 3): six conditions for L1→L2
+   readiness: clvl≥2, AC≥9, dmg≥6, instant potions in the belt ≥4, minimum durability ≥15 across the four
+   slots (head / left hand / right hand / chest), one usable weapon; **HP is not part of the law**; it is
+   used only for the drinking reflex / HP-loss pricing and the manager's town-trip trigger (the trigger keeps
+   the seven native conditions, including HP≥80%).
+   The L1→L2 branch of the engine's `ResourceTransitionGuard` is advisory: it only writes a receipt
+   (`reason ∈ {ready, forced_unready}`, `pretransition_ready_law`) and does not veto; `target>2` is advisory
+   as well (`deeper_advisory`), and L3+ is decided by the Python-side table (v0.2, sixteen levels). **The
+   forced-descent escape hatch is kept, as the panel decided**: `m[FARM] = not forced_dive` (the frozen rule
+   text); forced-unready descents are counted separately and do not pay escrow (escrow pays according to
+   `pretransition_ready_law`).
+3. **Service recipe** `resource_service_policy = sustain-v6` (the most complete form, already evaluated in
+   that separate work: a 1500-step trip limit, a 450-step gold pick-up window, buy armour / equip armour /
+   unequip to keep readiness / repair / buy potions / free healing); the FARM trigger stays at 3600 steps
+   (the R19 pairing results do not support 1800).
+   **Decision point A**: this can be changed to legacy-v1 (600-step limit), but R19 measured 0/48 trips
+   completing within 600 steps, so under that recipe T0 would measure zero round trips.
+4. **Clock**: the frozen 6000 steps (`worker_time_protocol = legacy`), **not** completion-l2-v1 (12000
+   steps), to stay comparable with A0′ and the R16 deployment.
+5. **Deployed form** (unchanged from R16): worker 7e31dc54 (the R16 constitutional worker) and the
+   certified worker; autonomy on; economy v4; hunt on; farm_scene_cap 3600; window clock reset; sampled
+   decoding; with the protocol on, manager = `resource_option_choice` (scripted), with the protocol off,
+   manager = the readiness-v3 coach (the A0′ form).
+6. **Exam protocol**: the old 3000-step form unchanged; the six anchor sheets are recast under the new
+   protocol bundle as **new files** `r17-anchor-{xdevil,xm29,xm29full}-{a,b}` (protocol off, R16 exam
+   flags); the old `r16-anchor-*` files are never overwritten.
+7. **Seeds**: T0 pool = **2_133 (2133000-2133047)**, registered on 2026-09-06, unused; A0′ is re-probed on
+   the same pool (paired design). The fresh pools 2_116-119 and 2_126-128 are not touched; 2_129 has been
+   declared burned.
 
-## 三、Gate T0(零训练;发射训练臂的唯一判据)
+## 3. Gate T0 (zero training; the only criterion for launching a training arm)
 
-**组合**(每组 48 种子,6000 拍,采样,单线程 Torch):
-- A0′:协议关,readiness-v3 教练 × {7e31dc54, 认证工人} — 2 组(基线,新池重探)。
-- T0 行 × 7e31dc54:(a) `none`(只拾金不回城)、(b) `potions`、(c) `armor`、(d) `full` — 4 组;
-  (e) `heal`(只治疗)作信息行 — 1 组;(d) × 认证工人作信息行 — 1 组。
-- 合计 8 组 ≈ 40 分钟机器时间;零训练;消耗 2_133。
+**Combinations** (48 seeds each, 6000 steps, sampled, single-threaded Torch):
+- A0′: protocol off, readiness-v3 coach × {7e31dc54, certified worker}: 2 groups (baseline, re-probed on
+  the new pool).
+- T0 rows × 7e31dc54: (a) `none` (pick up gold only, no town trip), (b) `potions`, (c) `armor`, (d)
+  `full`: 4 groups; (e) `heal` (healing only) as an information row: 1 group; (d) × certified worker as an
+  information row: 1 group.
+- 8 groups in total ≈ 40 minutes of machine time; zero training; consumes 2_133.
 
-**主指标**(面板 §四.1):
-- 主-1 存活(曝光归一化):L2 每千拍风险率 = L2 死亡 / Σ L2 停留拍;首次下楼拍 + 1800 时存活。
-- 主-2 成长保持:L2 到达 ≥ 0.8 × A0′;clvl 均值 ≥ A0′ − 0.1;L1 每千地牢拍击杀 ≥ 0.85 × A0′(扣除城镇拍)。
-- 帕累托计数 alive ∧ L2。
+**Main metrics** (panel §4.1):
+- Main-1 survival (exposure-normalised): L2 hazard per thousand steps = L2 deaths / Σ steps spent on L2;
+  survival at first descent step + 1800.
+- Main-2 growth retention: L2 reached ≥ 0.8 × A0′; mean clvl ≥ A0′ − 0.1; L1 kills per thousand dungeon
+  steps ≥ 0.85 × A0′ (town steps excluded).
+- Pareto count alive ∧ L2.
 
-**判据**(面板 §四.2,逐字):
-(d) 对 A0′:成对 saved − lost ≥ +6/48 且 UCB95 < 0;L2 到达 ≥ 0.8 × A0′;L2 每千拍风险率 ≤ 0.7 × A0′;
-(d) − (a) 存活 ≥ +4/48(通道效应而非观测漂移);(b) 与 (c) 各自报告,判决书须点名承重杠杆;
-(d) 的 forced-unready 下楼份额 ≤ 25%。任一不满足 → 不发射训练臂;R17 判决 = 通道未坐实 / 不可归因。
-**T0 不加冕**。
+**Criteria** (panel §4.2, verbatim):
+(d) against A0′: paired saved − lost ≥ +6/48 and UCB95 < 0; L2 reached ≥ 0.8 × A0′; L2 hazard per thousand
+steps ≤ 0.7 × A0′; (d) − (a) survival ≥ +4/48 (a channel effect rather than observation drift); (b) and (c)
+reported separately, and the verdict must name the load-bearing lever; the forced-unready descent share of
+(d) ≤ 25%. Any unmet → no training arm is launched; R17 verdict = channel not confirmed / not attributable.
+**T0 crowns nothing.**
 
-**机制子指标**(信息量,禁同义反复):行程触发原因分布(cleared / cap;idle-clock 须为 0);行程拍中位;
-购入 AC 与耐久;购入药数;空跑次数;下楼时 belt/AC;每次 L1 清场拾金;各臂现金缺口归因;
-`forced_unready` 与 `ready` 回执计数;L2 花名册规模。
+**Mechanism sub-metrics** (informational; tautologies forbidden): distribution of trip trigger reasons
+(cleared / cap; idle-clock must be 0); median trip steps; AC and durability bought; potions bought; empty
+trips; belt/AC at descent; gold picked up per L1 clear; attribution of each arm's cash shortfall;
+`forced_unready` and `ready` receipt counts; size of the L2 roster.
 
-## 四、认证前置(发射 T0 之前,顺序固定)
+## 4. Certification prerequisites (before launching T0, in fixed order)
 
-1. 最终字节全套件 + 双向重烤(7 月库 + `build-res` 新库)逐位重现四锚(2026-09-06 已在裁决 3 施工前通过一次;
-   施工后须再过)。
-2. 协议源文件 bundle sha、桥 sha、引擎 sha、补丁栈 sha 写入台账并冻结本文件。
-3. 六卷 `r17-anchor-*` 重铸(约 50 分钟)。
-4. 主席 LAUNCH_ORDER(消耗 2_133)。
+1. The full final-byte suite + a two-way re-bake (the July library + the new `build-res` library)
+   reproducing the four anchors bit for bit (passed once on 2026-09-06 before the construction for decision
+   3; must pass again after it).
+2. Write the protocol source bundle sha, bridge sha, engine sha and patch-stack sha into the ledger and
+   freeze this file.
+3. Recast the six `r17-anchor-*` sheets (about 50 minutes).
+4. Launch order (consumes 2_133).
 
-## 五、若 T0 通过:R17.1 训练臂(另立发射令,本文件只预告)
+## 5. If T0 passes: the R17.1 training arm (under its own launch order; this file only previews it)
 
-续训 7e31dc54,coach-v03,托管尺 v2,T = round2048(266240/(1−s));四门对 r17-anchor;部署对
-A1 = T0(d) 与 A2 = 认证工人/R17 环境;加冕规则 = R16 措辞(存活不劣于 A2 且成长显著优于 A2)。
+Continue training 7e31dc54, coach-v03, escrow ruler v2, T = round2048(266240/(1−s)); four gates against
+r17-anchor; deployment against A1 = T0(d) and A2 = certified worker / R17 environment; crowning rule = the
+R16 wording (survival not worse than A2 and growth significantly better than A2).
 
-## 六、身份(冻结时填)
+## 6. Identities (filled in at freeze)
 
-- 协议 bundle sha256(22 文件,`eval_contract.source_bundle_sha256`):`fb7d651e9c2e466e0fc1ec4704b8a99b345b58dbb0ff6570bae636f5be58d671`;
-  桥 `_diablogym`(build-res,2026-09-06 17:54):`a7e47ebb1e42ef264d065808f9e23cd86dec7a939f9023fdc3b0145bc7333ab9`;
-  引擎 `liblibdevilutionx_so.so`:`a57a2ca3621480aacfa3c82eae2ac2b233148437c0e8c4665e117cfcdd0dc4d5`;
-  补丁 0001–0011 sha256:见台账第 451 行(0009 de0303d3…,0011 2c8873f1…)。
-- 最终字节认证(台账 R17_1_FINAL_BYTES_CERTIFICATION_PASS):双向重烤四锚逐位重现;正式树套件 1790/53/9(9 = 旧库缺符号);
-  镜像根新库套件全绿(含 9 项原生战备测试);G0 收据冒烟 rc=0;探针回归收据 33023de1… 重出。
-- 本文件 sha256:冻结时计算并写入台账。
+- Protocol bundle sha256 (22 files, `eval_contract.source_bundle_sha256`):
+  `fb7d651e9c2e466e0fc1ec4704b8a99b345b58dbb0ff6570bae636f5be58d671`;
+  bridge `_diablogym` (build-res, 2026-09-06): `a7e47ebb1e42ef264d065808f9e23cd86dec7a939f9023fdc3b0145bc7333ab9`;
+  engine `liblibdevilutionx_so.so`: `a57a2ca3621480aacfa3c82eae2ac2b233148437c0e8c4665e117cfcdd0dc4d5`;
+  patches 0001-0011 sha256: see ledger line 451 (0009 de0303d3…, 0011 2c8873f1…).
+- Final-byte certification (ledger R17_1_FINAL_BYTES_CERTIFICATION_PASS): two-way re-bake reproduced the four
+  anchors bit for bit; suite on the official tree 1790/53/9 (9 = symbols missing from the old library);
+  suite on the mirror root with the new library all green (including 9 native readiness tests); G0 receipt
+  smoke rc=0; probe regression receipt 33023de1… reproduced.
+- sha256 of this file: computed at freeze and written into the ledger.
 
-## 七、W/P 对抗复核(2026-09-06)对本预注册的修正
+## 7. Corrections to this pre-registration from the W/P adversarial review (2026-09-06)
 
-`~/r17_work/review/R17-0-WP-ADVERSARIAL-REVIEW-20260906.md` 四项 HIGH 的处置:
-- H1 A0′(2026-09-02)是在代码树变动中跑出的 → 该表仅作历史参考;T0 在 2_133 上重探 A0′ 即为替代。
-- H2 `alive_at_first_descent+1800` 在 6000 拍下结构性不可测(首降均值 4535 拍 + 1800 > 6000),
-  交付表中的 0.214/0.276/0.200 为删失伪影,去删失真值 ≈ 0 → **决定点 D**:本预注册把该指标改为
-  「首降后存活拍数(含右删失,报告观测分母 `fd_plus_1800_observed_n`)」作信息量,**主指标只剩
-  曝光归一化的 L2 每千拍风险率**(不受删失影响)与成长保持三项;不延长时钟(与 R16 可比)。
-- H3 收据恒等式只在超时支路生效且缺死亡项 → 已修:worker_env 两处组装点增发
-  `worker_credited_terminal_death_reward` 与 `worker_policy_reward_receipt="v1"`;leashed_ppo 对每笔
-  带标记的 transition 校验六项恒等式(缺键即炸)。列入最终字节闸门。
-- H4 探针 09-04 被改后无回归收据 → 认证前置第 1 步之后追加:重跑探针回归段(16 种子,
-  readiness-v3 形态)并核对 rows sha `33023de1…`,登记新 `probe_sha256`;M2 的
-  `mask_forced_descent_share` 与 `farm_masked_at_descent_share` 两口径分列。
+Handling of the four HIGH findings of the W/P adversarial review of 2026-09-06 (not published):
+- H1 A0′ (2026-09-02) was run while the code tree was changing → that table is a historical reference only;
+  re-probing A0′ on 2_133 in T0 replaces it.
+- H2 `alive_at_first_descent+1800` is structurally unmeasurable at 6000 steps (mean first descent 4535
+  steps + 1800 > 6000); the 0.214/0.276/0.200 in the delivery table are censoring artefacts, and the
+  uncensored true value is ≈ 0 → **decision point D**: this pre-registration turns that metric into
+  "steps survived after the first descent (with right censoring; report the observed denominator
+  `fd_plus_1800_observed_n`)" as information; **the main metrics are now only the exposure-normalised L2
+  hazard per thousand steps** (unaffected by censoring) and the three growth-retention items; the clock is
+  not extended (comparability with R16).
+- H3 the receipt identity was only enforced on the timeout branch and lacked a death term → fixed: both
+  assembly points in worker_env now also emit `worker_credited_terminal_death_reward` and
+  `worker_policy_reward_receipt="v1"`; leashed_ppo checks the six-term identity on every marked transition
+  (a missing key raises). Added to the final-byte gate.
+- H4 the probe was changed on 09-04 without a regression receipt → added after step 1 of the certification
+  prerequisites: rerun the probe's regression segment (16 seeds, readiness-v3 form), check rows sha
+  `33023de1…`, register the new `probe_sha256`; the two definitions of M2, `mask_forced_descent_share` and
+  `farm_masked_at_descent_share`, are listed separately.
 
-## 八、主席决定(2026-09-06 晚,口谕「可以 就按您说的」+「T0 可以缩短」)
+## 8. Decisions (2026-09-06: approved as proposed, and T0 may be shortened)
 
-- A. 服务配方 **sustain-v6 / 1500 拍**。
-- B. **不跑信息行**;且 T0 今晚缩短为 4 组:A0′ × {7e31dc54, 认证工人} + (a) `none` + (d) `full`(均 7e31dc54);
-  (b) `potions`、(c) `armor` 顺延到合并卖装备经济(R17.1-D)之后的 T0′。主席的先验(其 2026-09-04 异议,台账在案):
-  工人不捡、不卖装备,回城无钱可买 → 预期 (d) 对 A0′ 无显著改善,T0 的价值是把"缺钱"变成逐臂数字并作 T0′ 的基线。
-- C. **冻结**(本文件 sha256 入台账)。
-- D. 「首降 + 1800」降为含删失的信息量;主指标 = 曝光归一化 L2 每千拍风险率 + 成长保持三项。
-- E. **新桥装为正式运行时**:`build/` → `~/r17_work/r17-1/build-res`(软链),7 月构建保留于 `build-july-20260727/`;
-  锚重铸与 T0 全部在同一运行时(桥 a7e47ebb…)上进行。
-- T0 判据保持 §三原文;缩短版只能对 (d) vs A0′ 与 (d) − (a) 两条作判,(b)(c) 待 T0′。
+- A. Service recipe **sustain-v6 / 1500 steps**.
+- B. **No information rows**; T0 is shortened to 4 groups: A0′ × {7e31dc54, certified worker} + (a) `none`
+  + (d) `full` (both 7e31dc54); (b) `potions` and (c) `armor` are deferred to T0′, after the gear-selling
+  economy (R17.1-D) is merged. The prior view recorded on 2026-09-04 (in the ledger): the worker neither
+  picks up nor sells gear, so it has no money to spend in town → expect no significant improvement of (d)
+  over A0′; T0's value is to turn "lack of money" into per-arm numbers and to serve as the baseline for T0′.
+- C. **Freeze** (the sha256 of this file goes into the ledger).
+- D. "First descent + 1800" is demoted to censored information; main metrics = exposure-normalised L2 hazard
+  per thousand steps + the three growth-retention items.
+- E. **The new bridge becomes the official runtime**: `build/` → the new `build-res` build (a symlink to a
+  local build directory, not published), with the July build kept alongside; the anchor recast and T0 all
+  run on the same runtime (bridge a7e47ebb…).
+- The T0 criteria stay as written in §3; the shortened version can only decide the two items (d) vs A0′ and
+  (d) − (a); (b) and (c) wait for T0′.

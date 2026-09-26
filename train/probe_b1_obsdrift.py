@@ -1,29 +1,29 @@
-"""B1-E4 经理观测漂移离线重放通道(PREREG-B1 E4;probe_f2_replay.py 范式)。
+"""B1-E4 offline replay channel for manager observation drift (PREREG-B1 E4; modelled on probe_f2_replay.py).
 
-评测档案不存观测,重放探针系唯一通道。对指定 (worker npz × manager npz ×
-评测档案) 复刻 eval_assembled.evaluate 的确定性协议逐窗重放,并无副作用
-记录经理观测;重放保真度以档案行(ROW_FIELDS)逐字段对账自证——保真锚
-顺序写死:先落评测档案、后重放对账(承工程 m-8)。
+Evaluation archives do not store observations; the replay probe is the only channel. For a given (worker npz x manager npz x
+evaluation archive) it re-runs the deterministic protocol of eval_assembled.evaluate window by window and records
+the manager observations without side effects; replay fidelity is self-checked by reconciling archive rows (ROW_FIELDS)
+field by field -- the fidelity anchor order is fixed: write the evaluation archive first, then replay and reconcile (engineering m-8).
 
-OBS_DRIFT 统计量(schema 钉死,承统计 M-5;封闭枚举,禁判读日另择表述):
-  - 8 追加维(经理观测下标 295-302)逐维 {mean, std, min, max, P5, P50, P95},
-    统计面 = 全部窗末观测(每窗 step() 返回之观测,含终局观测);
-  - 窗末 walkable 体态(局部图下标 44-164):walkΣ/121 窗末均值 + 西南带均值;
-  - D 窗决策体态(RB.10 王座 D 窗侧读数):选中 DIVE 之决策点观测上的
-    walkΣ/121 均值与西南带均值(决策点观测即上一窗窗末态;首窗为开局态)。
+OBS_DRIFT statistics (schema pinned, statistics M-5; closed enumeration, no rewording on the reading day):
+  - the 8 appended dims (manager observation indices 295-302), each with {mean, std, min, max, P5, P50, P95},
+    over all window-end observations (the observation returned by each window's step(), incl. the terminal one);
+  - window-end walkable shape (local-map indices 44-164): window-end mean of walkSum/121 + south-west band mean;
+  - D-window decision shape (RB.10 throne D-window reading): at decision points that choose DIVE, the
+    walkSum/121 mean and the south-west band mean (the decision observation is the previous window's end state; the first window uses the start state).
 
-西南带定义(施工钉死;卷内无机器可执行先例,若与 P6 编队原口径不符须于
-冻结前勘正——本定义已单列入呈报偏离清单):11×11 局部图 index=(dy+5)*11+
-(dx+5)(bridge local_map 外层 dy、内层 dx);引擎 displacement.hpp 定
-Direction::SouthWest = {0, +1},故西南带取 dy∈[1,5]、|dx|≤1 之 15 格带。
+South-west band definition (pinned during implementation; the case file has no machine-executable precedent -- if it
+disagrees with the original P6 formation definition it must be corrected before freeze; this definition is listed among the deviations
+in the freeze report): 11x11 local map index=(dy+5)*11+(dx+5) (bridge local_map: outer dy, inner dx); engine displacement.hpp sets
+Direction::SouthWest = {0, +1}, so the south-west band is the 15-cell strip with dy in [1,5] and |dx|<=1.
 
-安全性:记录仅为 numpy 纯前向与数组拷贝,不消耗 RNG、不改环境状态;零评测
-档案写入。产物 = 单个 report JSON(--out),携运行时五 sha 与全部权重 sha。
+Safety: recording is pure numpy forward passes and array copies; it consumes no RNG and changes no env state; no evaluation
+archive is written. Output = a single report JSON (--out) carrying the five runtime sha values and all weight sha values.
 
-用法:
+Usage:
   .venv/bin/python train/probe_b1_obsdrift.py --worker <npz> --archive <json> \
       --out <report.json> [--manager <npz>] [--seeds 7001,7004] [--smoke]
-退出码:0 = 全部种子重放保真;1 = 任一失配(报告仍落盘,如实登记)。
+Exit codes: 0 = every seed replayed with fidelity; 1 = any mismatch (the report is still written and records it).
 """
 from __future__ import annotations
 
@@ -48,8 +48,8 @@ ROW_FIELDS = ("ret", "depth", "died", "kills", "farm_n", "farm_tau_sum",
               "mode_seq")
 APPENDED8 = ("time_remaining", "stagnation_clock", "layer_kills",
              "layer_time", "last_opt_farm", "last_opt_dive",
-             "last_opt_resupply", "last_opt_tau")   # 经理观测 295..302
-WALK_LO, WALK_HI = 44, 165        # 基础观测 walkable 局部图下标 [44, 164]
+             "last_opt_resupply", "last_opt_tau")   # manager observation 295..302
+WALK_LO, WALK_HI = 44, 165        # walkable local-map indices [44, 164] in the base observation
 SW_BAND_CELLS = tuple((dy + 5) * 11 + (dx + 5)
                       for dy in (1, 2, 3, 4, 5) for dx in (-1, 0, 1))
 _PCTS = (5, 50, 95)
@@ -82,7 +82,7 @@ def replay_archive(worker_npz: str | pathlib.Path,
                    archive_path: str | pathlib.Path,
                    seeds: list[int] | None = None,
                    limit: int | None = None) -> dict:
-    """重放档案种子并产出 OBS_DRIFT 报告 dict(纯函数式,不落盘)。"""
+    """Replay archive seeds and return the OBS_DRIFT report dict (pure, writes nothing)."""
     from diablogym import NumpyManager, OptionsEnv
     from diablogym.options_env import DIVE, FARM
 
@@ -93,15 +93,15 @@ def replay_archive(worker_npz: str | pathlib.Path,
     manager_sha = sha(manager_npz)
     meta = doc.get("meta", {})
     if meta.get("worker", {}).get("sha256") != worker_sha:
-        raise ValueError("档案 worker sha 与重放 worker npz 不一致,保真前提失义")
+        raise ValueError("archive worker sha differs from the replay worker npz; fidelity premise void")
     if meta.get("manager", {}).get("sha256") != manager_sha:
-        raise ValueError("档案 manager sha 与重放 manager npz 不一致,保真前提失义")
+        raise ValueError("archive manager sha differs from the replay manager npz; fidelity premise void")
     replay_seeds = sorted(ref_rows) if seeds is None else list(seeds)
     if limit is not None:
         replay_seeds = replay_seeds[:limit]
     missing = [s for s in replay_seeds if s not in ref_rows]
     if missing:
-        raise ValueError(f"请求重放的种子不在档案内: {missing}")
+        raise ValueError(f"requested replay seeds are not in the archive: {missing}")
 
     rt = runtime_identity(ROOT, bridge_binary_path(ROOT))
     runtime_five = {
@@ -117,8 +117,8 @@ def replay_archive(worker_npz: str | pathlib.Path,
     env = OptionsEnv(max_steps=3000, workers=workers)
     fidelity: dict[str, object] = {}
     per_seed: dict[str, dict] = {}
-    end_obs_all: list[np.ndarray] = []       # 窗末观测(含终局观测)
-    d_decision_obs: list[np.ndarray] = []    # D 窗决策点观测(RB.10 D 窗侧)
+    end_obs_all: list[np.ndarray] = []       # window-end observations (incl. terminal)
+    d_decision_obs: list[np.ndarray] = []    # D-window decision observations (RB.10 D-window side)
     try:
         for seed in replay_seeds:
             obs, _ = env.reset(seed=seed)
@@ -162,7 +162,7 @@ def replay_archive(worker_npz: str | pathlib.Path,
                    "beats": allw["beats"], "overrides": allw["overrides"],
                    "cap": allw["cap"], "mode_seq": seq}
             ok = all(row[f] == ref_rows[seed][f] for f in ROW_FIELDS)
-            fidelity[str(seed)] = "位级同一" if ok else {
+            fidelity[str(seed)] = "bit-identical" if ok else {
                 "MISMATCH": {f: [row[f], ref_rows[seed][f]]
                              for f in ROW_FIELDS
                              if row[f] != ref_rows[seed][f]}}
@@ -177,8 +177,8 @@ def replay_archive(worker_npz: str | pathlib.Path,
                 "walk_end": _walk_summary(np.asarray(end_obs_seed)
                                           if end_obs_seed else np.empty((0, 303))),
             }
-            print(f"  seed {seed}: ret {R:.1f} D窗 {d_windows} "
-                  f"对账 {'OK' if ok else 'MISMATCH!'}", flush=True)
+            print(f"  seed {seed}: ret {R:.1f} D-windows {d_windows} "
+                  f"reconcile {'OK' if ok else 'MISMATCH!'}", flush=True)
     finally:
         env.close()
         workers.clear()
@@ -191,7 +191,7 @@ def replay_archive(worker_npz: str | pathlib.Path,
                  for i, name in enumerate(APPENDED8)}
     report = {
         "probe": "b1-obsdrift",
-        "prereg": "PREREG-B1 E4(schema 钉死;统计量封闭枚举)",
+        "prereg": "PREREG-B1 E4 (schema pinned; closed set of statistics)",
         "archive": str(archive_path),
         "archive_sha256": hashlib.sha256(archive_payload).hexdigest(),
         "worker_sha256": worker_sha,
@@ -199,7 +199,7 @@ def replay_archive(worker_npz: str | pathlib.Path,
         "runtime_five": runtime_five,
         "seeds": replay_seeds,
         "fidelity": fidelity,
-        "fidelity_ok": all(v == "位级同一" for v in fidelity.values()),
+        "fidelity_ok": all(v == "bit-identical" for v in fidelity.values()),
         "sw_band_cells": list(SW_BAND_CELLS),
         "appended8_window_end": appended8,
         "walk_window_end": _walk_summary(end_arr),
@@ -211,13 +211,13 @@ def replay_archive(worker_npz: str | pathlib.Path,
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--worker", required=True, help="工人 npz 路径")
-    ap.add_argument("--manager", default=str(H_NPZ), help="经理 npz(默认 H)")
-    ap.add_argument("--archive", required=True, help="评测档案 JSON(先落档后重放)")
-    ap.add_argument("--out", required=True, help="报告 JSON 输出路径")
+    ap.add_argument("--worker", required=True, help="worker npz path")
+    ap.add_argument("--manager", default=str(H_NPZ), help="manager npz (default H)")
+    ap.add_argument("--archive", required=True, help="evaluation archive JSON (archive first, then replay)")
+    ap.add_argument("--out", required=True, help="report JSON output path")
     ap.add_argument("--seeds", default=None,
-                    help="逗号分隔种子子集(默认 = 档案全部种子)")
-    ap.add_argument("--smoke", action="store_true", help="只重放首个种子")
+                    help="comma-separated seed subset (default = all archive seeds)")
+    ap.add_argument("--smoke", action="store_true", help="replay only the first seed")
     args = ap.parse_args()
     seeds = ([int(x) for x in args.seeds.split(",") if x.strip()]
              if args.seeds else None)
@@ -226,9 +226,9 @@ def main() -> int:
     out = pathlib.Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(report, ensure_ascii=False, indent=1))
-    bad = [k for k, v in report["fidelity"].items() if v != "位级同一"]
-    print(f"重放保真:{len(report['fidelity']) - len(bad)}/{len(report['fidelity'])}"
-          f" 位级同一;失配 {bad if bad else '无'}")
+    bad = [k for k, v in report["fidelity"].items() if v != "bit-identical"]
+    print(f"replay fidelity: {len(report['fidelity']) - len(bad)}/{len(report['fidelity'])}"
+          f" bit-identical; mismatches {bad if bad else 'none'}")
     return 1 if bad else 0
 
 

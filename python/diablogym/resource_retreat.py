@@ -1,6 +1,6 @@
 """R18-A retreat-v1: the scripted return-to-town interface for main L2+.
 
-Chairman's diagnosis (2026-09-06): the manager has no word for "retreat" and
+Design diagnosis (2026-09-06): the manager has no word for "retreat" and
 the worker has no hands for it, so on L2 the pair fights until death. This
 module gives the pair the missing interface with the smallest possible change:
 
@@ -36,7 +36,7 @@ __all__ = ["RESOURCE_RETREAT_PROTOCOLS", "RetreatPolicy", "RetreatService",
 
 @dataclass(frozen=True)
 class RetreatPolicy:
-    """The manager-side retreat law (ruling 3: HP feeds only drinking and the
+    """The manager-side retreat law (R17.1 readiness rule 3: HP feeds only drinking and the
     return-to-town decision — this is that decision)."""
     hp_fraction: float = 0.5            # retreat when hp <= hp_fraction * max_hp
     empty_belt_hp_fraction: float = 0.75  # ... or the belt is empty and hp <= this

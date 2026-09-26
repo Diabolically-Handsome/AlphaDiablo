@@ -25,7 +25,7 @@ def _scaled_encodings(
 ) -> tuple[str, ...]:
     if len(fields) != len(scales):
         raise RuntimeError(
-            "wire field/scale 数量不闭合:"
+            "wire field/scale counts do not match: "
             f"{len(fields)}!={len(scales)}")
     return tuple(
         "binary_0_or_1" if field in binary_fields else _divide_by(scale)
@@ -1041,7 +1041,7 @@ def _validate_layout_spec(layout: DualWorkerLayoutSpec) -> None:
     for segment in layout.segments:
         if segment.start != expected_start or segment.stop <= segment.start:
             raise RuntimeError(
-                "dual Worker layout segment 未无缝覆盖:"
+                "dual Worker layout segments do not tile seamlessly: "
                 f"{segment.name}={segment.start}:{segment.stop},"
                 f"expected_start={expected_start}"
             )
@@ -1056,13 +1056,13 @@ def _validate_layout_spec(layout: DualWorkerLayoutSpec) -> None:
             or math.prod(segment.shape) != segment.width
         ):
             raise RuntimeError(
-                "dual Worker segment shape/width 未闭合:"
+                "dual Worker segment shape/width do not match: "
                 f"{segment.name}.shape={segment.shape},"
                 f"width={segment.width}"
             )
         if len(segment.field_encodings) != len(segment.field_names):
             raise RuntimeError(
-                "dual Worker field encoding 数量与字段不一致:"
+                "dual Worker field encoding count does not match the fields: "
                 f"{segment.name}={len(segment.field_encodings)}"
                 f"!={len(segment.field_names)}"
             )
@@ -1071,7 +1071,7 @@ def _validate_layout_spec(layout: DualWorkerLayoutSpec) -> None:
             != len(segment.prefix_field_names)
         ):
             raise RuntimeError(
-                "dual Worker prefix encoding 数量与字段不一致:"
+                "dual Worker prefix encoding count does not match the fields: "
                 f"{segment.name}="
                 f"{len(segment.prefix_field_encodings)}"
                 f"!={len(segment.prefix_field_names)}"
@@ -1081,7 +1081,7 @@ def _validate_layout_spec(layout: DualWorkerLayoutSpec) -> None:
             != len(segment.tail_field_names)
         ):
             raise RuntimeError(
-                "dual Worker tail encoding 数量与字段不一致:"
+                "dual Worker tail encoding count does not match the fields: "
                 f"{segment.name}={len(segment.tail_field_encodings)}"
                 f"!={len(segment.tail_field_names)}"
             )
@@ -1093,7 +1093,7 @@ def _validate_layout_spec(layout: DualWorkerLayoutSpec) -> None:
                 or segment.tail_field_names
             ):
                 raise RuntimeError(
-                    "dual Worker 非行 segment 含 row/prefix/tail 元数据:"
+                    "dual Worker non-row segment carries row/prefix/tail metadata: "
                     f"{segment.name}")
         else:
             if (
@@ -1110,20 +1110,20 @@ def _validate_layout_spec(layout: DualWorkerLayoutSpec) -> None:
                 )
             ):
                 raise RuntimeError(
-                    "dual Worker row/prefix/tail 维度未闭合:"
+                    "dual Worker row/prefix/tail dimensions do not add up: "
                     f"{segment.name}")
         expected_start = segment.stop
     if expected_start != layout.observation_dim:
-        raise RuntimeError("dual Worker layout 未覆盖最终维度")
+        raise RuntimeError("dual Worker layout does not cover the final dimension")
     if layout.p_skip_semantic_index != 601:
-        raise RuntimeError("p_skip semantic index 漂移")
+        raise RuntimeError("p_skip semantic index drift")
     field_violations = _banned_policy_wire_violations(layout.segments)
     if (
         layout.banned_rng_tag_violations
         or field_violations
     ):
         raise RuntimeError(
-            "controller policy wire 含 RNG/drop/save-only 字段或 tag:"
+            "controller policy wire contains RNG/drop/save-only fields or tags: "
             + ",".join(
                 layout.banned_rng_tag_violations + field_violations)
         )
@@ -1143,23 +1143,23 @@ def _validate_layout() -> None:
         )
         if duplicates:
             raise RuntimeError(
-                f"controller wire {label} 含重复字段:"
+                f"controller wire {label} contains duplicate fields: "
                 + ",".join(duplicates)
             )
     overlap = set(CONTROLLER_SNAPSHOT_MISSILE_DIRECT_FIELDS).intersection(
         CONTROLLER_SNAPSHOT_MISSILE_INT32_FIELDS)
     if overlap:
         raise RuntimeError(
-            "controller wire missile direct/int32 重复编码:"
+            "controller wire missile direct/int32 duplicate encoding: "
             + ",".join(sorted(overlap))
         )
     if CONTROLLER_SNAPSHOT_VECTOR_DIM != 12377:
-        raise RuntimeError("controller wire 维度漂移")
+        raise RuntimeError("controller wire dimension drift")
     if DUAL_WORKER_OBSERVATION_DIM != 13012:
-        raise RuntimeError("dual Worker 维度漂移")
+        raise RuntimeError("dual Worker dimension drift")
     if DUAL_WORKER_LAYOUT_SHA256 != DUAL_WORKER_LAYOUT_FROZEN_SHA256:
         raise RuntimeError(
-            "dual Worker canonical layout SHA 漂移:"
+            "dual Worker canonical layout SHA drift: "
             f"{DUAL_WORKER_LAYOUT_SHA256}"
             f"!={DUAL_WORKER_LAYOUT_FROZEN_SHA256}"
         )

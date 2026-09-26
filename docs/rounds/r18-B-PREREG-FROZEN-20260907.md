@@ -1,76 +1,76 @@
-# R18-B 训练臂预注册(草案,2026-09-07 午;冻结前须填身份并经主席签字)
+# R18-B training-arm pre-registration (draft of 2026-09-07; identities are filled in and approved before freezing)
 
-## 〇、主席裁定(2026-09-07 晨—午)
+## 0. Design decisions (2026-09-07)
 
-1. 卖装备进训练(「这正是我们滚雪球的核心思路」)→ R18-B3 修订训练合同,sustain-loot-v1 进 earned-dive-suffix 训练。
-2. 二层关全图求战(「不然模型又不会走位,只能被活活打死」)→ hunt_scope=l1-only 进训练臂 v1(R18-B5 接线)。
-3. 回城卷轴:晨裁「也可以带」,午见全接口对照行后改裁「先去掉卷轴,太贵了」→ 训练臂 v1 **不带门**(R18-B5 接线仍做,留给"有钱再买"的下一版法条)。
-4. 「我上面说的那些机制您都要加入,不然模型玩到的是一个畸形的暗黑破坏神」→ 宝箱/桶清扫(R18-H1)、凯恩鉴定(R18-H2)
-   先落地、零训练配对验收、认证,再发射;两者作为 L1 收入端进训练臂(R18-B6 接线)。
-5. 发射时间与步数预算:未裁定(本文件 §五 给出建议值)。
+1. Loot selling enters training (it is the core of the snowball plan) → R18-B3 revises the training contract; sustain-loot-v1 enters earned-dive-suffix training.
+2. Whole-map hunting is turned off on level 2 (otherwise the model still cannot position itself and is simply beaten to death) → hunt_scope=l1-only enters training arm v1 (wired in R18-B5).
+3. Town Portal scroll: first allowed, then removed after the full-interface control row because it is too expensive → training arm v1 has **no portal** (the R18-B5 wiring is still done, kept for a later "buy it when there is money" rule).
+4. All the listed mechanisms must be added, otherwise the model plays a distorted Diablo → the chest/barrel sweep (R18-H1) and Cain identify (R18-H2)
+   land first, pass zero-training paired acceptance and certification, and only then is the arm launched; both enter the training arm as L1 income sources (wired in R18-B6).
+5. Launch time and step budget: not decided (§5 of this file gives suggested values).
 
-## 一、问题与假设
+## 1. Problem and hypothesis
 
-R18-X 判决书(`r18-X-DEPTH-DIAGNOSIS-20260907.md`)已回答「为什么不下楼」:不是训练量——
-(甲)工人从未因下楼得到报酬(R16 托管 244/244 未兑现),DIVE 窗被学成"继续打";(乙)深度只差一个动作,但 3 级、AC 9
-下三层必死(反事实:三层到达 2→21,存活 15→5);(丙)二层滚雪球慢且致命(每局 9000 拍杀 25 只、风险率 0.37/千拍)。
+The R18-X verdict (`r18-X-DEPTH-DIAGNOSIS-20260907.md`) answered "why does it not descend": not for lack of training.
+(a) The worker was never paid for descending (R16 escrow never vested, 244/244), so DIVE windows were learned as "keep fighting"; (b) depth is only one action away, but going to level 3 at character level 3 with AC 9
+is certain death (counterfactual: level-3 arrivals 2→21, survivors 15→5); (c) snowballing on level 2 is slow and deadly (25 kills per 9000-tick game, hazard 0.37 per 1000 ticks).
 
-**假设 H-B**:在一个"下楼能兑现托管、二层不全图求战、能撤退/开门、卖装备/开箱/砸桶/鉴定养经济"的世界里,
-只在二层以上开学习窗的工人,会同时提高二层生存(风险率降)与成长(击杀、clvl),并在实力够时下三层
-(三层到达增加且三层到达者存活增加)。
-**反假设**(可辨):只学会下楼不学会活(重演反事实:深度 +、存活 −);或只学会苟活不下楼(深度不动)。四闸与配对复测分辨三种结局。
+**Hypothesis H-B**: in a world where "descending can vest escrow, level 2 has no whole-map hunting, the agent can retreat/open a portal, and selling loot/opening chests/smashing barrels/identifying feed the economy",
+a worker whose learning windows open only on level 2 and above will improve both level-2 survival (lower hazard) and growth (kills, clvl), and go down to level 3 when strong enough
+(more level-3 arrivals, and more survivors among them).
+**Counter-hypotheses** (distinguishable): it only learns to descend, not to survive (repeating the counterfactual: depth up, survival down); or it only learns to hang on without descending (depth unchanged). The four gates and the paired re-test distinguish the three outcomes.
 
-## 二、世界(训练 = 测量,逐项)
+## 2. World (training = measurement, item by item)
 
-| 项 | 值 | 来源 |
+| Item | Value | Source |
 |---|---|---|
-| 起点权重 | 7e31dc54(`r16-arm-a-constitution/model_candidate.zip`) | 现役工人 |
-| 前缀 | 同一 7e31dc54 冻结采样策略打一层直到"挣得的下楼"(earned-dive-suffix-v1),学习窗只在二层以上 | R17.1/R18-B |
-| 协议 / 购买 / 经济 | l2-town-v1 / full / **sustain-loot-v1**(R18-B3) | 裁定 1 |
-| 战备法 / 经理 | coach-v03(六条法,脚本经理 `resource_option_choice`);**coach-v04(按层门槛)零训练探针为负(存活 19→14,台账 R18_K1_COACH_V04_PROBE_NEGATIVE),不采用** | R17.1 裁决 3 |
-| 时钟 | completion-l2-r18c(到达 12000 / 观测 6000 / 首降后 9000) | R18-B2 |
-| 撤退 / 门 | retreat-v1 / **portal-v1 关**(主席 2026-09-07 午裁定「先去掉卷轴,太贵了」;全接口对照行:带门 11/48 存活、风险率 0.415,比"撤退+关求战"净 −8——卷轴 200 金把甲药钱花光;R18-B5 接线仍做,门的"有钱再买"法条另立预注册) | R18-A/F,台账 R18_ARM_CONTROL_FULL_INTERFACE_INTERACTION_FOUND |
-| 求战范围 | **hunt_scope=l1-only**(R18-B5) | R18-G,裁定 2 |
-| 收入端 | **resource_sweep=sweep-v1**(箱/桶,R18-H1)、**resource_identify=cain-v1**(R18-H2)、**resource_weapon_upgrade=smith-v1**(铁匠买武器,R18-K2b,桥改)(R18-B6 接线) | 裁定 4 |
-| 撤退时机 | retreat-v1 不变;**retreat-v2(每拍反射 + 远则早撤)零训练为负(存活 19→17,撤退路上死 15→14),不采用**;下一步是"锚在楼梯边刷"法(R18-M,明日) | 台账 R18_L_RETREAT_V2_PROBE_NEGATIVE |
-| Boss 回避 | **不进 v1**:boss_avoidance=avoid-v1 修复轮后存活 19→20、风险率 0.228→0.206,但屠夫击杀 3→3 未达标(光圈未盖下楼宏与撤退走位);v2 明日(三套寻路器全盖 + 屠夫 6 级前回避) | 台账 R18_J_BOSS_AVOIDANCE_V1_FINAL_NOT_MERGED |
-| 仇恨上限 / 择敌 | off / off | R18-D/E 空结果 |
-| 托管 | 0.5 / 幂 1.6 / 战备门 / 尺 v2;撤退触发、门触发的窗罚没(R18-B/B5) | R16、R17.0、R18-B |
-| 其他工资项 | 与 R16 固定字典逐项相同(hp_loss_price 0.1、a11/a13/a14 logit 先验 2.0/2.0/2.5、拾药奖 2.0、no-progress 记零) | earned-dive-suffix-v1 固定字典 |
-| PPO | mppo,CPU,lr 1e-4,ent 0.005,target-kl 0.01,n-steps 512,batch 256,gamma 1.0,4 环境(建议提到 8) | R16 合同 |
+| Starting weights | 7e31dc54 (`r16-arm-a-constitution/model_candidate.zip`) | incumbent worker |
+| Prefix | the same frozen 7e31dc54 sampling policy plays level 1 until an "earned descent" (earned-dive-suffix-v1); learning windows only on level 2 and above | R17.1/R18-B |
+| Protocol / purchases / economy | l2-town-v1 / full / **sustain-loot-v1** (R18-B3) | decision 1 |
+| Readiness rule / manager | coach-v03 (six rules, scripted manager `resource_option_choice`); **the zero-training probe of coach-v04 (per-level thresholds) was negative (survival 19→14, ledger R18_K1_COACH_V04_PROBE_NEGATIVE); not adopted** | R17.1 readiness rule 3 |
+| Clock | completion-l2-r18c (arrival 12000 / observation 6000 / 9000 after the first descent) | R18-B2 |
+| Retreat / portal | retreat-v1 / **portal-v1 off** (design decision of 2026-09-07 to drop the scroll as too expensive; full-interface control row: with the portal 11/48 survived, hazard 0.415, net −8 against "retreat + hunting off", because the 200-gold scroll used up the money for armor and potions; the R18-B5 wiring is still done, and a "buy it when there is money" portal rule gets its own pre-registration) | R18-A/F, ledger R18_ARM_CONTROL_FULL_INTERFACE_INTERACTION_FOUND |
+| Hunt scope | **hunt_scope=l1-only** (R18-B5) | R18-G, decision 2 |
+| Income sources | **resource_sweep=sweep-v1** (chests/barrels, R18-H1), **resource_identify=cain-v1** (R18-H2), **resource_weapon_upgrade=smith-v1** (buying a weapon from the smith, R18-K2b, bridge change) (wired in R18-B6) | decision 4 |
+| Retreat timing | retreat-v1 unchanged; **retreat-v2 (per-tick reflex + retreat early when far away) was negative with zero training (survival 19→17, deaths on the retreat path 15→14); not adopted**; the next step is the "farm anchored next to the stairs" rule (R18-M, next) | ledger R18_L_RETREAT_V2_PROBE_NEGATIVE |
+| Boss avoidance | **not in v1**: after its fix round boss_avoidance=avoid-v1 moved survival 19→20 and hazard 0.228→0.206, but Butcher kills stayed 3→3 and missed the target (the avoidance radius did not cover the descend macro and the retreat walk); v2 next (covering all three path planners + avoiding the Butcher before character level 6) | ledger R18_J_BOSS_AVOIDANCE_V1_FINAL_NOT_MERGED |
+| Aggro cap / target selection | off / off | R18-D/E null results |
+| Escrow | 0.5 / power 1.6 / readiness gate / ruler v2; windows triggered by retreat or the portal forfeit (R18-B/B5) | R16, R17.0, R18-B |
+| Other wage items | identical item by item to the fixed R16 dictionary (hp_loss_price 0.1, a11/a13/a14 logit priors 2.0/2.0/2.5, potion pickup bonus 2.0, no-progress counted as zero) | the fixed earned-dive-suffix-v1 dictionary |
+| PPO | mppo, CPU, lr 1e-4, ent 0.005, target-kl 0.01, n-steps 512, batch 256, gamma 1.0, 4 environments (suggest raising to 8) | R16 contract |
 
-## 三、闸门(不加冕,只裁定"课上没上")
+## 3. Gates (they crown nothing; they only decide whether the lesson took)
 
-- **A–D 四闸**:照 R16/R17 宪法对六卷 `r17-anchor-*` 重铸对照(考卷协议 3000 拍旧形态,协议关)——工人在旧考场不得退化。
-- **E 配对复测(主判据)**:训练后工人 vs 7e31dc54,同接口(§二整套)、同池 2_133(48 种子,配对,采样定种),
-  探针 `probe_r17_deployment.py`(版本 r17-deployment-v3-r18m2)。对照行 = **v1 世界对照行**(7e31dc54 × 卖装备/coach-v03/r18c/撤退 v1/关求战/清扫/鉴定/买武器;合并树 + 合并桥,2026-09-07 19:48,rows sha 0e5a1acd…):
-  存活 20、二层死亡 19、风险率 0.222、三层 4、二层击杀 894、开箱 253、砸桶 231、鉴定 16、买武器 29;对"撤退+关求战"配对 救 7 / 丢 6。
-  安装到主树、重建现役桥后须用 16 种子切片复核该行逐位相同,否则整行重跑。
-  - 主-1 二层每千拍风险率(曝光归一化)≤ 0.7 × 对照;
-  - 主-2 成对存活 saved − lost ≥ +6/48 且单侧 UCB95 < 0;
-  - 主-3 成长:二层击杀总数 ≥ 1.5 × 对照,或 局末 clvl ≥ 4 的局数 ≥ 1.5 × 对照;
-  - 深度(信息量,预期方向):三层到达与"三层到达者存活"同向上升;若三层到达升而存活降 → 记为反假设一。
-  - 一层前缀:两臂前缀同策略,首降前轨迹应逐位相同(prefix_through_first_l2 检查);不同则报告不裁。
-- **F 机制子指标**(禁同义反复):DIVE 窗内 a11 按下率(自然 2.3%)、离楼梯 ≤5 格时的 a11 率(自然 2.9%)、
-  撤退触发次数与途中死亡份额、门往返数、清扫开箱/砸桶数、鉴定件数与卖价增量、托管兑现/罚没金额。
+- **Gates A–D**: following the R16/R17 rules, re-cast the controls on the six `r17-anchor-*` volumes (exam protocol in the old 3000-tick form, protocol off): the worker must not regress in the old exam room.
+- **E paired re-test (primary criterion)**: the trained worker vs 7e31dc54, with the same interface (the whole §2 set) and the same pool 2_133 (48 seeds, paired, seeded sampling),
+  probe `probe_r17_deployment.py` (version r17-deployment-v3-r18m2). Control row = **the v1-world control row** (7e31dc54 × loot selling/coach-v03/r18c/retreat v1/hunting off/sweep/identify/weapon buying; merged tree + merged bridge, 2026-09-07, rows sha 0e5a1acd…):
+  20 survived, 19 L2 deaths, hazard 0.222, 4 reached level 3, 894 L2 kills, 253 chests opened, 231 barrels smashed, 16 items identified, 29 weapons bought; paired against "retreat + hunting off": saved 7 / lost 6.
+  After installing into the main tree and rebuilding the incumbent bridge, a 16-seed slice must confirm this row bit for bit, otherwise the whole row is re-run.
+  - Primary-1: L2 hazard per 1000 ticks (exposure-normalized) ≤ 0.7 × control;
+  - Primary-2: paired survival saved − lost ≥ +6/48 and one-sided UCB95 < 0;
+  - Primary-3, growth: total L2 kills ≥ 1.5 × control, or the number of games ending at clvl ≥ 4 ≥ 1.5 × control;
+  - Depth (informative, expected direction): level-3 arrivals and "survival of level-3 arrivals" rise together; if arrivals rise while survival falls → recorded as counter-hypothesis one.
+  - Level-1 prefix: both arms use the same prefix policy, so trajectories before the first descent should be bit-identical (the prefix_through_first_l2 check); if not, this is reported but not judged.
+- **F mechanism sub-metrics** (no tautologies): a11 press rate in DIVE windows (natural 2.3%), a11 rate within 5 tiles of the stairs (natural 2.9%),
+  retreat trigger count and share dying on the way, portal round trips, chests opened/barrels smashed by the sweep, items identified and the sale-price increase, escrow vested/forfeited amounts.
 
-## 四、身份(冻结时填)
+## 4. Identities (filled in at freezing)
 
-协议 bundle sha、桥 sha、引擎 sha、补丁栈(0001–0014)sha、工人 zip sha、探针版本、对照行 rows sha、本文件 sha → 台账。
+Protocol bundle sha, bridge sha, engine sha, patch stack (0001–0014) sha, worker zip sha, probe version, control-row rows sha, this file's sha → ledger.
 
-## 五、预算与时间(待主席裁定;建议)
+## 5. Budget and time (suggested; to be decided)
 
-- 时间盒:发射后至次日 07:00(约 8 小时),每 63 488 步存档 + 哨兵(R16 同值,发射命令所载);闸门在最后存档上跑。
-- 吞吐实测(R18-B3b 冒烟,轻负载):**37 学习步/秒,4 环境**(环境数由 R16 父代合同钉死,迁移不得改);8 小时 ≈ 1.0M 学习步。
-- 学习步数目标:**1 048 576**(=512×2048;R16 一程为 325 632),与时间盒先到先停;前缀微拍不计入学习步。
-- 前缀预算(每环境终身):attempts 1000、microsteps 100 000 000(B3b 冒烟同值;只作安全阀)。
-- 热启动:`train/migrate_loot_candidate.py` schema `diablogym-resource-warm-start/2`,操作 `r16-to-sustain-loot-v1-completion-l2-r18c-earned-dive-suffix-v1-dive-adjacent-v1-weights-only-v2`,世界键含 hunt_scope / sweep / identify / weapon_upgrade;发射命令 = `~/r17_work/r18/B6-LAUNCH-COMMAND.sh`(铸候选 + 训练;R18-B6 冒烟 4096 步 rc=0,**托管兑现 24 / 罚没 48——谱系里第一次兑现**,清扫窗 14 次收窗,撤退 7 次),外层 `launch_r18b.sh` 加 10 小时反僵尸保险丝(R9 先例)。
-- 已知缺口(不影响今夜闸门):评估存档 schema 尚不能命名卖装备世界(eval_contract 拒绝 sustain-loot-v1 存档),四闸考卷(协议关的旧形态)与配对复测(探针)均不经该路径;部署形态存档另立事项。
-- 训练种子:显式 `--seed`(登记);评估池 2_133;处女池 2_116–119、2_126–128 零接触。
+- Time box: about 8 hours after launch, with a checkpoint + sentinel every 63 488 steps (the same value as R16, set in the launch command); the gates run on the last checkpoint.
+- Measured throughput (R18-B3b smoke, light load): **37 learning steps per second with 4 environments** (the environment count is pinned by the R16 parent contract and may not change in migration); 8 hours ≈ 1.0M learning steps.
+- Learning-step target: **1 048 576** (=512×2048; one R16 run was 325 632), stopping at whichever of this and the time box comes first; prefix micro ticks do not count as learning steps.
+- Prefix budget (per environment, lifetime): attempts 1000, microsteps 100 000 000 (the same as the B3b smoke; only a safety valve).
+- Warm start: `train/migrate_loot_candidate.py` schema `diablogym-resource-warm-start/2`, operation `r16-to-sustain-loot-v1-completion-l2-r18c-earned-dive-suffix-v1-dive-adjacent-v1-weights-only-v2`, whose world key includes hunt_scope / sweep / identify / weapon_upgrade; the launch command is a local script (not published) (casting the candidate + training; the R18-B6 smoke of 4096 steps had rc=0, **24 escrow vests / 48 forfeits: the first vest in the lineage**, 14 sweep window closes, 7 retreats), wrapped by `launch_r18b.sh` (not published) with a 10-hour anti-zombie fuse (R9 precedent).
+- Known gap (does not affect the gates of this round): the evaluation archive schema cannot yet name the loot-selling world (eval_contract rejects sustain-loot-v1 archives); neither the four-gate exams (the old form with the protocol off) nor the paired re-test (probe) go through that path; deployment-form archives are a separate item.
+- Training seed: explicit `--seed` (registered); evaluation pool 2_133; the virgin pools 2_116–119 and 2_126–128 are untouched.
 
-## 六、发射前顺序(固定)
+## 6. Pre-launch order (fixed)
 
-1. R18-B3 补丁 → R18-B5 补丁 → R18-H1/H2 补丁 → R18-B6 接线,合入主树(新版本串,旧默认路径逐位不变);
-2. 全套件 + 探针回归(16 种子 rows sha 33023de1…)+ 双向重烤 4/4 + 4/4 + 六卷考场重铸;
-3. 对照行重跑(7e31dc54 × 全接口 × 2_133);零训练配对验收 H1/H2(loot 收入、AC、存活、深度);
-4. 冻结本文件(sha 入台账)→ 发射 → 台账。
+1. R18-B3 patch → R18-B5 patch → R18-H1/H2 patches → R18-B6 wiring, merged into the main tree (new version strings; the old default paths stay unchanged bit for bit);
+2. full suite + probe regression (16 seeds, rows sha 33023de1…) + two-way re-bake 4/4 + 4/4 + re-cast of the six-volume exam room;
+3. control row re-run (7e31dc54 × full interface × 2_133); zero-training paired acceptance of H1/H2 (loot income, AC, survival, depth);
+4. freeze this file (sha into the ledger) → launch → ledger.

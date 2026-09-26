@@ -1,4 +1,4 @@
-"""评估/选模链路的纯函数回归测试（不启动引擎或训练）。"""
+"""Pure-function regression tests for the evaluation / model-selection chain (no engine or training started)."""
 
 from __future__ import annotations
 
@@ -40,7 +40,7 @@ def _hold_output_reservation(path, ready, release):
 
 def _hold_tag_and_board_reservation(tag_path, board_lock, ready, release):
     with eval_contract.reserve_output(tag_path), \
-            eval_contract.exclusive_lock(board_lock, "排行榜"):
+            eval_contract.exclusive_lock(board_lock, "leaderboard"):
         ready.set()
         release.wait(10)
 
@@ -135,7 +135,7 @@ def _valid_v5_archive():
 def _published_worker_fixture(
         root: pathlib.Path, *,
         installation: str = "first-install"):
-    """最小但全链自洽的正式发布 bundle（无需加载真实 SB3 policy）。"""
+    """A minimal but fully self-consistent formal publication bundle (no real SB3 policy needs to be loaded)."""
     checkpoint = root / "model_final.zip"
     preflight_path = root / "bc_aux_liveness_preflight.json"
     receipt_path = root / eval_contract.PUBLISHED_WORKER_RECEIPT_NAME
@@ -482,7 +482,7 @@ class EvalPipelineTests(unittest.TestCase):
                 self.assertEqual(provenance["archive_sha256"], digest)
 
                 archive.write_bytes(b"replacement")
-                with self.assertRaisesRegex(RuntimeError, "checkpoint 发生变化"):
+                with self.assertRaisesRegex(RuntimeError, "checkpoint changed"):
                     evaluate.upsert_leaderboard_rows(
                         board, {key: row}, contract=contract,
                         initial_text=eval_assembled.ASSEMBLED_LEADERBOARD_HEADER)
@@ -512,7 +512,7 @@ if '_diablogym' in sys.modules or 'diablogym' in sys.modules:
                 mock.patch.object(
                     sys, "argv", ["eval_assembled.py", "--worker", "script"]):
             with self.assertRaisesRegex(
-                    eval_contract.EvalContractError, "未预载.*新进程"):
+                    eval_contract.EvalContractError, "fresh process that has not preloaded"):
                 eval_assembled.main()
 
     def test_legacy_sb3_worker_declares_lossless_v3_boundary(self):
@@ -1078,7 +1078,7 @@ if '_diablogym' in sys.modules or 'diablogym' in sys.modules:
             mutate(model)
             with self.subTest(label=label), self.assertRaisesRegex(
                     eval_contract.EvalContractError,
-                    "尚未完成可部署 actor 训练|actor context"):
+                    "has not finished deployable actor training|actor context"):
                 eval_assembled._validate_asymmetric_worker_runtime_state(
                     model, contract_revision=18)
 
@@ -1150,7 +1150,7 @@ if '_diablogym' in sys.modules or 'diablogym' in sys.modules:
                 hashlib.sha256(bundle["receipt"].read_bytes()).hexdigest())
             eval_assembled.verify_publication_expectations(identity)
 
-            # 内部回执仍自洽也不够：短腿/错终点不得命中正式本案。
+            # An internally self-consistent receipt is not enough: a short leg / wrong end point must not match the formal case.
             wrong = dict(expected, target_global_steps=32_768)
             with mock.patch.object(
                     train_ppo, "bc_aux_behavior_gate",
@@ -1160,7 +1160,7 @@ if '_diablogym' in sys.modules or 'diablogym' in sys.modules:
                         "_recompute_published_worker_evidence",
                         return_value=_independent_fixture_evidence(bundle)), \
                     self.assertRaisesRegex(
-                        eval_contract.EvalContractError, "预注册本案"):
+                        eval_contract.EvalContractError, "this pre-registered case"):
                 eval_assembled.capture_published_worker(
                     bundle["checkpoint"],
                     bundle["checkpoint"].read_bytes(),
@@ -1200,7 +1200,7 @@ if '_diablogym' in sys.modules or 'diablogym' in sys.modules:
                             return_value=bundle["gate"]), \
                         self.assertRaisesRegex(
                             eval_contract.EvalContractError,
-                            "终局奖励契约"):
+                            "terminal reward contract"):
                     eval_assembled.capture_published_worker(
                         bundle["checkpoint"],
                         bundle["checkpoint"].read_bytes(),
@@ -1226,7 +1226,7 @@ if '_diablogym' in sys.modules or 'diablogym' in sys.modules:
                         return_value=_independent_fixture_evidence(bundle)), \
                     self.assertRaisesRegex(
                         eval_contract.EvalContractError,
-                        "未绑定当前 checkpoint"):
+                        "not bound to the current checkpoint"):
                 eval_assembled.capture_published_worker(
                     bundle["checkpoint"],
                     bundle["checkpoint"].read_bytes(),
@@ -1246,7 +1246,7 @@ if '_diablogym' in sys.modules or 'diablogym' in sys.modules:
                         return_value=_independent_fixture_evidence(bundle)), \
                     self.assertRaisesRegex(
                         eval_contract.EvalContractError,
-                        "liveness 回执 SHA"):
+                        "liveness receipt SHA"):
                 eval_assembled.capture_published_worker(
                     bundle["checkpoint"],
                     bundle["checkpoint"].read_bytes(),
@@ -1272,7 +1272,7 @@ if '_diablogym' in sys.modules or 'diablogym' in sys.modules:
                         return_value=bundle["gate"]), \
                     self.assertRaisesRegex(
                         eval_contract.EvalContractError,
-                        "checkpoint\\+demos 现场重算"):
+                        "on-site recomputation from checkpoint\\+demos"):
                 eval_assembled.capture_published_worker(
                     bundle["checkpoint"],
                     bundle["checkpoint"].read_bytes(),
@@ -1326,7 +1326,7 @@ if '_diablogym' in sys.modules or 'diablogym' in sys.modules:
                         return_value=bundle["gate"]), \
                     self.assertRaisesRegex(
                         eval_contract.EvalContractError,
-                        "deterministic a12 非发布门"):
+                        "deterministic a12 as a non-publication gate"):
                 eval_assembled.capture_published_worker(
                     bundle["checkpoint"],
                     bundle["checkpoint"].read_bytes(),
@@ -1377,7 +1377,7 @@ if '_diablogym' in sys.modules or 'diablogym' in sys.modules:
                             return_value=bundle["gate"]), \
                         self.assertRaisesRegex(
                             eval_contract.EvalContractError,
-                            "探索样本证据"):
+                            "exploration-sample evidence"):
                     eval_assembled.capture_published_worker(
                         bundle["checkpoint"],
                         bundle["checkpoint"].read_bytes(),
@@ -1408,7 +1408,7 @@ if '_diablogym' in sys.modules or 'diablogym' in sys.modules:
                         return_value=bundle["gate"]), \
                     self.assertRaisesRegex(
                         eval_contract.EvalContractError,
-                        "checkpoint 运行态"):
+                        "checkpoint runtime state"):
                 eval_assembled.capture_published_worker(
                     bundle["checkpoint"],
                     bundle["checkpoint"].read_bytes(),
@@ -1453,7 +1453,7 @@ if '_diablogym' in sys.modules or 'diablogym' in sys.modules:
                             return_value=bundle["gate"]), \
                         self.assertRaisesRegex(
                             eval_contract.EvalContractError,
-                            "checkpoint 运行态"):
+                            "checkpoint runtime state"):
                     eval_assembled.capture_published_worker(
                         bundle["checkpoint"],
                         bundle["checkpoint"].read_bytes(),
@@ -1490,7 +1490,7 @@ if '_diablogym' in sys.modules or 'diablogym' in sys.modules:
                         return_value=bundle["gate"]), \
                     self.assertRaisesRegex(
                         eval_contract.EvalContractError,
-                        "checkpoint 运行态"):
+                        "checkpoint runtime state"):
                 eval_assembled.capture_published_worker(
                     bundle["checkpoint"],
                     bundle["checkpoint"].read_bytes(),
@@ -1538,7 +1538,7 @@ if '_diablogym' in sys.modules or 'diablogym' in sys.modules:
                         return_value=bundle["gate"]), \
                     self.assertRaisesRegex(
                         eval_contract.EvalContractError,
-                        "liveness 调用账"):
+                        "liveness call ledger"):
                 eval_assembled.capture_published_worker(
                     bundle["checkpoint"],
                     bundle["checkpoint"].read_bytes(),
@@ -2111,7 +2111,7 @@ if '_diablogym' in sys.modules or 'diablogym' in sys.modules:
 
         class Teacher(torch.nn.Module):
             def forward(self, obs):
-                # 15 维动作头，正比例缩放不改变 argmax，却改变温度/概率。
+                # 15-dim action head: positive proportional scaling does not change argmax, but changes temperature/probabilities.
                 return obs[:, :15]
 
         class Net:
@@ -2141,7 +2141,7 @@ if '_diablogym' in sys.modules or 'diablogym' in sys.modules:
                 with zipfile.ZipFile(path, "w") as archive:
                     archive.writestr("data", json.dumps(
                         {"policy_class": {"__module__": module}}))
-                # 故意省略 .zip，覆盖 SB3 常见命令行写法。
+                # The .zip is left out on purpose, covering the common SB3 command-line form.
                 self.assertEqual(evaluate.model_kind(str(path.with_suffix(""))), expected)
 
     def test_seed_parser_and_tag_reject_unsafe_inputs(self):
@@ -2186,7 +2186,7 @@ if '_diablogym' in sys.modules or 'diablogym' in sys.modules:
         with mock.patch.object(eval_contract.importlib.metadata, "version",
                                side_effect=drifted_version):
             with self.assertRaisesRegex(eval_contract.EvalContractError,
-                                        "运行时版本漂移"):
+                                        "runtime version drift"):
                 eval_contract.runtime_versions_identity()
 
     def test_game_data_priority_and_resources_tree_are_fail_closed(self):
@@ -2321,7 +2321,7 @@ if '_diablogym' in sys.modules or 'diablogym' in sys.modules:
             run_v30_relay.by_seed(duplicated)
 
     def test_probe_reachability_uses_rollout_alignment(self):
-        # 450,000 的首个可见 rollout 是 450,560；端点恰落这里仍然可达。
+        # The first visible rollout after 450,000 is 450,560; an end point exactly there is still reachable.
         for helper in (run_v28_legs.reachable_probes, run_v30_relay.reachable_probes):
             self.assertEqual(helper(10_000, 450_560), [260_000, 460_000])
             self.assertEqual(helper(10_000, 450_559), [260_000])
@@ -2354,11 +2354,11 @@ if '_diablogym' in sys.modules or 'diablogym' in sys.modules:
         with tempfile.TemporaryDirectory() as directory:
             path = pathlib.Path(directory) / "archive.json"
             path.write_text(json.dumps(document, allow_nan=False))
-            # 落盘/重读后 histogram 的 JSON 字典键会变成字符串，也必须通过。
+            # After writing and rereading, the histogram's JSON dict keys become strings, and that must pass too.
             eval_contract.read_eval_archive(path, **expected)
             wrong = dict(expected, expected_worker_sha256="f" * 64)
             with self.assertRaises(eval_contract.EvalContractError):
-                # JSON 本身完整、seed 正确，但来自另一份 worker。
+                # The JSON itself is complete and the seed is correct, but it comes from a different worker.
                 eval_contract.read_eval_archive(path, **wrong)
             wrong_engine = dict(expected, expected_engine_sha256="f" * 64)
             with self.assertRaises(eval_contract.EvalContractError):
@@ -2405,7 +2405,7 @@ if '_diablogym' in sys.modules or 'diablogym' in sys.modules:
         partial = copy.deepcopy(document)
         del partial["agg"]["worker_action14_native_successes"]
         with self.assertRaisesRegex(
-                eval_contract.EvalContractError, "agg 字段"):
+                eval_contract.EvalContractError, "agg fields"):
             eval_contract.validate_eval_archive(partial)
 
         histogram_mismatch = copy.deepcopy(document)
@@ -2480,8 +2480,8 @@ if '_diablogym' in sys.modules or 'diablogym' in sys.modules:
         with self.assertRaises(eval_contract.EvalContractError):
             eval_contract.validate_eval_archive(impossible_worker_calls)
 
-        # fuse 拒绝会计入 worker callback/overrides，但不会增加已执行 beats；
-        # 因而 beats+overrides 才是严格且不误杀的调用上界。
+        # A fuse refusal counts toward worker callback/overrides but does not increase executed beats;
+        # so beats+overrides is the strict call upper bound that does not reject valid rows.
         rejected_proposal = copy.deepcopy(document)
         legal_calls = sum(
             row["beats"] + row["overrides"]
@@ -2503,7 +2503,7 @@ if '_diablogym' in sys.modules or 'diablogym' in sys.modules:
             for key in eval_contract._ENGAGEMENT_KEYS
         })
         with self.assertRaisesRegex(
-                eval_contract.EvalContractError, "回报.*不守恒"):
+                eval_contract.EvalContractError, "return does not balance"):
             eval_contract.validate_eval_archive(broken_return_partition)
 
         broken_wage_partition = copy.deepcopy(document)
@@ -2515,17 +2515,17 @@ if '_diablogym' in sys.modules or 'diablogym' in sys.modules:
         broken_kill_partition = copy.deepcopy(document)
         broken_kill_partition["rows"][0]["farm_worker_kills"] = 2
         with self.assertRaisesRegex(
-                eval_contract.EvalContractError, "击杀分账"):
+                eval_contract.EvalContractError, "kill split"):
             eval_contract.validate_eval_archive(broken_kill_partition)
 
-        # schema-v5 的 FARM dry/fresh 分账必须逐 seed 严格守恒；重算 agg
-        # 不能掩盖 row 内部被篡改的窗口、工资或 worker 击杀。
+        # The schema-v5 FARM dry/fresh split must be strictly conserved seed by seed; recomputing agg
+        # must not hide tampered windows, wages or worker kills inside a row.
         for case, field, value, message in (
-                ("windows", "farm_dry_n", 2, "dry/fresh 窗口"),
+                ("windows", "farm_dry_n", 2, "dry/fresh window"),
                 ("wage", "farm_dry_worker_wage", 0.75,
-                 "dry/fresh worker 工资"),
+                 "dry/fresh worker wage"),
                 ("kills", "farm_dry_worker_kills", 2,
-                 "dry/fresh worker 击杀")):
+                 "dry/fresh worker kill")):
             broken_stratum = copy.deepcopy(document)
             broken_stratum["rows"][0][field] = value
             broken_stratum["agg"] = eval_contract.recompute_agg(
@@ -2550,7 +2550,7 @@ if '_diablogym' in sys.modules or 'diablogym' in sys.modules:
             for key in eval_contract._ENGAGEMENT_KEYS
         })
         with self.assertRaisesRegex(
-                eval_contract.EvalContractError, "fresh 无窗口"):
+                eval_contract.EvalContractError, "fresh has worker entries but no windows"):
             eval_contract.validate_eval_archive(empty_stratum)
 
         broken_terminal = copy.deepcopy(document)
@@ -2567,23 +2567,23 @@ if '_diablogym' in sys.modules or 'diablogym' in sys.modules:
         impossible_multi_drink = copy.deepcopy(document)
         impossible_multi_drink["rows"][0]["farm_multi_drink_windows"] = 1
         with self.assertRaisesRegex(
-                eval_contract.EvalContractError, "多饮窗口"):
+                eval_contract.EvalContractError, "multi-drink window"):
             eval_contract.validate_eval_archive(impossible_multi_drink)
 
         impossible_drink_count = copy.deepcopy(document)
         impossible_drink_count["rows"][1]["farm_voluntary_drinks"] = 1
         with self.assertRaisesRegex(
-                eval_contract.EvalContractError, "主动饮"):
+                eval_contract.EvalContractError, "active.drink"):
             eval_contract.validate_eval_archive(impossible_drink_count)
 
         impossible_reflex_success = copy.deepcopy(document)
         impossible_reflex_success["rows"][1][
             "farm_reflex_drain_attempts"] = 0
         with self.assertRaisesRegex(
-                eval_contract.EvalContractError, "反射尝试"):
+                eval_contract.EvalContractError, "reflex-attempt"):
             eval_contract.validate_eval_archive(impossible_reflex_success)
 
-        # 失败尝试不消耗药水：守恒边界继续只计算真实 drains。
+        # A failed attempt uses no potion: the conservation boundary keeps counting only real drains.
         failed_reflex_attempts = copy.deepcopy(document)
         failed_reflex_attempts["rows"][0][
             "farm_reflex_drain_attempts"] = 2
@@ -2595,10 +2595,10 @@ if '_diablogym' in sys.modules or 'diablogym' in sys.modules:
         })
         eval_contract.validate_eval_archive(failed_reflex_attempts)
 
-        # N=1,T=3,M=1,max=2 不可能：唯一窗口总计喝了三瓶，
-        # 该窗口本身就必须是 max=3。
-        # N=1,T=2,M=0,max=1 也不可能：唯一窗口喝了两瓶，
-        # 必然应计为一个多饮窗口且 max=2。
+        # N=1,T=3,M=1,max=2 is impossible: the only window drank three potions in total,
+        # so that window itself must have max=3.
+        # N=1,T=2,M=0,max=1 is also impossible: the only window drank two potions,
+        # so it must count as one multi-drink window with max=2.
         for case, fields in (
                 ("underreported_max", {
                     "farm_voluntary_drinks": 3,
@@ -2642,7 +2642,7 @@ if '_diablogym' in sys.modules or 'diablogym' in sys.modules:
         legacy_schema = _valid_v5_archive()
         legacy_schema["schema_version"] = 4
         with self.assertRaisesRegex(
-                eval_contract.EvalContractError, "schema 必须为 v5"):
+                eval_contract.EvalContractError, "schema must be v5"):
             eval_contract.validate_eval_archive(legacy_schema)
 
     def test_same_tag_reservation_is_cross_process_exclusive(self):
@@ -2654,7 +2654,7 @@ if '_diablogym' in sys.modules or 'diablogym' in sys.modules:
                 target=_hold_output_reservation, args=(output, ready, release))
             process.start()
             try:
-                self.assertTrue(ready.wait(10), "子进程未取得评测 reservation")
+                self.assertTrue(ready.wait(10), "the child process did not obtain the evaluation reservation")
                 with self.assertRaises(eval_contract.OutputReservationError):
                     with eval_contract.reserve_output(output):
                         pass
@@ -2679,11 +2679,11 @@ if '_diablogym' in sys.modules or 'diablogym' in sys.modules:
                                       args=(tag_a, board_lock, ready, release))
             process.start()
             try:
-                self.assertTrue(ready.wait(10), "子进程未取得排行榜锁")
-                # 不同 tag 自身并不冲突，但排行榜的 read/check/replace 必须冲突。
+                self.assertTrue(ready.wait(10), "the child process did not obtain the leaderboard lock")
+                # Different tags do not conflict by themselves, but the leaderboard read/check/replace must conflict.
                 with eval_contract.reserve_output(tag_b):
                     with self.assertRaises(eval_contract.OutputReservationError):
-                        with eval_contract.exclusive_lock(board_lock, "排行榜"):
+                        with eval_contract.exclusive_lock(board_lock, "leaderboard"):
                             pass
             finally:
                 release.set()
@@ -2711,8 +2711,8 @@ if '_diablogym' in sys.modules or 'diablogym' in sys.modules:
             root = pathlib.Path(directory)
             weights, report = root / "policy_sd.pt", root / "bc_report.json"
             weights.write_bytes(b"weights")
-            # 这组字段曾足以越过 eval_assembled 的手写子集校验；它没有
-            # held-out 指标/逐类召回/demos 绑定，绝不能被命名为 PASS BC。
+            # This set of fields was once enough to pass eval_assembled's hand-written subset check; it has no
+            # held-out metrics / per-class recall / demos binding and must never be named a PASS BC.
             report.write_text(json.dumps({
                 "data_gate": "PASS",
                 "policy_sha256": hashlib.sha256(weights.read_bytes()).hexdigest(),
@@ -2721,7 +2721,7 @@ if '_diablogym' in sys.modules or 'diablogym' in sys.modules:
                 "generator_sha256": "b" * 64,
                 "manager_npz_sha256": "c" * 64,
             }))
-            with self.assertRaisesRegex(ValueError, "字段/schema"):
+            with self.assertRaisesRegex(ValueError, "fields/schema"):
                 eval_assembled.capture_passed_bc(weights)
 
     def test_probe_reference_must_use_exact_seed_set(self):

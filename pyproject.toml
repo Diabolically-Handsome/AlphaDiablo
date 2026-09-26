@@ -1,7 +1,7 @@
 [project]
 name = "diablogym"
 version = "0.1.0"
-description = "AlphaDiablo: a fast, deterministic Diablo I reinforcement-learning environment built on DevilutionX (headless; raw engine ~13,000x realtime, ~7,500 Gymnasium env.step()/s)"
+description = "AlphaDiablo: a fast, deterministic Diablo I reinforcement-learning environment built on DevilutionX (headless engine, Gymnasium API)"
 readme = "README.md"
 requires-python = ">=3.11"
 license = { file = "LICENSE" }
@@ -16,12 +16,12 @@ dependencies = [
 [project.optional-dependencies]
 train = [
   "torch==2.12.1",
-  # leashed_ppo.py 逐行复写了 2.9.0 的 MaskablePPO.train；升级必须重新做
-  # G-KL-B 上游等价审计，不能让 fresh install 静默换掉训练算法。
+  # train/leashed_ppo.py re-implements MaskablePPO.train of 2.9.0 line by line; upgrading needs a new
+  # equivalence audit against upstream, so a fresh install cannot silently change the training algorithm.
   "stable-baselines3==2.9.0",
   "sb3-contrib==2.9.0",
   "tensorboard==2.21.0",
-  "matplotlib==3.11.0", # train/plot_figures.py(从本地 runs/ 重生成 README 图)
+  "matplotlib==3.11.0", # train/plot_figures.py (regenerates the README figures)
 ]
 build = [
   "pybind11==3.0.4",

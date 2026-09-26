@@ -57,7 +57,7 @@ class FakeEnv:
 
 def obj(kind="chest", x=12, y=10, interactable=True, solid=True, visible=True):
     # ``visible`` is the R18-H review-round lighting tag (IsTileLit), the same
-    # 口径 the floor-item channel publishes.
+    # criterion the floor-item channel publishes.
     return {"kind": kind, "x": x, "y": y, "visible": visible,
             "interactable": interactable, "solid": solid}
 
@@ -212,7 +212,7 @@ class SweepLawTests(unittest.TestCase):
         self.assertIsNone(fire(service, raw(objects=[obj()]), loot_trip_slots_left=0))
 
     def test_an_object_never_seen_lit_is_not_a_candidate(self):
-        """Partial observability, the floor-item 口径: an unlit chest on an
+        """Partial observability, the floor-item criterion: an unlit chest on an
         unexplored side of the floor is not a legal target, and one the pair HAS
         seen stays a target after the light moves on."""
         service = SweepService()

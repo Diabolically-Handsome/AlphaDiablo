@@ -1,17 +1,20 @@
 #!/usr/bin/env python3
 """Private-term guard: fail when a tracked file contains a private term.
 
+This is a local pre-push check; CI does not run it.
+
 The terms are not stored in this repository, not even as hashes: the hash
 of a short name can be reversed with a list of names.  The guard reads the
 SHA-256 of each term's lowercase form from outside the repository:
 
-* PRIVATE_TERM_SHA256 - an environment variable (in CI, a repository
-  secret) holding hex digests separated by spaces, commas or newlines;
+* PRIVATE_TERM_SHA256 - an environment variable holding hex digests
+  separated by spaces, commas or newlines;
 * PRIVATE_TERMS_FILE  - the path of a local file with one digest per line
   ("#" starts a comment).
 
 With neither set, the guard prints "SKIP - no hashes configured" (plus a
-GitHub Actions warning in CI) and exits 0; with --require it exits 2.
+warning annotation when run under GitHub Actions) and exits 0; with
+--require it exits 2.
 
 Tokens are collected from:
 
@@ -100,7 +103,7 @@ class Hit(NamedTuple):
 
     def __str__(self) -> str:
         # Report the term's position, not its digest: a digest (or a prefix
-        # of it) printed in a public CI log could be reversed.
+        # of it) printed in a shared log could be reversed.
         where = self.path if self.line is None else f"{self.path}:{self.line}"
         ctx = f" [{self.context}]" if self.context else ""
         return f"{where}{ctx}: private term #{self.term}"

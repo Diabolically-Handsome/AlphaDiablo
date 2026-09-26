@@ -86,11 +86,11 @@ CONTROL_DIR = TRAIN / "runs" / "r7-combat-recovery-control"
 STATE_PATH = CONTROL_DIR / "status.json"
 LOCK_PATH = CONTROL_DIR / ".campaign.lock"
 DEVELOPMENT_DECISION_PATH = CONTROL_DIR / "development-decision.json"
-# 修正案五(2026-07-28,总设计师批文「那咱们现在先执行方案B吧 256局」):
-# 开发死亡非劣性上界在 n=128、族错 α=0.005 下 CI 半宽≈0.110,预注册边距
-# 0.05 先于任何候选数据即数学不可达(第 9 项设计缺陷,纯 α/n/边距代数)。
-# B 案:开发判据 = 预注册检查集减去该单项(observed_not_higher 保留),
-# 非劣推断移交终考;冻结 rev21 开发工件按 sha 逐字节收养,post-hoc 标注。
+# Amendment 5 (2026-07-28, approved: plan B, 256 games):
+# the development death non-inferiority upper bound has a CI half-width ≈0.110 at n=128 and family-wise α=0.005, so the pre-registered margin
+# 0.05 was mathematically unreachable before any candidate data (design defect item 9, pure α/n/margin algebra).
+# Plan B: development criterion = the pre-registered check set minus that single item (observed_not_higher kept),
+# non-inferiority inference moves to the final exam; the frozen rev21 development artifacts are adopted byte for byte by sha, labelled post-hoc.
 AMENDMENT5_SCHEMA = "diablogym-r7-amendment5-adoption/1"
 AMENDMENT5_PATH = CONTROL_DIR / "amendment5-adoption.json"
 AMENDMENT5_PRE_CAMPAIGN_REVISION = 21
@@ -247,10 +247,10 @@ DEV_POOLS = {
     "dev-a": tuple(range(2_110_000, 2_110_128)),
     "dev-b": tuple(range(2_111_000, 2_111_128)),
 }
-# 修正案六(2026-07-28,批文「启用备用池(推荐)」):2_120 池的基线评测
-# 在 214/256 处被机器重启打断(点火标记在、档案未提交,协议拒绝重试),
-# 弃用该池启用下一预留段。候选从未接触 2_120;候选/边距/判据均在事故前
-# 冻结入库,无事故后选择存在。事故全案见 amendment6-final-incident.json。
+# Amendment 6 (2026-07-28, approved: switch to the reserve pool): the baseline evaluation of pool 2_120
+# was interrupted at 214/256 by a machine reboot (launch marker present, archive not committed, the protocol refuses a retry),
+# so the pool is abandoned and the next reserved range is used. The candidate never touched 2_120; candidate/margin/criteria were all
+# frozen and committed before the incident, so no post-incident choice exists. The full incident is in amendment6-final-incident.json.
 FINAL_POOL = tuple(range(2_121_000, 2_121_256))
 DEVELOPMENT_TRAIN_SEEDS = (2_130_000, 2_130_100, 2_130_200)
 PRODUCTION_TRAIN_SEED = 2_130_900
@@ -267,12 +267,12 @@ RECIPES = {
 RECIPE_PREFERENCE = ("risk32", "risk64")
 MIN_REPLICATIONS_PASSING_BOTH_POOLS = 2
 DEVELOPMENT_DEATH_MARGIN = 0.05
-# 修正案五 B 案(2026-07-28 批;边距经对抗复核功效修正后总设计师复批 0.10):
-# 实现的统计量是 bonferroni-one-sided-clopper-pearson 风险差
-# (r7_statistics),远比 McNemar 型保守:n=256、不一致对 ~60 时,
-# 0.025/0.05 边距的通过率仅 ~3%/~16%(真效应取 risk64 开发汇池观测
-# −3.1pp)——先于数据即近不可达,复现第 9 项缺陷。0.10 下通过率 ~77%,
-# 认证语义「增死 ≤10pp」;观测死亡率与 NI 上界照常全文公开。
+# Amendment 5 plan B (approved 2026-07-28; after the adversarial review's power correction the margin was re-approved at 0.10):
+# the statistic actually implemented is the bonferroni-one-sided-clopper-pearson risk difference
+# (r7_statistics), far more conservative than the McNemar type: at n=256 with ~60 discordant pairs,
+# margins 0.025/0.05 pass only ~3%/~16% of the time (true effect = the pooled risk64 development observation
+# −3.1pp) -- nearly unreachable before any data, reproducing defect item 9. At 0.10 the pass rate is ~77%,
+# certification meaning "extra deaths ≤10pp"; the observed death rate and the NI upper bound are published in full as usual.
 FINAL_DEATH_MARGIN = 0.10
 FAMILYWISE_ALPHA = 0.05
 GEAR_PROGRESSION_GATE_SCHEMA = (
@@ -326,7 +326,7 @@ def _canonical_migration_evidence(training_seed: int) -> dict:
     """Independently reconstruct the current migration/reset ground truth."""
     _require(
         _is_plain_int(training_seed) and 0 <= training_seed < 2**32,
-        "canonical migration evidence seed 非法",
+        "canonical migration evidence seed invalid",
     )
     key = (
         training_seed,
@@ -340,7 +340,7 @@ def _canonical_migration_evidence(training_seed: int) -> dict:
     payload = _stable_read(V28_ZIP)
     _require(
         hashlib.sha256(payload).hexdigest() == V28_SHA256,
-        "canonical migration evidence 的 V28 payload 漂移",
+        "canonical migration evidence V28 payload drift",
     )
     try:
         evidence = (
@@ -352,7 +352,7 @@ def _canonical_migration_evidence(training_seed: int) -> dict:
         )
     except (RuntimeError, TypeError, ValueError) as exc:
         raise CampaignError(
-            "canonical asymmetric migration/reset 重构失败") from exc
+            "canonical asymmetric migration/reset reconstruction failed") from exc
     _require(
         isinstance(evidence, dict)
         and evidence.get("schema")
@@ -362,7 +362,7 @@ def _canonical_migration_evidence(training_seed: int) -> dict:
         and isinstance(evidence.get("actor_migration"), dict)
         and isinstance(evidence.get("critic_reset"), dict)
         and isinstance(evidence.get("runtime"), dict),
-        "canonical asymmetric migration/reset evidence 非法",
+        "canonical asymmetric migration/reset evidence invalid",
     )
     _CANONICAL_MIGRATION_EVIDENCE_CACHE[key] = json.loads(
         json.dumps(evidence))
@@ -377,7 +377,7 @@ def _teacher_actor_sha256() -> str:
         state = torch.load(
             KING_SD, map_location="cpu", weights_only=True)
     except (OSError, RuntimeError, ValueError) as exc:
-        raise CampaignError("KING actor state_dict 无法取证") from exc
+        raise CampaignError("KING actor state_dict cannot be collected as evidence") from exc
     keys = (
         "mlp_extractor.policy_net.0.weight",
         "mlp_extractor.policy_net.0.bias",
@@ -389,7 +389,7 @@ def _teacher_actor_sha256() -> str:
     try:
         return train_ppo._stable_named_tensor_sha256(state, keys)
     except (RuntimeError, TypeError, ValueError) as exc:
-        raise CampaignError("KING actor tensors 无法摘要") from exc
+        raise CampaignError("KING actor tensors cannot be digested") from exc
 
 
 def _checkpoint_policy_branch_sha256(
@@ -410,7 +410,7 @@ def _checkpoint_policy_branch_sha256(
                 weights_only=True,
             )
     except (OSError, KeyError, RuntimeError, zipfile.BadZipFile) as exc:
-        raise CampaignError("checkpoint policy.pth 无法取证") from exc
+        raise CampaignError("checkpoint policy.pth cannot be collected as evidence") from exc
     root_actor_keys = (
         "mlp_extractor.policy_net.0.weight",
         "mlp_extractor.policy_net.0.bias",
@@ -425,7 +425,7 @@ def _checkpoint_policy_branch_sha256(
         _require(
             isinstance(state, dict)
             and all(key in state for key in keys),
-            "checkpoint policy 分支张量缺失",
+            "checkpoint policy branch tensors missing",
         )
         result = hashlib.sha256()
         for key in sorted(keys):
@@ -433,7 +433,7 @@ def _checkpoint_policy_branch_sha256(
             _require(
                 isinstance(tensor, torch.Tensor)
                 and bool(torch.isfinite(tensor).all().item()),
-                f"checkpoint policy 张量非法:{key}",
+                f"checkpoint policy tensor invalid: {key}",
             )
             array = tensor.detach().cpu().contiguous().numpy()
             result.update(key.encode("utf-8"))
@@ -457,7 +457,7 @@ def _checkpoint_policy_branch_sha256(
     if not context_keys or context_enabled_key not in state:
         _require(
             not require_asymmetric,
-            "asymmetric checkpoint 缺 context adapter/buffer",
+            "asymmetric checkpoint lacks the context adapter/buffer",
         )
         return {
             "root_actor_sha256": digest(root_actor_keys),
@@ -479,12 +479,12 @@ def _checkpoint_policy_branch_sha256(
             runtime_model.policy)
     except (OSError, RuntimeError, TypeError, ValueError) as exc:
         raise CampaignError(
-            "structured asymmetric checkpoint 无法生成 runtime evidence"
+            "structured asymmetric checkpoint cannot produce runtime evidence"
         ) from exc
     _require(
         train_ppo._asymmetric_worker_deployment_evidence_complete(
             runtime_model),
-        "structured asymmetric checkpoint deployment evidence 未闭合",
+        "structured asymmetric checkpoint deployment evidence not closed",
     )
     context_enabled = state[context_enabled_key]
     encoder_keys = tuple(
@@ -544,7 +544,7 @@ def _checkpoint_policy_branch_sha256(
         and context_enabled.numel() == 1
         and context_enabled.dtype == torch.bool
         and bool(context_enabled.item()),
-        "structured asymmetric checkpoint 分支/有限性/启用状态非法",
+        "structured asymmetric checkpoint branch/finiteness/enabled state invalid",
     )
     context_arrays = [
         state[key].detach().cpu().contiguous().numpy()
@@ -575,7 +575,7 @@ def _checkpoint_policy_branch_sha256(
             ASYMMETRIC_WORKER_CONTEXT_HIDDEN_DIM
             + ASYMMETRIC_WORKER_CONTEXT_INTERACTION_DIM
         ),
-        "structured asymmetric output/fusion 张量形状漂移",
+        "structured asymmetric output/fusion tensor shape drift",
     )
     context_action_effect = (
         action_weight
@@ -605,7 +605,7 @@ def _checkpoint_policy_branch_sha256(
         and context_action_effect_l2_norm > 0.0
         and math.isfinite(interaction_action_effect_l2_norm)
         and interaction_action_effect_l2_norm > 0.0,
-        "asymmetric checkpoint context 未学到可影响 action logits 的参数",
+        "asymmetric checkpoint context learned no parameters that can affect action logits",
     )
     full_actor_sha256 = digest((*root_actor_keys, *context_keys))
     critic_sha256 = digest(critic_keys)
@@ -623,7 +623,7 @@ def _checkpoint_policy_branch_sha256(
         and digest(output_keys)
         == runtime_evidence["context"]["parameter_groups"][
             "output"]["sha256"],
-        "checkpoint raw state/runtime parameter 摘要不一致",
+        "checkpoint raw state/runtime parameter digests inconsistent",
     )
     return {
         "root_actor_sha256": digest(root_actor_keys),
@@ -676,7 +676,7 @@ def _validate_actor_migration_receipt(
     }
     _require(
         isinstance(receipt, dict) and set(receipt) == expected_keys,
-        "actor migration receipt 字段漂移",
+        "actor migration receipt field drift",
     )
     if canonical_receipt is None:
         canonical_receipt = _canonical_migration_evidence(
@@ -685,7 +685,7 @@ def _validate_actor_migration_receipt(
         isinstance(canonical_receipt, dict)
         and set(canonical_receipt) == expected_keys
         and receipt == canonical_receipt,
-        "actor migration receipt 不等于独立 canonical 重构",
+        "actor migration receipt differs from the independent canonical reconstruction",
     )
 
 
@@ -709,7 +709,7 @@ def _validate_critic_migration_receipt(
     }
     _require(
         isinstance(receipt, dict) and set(receipt) == expected_keys,
-        "critic migration receipt 字段漂移",
+        "critic migration receipt field drift",
     )
     if canonical_evidence is None:
         canonical_evidence = _canonical_migration_evidence(seed)
@@ -723,7 +723,7 @@ def _validate_critic_migration_receipt(
             receipt.get(key) == value
             for key, value in canonical_reset.items()
         ),
-        "critic migration receipt 不等于独立 canonical reset",
+        "critic migration receipt differs from the independent canonical reset",
     )
     _require(
         receipt["training_seed"] == seed
@@ -741,7 +741,7 @@ def _validate_critic_migration_receipt(
         and receipt["worker_onpolicy_pg_audit_schema"]
         == WORKER_ONPOLICY_PG_AUDIT_SCHEMA
         and receipt["optimizer_reset"] is True,
-        "critic migration receipt 内容漂移",
+        "critic migration receipt content drift",
     )
 
 
@@ -765,19 +765,19 @@ def _stable_read(path: pathlib.Path) -> bytes:
     try:
         before_path = path.lstat()
     except OSError as exc:
-        raise CampaignError(f"文件不可读:{path}: {exc}") from exc
-    _require(not stat.S_ISLNK(before_path.st_mode), f"拒绝符号链接输入:{path}")
-    _require(stat.S_ISREG(before_path.st_mode), f"输入不是普通文件:{path}")
+        raise CampaignError(f"file unreadable: {path}: {exc}") from exc
+    _require(not stat.S_ISLNK(before_path.st_mode), f"refusing symlink input: {path}")
+    _require(stat.S_ISREG(before_path.st_mode), f"input is not a regular file: {path}")
     flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0)
     if hasattr(os, "O_NOFOLLOW"):
         flags |= os.O_NOFOLLOW
     try:
         fd = os.open(path, flags)
     except OSError as exc:
-        raise CampaignError(f"文件不可稳定打开:{path}: {exc}") from exc
+        raise CampaignError(f"file cannot be opened stably: {path}: {exc}") from exc
     try:
         first = os.fstat(fd)
-        _require(stat.S_ISREG(first.st_mode), f"已打开输入不是普通文件:{path}")
+        _require(stat.S_ISREG(first.st_mode), f"opened input is not a regular file: {path}")
         chunks = []
         while True:
             chunk = os.read(fd, 1024 * 1024)
@@ -790,7 +790,7 @@ def _stable_read(path: pathlib.Path) -> bytes:
     try:
         after_path = path.lstat()
     except OSError as exc:
-        raise CampaignError(f"文件读取后身份消失:{path}: {exc}") from exc
+        raise CampaignError(f"file identity vanished after reading: {path}: {exc}") from exc
     identity = lambda item: (
         item.st_dev, item.st_ino, item.st_mode, item.st_size,
         item.st_mtime_ns, item.st_ctime_ns,
@@ -798,7 +798,7 @@ def _stable_read(path: pathlib.Path) -> bytes:
     _require(
         identity(before_path) == identity(first)
         == identity(second) == identity(after_path),
-        f"文件读取期间被替换或修改:{path}",
+        f"file replaced or modified while being read: {path}",
     )
     return b"".join(chunks)
 
@@ -818,8 +818,8 @@ def _stable_json_snapshot(path: pathlib.Path) -> tuple[dict, str]:
         payload = _stable_read(path)
         value = eval_contract.strict_json_loads(payload)
     except (CampaignError, eval_contract.EvalContractError) as exc:
-        raise CampaignError(f"JSON 不可稳定读取:{path}: {exc}") from exc
-    _require(isinstance(value, dict), f"JSON 顶层不是对象:{path}")
+        raise CampaignError(f"JSON cannot be read stably: {path}: {exc}") from exc
+    _require(isinstance(value, dict), f"JSON top level is not an object: {path}")
     return value, hashlib.sha256(payload).hexdigest()
 
 
@@ -832,14 +832,14 @@ def _finite_json_number(value: Any) -> bool:
 
 
 def _validate_reason_counts(value: Any, label: str) -> dict[str, int]:
-    _require(isinstance(value, dict), f"{label} 必须是对象")
+    _require(isinstance(value, dict), f"{label} must be an object")
     _require(
         all(
             isinstance(key, str) and bool(key)
             and _is_plain_int(count) and count >= 0
             for key, count in value.items()
         ),
-        f"{label} 必须是非空字符串→非负普通整数",
+        f"{label} must map non-empty strings to non-negative plain integers",
     )
     return value
 
@@ -856,26 +856,26 @@ def _terminal_death_reward_evidence(
     facing event remains a valid training artifact, but is explicitly marked
     as lacking an on-rollout opportunity to exercise either failure mechanism.
     """
-    _require(recipe in RECIPES, f"未知 R7 recipe:{recipe}")
+    _require(recipe in RECIPES, f"unknown R7 recipe: {recipe}")
     _require(_is_plain_int(target_step) and target_step > 0,
-             "sentinel target_step 必须是正普通整数")
+             "sentinel target_step must be a positive plain integer")
     path = pathlib.Path(sentinel_path)
     payload = _stable_read(path)
     lines = payload.splitlines()
-    _require(lines, f"Worker sentinel 为空:{path}")
+    _require(lines, f"Worker sentinel is empty: {path}")
     documents = []
     for index, line in enumerate(lines, start=1):
         _require(bool(line.strip()),
-                 f"Worker sentinel 第 {index} 行为空")
+                 f"Worker sentinel line {index} is empty")
         try:
             document = eval_contract.strict_json_loads(line)
         except eval_contract.EvalContractError as exc:
             raise CampaignError(
-                f"Worker sentinel 第 {index} 行 JSON 非法:{exc}") from exc
+                f"Worker sentinel line {index} JSON invalid: {exc}") from exc
         _require(
             isinstance(document, dict)
             and document.get("sentinel") in {"v23", "dry-anchor"},
-            f"Worker sentinel 第 {index} 行类型/schema 非法",
+            f"Worker sentinel line {index} type/schema invalid",
         )
         documents.append(document)
 
@@ -892,33 +892,33 @@ def _terminal_death_reward_evidence(
         len(final_rows) == 1
         and len(target_rows) == 1
         and final_rows[0] is target_rows[0],
-        "Worker sentinel 必须恰有一条 target-step final v23 行",
+        "Worker sentinel must have exactly one target-step final v23 line",
     )
     row = final_rows[0]
     _require(
         set(row) == _WORKER_FINAL_SENTINEL_KEYS,
-        "Worker final sentinel 字段漂移:"
-        f"缺={sorted(_WORKER_FINAL_SENTINEL_KEYS - set(row))},"
-        f"多={sorted(set(row) - _WORKER_FINAL_SENTINEL_KEYS)}",
+        "Worker final sentinel field drift: "
+        f"missing={sorted(_WORKER_FINAL_SENTINEL_KEYS - set(row))}, "
+        f"extra={sorted(set(row) - _WORKER_FINAL_SENTINEL_KEYS)}",
     )
     _require(
         row["sentinel"] == "v23"
         and row["final"] is True
         and _is_plain_int(row["step"])
         and row["step"] == target_step,
-        "Worker final sentinel 身份/step 非法",
+        "Worker final sentinel identity/step invalid",
     )
     _require(
         all(
             _is_plain_int(row[key]) and row[key] >= 0
             for key in _WORKER_SENTINEL_COUNT_KEYS
         ),
-        "Worker final sentinel count 必须是非负普通整数",
+        "Worker final sentinel count must be a non-negative plain integer",
     )
     _require(
         all(_finite_json_number(row[key])
             for key in _WORKER_SENTINEL_REWARD_KEYS),
-        "Worker final sentinel reward 含非数值/NaN/Inf",
+        "Worker final sentinel reward contains non-numeric/NaN/Inf",
     )
     reasons = _validate_reason_counts(
         row["reasons"], "Worker final sentinel reasons")
@@ -954,7 +954,7 @@ def _terminal_death_reward_evidence(
                 row["teacher_diverge"],
             )
         ),
-        "Worker final sentinel telemetry 非法",
+        "Worker final sentinel telemetry invalid",
     )
     _require(
         (
@@ -965,7 +965,7 @@ def _terminal_death_reward_evidence(
             row["distill_tv"] is None
             or 0.0 <= float(row["distill_tv"]) <= 1.0
         ),
-        "Worker final sentinel KL/TV 非法",
+        "Worker final sentinel KL/TV invalid",
     )
     _require(
         row["windows"] == row["dry"] + row["fresh"]
@@ -979,7 +979,7 @@ def _terminal_death_reward_evidence(
             + row["reset_ff_no_progress_timeouts"]
             + row["manual_ff_no_progress_timeouts"]
         ),
-        "Worker final sentinel window/fast-forward count 不闭合",
+        "Worker final sentinel window/fast-forward count not closed",
     )
 
     direct = row["direct_terminal_deaths"]
@@ -993,7 +993,7 @@ def _terminal_death_reward_evidence(
     _require(
         reasons.get("death", 0) == direct + transition + reset + manual
         and ff_reasons.get("death", 0) == transition + reset + manual,
-        "Worker final sentinel direct/FF death reason 计数不闭合",
+        "Worker final sentinel direct/FF death reason counts not closed",
     )
     _require(
         manual == 0
@@ -1011,7 +1011,7 @@ def _terminal_death_reward_evidence(
             rel_tol=0.0,
             abs_tol=1e-9,
         ),
-        "R7 训练路径禁止消费 manual fast-forward",
+        "the R7 training path must not consume manual fast-forward",
     )
     expected_cost = float(
         RECIPES[recipe]["additional_terminal_death_cost"])
@@ -1021,7 +1021,7 @@ def _terminal_death_reward_evidence(
             row["configured_additional_terminal_death_cost"])
         and float(row["configured_additional_terminal_death_cost"])
         == expected_cost,
-        "Worker final sentinel 奖励配置与 R7 recipe 漂移",
+        "Worker final sentinel reward configuration drifts from the R7 recipe",
     )
 
     def close(actual: Any, expected: float, label: str) -> None:
@@ -1029,7 +1029,7 @@ def _terminal_death_reward_evidence(
             math.isclose(
                 float(actual), float(expected),
                 rel_tol=0.0, abs_tol=1e-6),
-            f"Worker final sentinel {label} 不守恒:"
+            f"Worker final sentinel {label} not conserved: "
             f"{actual} != {expected}",
         )
 
@@ -1067,7 +1067,7 @@ def _terminal_death_reward_evidence(
             (count == 0 and math.isclose(
                 reward, 0.0, rel_tol=0.0, abs_tol=1e-9))
             or (count > 0 and reward < 0.0),
-            f"Worker final sentinel {reward_key} 与 death count 矛盾",
+            f"Worker final sentinel {reward_key} contradicts the death count",
         )
 
     timeout_reward_pairs = (
@@ -1097,7 +1097,7 @@ def _terminal_death_reward_evidence(
                 and reward < -expected_cost * count
             ),
             f"Worker final sentinel {reward_key} "
-            "与 no-progress timeout count/cost 矛盾",
+            "contradicts the no-progress timeout count/cost",
         )
     close(
         row["credited_no_progress_timeout_failure_reward"],
@@ -1175,7 +1175,7 @@ def _terminal_death_reward_evidence(
 def _validate_terminal_death_evidence_document(
         evidence: Any, *, recipe: str) -> dict:
     """Revalidate the compact receipt after it crosses an artifact boundary."""
-    _require(recipe in RECIPES, f"未知 R7 recipe:{recipe}")
+    _require(recipe in RECIPES, f"unknown R7 recipe: {recipe}")
     reward_keys = {
         "direct_existing_terminal_death_reward",
         "direct_additional_terminal_death_reward",
@@ -1261,7 +1261,7 @@ def _validate_terminal_death_evidence_document(
             for value in evidence[
                 "no_progress_timeout_rewards"].values()
         ),
-        "terminal-death reward evidence 文档字段/身份非法",
+        "terminal-death reward evidence document fields/identity invalid",
     )
     counts = evidence["death_counts"]
     rewards = evidence["death_rewards"]
@@ -1318,7 +1318,7 @@ def _validate_terminal_death_evidence_document(
             rel_tol=0.0,
             abs_tol=1e-6,
         ),
-        "terminal-death reward evidence 守恒/机会状态非法",
+        "terminal-death reward evidence conservation/opportunity state invalid",
     )
     for scope in ("direct", "transition_ff", "reset_ff"):
         count = timeout_counts[scope]
@@ -1335,7 +1335,7 @@ def _validate_terminal_death_evidence_document(
                 and reward < -cost * count
             ),
             "terminal-death reward evidence no-progress "
-            f"{scope} count/cost 不闭合",
+            f"{scope} count/cost not closed",
         )
     _require(
         math.isclose(
@@ -1346,7 +1346,7 @@ def _validate_terminal_death_evidence_document(
             rel_tol=0.0,
             abs_tol=1e-9,
         ),
-        "terminal-death reward evidence manual timeout reward 非零",
+        "terminal-death reward evidence manual timeout reward is non-zero",
     )
     return evidence
 
@@ -1355,7 +1355,7 @@ def _fsync_directory(path: pathlib.Path) -> None:
     try:
         fd = os.open(path, os.O_RDONLY | getattr(os, "O_CLOEXEC", 0))
     except OSError as exc:
-        raise CampaignError(f"目录不可打开以 fsync:{path}: {exc}") from exc
+        raise CampaignError(f"directory cannot be opened for fsync: {path}: {exc}") from exc
     try:
         os.fsync(fd)
     finally:
@@ -1370,9 +1370,9 @@ def _ensure_directory_durable(path: pathlib.Path) -> None:
         missing.append(cursor)
         cursor = cursor.parent
     _require(cursor.is_dir() and not cursor.is_symlink(),
-             f"目录祖先非法:{cursor}")
+             f"invalid directory ancestor: {cursor}")
     path.mkdir(parents=True, exist_ok=True)
-    _require(path.is_dir() and not path.is_symlink(), f"目标目录非法:{path}")
+    _require(path.is_dir() and not path.is_symlink(), f"invalid target directory: {path}")
     for created in reversed(missing):
         _fsync_directory(created)
         _fsync_directory(created.parent)
@@ -1389,7 +1389,7 @@ def _write_bytes_exclusive(
         )
     except FileExistsError:
         _require(_stable_read(path) == payload,
-                 f"不可变文件已存在但内容漂移:{path}")
+                 f"immutable file already exists with content drift: {path}")
         return
     try:
         with os.fdopen(fd, "wb", closefd=True) as stream:
@@ -1413,7 +1413,7 @@ def _write_json_exclusive(path: pathlib.Path, value: dict) -> None:
     ).encode("utf-8")
     if path.exists():
         _require(_stable_json(path) == value,
-                 f"不可变 JSON 已存在但内容漂移:{path}")
+                 f"immutable JSON already exists with content drift: {path}")
         return
     _write_bytes_exclusive(path, payload)
 
@@ -1445,7 +1445,7 @@ def _regular_path_lock(
     path = pathlib.Path(path)
     _ensure_directory_durable(path.parent)
     _require(hasattr(os, "O_NOFOLLOW"),
-             f"{purpose} 所在平台缺 O_NOFOLLOW，拒绝降级")
+             f"{purpose}: platform lacks O_NOFOLLOW; refusing to downgrade")
     flags = (
         os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW
         | getattr(os, "O_CLOEXEC", 0)
@@ -1454,13 +1454,13 @@ def _regular_path_lock(
     try:
         descriptor = os.open(path, flags, 0o644)
     except OSError as exc:
-        raise CampaignError(f"{purpose} lock 不可安全打开:{path}: {exc}") from exc
+        raise CampaignError(f"{purpose} lock cannot be opened safely: {path}: {exc}") from exc
     locked = False
     try:
         opened = os.fstat(descriptor)
         _require(
             stat.S_ISREG(opened.st_mode) and opened.st_nlink == 1,
-            f"{purpose} lock 必须是单链接普通文件:{path}",
+            f"{purpose} lock must be a single-link regular file: {path}",
         )
         operation = fcntl.LOCK_EX | (
             fcntl.LOCK_NB if nonblocking else 0)
@@ -1468,12 +1468,12 @@ def _regular_path_lock(
             fcntl.flock(descriptor, operation)
             locked = True
         except BlockingIOError as exc:
-            raise CampaignError(f"{purpose} 正由另一进程持有") from exc
+            raise CampaignError(f"{purpose} is held by another process") from exc
         try:
             named = path.lstat()
         except OSError as exc:
             raise CampaignError(
-                f"{purpose} lock 加锁后路径消失:{path}: {exc}") from exc
+                f"{purpose} lock path vanished after locking: {path}: {exc}") from exc
         after = os.fstat(descriptor)
         _require(
             stat.S_ISREG(named.st_mode)
@@ -1482,7 +1482,7 @@ def _regular_path_lock(
             and _lock_identity(opened)
             == _lock_identity(after)
             == _lock_identity(named),
-            f"{purpose} lock 路径/inode 在加锁期间漂移:{path}",
+            f"{purpose} lock path/inode drifted while locking: {path}",
         )
         os.fsync(descriptor)
         _fsync_directory(path.parent)
@@ -1491,7 +1491,7 @@ def _regular_path_lock(
             final_named = path.lstat()
         except OSError as exc:
             raise CampaignError(
-                f"{purpose} lock 持有期间路径消失:{path}: {exc}") from exc
+                f"{purpose} lock path vanished while held: {path}: {exc}") from exc
         final_opened = os.fstat(descriptor)
         _require(
             stat.S_ISREG(final_named.st_mode)
@@ -1500,7 +1500,7 @@ def _regular_path_lock(
             and _lock_identity(opened)
             == _lock_identity(final_opened)
             == _lock_identity(final_named),
-            f"{purpose} lock 路径/inode 在持有期间漂移:{path}",
+            f"{purpose} lock path/inode drifted while held: {path}",
         )
     finally:
         try:
@@ -1519,7 +1519,7 @@ def _campaign_lock():
 
 def _python() -> str:
     executable = ROOT / ".venv" / "bin" / "python"
-    _require(executable.is_file(), f"项目 Python 不存在:{executable}")
+    _require(executable.is_file(), f"project Python does not exist: {executable}")
     return str(executable)
 
 
@@ -1532,7 +1532,7 @@ def _invoke(command: list[str], label: str) -> None:
     print(" ".join(command), flush=True)
     completed = subprocess.run(command, cwd=ROOT, check=False)
     if completed.returncode:
-        raise CampaignError(f"{label} 退出码 {completed.returncode}")
+        raise CampaignError(f"{label} exit code {completed.returncode}")
 
 
 def _launcher_sha256() -> str:
@@ -1695,17 +1695,17 @@ CAMPAIGN_RECIPE_SHA256 = _canonical_sha256(CAMPAIGN_RECIPE)
 def _require_sha256(path: pathlib.Path, expected: str, label: str) -> str:
     actual = _sha256(path)
     _require(actual == expected,
-             f"{label} SHA 漂移:{actual} != {expected}: {path}")
+             f"{label} SHA drift: {actual} != {expected}: {path}")
     return actual
 
 
 def _require_curriculum_discipline() -> None:
     table = train_ppo._parse_dry_curriculum_schedule(CURRICULUM)
     _require(len(table) == TRAIN_CALLS,
-             f"R7 curriculum 长度 {len(table)} != train_calls {TRAIN_CALLS}")
+             f"R7 curriculum length {len(table)} != train_calls {TRAIN_CALLS}")
     _require(
         all(value == 1.0 for value in table[:CRITIC_WARMUP_CALLS]),
-        "R7 critic warmup 课程不是固定 p_skip=1.0",
+        "R7 critic warmup curriculum is not the fixed p_skip=1.0",
     )
     actor = table[CRITIC_WARMUP_CALLS:]
     _require(
@@ -1717,7 +1717,7 @@ def _require_curriculum_discipline() -> None:
             left >= right
             for left, right in zip(actor, actor[1:])
         ),
-        "R7 actor curriculum 未精确到达并保持部署 p_skip=0",
+        "R7 actor curriculum does not reach and hold the deployment p_skip=0 exactly",
     )
 
 
@@ -1729,7 +1729,7 @@ def _dry_curriculum_ledger_evidence(path: pathlib.Path) -> dict:
     table = train_ppo._parse_dry_curriculum_schedule(CURRICULUM)
     _require(
         len(lines) == TRAIN_CALLS == len(table),
-        "R7 dry curriculum ledger 行数不闭合:"
+        "R7 dry curriculum ledger line count not closed: "
         f"{len(lines)} != {TRAIN_CALLS}",
     )
     expected_keys = {
@@ -1743,13 +1743,13 @@ def _dry_curriculum_ledger_evidence(path: pathlib.Path) -> dict:
     for index, (line, expected_p) in enumerate(zip(lines, table)):
         _require(
             bool(line.strip()),
-            f"R7 dry curriculum ledger 第 {index} 行为空",
+            f"R7 dry curriculum ledger line {index} is empty",
         )
         try:
             row = eval_contract.strict_json_loads(line)
         except eval_contract.EvalContractError as exc:
             raise CampaignError(
-                f"R7 dry curriculum ledger 第 {index} 行 JSON 非法:{exc}"
+                f"R7 dry curriculum ledger line {index} JSON invalid: {exc}"
             ) from exc
         expected_step = START_STEPS + index * ROLLOUT_QUANTUM
         _require(
@@ -1766,7 +1766,7 @@ def _dry_curriculum_ledger_evidence(path: pathlib.Path) -> dict:
             and row["boundary_preapplied"] is (index > 0)
             and isinstance(row["cached_dual_observation_refreshed"], bool)
             and row["cached_dual_observation_refreshed"] is True,
-            "R7 dry curriculum ledger 与冻结表/全局步不一致:"
+            "R7 dry curriculum ledger disagrees with the frozen table/global step: "
             f"index={index},row={row!r},"
             f"expected_p={expected_p},expected_step={expected_step}",
         )
@@ -1793,14 +1793,14 @@ def _full_game_data_identity() -> dict:
     try:
         source = eval_contract.game_data_identity()
     except eval_contract.EvalContractError as exc:
-        raise CampaignError(f"R7 full-game 主档案不可冻结:{exc}") from exc
+        raise CampaignError(f"R7 full-game main archive cannot be frozen: {exc}") from exc
     _require(
         isinstance(source, dict)
         and set(source) == {"path", "sha256"}
         and isinstance(source["path"], str)
         and pathlib.Path(source["path"]).is_absolute()
         and _is_sha256(source["sha256"]),
-        "R7 full-game 主档案身份字段非法",
+        "R7 full-game main archive identity fields invalid",
     )
     path = pathlib.Path(source["path"])
     identity = {
@@ -1811,12 +1811,12 @@ def _full_game_data_identity() -> dict:
     }
     _require(
         identity["basename"] in FULL_GAME_DATA_BASENAMES,
-        "R7 formal campaign 禁止 spawn/shareware 主档案:"
+        "R7 formal campaign forbids a spawn/shareware main archive: "
         f"{identity['basename']}",
     )
     _require(
         identity["sha256"] == FULL_GAME_DATA_SHA256,
-        "R7 full-game DIABDAT 主档案 SHA 漂移:"
+        "R7 full-game DIABDAT main archive SHA drift: "
         f"{identity['sha256']} != {FULL_GAME_DATA_SHA256}",
     )
     return identity
@@ -1832,12 +1832,12 @@ def _frozen_inputs_identity() -> dict:
         == V28_ACTOR_PARAMETER_SHA256
         and v28_branches["critic_sha256"]
         == V28_CRITIC_PARAMETER_SHA256,
-        "V28 actor/critic tensor identity 漂移",
+        "V28 actor/critic tensor identity drift",
     )
     teacher_actor_sha256 = _teacher_actor_sha256()
     _require(
         teacher_actor_sha256 == V28_ACTOR_PARAMETER_SHA256,
-        "KING 不再是 V28 root 的逐位自锚",
+        "KING is no longer the bit-exact self-anchor of the V28 root",
     )
     return {
         "v28_sha256": _require_sha256(V28_ZIP, V28_SHA256, "V28"),
@@ -1862,8 +1862,8 @@ def _implementation_identity() -> dict:
 
 def _require_seed_discipline() -> None:
     _frozen_inputs_identity()
-    _require(BC_V1_RANGE in BC_RESERVED_SEED_RANGES, "R7 BC-v1 未进入拒采表")
-    _require(BC_V2_RANGE in BC_RESERVED_SEED_RANGES, "R7 BC-v2 未进入拒采表")
+    _require(BC_V1_RANGE in BC_RESERVED_SEED_RANGES, "R7 BC-v1 not in the rejection table")
+    _require(BC_V2_RANGE in BC_RESERVED_SEED_RANGES, "R7 BC-v2 not in the rejection table")
     burned_ranges = (
         (2_100_000, 2_100_128),
         (2_101_000, 2_101_384),
@@ -1871,19 +1871,19 @@ def _require_seed_discipline() -> None:
     for burned in burned_ranges:
         _require(
             burned in BC_RESERVED_SEED_RANGES,
-            f"R7 已消费 BC 池从拒采表消失:{burned}",
+            f"a consumed R7 BC pool disappeared from the rejection table: {burned}",
         )
     _require(
         tuple(range(*BC_V1_RANGE))
         == tuple(train_ppo._WORKER_BC_DEMO_SEEDS),
-        "R7 BC-v1 range 与 producer/consumer registry 漂移",
+        "R7 BC-v1 range drifts from the producer/consumer registry",
     )
     _require(
         tuple(range(*BC_V2_RANGE))
         == tuple(train_ppo._BC_V2_COLLECTION_EPISODES),
-        "R7 BC-v2 range 与 producer/consumer registry 漂移",
+        "R7 BC-v2 range drifts from the producer/consumer registry",
     )
-    _require(EVAL_BANK_RANGE in EVAL_RESERVED_SEED_RANGES, "R7 eval 银行未进入拒采表")
+    _require(EVAL_BANK_RANGE in EVAL_RESERVED_SEED_RANGES, "R7 eval bank not in the rejection table")
     named = {
         "bc-v1": set(range(*BC_V1_RANGE)),
         "bc-v2": set(range(*BC_V2_RANGE)),
@@ -1896,29 +1896,29 @@ def _require_seed_discipline() -> None:
     for scope in ("bc-v1", "bc-v2"):
         _require(
             named[scope].isdisjoint(burned_episodes),
-            f"R7 {scope} active pool 与已消费 BC 池重叠",
+            f"R7 {scope} active pool overlaps a consumed BC pool",
         )
         _require(
             named[scope].isdisjoint(eval_bank),
-            f"R7 {scope} active pool 与 eval 银行重叠",
+            f"R7 {scope} active pool overlaps the eval bank",
         )
     names = tuple(named)
     for index, left in enumerate(names):
         for right in names[index + 1:]:
             _require(named[left].isdisjoint(named[right]),
-                     f"R7 seed pools 重叠:{left}/{right}")
+                     f"R7 seed pools overlap: {left}/{right}")
     for seeds in named.values():
         _require(all(is_reserved_train_seed(seed) for seed in seeds),
-                 "R7 留出 seed 未被普通训练拒采")
+                 "R7 held-out seed not rejected by ordinary training")
     all_training = (*DEVELOPMENT_TRAIN_SEEDS, PRODUCTION_TRAIN_SEED)
-    _require(len(set(all_training)) == len(all_training), "训练 RNG seed 重复")
+    _require(len(set(all_training)) == len(all_training), "duplicate training RNG seed")
     _require(
         all(
             not is_reserved_train_seed(seed + rank)
             for seed in all_training
             for rank in range(NUM_ENVS)
         ),
-        "训练 RNG seed+rank 撞留出池",
+        "training RNG seed+rank collides with a held-out pool",
     )
 
 
@@ -1961,7 +1961,7 @@ def _load_state() -> dict:
             None, "DEVELOPMENT_SCIENTIFIC_FAIL", "FINAL_OPERATIONAL_FAIL",
             "PASS", "FINAL_SCIENTIFIC_FAIL",
         },
-        "R7 state 与当前不可变 launcher/recipe 不一致",
+        "R7 state disagrees with the current immutable launcher/recipe",
     )
     return state
 
@@ -1974,7 +1974,7 @@ def _set_phase(state: dict, name: str, status: str, **fields) -> None:
 def _require_not_terminal(state: dict) -> None:
     _require(
         state.get("terminal_status") is None,
-        f"R7 已进入终态:{state.get('terminal_status')}",
+        f"R7 already reached a terminal state: {state.get('terminal_status')}",
     )
 
 
@@ -1983,7 +1983,7 @@ def _bc_identity() -> dict:
     _require(
         report["implementation_sha256"]
         == train_ppo._implementation_bundle_sha256(),
-        "BC-v1 不是当前 R7 implementation 重采件",
+        "BC-v1 is not a resample bound to the current R7 implementation",
     )
     return {
         "policy_sha256": _sha256(BC_V1_POLICY),
@@ -2003,10 +2003,10 @@ def command_prepare_bc() -> None:
         identity = _bc_identity()
     except Exception:
         phase = state["phases"].get("prepare_bc", {})
-        _require(not phase, "BC 准备曾点火但没有可复验 PASS 工件；禁止同池重试")
+        _require(not phase, "BC preparation was launched but has no re-verifiable PASS artifact; same-pool retry forbidden")
         _set_phase(state, "prepare_bc", "running", attempts=1)
         try:
-            _invoke([_python(), str(TRAIN / "bc_worker.py")], "R7 BC-v1 重采")
+            _invoke([_python(), str(TRAIN / "bc_worker.py")], "R7 BC-v1 resample")
             identity = _bc_identity()
         except Exception as exc:
             _set_phase(
@@ -2015,11 +2015,11 @@ def command_prepare_bc() -> None:
             )
             raise
     _set_phase(state, "prepare_bc", "complete", **identity)
-    print("R7 BC-v1 当前实现绑定重采件 PASS。")
+    print("R7 BC-v1 resample bound to the current implementation: PASS.")
 
 
 def _run_name(recipe: str, seed: int, scope: str) -> str:
-    _require(scope in {"development", "candidate"}, f"未知训练 scope:{scope}")
+    _require(scope in {"development", "candidate"}, f"unknown training scope: {scope}")
     suffix = "dev" if scope == "development" else "candidate"
     return f"r7-{recipe}-{suffix}-s{seed}"
 
@@ -2029,7 +2029,7 @@ def _training_model_path(recipe: str, seed: int, scope: str) -> pathlib.Path:
         "development": "model_development.zip",
         "candidate": "model_candidate.zip",
     }.get(scope)
-    _require(filename is not None, f"未知训练 scope:{scope}")
+    _require(filename is not None, f"unknown training scope: {scope}")
     return TRAIN / "runs" / _run_name(recipe, seed, scope) / filename
 
 
@@ -2045,8 +2045,8 @@ def _training_fired_path(recipe: str, seed: int, scope: str) -> pathlib.Path:
 
 
 def _training_command(recipe: str, seed: int, scope: str) -> list[str]:
-    _require(recipe in RECIPES, f"未知 recipe:{recipe}")
-    _require(scope in {"development", "candidate"}, f"未知 scope:{scope}")
+    _require(recipe in RECIPES, f"unknown recipe: {recipe}")
+    _require(scope in {"development", "candidate"}, f"unknown scope: {scope}")
     return [
         _python(),
         str(TRAIN / "train_ppo.py"),
@@ -2114,7 +2114,7 @@ def _validate_training_fired(
         and _is_plain_int(record["fired_at_ns"])
         and record["fired_at_ns"] > 0
         and all(record[key] == value for key, value in core.items()),
-        f"{recipe}/{seed}/{scope} training fired marker 漂移",
+        f"{recipe}/{seed}/{scope} training fired marker drift",
     )
     return record
 
@@ -2251,13 +2251,13 @@ def _expected_training_contract(scope: str, recipe: str, bc: dict) -> dict:
 
 
 def _require_config_values(config: dict, expected: dict, label: str) -> None:
-    _require(isinstance(config, dict), f"{label} config 不是对象")
+    _require(isinstance(config, dict), f"{label} config is not an object")
     differences = {
         key: (config.get(key), value)
         for key, value in expected.items()
         if config.get(key) != value
     }
-    _require(not differences, f"{label} config 漂移:{differences}")
+    _require(not differences, f"{label} config drift: {differences}")
 
 
 def _worker_onpolicy_pg_evidence(
@@ -2267,7 +2267,7 @@ def _worker_onpolicy_pg_evidence(
     _require(
         _finite_json_number(expected_additional_terminal_death_cost)
         and float(expected_additional_terminal_death_cost) >= 0.0,
-        f"{label} formal Worker timeout additional cost 非法",
+        f"{label} formal Worker timeout additional cost invalid",
     )
     expected_cost = float(expected_additional_terminal_death_cost)
     receipts = checkpoint.get(
@@ -2308,7 +2308,7 @@ def _worker_onpolicy_pg_evidence(
         )
         and sum(receipt["optimizer_steps"] for receipt in receipts)
         == checkpoint.get("_actor_optimizer_steps_completed")
-        # A4:聚合地板按早停旗折算(早停 rollout 计 1,其余计满 epoch)。
+        # A4: the aggregate floor is converted by the early-stop flag (an early-stopped rollout counts 1, others count a full epoch).
         and sum(
             receipt["optimizer_steps"] for receipt in receipts
         ) >= sum(
@@ -2316,7 +2316,7 @@ def _worker_onpolicy_pg_evidence(
             else WORKER_ONPOLICY_PG_MIN_OPTIMIZER_STEPS_PER_JOINT_ROLLOUT
             for receipt in receipts
         ),
-        f"{label} formal Worker on-policy PG evidence 未闭合",
+        f"{label} formal Worker on-policy PG evidence not closed",
     )
     qualifying = [
         receipt for receipt in receipts if receipt["qualifies"]]
@@ -2369,7 +2369,7 @@ def _worker_onpolicy_pg_evidence(
                 and timeout_total_sum < timeout_additional_sum
             )
         ),
-        f"{label} formal Worker no-progress timeout 分账未闭合",
+        f"{label} formal Worker no-progress timeout accounting not closed",
     )
     return {
         "schema": WORKER_ONPOLICY_PG_AUDIT_SCHEMA,
@@ -2597,8 +2597,8 @@ def _training_artifact_evidence(
     try:
         status = eval_contract.strict_json_loads(status_payload)
     except eval_contract.EvalContractError as exc:
-        raise CampaignError(f"训练 status 非法:{status_path}: {exc}") from exc
-    _require(isinstance(status, dict), f"训练 status 顶层不是对象:{status_path}")
+        raise CampaignError(f"training status invalid: {status_path}: {exc}") from exc
+    _require(isinstance(status, dict), f"training status top level is not an object: {status_path}")
     status_sha256 = hashlib.sha256(status_payload).hexdigest()
     model_payload = _stable_read(model)
     model_sha256 = hashlib.sha256(model_payload).hexdigest()
@@ -2618,7 +2618,7 @@ def _training_artifact_evidence(
         and status.get("leg_target_steps") == LEG_STEPS
         and status.get("rollout_full") is True
         and status.get("model_sha256") == model_sha256,
-        f"{recipe}/{seed}/{scope} status 未闭合",
+        f"{recipe}/{seed}/{scope} status not closed",
     )
     _require(
         status.get("model_published") is False
@@ -2626,7 +2626,7 @@ def _training_artifact_evidence(
         is (scope == "development")
         and status.get("model_production_candidate")
         is (scope == "candidate"),
-        f"{recipe}/{seed}/{scope} publication flags 未闭合",
+        f"{recipe}/{seed}/{scope} publication flags not closed",
     )
     config = status.get("config")
     expected_contract = _expected_training_contract(scope, recipe, bc)
@@ -2637,7 +2637,7 @@ def _training_artifact_evidence(
         and isinstance(
             config.get("dry_curriculum_start_probability"), float)
         and config["dry_curriculum_start_probability"] == 1.0,
-        f"{recipe}/{seed}/{scope} dry curriculum 配置起点未严格闭合",
+        f"{recipe}/{seed}/{scope} dry curriculum configured start not strictly closed",
     )
     _require_config_values(
         config,
@@ -2712,7 +2712,7 @@ def _training_artifact_evidence(
     _require(
         config.get("actor_migration_receipt")
         == actor_migration_receipt,
-        f"{recipe}/{seed}/{scope} config/ZIP actor migration receipt 不一致",
+        f"{recipe}/{seed}/{scope} config/ZIP actor migration receipt inconsistent",
     )
     migration_receipt = checkpoint.get("_critic_migration_receipt")
     _validate_critic_migration_receipt(
@@ -2721,7 +2721,7 @@ def _training_artifact_evidence(
         canonical_evidence=canonical_migration)
     _require(
         config.get("critic_migration_receipt") == migration_receipt,
-        f"{recipe}/{seed}/{scope} config/ZIP critic migration receipt 不一致",
+        f"{recipe}/{seed}/{scope} config/ZIP critic migration receipt inconsistent",
     )
     worker_pg_evidence = _worker_onpolicy_pg_evidence(
         checkpoint,
@@ -2748,15 +2748,15 @@ def _training_artifact_evidence(
         == actor_migration_receipt["context_parameter_count"]
         and final_branches["critic_parameter_count"]
         == migration_receipt["critic_parameter_count"],
-        f"{recipe}/{seed}/{scope} optimizer 虽计步但"
-        " context actor 或 critic 权重未学习",
+        f"{recipe}/{seed}/{scope} optimizer counted steps but"
+        " the context actor or critic weights did not learn",
     )
     try:
         train_ppo._validate_current_dual_worker_contract(contract)
     except (RuntimeError, TypeError, ValueError) as exc:
         raise CampaignError(
             f"{recipe}/{seed}/{scope} rev"
-            f"{train_ppo._CONTRACT_REVISION} 完整 contract 未闭合"
+            f"{train_ppo._CONTRACT_REVISION} full contract not closed"
         ) from exc
     policy_class_record = checkpoint.get("policy_class")
     _require(
@@ -2790,7 +2790,7 @@ def _training_artifact_evidence(
         and checkpoint.get("_last_effective_distill_beta") == 0.0
         and contract == expected_contract
         and contract == config["training_contract"],
-        f"{recipe}/{seed}/{scope} checkpoint/contract 未闭合",
+        f"{recipe}/{seed}/{scope} checkpoint/contract not closed",
     )
     expected_model_name = model.name
     for name in (
@@ -2798,7 +2798,7 @@ def _training_artifact_evidence(
         wrong = run_dir / name
         if name != expected_model_name:
             _require(not wrong.exists(),
-                     f"{scope} run 产生了错误 scope 工件:{wrong}")
+                     f"{scope} run produced artifacts of the wrong scope: {wrong}")
     identity = _implementation_identity()
     dry_curriculum_ledger = _dry_curriculum_ledger_evidence(
         dry_curriculum_path)
@@ -2831,7 +2831,7 @@ def _training_artifact_evidence(
             )
         ),
         f"{recipe}/{seed}/{scope} formal PG/sentinel "
-        "no-progress timeout 证据不闭合",
+        "no-progress timeout evidence not closed",
     )
     _require(
         _sha256(model) == model_sha256
@@ -2840,7 +2840,7 @@ def _training_artifact_evidence(
         == dry_curriculum_ledger["sha256"]
         and _sha256(sentinel_path)
         == terminal_death_evidence["sentinel_sha256"],
-        f"{recipe}/{seed}/{scope} 工件验证期间发生替换",
+        f"{recipe}/{seed}/{scope} artifacts replaced during verification",
     )
     return {
         "schema_version": TRAINING_RECEIPT_SCHEMA,
@@ -2906,11 +2906,11 @@ def _validate_training_artifact(
         recipe: str, seed: int, scope: str) -> dict:
     receipt_path = _training_receipt_path(recipe, seed, scope)
     _require(receipt_path.exists(),
-             f"{recipe}/{seed}/{scope} 缺训练回执:{receipt_path}")
+             f"{recipe}/{seed}/{scope} missing training receipt: {receipt_path}")
     expected = _training_artifact_evidence(recipe, seed, scope)
     _require(
         _stable_json(receipt_path) == expected,
-        f"{recipe}/{seed}/{scope} 训练回执与冻结工件漂移",
+        f"{recipe}/{seed}/{scope} training receipt drifts from the frozen artifacts",
     )
     expected["receipt_sha256"] = _sha256(receipt_path)
     return expected
@@ -2932,12 +2932,12 @@ def _run_training_once(recipe: str, seed: int, scope: str) -> dict:
         # permanently fail-closed.
         _require(
             run_dir.is_dir(),
-            f"{recipe}/{seed}/{scope} 已点火但训练目录缺失；禁止重发",
+            f"{recipe}/{seed}/{scope} launched but the training directory is missing; relaunch forbidden",
         )
         return _capture_training_artifact(recipe, seed, scope)
     _require(
         not run_dir.exists(),
-        f"{recipe}/{seed}/{scope} 有未登记残件；禁止静默重发:{run_dir}",
+        f"{recipe}/{seed}/{scope} has unregistered leftover files; silent relaunch forbidden: {run_dir}",
     )
     fired = {
         **_training_fired_core(recipe, seed, scope, bc),
@@ -2960,15 +2960,15 @@ def command_train_development() -> None:
         "amendment5_sha256"
         not in state["phases"].get("eval_development", {})
         and not AMENDMENT5_PATH.exists(),
-        "修正案五收养已生效;开发训练阶段已封存,禁止重跑",
+        "amendment 5 adoption is in effect; the development training stage is sealed, rerun forbidden",
     )
     bc = _bc_identity()
     _require(
         state["phases"].get("prepare_bc", {}).get("status") == "complete",
-        "须先 prepare-bc",
+        "prepare-bc must run first",
     )
     phase = state["phases"].get("train_development", {})
-    _require(phase.get("status") != "locked-failed", "开发训练已 locked-failed")
+    _require(phase.get("status") != "locked-failed", "development training is already locked-failed")
     records = dict(phase.get("artifacts", {}))
     _set_phase(
         state, "train_development", "running",
@@ -2995,7 +2995,7 @@ def command_train_development() -> None:
         state, "train_development", "complete",
         artifacts=records, bc=bc,
     )
-    print("R7 两配方 × 三固定 RNG 的 DEVELOPMENT_ONLY cohort 已冻结。")
+    print("R7 DEVELOPMENT_ONLY cohort of two recipes × three fixed RNGs frozen.")
 
 
 def _eval_tag(pool: str, arm: str, recipe: str | None = None,
@@ -3004,7 +3004,7 @@ def _eval_tag(pool: str, arm: str, recipe: str | None = None,
         return f"official-r7-final-{arm}-{FINAL_POOL[0]}"
     if arm == "baseline":
         return f"r7-{pool}-baseline-v28"
-    _require(recipe is not None and seed is not None, "开发 candidate tag 缺身份")
+    _require(recipe is not None and seed is not None, "development candidate tag lacks identity")
     return f"r7-{pool}-{recipe}-s{seed}"
 
 
@@ -3028,7 +3028,7 @@ def _eval_attestation_path(tag: str) -> pathlib.Path:
 def _seed_arg(seeds: tuple[int, ...]) -> str:
     _require(
         seeds == tuple(range(seeds[0], seeds[-1] + 1)),
-        "eval seeds 必须为连续升序范围",
+        "eval seeds must be a contiguous ascending range",
     )
     return f"{seeds[0]}-{seeds[-1]}"
 
@@ -3055,16 +3055,16 @@ def _stage_eval_file(
     if expected_sha256 is not None:
         _require(
             digest == expected_sha256,
-            f"eval staging 源 SHA 漂移:{source}:{digest} != {expected_sha256}",
+            f"eval staging source SHA drift: {source}:{digest} != {expected_sha256}",
         )
     _write_bytes_exclusive(destination, payload, mode=0o444)
     try:
         os.chmod(destination, 0o444)
     except OSError as exc:
-        raise CampaignError(f"eval staging 无法设为只读:{destination}: {exc}") from exc
+        raise CampaignError(f"eval staging cannot be made read-only: {destination}: {exc}") from exc
     _fsync_directory(destination.parent)
     _require(_sha256(destination) == digest,
-             f"eval staging 副本 SHA 漂移:{destination}")
+             f"eval staging copy SHA drift: {destination}")
     return digest
 
 
@@ -3087,7 +3087,7 @@ def _prepare_eval_launch(
     ):
         _require(
             source_sha == V28_SHA256,
-            f"eval {tag} V28 baseline SHA 漂移:"
+            f"eval {tag} V28 baseline SHA drift: "
             f"{source_sha} != {V28_SHA256}",
         )
     receipt_sha = None
@@ -3097,26 +3097,26 @@ def _prepare_eval_launch(
             and training_receipt.get("model_path") == str(worker)
             and training_receipt.get("model_sha256") == source_sha
             and _is_sha256(training_receipt.get("receipt_sha256")),
-            f"eval {tag} 未绑定精确训练回执",
+            f"eval {tag} not bound to an exact training receipt",
         )
         receipt_sha = training_receipt["receipt_sha256"]
     if final_bind_sha256 is not None:
         _require(_is_sha256(final_bind_sha256),
-                 f"eval {tag} final bind SHA 非法")
+                 f"eval {tag} final bind SHA invalid")
     stage_dir = EVAL_INPUT_DIR / tag
     staged_worker = stage_dir / "worker.zip"
     staged_manager = stage_dir / "manager.npz"
     if require_existing_staging:
         _require(
             staged_worker.exists() and staged_manager.exists(),
-            f"eval {tag} 冻结 staging 缺失",
+            f"eval {tag} frozen staging missing",
         )
         worker_sha = _sha256(staged_worker)
         manager_sha = _sha256(staged_manager)
         _require(
             worker_sha == source_sha
             and manager_sha == M29_SHA256,
-            f"eval {tag} 冻结 staging/source 身份漂移",
+            f"eval {tag} frozen staging/source identity drift",
         )
     else:
         worker_sha = _stage_eval_file(
@@ -3130,7 +3130,7 @@ def _prepare_eval_launch(
             path.is_file() and not path.is_symlink()
             for path in (staged_worker, staged_manager)
         ),
-        f"eval {tag} staging 成员集合必须精确为 worker/manager",
+        f"eval {tag} staging member set must be exactly worker/manager",
     )
     command = _eval_command(staged_worker, seeds, tag, staged_manager)
     return {
@@ -3164,7 +3164,7 @@ def _validate_eval_fired(tag: str, launch: dict) -> dict:
         and _is_plain_int(record["fired_at_ns"])
         and record["fired_at_ns"] > 0
         and all(record[key] == value for key, value in core.items()),
-        f"eval fired marker 漂移:{tag}",
+        f"eval fired marker drift: {tag}",
     )
     return record
 
@@ -3176,7 +3176,7 @@ def _validate_eval_archive(
     _require(
         _sha256(worker) == launch["worker_sha256"]
         and _sha256(manager) == launch["manager_sha256"],
-        f"eval staging 身份漂移:{tag}",
+        f"eval staging identity drift: {tag}",
     )
     snapshot = eval_contract.freeze_eval_identity(
         ROOT, str(worker), str(manager))
@@ -3188,7 +3188,7 @@ def _validate_eval_archive(
         document = eval_contract.strict_json_loads(archive_payload)
         document = eval_contract.validate_eval_archive(document, **expected)
     except eval_contract.EvalContractError as exc:
-        raise CampaignError(f"eval archive 非法:{path}: {exc}") from exc
+        raise CampaignError(f"eval archive invalid: {path}: {exc}") from exc
     archive_sha256 = hashlib.sha256(archive_payload).hexdigest()
     _require(
         document["meta"]["worker"]["sha256"] == launch["worker_sha256"]
@@ -3197,7 +3197,7 @@ def _validate_eval_archive(
         and document["meta"]["manager"]["path"] == str(manager.resolve())
         and _sha256(worker) == launch["worker_sha256"]
         and _sha256(manager) == launch["manager_sha256"],
-        f"eval archive worker/manager 身份异常:{tag}",
+        f"eval archive worker/manager identity abnormal: {tag}",
     )
     # R7 refuses legacy v5 archives that predate the action-14 execution
     # ledger.  The generic archive reader still accepts them for historical
@@ -3205,7 +3205,7 @@ def _validate_eval_archive(
     _gear_progression_gate(document)
     _require(
         _sha256(path) == archive_sha256,
-        f"eval archive 验证期间路径漂移:{tag}",
+        f"eval archive path drift during verification: {tag}",
     )
     return document, archive_sha256
 
@@ -3234,12 +3234,12 @@ def _validate_existing_eval(
     fired_sha = _sha256(_eval_fired_path(tag))
     expected = _eval_attestation(launch, archive_sha, fired_sha)
     path = _eval_attestation_path(tag)
-    _require(path.exists(), f"eval archive 缺独立 attestation:{tag}")
+    _require(path.exists(), f"eval archive lacks an independent attestation: {tag}")
     _require(_stable_json(path) == expected,
-             f"eval attestation 与 fired/archive 漂移:{tag}")
+             f"eval attestation drifts from fired/archive: {tag}")
     _require(
         _sha256(_eval_path(tag)) == archive_sha,
-        f"eval archive 在 attestation 复验期间漂移:{tag}",
+        f"eval archive drifted during attestation re-check: {tag}",
     )
     return document, archive_sha
 
@@ -3258,7 +3258,7 @@ def _run_eval_once(
     )
     if prepared_launch is not None:
         _require(prepared_launch == current_launch,
-                 f"eval {tag} prepared launch 身份漂移")
+                 f"eval {tag} prepared launch identity drift")
     launch = current_launch
     path = _eval_path(tag)
     if path.exists():
@@ -3274,11 +3274,11 @@ def _run_eval_once(
         _validate_eval_fired(tag, launch)
         _require(
             _implementation_identity() == launch["implementation"],
-            f"eval {tag} adoption 时 implementation 漂移",
+            f"eval {tag} implementation drift at adoption",
         )
         _require(
             _sha256(worker) == launch["source_worker_sha256"],
-            f"eval {tag} adoption 时源 worker 漂移",
+            f"eval {tag} source worker drift at adoption",
         )
         document, archive_sha = _validate_eval_archive(
             launch, seeds, tag)
@@ -3287,16 +3287,16 @@ def _run_eval_once(
         _write_json_exclusive(attestation_path, attestation)
         _require(
             _sha256(path) == archive_sha,
-            f"eval archive 在 adoption attestation 提交期间漂移:{tag}",
+            f"eval archive drifted while the adoption attestation was committed: {tag}",
         )
         return document, archive_sha
     _require(
         not marker_path.exists(),
-        f"eval {tag} 已点火但无完整档案；禁止观察部分输出后重试",
+        f"eval {tag} launched but no complete archive; retry after observing partial output is forbidden",
     )
     _require(
         not _eval_attestation_path(tag).exists(),
-        f"eval {tag} 无 archive 却已有 attestation",
+        f"eval {tag} has an attestation but no archive",
     )
     marker = {
         **_eval_fired_core(launch),
@@ -3307,19 +3307,19 @@ def _run_eval_once(
     _validate_eval_fired(tag, launch)
     _require(
         _implementation_identity() == launch["implementation"],
-        f"eval {tag} 期间 launcher/statistics/implementation 漂移",
+        f"eval {tag} launcher/statistics/implementation drift during the run",
     )
     # The evaluator consumes staging copies, but the source receipt must remain
     # true through archive commit as well.
     _require(_sha256(worker) == launch["source_worker_sha256"],
-             f"eval {tag} 期间源 worker 漂移")
+             f"eval {tag} source worker drift during the run")
     document, archive_sha = _validate_eval_archive(launch, seeds, tag)
     attestation = _eval_attestation(
         launch, archive_sha, _sha256(marker_path))
     _write_json_exclusive(_eval_attestation_path(tag), attestation)
     _require(
         _sha256(path) == archive_sha,
-        f"eval archive 在 attestation 提交期间漂移:{tag}",
+        f"eval archive drifted while the attestation was committed: {tag}",
     )
     return document, archive_sha
 
@@ -3335,7 +3335,7 @@ def _read_eval_once(
         final_bind_sha256=final_bind_sha256,
         require_existing_staging=True,
     )
-    _require(_eval_path(tag).exists(), f"冻结 eval archive 缺失:{tag}")
+    _require(_eval_path(tag).exists(), f"frozen eval archive missing: {tag}")
     return _validate_existing_eval(launch, seeds, tag)
 
 
@@ -3353,9 +3353,9 @@ def _gear_progression_gate(candidate: dict) -> dict:
     strictly improving equip, and the authoritative whole-loadout utility
     increased.
     """
-    _require(isinstance(candidate, dict), "gear gate candidate archive 非对象")
+    _require(isinstance(candidate, dict), "gear gate candidate archive is not an object")
     agg = candidate.get("agg")
-    _require(isinstance(agg, dict), "gear gate 缺 candidate agg")
+    _require(isinstance(agg, dict), "gear gate lacks candidate agg")
     names = (
         "worker_calls",
         "worker_action14_mask_opportunities",
@@ -3365,13 +3365,13 @@ def _gear_progression_gate(candidate: dict) -> dict:
     )
     _require(
         all(name in agg for name in names),
-        "R7 eval archive 缺 action14 gear progression ledger",
+        "R7 eval archive lacks the action14 gear progression ledger",
     )
     values = {name: agg[name] for name in names}
     _require(
         all(_is_plain_int(value) and value >= 0
             for value in values.values()),
-        "R7 action14 gear progression ledger 必须是非负整数",
+        "R7 action14 gear progression ledger must be non-negative integers",
     )
     calls = values["worker_calls"]
     opportunities = values[
@@ -3382,12 +3382,12 @@ def _gear_progression_gate(candidate: dict) -> dict:
         "worker_action14_gear_utility_delta"]
     _require(
         successes <= requests <= opportunities <= calls,
-        "R7 action14 gear progression 次序不满足 "
+        "R7 action14 gear progression order not satisfied "
         "success<=request<=opportunity<=calls",
     )
     _require(
         (successes == 0) == (utility_delta == 0),
-        "R7 action14 native success 与 utility delta 零性不一致",
+        "R7 action14 native success inconsistent with zero utility delta",
     )
 
     informative = opportunities >= MIN_ACTION14_MASK_OPPORTUNITIES
@@ -3423,11 +3423,11 @@ def _gear_progression_gate(candidate: dict) -> dict:
 
 
 
-# === rev21(PREREG-R7-rev21-proposal,总设计师 2026-07-27 批)===
-# 每步效率记分肢与存活分解诊断:只记不裁——不进 METRIC_RULES、不占 familywise α、
-# 不作任何 pass/fail 输入。预注册参考带(判读用,非门):点 +0.004/微步,带 [0, +0.010]。
-# 口径立法:效率一律步数口径(farm_worker_wage / micro_steps);
-# 分解为对称切分 Δwage = m̄·Δr + r̄·Δm(逐种子精确恒等)。
+# === rev21 (PREREG-R7-rev21-proposal, approved 2026-07-27) ===
+# per-step efficiency scoring limb and survival decomposition diagnostic: record only -- not in METRIC_RULES, no familywise α,
+# not an input to any pass/fail. Pre-registered reference band (for reading, not a gate): point +0.004 per micro-step, band [0, +0.010].
+# Definition rule: efficiency always uses the step definition (farm_worker_wage / micro_steps);
+# the decomposition is the symmetric split Δwage = m̄·Δr + r̄·Δm (exact identity per seed).
 REV21_DIAGNOSTICS_SCHEMA = "diablogym-r7-rev21-diagnostics/1"
 REV21_RATE_POINT = 0.004
 REV21_RATE_BAND = (0.0, 0.010)
@@ -3441,7 +3441,7 @@ def _rev21_diagnostics(baseline_archive: dict, candidate_archive: dict) -> dict:
         len(brows) == len(crows)
         and all(b.get("seed") == c.get("seed")
                 for b, c in zip(brows, crows)),
-        "rev21 diagnostics 需要种子逐位配对的行",
+        "rev21 diagnostics need rows paired seed by seed",
     )
     rate_rows = []
     time_component = 0.0
@@ -3450,7 +3450,7 @@ def _rev21_diagnostics(baseline_archive: dict, candidate_archive: dict) -> dict:
     deaths_flipped_to_survived = []
     for b, c in zip(brows, crows):
         mb, mc = int(b["micro_steps"]), int(c["micro_steps"])
-        _require(mb > 0 and mc > 0, "rev21 diagnostics: micro_steps 必须为正")
+        _require(mb > 0 and mc > 0, "rev21 diagnostics: micro_steps must be positive")
         wb = float(b["farm_worker_wage"])
         wc = float(c["farm_worker_wage"])
         rb, rc = wb / mb, wc / mc
@@ -3511,7 +3511,7 @@ def _rev21_diagnostics(baseline_archive: dict, candidate_archive: dict) -> dict:
         },
         "survival_decomposition": {
             "identity": "sum Δwage == rate_component + time_component"
-                        " (对称切分,逐种子精确)",
+                        " (symmetric split, exact per seed)",
             "rate_component": rate_component,
             "time_component": time_component,
             "total_delta_wage": rate_component + time_component,
@@ -3552,7 +3552,7 @@ def _analyze_pair(
             "failed_checks": failed_checks,
         },
     }
-    # rev21:只记不裁诊断随一切配对分析落档(development 与 final 同享)。
+    # rev21: record-only diagnostics are archived with every paired analysis (shared by development and final).
     analysis["rev21_diagnostics"] = _rev21_diagnostics(baseline, candidate)
     if training_death_reward_evidence is not None:
         _require(
@@ -3570,7 +3570,7 @@ def _analyze_pair(
                 training_death_reward_evidence.get("opportunity_status")
                 == "TRAINING_FAILURE_OBSERVED"
             ),
-            "analysis 缺严格 terminal-death/timeout training evidence",
+            "analysis lacks strict terminal-death/timeout training evidence",
         )
         analysis = {
             **analysis,
@@ -3594,7 +3594,7 @@ def _development_decision_document(
         analysis_sha256s: dict[str, str] | None = None) -> dict:
     _require(
         set(analyses) == set(_development_analysis_keys()),
-        "development analyses 键集合不等于冻结的 12 份计划",
+        "development analyses key set differs from the frozen plan of 12",
     )
     if analysis_sha256s is None:
         analysis_sha256s = {
@@ -3604,7 +3604,7 @@ def _development_decision_document(
     _require(
         set(analysis_sha256s) == set(analyses)
         and all(_is_sha256(value) for value in analysis_sha256s.values()),
-        "development analysis SHA 集合不闭合",
+        "development analysis SHA set not closed",
     )
     training_death_evidence: dict[str, dict] = {}
     for recipe in RECIPE_PREFERENCE:
@@ -3617,8 +3617,8 @@ def _development_decision_document(
             _require(
                 all(isinstance(value, dict) for value in per_pool)
                 and all(value == per_pool[0] for value in per_pool[1:]),
-                "development 同一训练 replication 的 death evidence "
-                f"跨 pool 缺失/漂移:{recipe}/{seed}",
+                "development death evidence of the same training replication "
+                f"missing/drifting across pools: {recipe}/{seed}",
             )
             training_death_evidence[f"{recipe}:{seed}"] = (
                 _validate_terminal_death_evidence_document(
@@ -3690,9 +3690,9 @@ def _analysis_file_sha256s(analyses: dict[str, dict]) -> dict[str, str]:
     for key, analysis in analyses.items():
         pool, recipe, raw_seed = key.split(":")
         path = _analysis_path(pool, recipe, int(raw_seed))
-        _require(path.exists(), f"development analysis 文件缺失:{key}")
+        _require(path.exists(), f"development analysis file missing: {key}")
         _require(_stable_json(path) == analysis,
-                 f"development analysis 文件语义漂移:{key}")
+                 f"development analysis file semantic drift: {key}")
         result[key] = _sha256(path)
     return result
 
@@ -3730,22 +3730,22 @@ def _recompute_development_analyses() -> dict[str, dict]:
                 )
                 key = f"{pool}:{recipe}:{seed}"
                 path = _analysis_path(pool, recipe, seed)
-                _require(path.exists(), f"development analysis 缺失:{key}")
+                _require(path.exists(), f"development analysis missing: {key}")
                 frozen = _stable_json(path)
                 _require(
                     frozen == analysis
                     and _canonical_sha256(frozen)
                     == _canonical_sha256(analysis),
-                    f"development analysis 无法由冻结档案重算:{key}",
+                    f"development analysis cannot be recomputed from the frozen archives: {key}",
                 )
                 analyses[key] = analysis
     return analyses
 
 
 def _validate_development_decision(state: dict) -> dict:
-    # 修正案五:收养态下 dev 工件绑定 rev21 旧 launcher/recipe 身份,
-    # 逐份重算路径(_read_eval_once)必然失配;改走逐字节冻结复验 +
-    # B 门重推导等值检查。未收养的战役走原路径,原判据原封。
+    # Amendment 5: in the adopted state the dev artifacts are bound to the old rev21 launcher/recipe identity,
+    # so the per-analysis recomputation path (_read_eval_once) must mismatch; use the byte-exact frozen re-check +
+    # an equality check of the gate-B re-derivation instead. A campaign that was not adopted takes the original path, with the original criteria unchanged.
     if ("amendment5_sha256" in state["phases"].get("eval_development", {})
             or AMENDMENT5_PATH.exists()):
         return _validate_amendment5_adoption(state)
@@ -3753,11 +3753,11 @@ def _validate_development_decision(state: dict) -> dict:
     expected = _development_decision_document(
         analyses, _analysis_file_sha256s(analyses))
     _require(DEVELOPMENT_DECISION_PATH.exists(),
-             "development decision 文件缺失")
+             "development decision file missing")
     actual = _stable_json(DEVELOPMENT_DECISION_PATH)
     _require(
         set(actual) == set(expected) and actual == expected,
-        "development decision 不能由冻结的 12 份 analysis 重算",
+        "development decision cannot be recomputed from the frozen 12 analyses",
     )
     phase = state["phases"].get("eval_development", {})
     _require(
@@ -3768,7 +3768,7 @@ def _validate_development_decision(state: dict) -> dict:
         and phase["decision_sha256"] == _sha256(DEVELOPMENT_DECISION_PATH)
         and phase["selected_recipe"] == expected["selected_recipe"]
         and expected["selected_recipe"] in RECIPES,
-        "development state/decision SHA/选择闭合失败",
+        "development state/decision SHA/selection closure failed",
     )
     return expected
 
@@ -3781,12 +3781,12 @@ def command_eval_development() -> None:
         "amendment5_sha256"
         not in state["phases"].get("eval_development", {})
         and not AMENDMENT5_PATH.exists(),
-        "修正案五收养已生效;开发评测阶段已封存,禁止重跑",
+        "amendment 5 adoption is in effect; the development evaluation stage is sealed, rerun forbidden",
     )
     _require(
         state["phases"].get("train_development", {}).get("status")
         == "complete",
-        "开发 cohort 尚未完整冻结",
+        "development cohort not completely frozen yet",
     )
     analyses: dict[str, dict] = {}
     try:
@@ -3838,15 +3838,15 @@ def command_eval_development() -> None:
         )
         _write_json_atomic(STATE_PATH, state)
         raise CampaignError(
-            "两档预注册风险配方均未在两个 128-pair pools 下达到"
-            "至少 2/3 跨训练 RNG 复现；final 保持未打开")
+            "neither pre-registered risk recipe reached replication in at least 2/3 across training RNGs"
+            " on both 128-pair pools; final stays unopened")
     _set_phase(
         state, "eval_development", "complete",
         completed=sorted(analyses),
         decision_sha256=_sha256(DEVELOPMENT_DECISION_PATH),
         selected_recipe=decision["selected_recipe"],
     )
-    print(f"R7 development 选中配方:{decision['selected_recipe']}；未挑选任何 dev 模型。")
+    print(f"R7 development selected recipe: {decision['selected_recipe']}; no dev model was picked.")
 
 
 def _selected_recipe(state: dict) -> str:
@@ -3883,10 +3883,10 @@ def _amendment5_leg_passes(analysis: dict) -> dict:
         sorted(failed) == sorted(
             name for name, passed in checks.items() if not passed)
         and verdict["status"] == ("PASS" if not failed else "FAIL"),
-        "冻结 analysis verdict 内部不一致",
+        "frozen analysis verdict internally inconsistent",
     )
     _require(set(checks) == AMENDMENT5_PREREG_CHECK_KEYS,
-             "冻结 analysis 检查键集不等于预注册集合")
+             "frozen analysis check-key set differs from the pre-registered set")
     remaining = sorted(
         name for name in failed if name != AMENDMENT5_DROPPED_CHECK)
     return {
@@ -3898,7 +3898,7 @@ def _amendment5_leg_passes(analysis: dict) -> dict:
 
 def _amendment5_selection(analyses: dict[str, dict]) -> dict:
     _require(set(analyses) == set(_development_analysis_keys()),
-             "amendment5 analyses 键集合不等于冻结的 12 份计划")
+             "amendment5 analyses key set differs from the frozen plan of 12")
     derivation = {
         key: _amendment5_leg_passes(analyses[key])
         for key in sorted(analyses)
@@ -3965,16 +3965,16 @@ def _amendment5_pre_inventory(state_sha256: str) -> dict:
 
 
 def _amendment5_require_judgment_anchor(pre: dict) -> None:
-    """把收养清单锚回 scientific-fail 判决时刻:decision 内冻结的
-    analysis_sha256s 是判决时刻唯一的密码学见证;attestation 内记录的
-    archive/fired sha 把 eval 三件链回评测提交时刻。"""
+    """Anchor the adoption inventory back to the moment of the scientific-fail verdict: the analysis_sha256s frozen in the decision
+    are the only cryptographic witness of the decision moment; the archive/fired sha recorded in the attestation
+    chain the three eval files back to the moment the evaluation was committed."""
     frozen_decision = _stable_json(DEVELOPMENT_DECISION_PATH)
     _require(frozen_decision.get("selected_recipe") is None,
-             "冻结 decision 不是 scientific-fail 原判")
+             "frozen decision is not the original scientific-fail verdict")
     _require(
         pre.get("analysis_sha256s")
         == frozen_decision.get("analysis_sha256s"),
-        "12 份 analysis 与判决时刻 decision.analysis_sha256s 失锚",
+        "the 12 analyses have lost their anchor to decision.analysis_sha256s at the decision moment",
     )
     for tag in _amendment5_eval_tags():
         entry = pre.get("eval_artifacts", {}).get(tag)
@@ -3985,7 +3985,7 @@ def _amendment5_require_judgment_anchor(pre: dict) -> None:
             == entry.get("archive_sha256")
             and attestation.get("fired_sha256")
             == entry.get("fired_sha256"),
-            f"attestation 链与收养清单失锚:{tag}",
+            f"attestation chain has lost its anchor to the adoption inventory: {tag}",
         )
 
 
@@ -4004,7 +4004,7 @@ def _amendment5_require_rev21_terminal(state: dict) -> None:
         and state.get("recipe_sha256") == AMENDMENT5_PRE_RECIPE_SHA256
         and state.get("implementation") == expected_pre_implementation
         and state.get("terminal_status") == "DEVELOPMENT_SCIENTIFIC_FAIL",
-        "amendment5 只能收养 rev21 DEVELOPMENT_SCIENTIFIC_FAIL 终态",
+        "amendment5 can only adopt the rev21 DEVELOPMENT_SCIENTIFIC_FAIL terminal state",
     )
     _require(
         phase.get("status") == "scientific-fail"
@@ -4012,12 +4012,12 @@ def _amendment5_require_rev21_terminal(state: dict) -> None:
         and phase.get("completed") == sorted(_development_analysis_keys())
         and phase.get("decision_sha256")
         == _sha256(DEVELOPMENT_DECISION_PATH),
-        "rev21 scientific-fail phase 记录不闭合",
+        "rev21 scientific-fail phase record not closed",
     )
     _require(
         state.get("phases", {}).get("train_development", {}).get("status")
         == "complete",
-        "开发 cohort 未完整冻结,不可收养",
+        "development cohort not completely frozen; cannot adopt",
     )
 
 
@@ -4040,9 +4040,9 @@ def _amendment5_migrate_state(
 
 
 def _amendment5_repair_crash_window() -> None:
-    # 与 fired-无-receipt / archive-无-attestation 同范式的崩溃窗收养:
-    # 收养文档已持久化而 state 尚未迁移。仅当既存文档能对着完好的 rev21
-    # 终态逐字复验(含判决时刻锚)时,幂等补完迁移;任何失配即拒绝。
+    # crash-window adoption in the same pattern as fired-without-receipt / archive-without-attestation:
+    # the adoption document was persisted but the state was not yet migrated. Only if the existing document can be re-checked verbatim
+    # against the intact rev21 terminal state (incl. the decision-moment anchor) is the migration completed idempotently; any mismatch refuses.
     document = _stable_json(AMENDMENT5_PATH)
     state = _stable_json(STATE_PATH)
     _amendment5_require_rev21_terminal(state)
@@ -4062,7 +4062,7 @@ def _amendment5_repair_crash_window() -> None:
         and post.get("final_death_margin") == FINAL_DEATH_MARGIN
         and post.get("development_gate") == AMENDMENT5_DEVELOPMENT_GATE
         and post.get("selection") == selection,
-        "崩溃窗收养:既存 amendment5 文档无法对 rev21 终态复验",
+        "crash-window adoption: the existing amendment5 document cannot be re-checked against the rev21 terminal state",
     )
     _amendment5_migrate_state(state, pre, selection)
 
@@ -4080,7 +4080,7 @@ def _amendment5_chain_expected(
 
 def _validate_amendment5_adoption(
         state: dict, chain: tuple | None = None) -> dict:
-    _require(AMENDMENT5_PATH.exists(), "amendment5 adoption 文件缺失")
+    _require(AMENDMENT5_PATH.exists(), "amendment5 adoption file missing")
     _a5_chain = _amendment5_chain_expected(chain)
     document = _stable_json(AMENDMENT5_PATH)
     phase = state["phases"].get("eval_development", {})
@@ -4092,7 +4092,7 @@ def _validate_amendment5_adoption(
         and phase["post_hoc"] is True
         and phase["completed"] == sorted(_development_analysis_keys())
         and phase["amendment5_sha256"] == _sha256(AMENDMENT5_PATH),
-        "amendment5 state phase 未闭合",
+        "amendment5 state phase not closed",
     )
     pre = document.get("pre")
     post = document.get("post")
@@ -4111,23 +4111,23 @@ def _validate_amendment5_adoption(
         == AMENDMENT5_PRE_CAMPAIGN_REVISION
         and pre.get("launcher_sha256") == AMENDMENT5_PRE_LAUNCHER_SHA256
         and pre.get("recipe_sha256") == AMENDMENT5_PRE_RECIPE_SHA256,
-        "amendment5 文档身份不闭合",
+        "amendment5 document identity not closed",
     )
     _require(
         pre.get("decision_sha256") == _sha256(DEVELOPMENT_DECISION_PATH)
         and phase["decision_sha256"] == pre["decision_sha256"],
-        "冻结 development decision 漂移",
+        "frozen development decision drift",
     )
     current = _amendment5_pre_inventory(pre.get("state_sha256"))
-    _require(current == pre, "amendment5 冻结工件清单漂移")
+    _require(current == pre, "amendment5 frozen artifact inventory drift")
     _amendment5_require_judgment_anchor(pre)
     selection = _amendment5_selection(_amendment5_read_frozen_analyses())
     _require(post.get("selection") == selection,
-             "amendment5 selection 不能由冻结 analyses 重算")
+             "amendment5 selection cannot be recomputed from the frozen analyses")
     _require(
         selection["selected_recipe"] in RECIPES
         and phase["selected_recipe"] == selection["selected_recipe"],
-        "amendment5 selected_recipe 不闭合",
+        "amendment5 selected_recipe not closed",
     )
     return {"selected_recipe": selection["selected_recipe"]}
 
@@ -4142,11 +4142,11 @@ def command_adopt_development() -> None:
         state = _load_state()
         _require_not_terminal(state)
         verdict = _validate_amendment5_adoption(state)
-        print("amendment5 adoption 已在案并复验通过;selected_recipe="
+        print("amendment5 adoption already on record and re-checked; selected_recipe="
               + verdict["selected_recipe"])
         return
     _require(STATE_PATH.exists(),
-             "无 state;amendment5 只能收养 rev21 终态")
+             "no state; amendment5 can only adopt the rev21 terminal state")
     state = _stable_json(STATE_PATH)
     state_sha = _sha256(STATE_PATH)
     _amendment5_require_rev21_terminal(state)
@@ -4155,7 +4155,7 @@ def command_adopt_development() -> None:
     selection = _amendment5_selection(_amendment5_read_frozen_analyses())
     _require(
         selection["selected_recipe"] in RECIPES,
-        "amendment5 B 门下仍无配方达到 2/3 双池复现;拒绝收养",
+        "no recipe reaches 2/3 replication on both pools under amendment5 gate B either; refusing to adopt",
     )
     document = {
         "schema_version": AMENDMENT5_SCHEMA,
@@ -4164,16 +4164,16 @@ def command_adopt_development() -> None:
         "post_hoc": True,
         "approval": {
             "designer": "Diabolically-Handsome",
-            "wording": "那咱们现在先执行方案B吧 256局",
+            "wording": "plan B, 256 games (approved 2026-07-28)",
             "date": "2026-07-28",
         },
         "justification": (
-            "开发死亡非劣性上界在 n=128、族错 α=0.005 下 CI 半宽≈0.110,"
-            "预注册边距 0.05 先于任何候选数据即不可达(第 9 项设计缺陷,"
-            "纯 α/n/边距代数,docs/prereg/PREREG-R7-rev21-proposal.md 修正案五)。"
-            "开发判据改为预注册检查集减去该单项;非劣推断移交终考"
-            "(边距 0.025→0.10;0.10 系对抗复核按实现统计量 CP-Bonferroni"
-            "重标定功效后由总设计师复批)。终考池从未消费,裁决力不受污染。"
+            "the development death non-inferiority upper bound has a CI half-width ≈0.110 at n=128 and family-wise α=0.005;"
+            " the pre-registered margin 0.05 was unreachable before any candidate data (design defect item 9,"
+            " pure α/n/margin algebra, docs/prereg/PREREG-R7-rev21-proposal.md amendment 5)."
+            " The development criterion becomes the pre-registered check set minus that single item; non-inferiority inference moves to the final exam"
+            " (margin 0.025→0.10; 0.10 was re-approved after the adversarial review recalibrated the power against the implemented statistic CP-Bonferroni"
+            "). The final-exam pool was never consumed, so the decision power is not contaminated."
         ),
         "adopted_at_ns": time.time_ns(),
         "pre": pre,
@@ -4191,7 +4191,7 @@ def command_adopt_development() -> None:
     adopted = _load_state()
     _require_not_terminal(adopted)
     verdict = _validate_amendment5_adoption(adopted)
-    print("amendment5 adoption 完成(post-hoc 标注);selected_recipe="
+    print("amendment5 adoption complete (labelled post-hoc); selected_recipe="
           + verdict["selected_recipe"]
           + ";per_recipe=" + repr(selection["per_recipe"]))
 
@@ -4202,11 +4202,11 @@ def command_train_production() -> None:
     _require_not_terminal(state)
     _require(
         not AMENDMENT6_PATH.exists(),
-        "修正案六收养已生效;生产腿已按 sha 冻结,禁止重训",
+        "amendment 6 adoption is in effect; the production leg is frozen by sha, retraining forbidden",
     )
     recipe = _selected_recipe(state)
     phase = state["phases"].get("train_production", {})
-    _require(phase.get("status") != "locked-failed", "production 已 locked-failed")
+    _require(phase.get("status") != "locked-failed", "production is already locked-failed")
     _set_phase(
         state, "train_production", "running",
         recipe=recipe, seed=PRODUCTION_TRAIN_SEED, attempts=1,
@@ -4226,7 +4226,7 @@ def command_train_production() -> None:
         recipe=recipe, seed=PRODUCTION_TRAIN_SEED, attempts=1,
         artifact=receipt,
     )
-    print("独立 production seed 已从 V28 重训并冻结；未查看 development 结果的模型权重。")
+    print("the independent production seed was retrained from V28 and frozen; no development model weights were looked at.")
 
 
 def _find_final_eval_residue(allowed: Iterable[pathlib.Path] = ()) -> list[str]:
@@ -4326,7 +4326,7 @@ def _validate_final_registry_document(
         "opened_at_ns", "consumption_stage",
     }
     _require(set(record) == expected_keys,
-             f"final registry marker 字段不精确:{path}")
+             f"final registry marker fields not exact: {path}")
     seeds = record["seeds"]
     spec = {"pool_name": record["pool_name"], "seeds": seeds}
     _require(
@@ -4345,7 +4345,7 @@ def _validate_final_registry_document(
         and _is_plain_int(record["opened_at_ns"])
         and record["opened_at_ns"] > 0
         and record["consumption_stage"] == "before_baseline_evaluation",
-        f"final registry marker 身份非法:{path}",
+        f"final registry marker identity invalid: {path}",
     )
     return record
 
@@ -4368,10 +4368,10 @@ def _final_registry_core(bind_sha256: str) -> dict:
 
 
 def _register_final_pool(bind_sha256: str, *, continuing: bool) -> dict:
-    _require(_is_sha256(bind_sha256), "final bind SHA 非法")
+    _require(_is_sha256(bind_sha256), "final bind SHA invalid")
     if continuing:
         _require(FINAL_OPENED_PATH.exists(),
-                 "continuing final 缺本地 final-opened marker")
+                 "continuing final lacks the local final-opened marker")
     marker_path = _final_registry_path()
     core = _final_registry_core(bind_sha256)
     requested = set(FINAL_POOL)
@@ -4381,25 +4381,25 @@ def _register_final_pool(bind_sha256: str, *, continuing: bool) -> dict:
             if path == FINAL_REGISTRY_LOCK:
                 continue
             _require(path.is_file() and path.suffix == ".json",
-                     f"final registry 含未知残件:{path}")
+                     f"final registry contains unknown leftover files: {path}")
             records.append((path, _validate_final_registry_record(path)))
         if continuing:
             _require(marker_path.exists(),
-                     "本地 final-opened 存在但全局 registry marker 缺失")
+                     "local final-opened exists but the global registry marker is missing")
             record = _validate_final_registry_record(marker_path)
             _require(
                 set(record) == {*core, "opened_at_ns"}
                 and all(record[key] == value for key, value in core.items()),
-                "全局 final registry 与本地 bind 漂移",
+                "global final registry drifts from the local bind",
             )
             return record
         _require(not marker_path.exists(),
-                 "final pool 已在全局 registry 点火；本地 marker 缺失时禁止恢复")
+                 "final pool already launched in the global registry; recovery forbidden while the local marker is missing")
         for path, record in records:
             overlap = requested.intersection(record["seeds"])
             _require(
                 not overlap,
-                "final pool 与全局历史 registry 重叠:"
+                "final pool overlaps the global historical registry: "
                 f"{path}, overlap={sorted(overlap)[:16]}",
             )
         record = {**core, "opened_at_ns": time.time_ns()}
@@ -4422,7 +4422,7 @@ def _final_registry_evidence(bind_core: dict) -> dict:
     _require(
         set(record) == {*expected, "opened_at_ns"}
         and all(record[key] == value for key, value in expected.items()),
-        "全局 final registry 与 final bind core 漂移",
+        "global final registry drifts from the final bind core",
     )
     evidence = {
         "final_registry_path": str(path.resolve()),
@@ -4432,7 +4432,7 @@ def _final_registry_evidence(bind_core: dict) -> dict:
         record["pool_sha256"] == bind_core.get("final_pool_sha256")
         == _final_pool_sha256()
         and _sha256(path) == record_sha256,
-        "全局 final registry pool/record SHA 闭合失败",
+        "global final registry pool/record SHA closure failed",
     )
     return evidence
 
@@ -4445,7 +4445,7 @@ def _final_bind_core_from_opened(opened: dict) -> dict:
     _require(
         isinstance(opened, dict)
         and _FINAL_REGISTRY_EVIDENCE_KEYS.issubset(opened),
-        "final-opened 缺全局 registry 证据",
+        "final-opened lacks global registry evidence",
     )
     return {
         key: value for key, value in opened.items()
@@ -4457,7 +4457,7 @@ def _validate_final_opened_registry(bind_core: dict) -> tuple[dict, dict]:
     """Close local final-opened bytes against the still-live global registry."""
     opened, opened_sha256 = _stable_json_snapshot(FINAL_OPENED_PATH)
     expected = _final_opened_document(bind_core)
-    _require(opened == expected, "final-opened/registry/bind 证据链漂移")
+    _require(opened == expected, "final-opened/registry/bind evidence chain drift")
     evidence = {
         key: opened[key] for key in _FINAL_REGISTRY_EVIDENCE_KEYS
     }
@@ -4466,7 +4466,7 @@ def _validate_final_opened_registry(bind_core: dict) -> tuple[dict, dict]:
         and opened_sha256 == _sha256(FINAL_OPENED_PATH)
         and evidence["final_registry_record_sha256"]
         == _sha256(_final_registry_path()),
-        "final-opened 或 registry 在闭环复验期间漂移",
+        "final-opened or registry drifted during the closure re-check",
     )
     return opened, evidence
 
@@ -4482,24 +4482,24 @@ def _amendment6_validate_production(recipe: str) -> dict:
         isinstance(production, dict)
         and production.get("recipe") == recipe
         and production.get("seed") == PRODUCTION_TRAIN_SEED,
-        "amendment6 production 身份不闭合",
+        "amendment6 production identity not closed",
     )
     receipt_path = _training_receipt_path(
         recipe, PRODUCTION_TRAIN_SEED, "candidate")
     _require(
         _sha256(receipt_path) == production.get("receipt_sha256"),
-        "amendment6 冻结生产回执漂移",
+        "amendment6 frozen production receipt drift",
     )
     _require(
         _sha256(_training_fired_path(
             recipe, PRODUCTION_TRAIN_SEED, "candidate"))
         == production.get("training_fired_sha256"),
-        "amendment6 冻结生产点火标记漂移",
+        "amendment6 frozen production launch marker drift",
     )
     model = _training_model_path(recipe, PRODUCTION_TRAIN_SEED, "candidate")
     _require(
         _sha256(model) == production.get("model_sha256"),
-        "amendment6 冻结生产模型漂移",
+        "amendment6 frozen production model drift",
     )
     receipt = _stable_json(receipt_path)
     receipt["receipt_sha256"] = production["receipt_sha256"]
@@ -4507,8 +4507,8 @@ def _amendment6_validate_production(recipe: str) -> dict:
 
 
 def _production_receipt(recipe: str) -> dict:
-    # 修正案六:生产腿在 rev22 身份下训练并冻结;逐份重算路径在 rev23 下
-    # 必然失配,改走 amendment6 文档的 sha 冻结复验。未收养战役走原路径。
+    # Amendment 6: the production leg was trained and frozen under the rev22 identity; the per-analysis recomputation path must mismatch under rev23,
+    # so use the sha-frozen re-check of the amendment6 document instead. A campaign that was not adopted takes the original path.
     if AMENDMENT6_PATH.exists():
         return _amendment6_validate_production(recipe)
     return _validate_training_artifact(
@@ -4529,18 +4529,18 @@ def _amendment6_require_pre_state(state: dict) -> None:
         and state.get("recipe_sha256") == AMENDMENT6_PRE_RECIPE_SHA256
         and state.get("implementation") == expected_pre_implementation
         and state.get("terminal_status") is None,
-        "amendment6 只能收养 rev22 终考事故态",
+        "amendment6 can only adopt the rev22 final-exam incident state",
     )
     _require(
         state.get("phases", {}).get("train_production", {}).get("status")
         == "complete",
-        "amendment6 要求生产腿已冻结",
+        "amendment6 requires the production leg to be frozen",
     )
     eval_final = state.get("phases", {}).get("eval_final")
     _require(
         isinstance(eval_final, dict)
         and eval_final.get("status") == "opened",
-        "amendment6 要求事故停在 eval_final opened",
+        "amendment6 requires the incident to have stopped at eval_final opened",
     )
 
 
@@ -4555,14 +4555,14 @@ def _amendment6_require_incident_evidence() -> dict:
     _require(
         marker_path.exists()
         and _sha256(marker_path) == AMENDMENT6_BURNED_FIRED_SHA256,
-        "烧毁基线点火标记缺失或漂移",
+        "burned baseline launch marker missing or drifting",
     )
     _require(
         not (EVAL_DIR
              / f"{AMENDMENT6_BURNED_BASELINE_TAG}.json").exists()
         and not (EVAL_ATTESTATION_DIR
                  / f"{AMENDMENT6_BURNED_BASELINE_TAG}.json").exists(),
-        "烧毁基线不应存在完整档案/attestation",
+        "the burned baseline must not have a complete archive/attestation",
     )
     old_candidate_tag = AMENDMENT6_BURNED_BASELINE_TAG.replace(
         "baseline", "candidate")
@@ -4573,20 +4573,20 @@ def _amendment6_require_incident_evidence() -> dict:
         and not FINAL_FIRED_PATH.exists()
         and not FINAL_ANALYSIS_PATH.exists()
         and not PUBLISHED_DIR.exists(),
-        "候选必须从未在被烧池上点火",
+        "the candidate must never have been launched on the burned pool",
     )
     log_copy = incident_dir / "eval-final.partial.log"
     _require(
         log_copy.exists()
         and _sha256(log_copy) == AMENDMENT6_INCIDENT_LOG_SHA256,
-        "事故日志副本缺失或漂移",
+        "incident log copy missing or drifting",
     )
     return {"marker_live": marker_live}
 
 
 def _amendment6_complete_adoption(document: dict, state: dict) -> None:
-    # 文档已持久化后的收尾:归档移动(逐件幂等)+ state 迁移。崩溃后重跑
-    # 从任意中间点续走同一序列。
+    # wrap-up after the document is persisted: archive moves (each idempotent) + state migration. A rerun after a crash
+    # continues the same sequence from any intermediate point.
     incident_dir = _amendment6_incident_dir()
     burned_marker = (
         CONTROL_DIR / "eval-fired"
@@ -4597,7 +4597,7 @@ def _amendment6_complete_adoption(document: dict, state: dict) -> None:
         _require(
             _sha256(FINAL_OPENED_PATH)
             == document["incident"]["final_opened_sha256"],
-            "被烧池 opened 文档漂移",
+            "burned pool opened document drift",
         )
         FINAL_OPENED_PATH.rename(incident_dir / FINAL_OPENED_PATH.name)
     old_lock = EVAL_DIR / f".{AMENDMENT6_BURNED_BASELINE_TAG}.json.lock"
@@ -4616,14 +4616,14 @@ def _amendment6_complete_adoption(document: dict, state: dict) -> None:
 
 
 def _validate_amendment6_adoption(state: dict) -> dict:
-    _require(AMENDMENT6_PATH.exists(), "amendment6 adoption 文件缺失")
+    _require(AMENDMENT6_PATH.exists(), "amendment6 adoption file missing")
     document = _stable_json(AMENDMENT6_PATH)
     phase = state["phases"].get("final_incident", {})
     _require(
         set(phase) == {"status", "amendment6_sha256"}
         and phase["status"] == "adopted-amendment6"
         and phase["amendment6_sha256"] == _sha256(AMENDMENT6_PATH),
-        "amendment6 state phase 未闭合",
+        "amendment6 state phase not closed",
     )
     pre = document.get("pre")
     post = document.get("post")
@@ -4647,24 +4647,24 @@ def _validate_amendment6_adoption(state: dict) -> dict:
         and incident.get("partial_log_sha256")
         == AMENDMENT6_INCIDENT_LOG_SHA256
         and incident.get("candidate_never_fired") is True,
-        "amendment6 文档身份不闭合",
+        "amendment6 document identity not closed",
     )
     evidence = _amendment6_require_incident_evidence()
     _require(evidence["marker_live"] is False,
-             "烧毁标记仍在活动点火目录,归档未完成")
+             "the burn marker is still in the active launch directory; archiving not complete")
     incident_dir = _amendment6_incident_dir()
     _require(
         (incident_dir / FINAL_OPENED_PATH.name).exists()
         and _sha256(incident_dir / FINAL_OPENED_PATH.name)
         == incident.get("final_opened_sha256")
         and not FINAL_OPENED_PATH.exists(),
-        "被烧池 opened 文档归档不闭合",
+        "burned pool opened document archiving not closed",
     )
     recipe = state["phases"].get(
         "eval_development", {}).get("selected_recipe")
     _require(
         document.get("production", {}).get("recipe") == recipe,
-        "amendment6 production recipe 与选拔不一致",
+        "amendment6 production recipe disagrees with the selection",
     )
     _amendment6_validate_production(recipe)
     _validate_amendment5_adoption(state)
@@ -4677,22 +4677,22 @@ def command_adopt_final_incident() -> None:
         raw_state = _stable_json(STATE_PATH) if STATE_PATH.exists() else {}
         if (raw_state.get("campaign_revision")
                 == AMENDMENT6_PRE_CAMPAIGN_REVISION):
-            # 崩溃窗:文档已落、归档/迁移未完 —— 对 rev22 事故态复验后续走
+            # crash window: the document is written but archiving/migration is unfinished -- continue after re-checking against the rev22 incident state
             document = _stable_json(AMENDMENT6_PATH)
             _amendment6_require_pre_state(raw_state)
             _require(
                 document.get("pre", {}).get("state_sha256")
                 == _sha256(STATE_PATH),
-                "崩溃窗收养:state 与 amendment6 文档 pre 快照不符",
+                "crash-window adoption: state differs from the pre snapshot of the amendment6 document",
             )
             _amendment6_complete_adoption(document, raw_state)
         state = _load_state()
         _require_not_terminal(state)
         verdict = _validate_amendment6_adoption(state)
-        print("amendment6 adoption 已在案并复验通过;selected_recipe="
+        print("amendment6 adoption already on record and re-checked; selected_recipe="
               + verdict["selected_recipe"])
         return
-    _require(STATE_PATH.exists(), "无 state;amendment6 只能收养事故态")
+    _require(STATE_PATH.exists(), "no state; amendment6 can only adopt the incident state")
     state = _stable_json(STATE_PATH)
     state_sha = _sha256(STATE_PATH)
     _amendment6_require_pre_state(state)
@@ -4703,19 +4703,19 @@ def command_adopt_final_incident() -> None:
                AMENDMENT6_PRE_RECIPE_SHA256),
     )
     _amendment6_require_incident_evidence()
-    _require(FINAL_OPENED_PATH.exists(), "事故态缺被烧池 opened 文档")
+    _require(FINAL_OPENED_PATH.exists(), "incident state lacks the opened document of the burned pool")
     opened = _stable_json(FINAL_OPENED_PATH)
     _require(
         opened.get("seeds") == list(range(*AMENDMENT6_BURNED_POOL)),
-        "opened 文档不是被烧的 2_120 池",
+        "the opened document is not the burned 2_120 pool",
     )
-    # 密码学锚定:opened 文档 ↔ rev22 state 的 bind ↔ 烧毁点火标记内嵌
-    # bind ↔ 全局 registry 记录,四方互证,伪造任一方即失锚。
+    # cryptographic anchoring: opened document <-> bind of the rev22 state <-> bind embedded in the burn launch marker
+    # <-> global registry record; four parties vouch for each other, and faking any one loses the anchor.
     live_bind_sha = state["phases"]["eval_final"].get("bind_sha256")
     _require(
         _is_sha256(live_bind_sha)
         and _sha256(FINAL_OPENED_PATH) == live_bind_sha,
-        "被烧池 opened 文档与 state.eval_final.bind_sha256 失锚",
+        "burned pool opened document has lost its anchor to state.eval_final.bind_sha256",
     )
     burned_marker_path = (
         CONTROL_DIR / "eval-fired"
@@ -4723,21 +4723,21 @@ def command_adopt_final_incident() -> None:
     _require(
         _stable_json(burned_marker_path).get("final_bind_sha256")
         == live_bind_sha,
-        "烧毁基线点火标记未内嵌被烧池 bind",
+        "burned baseline launch marker does not embed the burned pool's bind",
     )
     registry_records = sorted(FINAL_REGISTRY_DIR.glob("*.json"))
     _require(len(registry_records) == 1,
-             "final registry 记录数异常(应恰为被烧池一条)")
+             "abnormal number of final registry records (must be exactly one, for the burned pool)")
     burned_registry = _validate_final_registry_record(registry_records[0])
     _require(
         burned_registry["seeds"] == list(range(*AMENDMENT6_BURNED_POOL))
         and burned_registry["control_path"]
         == str(CONTROL_DIR.resolve()),
-        "registry 记录与被烧池不一致",
+        "registry record disagrees with the burned pool",
     )
     recipe = state["phases"].get(
         "eval_development", {}).get("selected_recipe")
-    _require(recipe in RECIPES, "事故态缺已选拔配方")
+    _require(recipe in RECIPES, "incident state lacks a selected recipe")
     model = _training_model_path(recipe, PRODUCTION_TRAIN_SEED, "candidate")
     production = {
         "recipe": recipe,
@@ -4752,7 +4752,7 @@ def command_adopt_final_incident() -> None:
     _require(
         state["phases"]["train_production"].get("artifact", {}).get(
             "receipt_sha256") == production["receipt_sha256"],
-        "生产回执与 state 记录不闭合",
+        "production receipt and state record not closed",
     )
     document = {
         "schema_version": AMENDMENT6_SCHEMA,
@@ -4760,15 +4760,15 @@ def command_adopt_final_incident() -> None:
         "post_hoc": True,
         "approval": {
             "designer": "Diabolically-Handsome",
-            "wording": "启用备用池(推荐)",
+            "wording": "switch to the reserve pool (approved 2026-07-28)",
             "date": "2026-07-28",
         },
         "justification": (
-            "终考基线评测在 214/256 处被机器重启打断(操作事故,非窥视重试):"
-            "点火标记已落、档案未提交,协议对该发拒绝重试。候选从未接触被烧"
-            "池;候选模型、边距 0.10、全部判据均于事故前冻结入库,不存在任何"
-            "事故后选择。弃用 2_120 启用全新未读段 2_121;被烧池永久登记于 "
-            "final registry。"
+            "the final-exam baseline evaluation was interrupted at 214/256 by a machine reboot (an operational incident, not a peek-and-retry):"
+            " the launch marker was written but the archive was not committed, so the protocol refuses a retry of that run. The candidate never touched the burned"
+            " pool; the candidate model, margin 0.10 and all criteria were frozen and committed before the incident, so no"
+            " post-incident choice exists. 2_120 is abandoned and the fresh unread range 2_121 is used; the burned pool is permanently registered in the "
+            "final registry."
         ),
         "adopted_at_ns": time.time_ns(),
         "incident": {
@@ -4805,9 +4805,9 @@ def command_adopt_final_incident() -> None:
     adopted = _load_state()
     _require_not_terminal(adopted)
     verdict = _validate_amendment6_adoption(adopted)
-    print("amendment6 adoption 完成;备用终考池启用 "
+    print("amendment6 adoption complete; reserve final-exam pool in use "
           + f"{FINAL_POOL[0]}-{FINAL_POOL[-1]};"
-          + "生产件已按 sha 冻结收养;selected_recipe="
+          + " production artifacts adopted as frozen by sha; selected_recipe="
           + verdict["selected_recipe"])
 
 
@@ -4821,7 +4821,7 @@ def _final_bind(state: dict, recipe: str, candidate: pathlib.Path) -> dict:
         and phase["seed"] == PRODUCTION_TRAIN_SEED
         and phase["attempts"] == 1
         and phase["artifact"] == receipt,
-        "production candidate state/receipt 未闭合",
+        "production candidate state/receipt not closed",
     )
     return {
         "schema_version": FINAL_OPENED_SCHEMA,
@@ -4864,7 +4864,7 @@ def _validate_final_fired_document(
         and _is_plain_int(record["fired_at_ns"])
         and record["fired_at_ns"] > 0
         and all(record[key] == value for key, value in core.items()),
-        "final candidate fired marker 漂移",
+        "final candidate fired marker drift",
     )
     return record
 
@@ -4880,7 +4880,7 @@ def _capture_final_evidence(
     """Capture and close every mutable file supporting the final verdict."""
     bind_core = _final_bind_core_from_opened(bind)
     opened, registry_evidence = _validate_final_opened_registry(bind_core)
-    _require(opened == bind, "final evidence 使用的 bind 不是冻结 final-opened")
+    _require(opened == bind, "the bind used by final evidence is not the frozen final-opened")
     bind_sha256 = _sha256(FINAL_OPENED_PATH)
 
     receipt = _production_receipt(bind["recipe"])
@@ -4891,7 +4891,7 @@ def _capture_final_evidence(
         and receipt["receipt_sha256"] == bind["candidate_receipt_sha256"]
         and _sha256(DEVELOPMENT_DECISION_PATH)
         == bind["development_decision_sha256"],
-        "final evidence 的 candidate/receipt/development decision 漂移",
+        "final evidence candidate/receipt/development decision drift",
     )
 
     baseline_launch = _prepare_eval_launch(
@@ -4923,7 +4923,7 @@ def _capture_final_evidence(
     _require(
         frozen_analysis == analysis
         and (expected_analysis is None or expected_analysis == analysis),
-        "final analysis 不能由冻结 archive 重算或与调用结果不一致",
+        "final analysis cannot be recomputed from the frozen archive or disagrees with the call result",
     )
 
     identity = {
@@ -4983,7 +4983,7 @@ def _capture_final_evidence(
         all(_sha256(pathlib.Path(path)) == digest
             for path, digest in path_sha256s.items())
         and _final_registry_evidence(bind_core) == registry_evidence,
-        "final evidence snapshot 闭环重哈希失败",
+        "final evidence snapshot closure re-hash failed",
     )
     return {
         "identity": identity,
@@ -5028,7 +5028,7 @@ def _publication_document(
         == evidence["final_registry_path"]
         and bind.get("final_registry_record_sha256")
         == evidence["final_registry_record_sha256"],
-        "publication final evidence identity 字段/registry 绑定非法",
+        "publication final evidence identity fields/registry binding invalid",
     )
     return {
         "schema_version": PUBLICATION_RECEIPT_SCHEMA,
@@ -5050,7 +5050,7 @@ def _promote_passed_candidate(
         bind: dict, candidate: pathlib.Path, analysis: dict,
         *, baseline_sha: str, candidate_sha: str) -> dict:
     _require(analysis["verdict"]["status"] == "PASS",
-             "只有 final PASS 才允许发布提升")
+             "only a final PASS allows the publication promotion")
     frozen = _capture_final_evidence(
         bind, candidate, expected_analysis=analysis)
     evidence = frozen["identity"]
@@ -5062,12 +5062,12 @@ def _promote_passed_candidate(
         and receipt["receipt_sha256"] == bind["candidate_receipt_sha256"]
         and evidence["baseline_archive_sha256"] == baseline_sha
         and evidence["candidate_archive_sha256"] == candidate_sha,
-        "发布前 candidate/bind/训练回执/archive 漂移",
+        "candidate/bind/training receipt/archive drift before publication",
     )
     publication = _publication_document(
         bind, receipt, analysis, evidence=evidence)
     _require(not PUBLISHED_DIR.is_symlink(),
-             f"published 路径不得为符号链接:{PUBLISHED_DIR}")
+             f"published path must not be a symlink: {PUBLISHED_DIR}")
     if PUBLISHED_DIR.exists():
         _require(
             PUBLISHED_DIR.is_dir() and not PUBLISHED_DIR.is_symlink()
@@ -5077,23 +5077,23 @@ def _promote_passed_candidate(
                 path.is_file() and not path.is_symlink()
                 for path in (PUBLISHED_MODEL_PATH, PUBLISHED_RECEIPT_PATH)
             ),
-            "已存在发布目录成员集合非法",
+            "existing publication directory has an invalid member set",
         )
         _require(
             _sha256(PUBLISHED_MODEL_PATH) == bind["candidate_sha256"]
             and _stable_json(PUBLISHED_RECEIPT_PATH) == publication,
-            "已存在发布目录与 final PASS 证据不一致",
+            "existing publication directory disagrees with the final PASS evidence",
         )
         _require(
             _capture_final_evidence(
                 bind, candidate, expected_analysis=analysis) == frozen,
-            "已存在 publication 复验期间 final evidence 漂移",
+            "final evidence drifted while re-checking the existing publication",
         )
         publication["receipt_sha256"] = _sha256(PUBLISHED_RECEIPT_PATH)
         return publication
     staging = PUBLISHED_DIR.with_name(
         f".{PUBLISHED_DIR.name}.{os.getpid()}.{time.time_ns()}.tmp")
-    _require(not staging.exists(), f"发布 staging 已存在:{staging}")
+    _require(not staging.exists(), f"publication staging already exists: {staging}")
     _ensure_directory_durable(staging)
     try:
         _write_bytes_exclusive(
@@ -5104,7 +5104,7 @@ def _promote_passed_candidate(
         _require(
             _capture_final_evidence(
                 bind, candidate, expected_analysis=analysis) == frozen,
-            "publication commit 前 final evidence 漂移",
+            "final evidence drifted before the publication commit",
         )
         os.replace(staging, PUBLISHED_DIR)
         _fsync_directory(PUBLISHED_DIR.parent)
@@ -5122,12 +5122,12 @@ def _promote_passed_candidate(
         )
         and _sha256(PUBLISHED_MODEL_PATH) == bind["candidate_sha256"]
         and _stable_json(PUBLISHED_RECEIPT_PATH) == publication,
-        "原子发布目录提交后复验失败",
+        "re-check failed after the atomic publication directory commit",
     )
     _require(
         _capture_final_evidence(
             bind, candidate, expected_analysis=analysis) == frozen,
-        "publication commit 后 final evidence 漂移",
+        "final evidence drifted after the publication commit",
     )
     publication["receipt_sha256"] = _sha256(PUBLISHED_RECEIPT_PATH)
     return publication
@@ -5136,7 +5136,7 @@ def _promote_passed_candidate(
 def _audit_terminal_publication(state: dict) -> dict:
     """Purely rederive a terminal PASS and its complete publication chain."""
     _require(state.get("terminal_status") == "PASS",
-             "只有 terminal PASS 可审计 publication")
+             "only a terminal PASS can audit the publication")
     recipe = _selected_recipe(state)
     candidate = _training_model_path(
         recipe, PRODUCTION_TRAIN_SEED, "candidate")
@@ -5145,7 +5145,7 @@ def _audit_terminal_publication(state: dict) -> dict:
     snapshot = _capture_final_evidence(bind, candidate)
     analysis = snapshot["analysis"]
     _require(analysis["verdict"]["status"] == "PASS",
-             "terminal PASS 无法由 final archives 重算")
+             "terminal PASS cannot be recomputed from the final archives")
     publication = _publication_document(
         bind,
         snapshot["candidate_receipt"],
@@ -5160,7 +5160,7 @@ def _audit_terminal_publication(state: dict) -> dict:
             path.is_file() and not path.is_symlink()
             for path in (PUBLISHED_MODEL_PATH, PUBLISHED_RECEIPT_PATH)
         ),
-        "terminal PASS publication 目录成员集合非法",
+        "terminal PASS publication directory has an invalid member set",
     )
     published_model_payload = _stable_read(PUBLISHED_MODEL_PATH)
     published_receipt, published_receipt_sha256 = _stable_json_snapshot(
@@ -5170,7 +5170,7 @@ def _audit_terminal_publication(state: dict) -> dict:
         == bind["candidate_sha256"]
         and published_model_payload == snapshot["candidate_payload"]
         and published_receipt == publication,
-        "terminal PASS published model/receipt 与 final evidence 不一致",
+        "terminal PASS published model/receipt disagree with the final evidence",
     )
     publication_state = {
         **publication,
@@ -5207,13 +5207,13 @@ def _audit_terminal_publication(state: dict) -> dict:
         and phase["analysis_sha256"] == identity["analysis_sha256"]
         and phase["verdict"] == analysis["verdict"]
         and phase["publication"] == publication_state,
-        "terminal PASS state/publication/final evidence 未闭合",
+        "terminal PASS state/publication/final evidence not closed",
     )
     _require(
         _capture_final_evidence(bind, candidate) == snapshot
         and _sha256(PUBLISHED_MODEL_PATH) == bind["candidate_sha256"]
         and _sha256(PUBLISHED_RECEIPT_PATH) == published_receipt_sha256,
-        "terminal publication 只读审计期间 evidence 漂移",
+        "evidence drifted during the read-only terminal publication audit",
     )
     return {
         "publication_status": "PUBLISHED",
@@ -5233,22 +5233,22 @@ def command_eval_final() -> None:
     _require(
         state["phases"].get("eval_final", {}).get("status")
         != "locked-failed",
-        "final 曾发生不可恢复的 operational failure",
+        "final had an unrecoverable operational failure",
     )
     recipe = _selected_recipe(state)
     _require(
         state["phases"].get("train_production", {}).get("status")
         == "complete",
-        "production candidate 尚未冻结",
+        "production candidate not frozen yet",
     )
     _require(not PUBLISHED_DIR.is_symlink(),
-             f"published 路径不得为符号链接:{PUBLISHED_DIR}")
+             f"published path must not be a symlink: {PUBLISHED_DIR}")
     if PUBLISHED_DIR.exists():
         _require(
             FINAL_OPENED_PATH.exists()
             and FINAL_FIRED_PATH.exists()
             and FINAL_ANALYSIS_PATH.exists(),
-            "缺 final 完整证据却已有 published 目录",
+            "published directory exists without complete final evidence",
         )
     candidate = _training_model_path(
         recipe, PRODUCTION_TRAIN_SEED, "candidate")
@@ -5259,7 +5259,7 @@ def command_eval_final() -> None:
 
     if not FINAL_OPENED_PATH.exists():
         residue = _find_final_eval_residue()
-        _require(not residue, f"final 池已有未登记 eval residue:{residue}")
+        _require(not residue, f"final pool already has unregistered eval residue: {residue}")
         _register_final_pool(
             _canonical_sha256(bind_core), continuing=False)
         _write_json_exclusive(
@@ -5268,7 +5268,7 @@ def command_eval_final() -> None:
         existing = _stable_json(FINAL_OPENED_PATH)
         _require(
             _final_bind_core_from_opened(existing) == bind_core,
-            "final opened marker 与冻结 candidate/recipe 漂移")
+            "final opened marker drifts from the frozen candidate/recipe")
         _register_final_pool(
             _canonical_sha256(bind_core), continuing=True)
 
@@ -5295,14 +5295,14 @@ def command_eval_final() -> None:
             _eval_lock_path(bind["candidate_tag"]),
         ))
     residue = _find_final_eval_residue(allowed)
-    _require(not residue, f"final 池出现未登记 eval residue:{residue}")
+    _require(not residue, f"unregistered eval residue appeared in the final pool: {residue}")
 
     try:
         current_bind, current_registry = _validate_final_opened_registry(
             bind_core)
         _require(
             current_bind == bind and current_registry == registry_evidence,
-            "baseline 发车前 final registry 证据漂移",
+            "final registry evidence drift before the baseline launch",
         )
         baseline, baseline_sha = _run_eval_once(
             V28_ZIP, FINAL_POOL, bind["baseline_tag"],
@@ -5311,7 +5311,7 @@ def command_eval_final() -> None:
             bind_core)
         _require(
             current_bind == bind and current_registry == registry_evidence,
-            "baseline 完成后 final registry 证据漂移",
+            "final registry evidence drift after the baseline completed",
         )
         _set_phase(
             state, "eval_final", "baseline-complete",
@@ -5326,7 +5326,7 @@ def command_eval_final() -> None:
             bind_core)
         _require(
             current_bind == bind and current_registry == registry_evidence,
-            "candidate 发车前 final registry 证据漂移",
+            "final registry evidence drift before the candidate launch",
         )
         candidate_launch = _prepare_eval_launch(
             candidate, FINAL_POOL, bind["candidate_tag"],
@@ -5343,8 +5343,8 @@ def command_eval_final() -> None:
             _validate_final_fired(bind, candidate_launch)
             _require(
                 candidate_path.exists(),
-                "final candidate 已点火但无完整档案；为防观察部分输出后重试，"
-                "本 campaign 禁止第二次发射",
+                "final candidate launched but no complete archive; to prevent a retry after observing partial output,"
+                " this campaign forbids a second launch",
             )
         candidate_doc, candidate_sha = _run_eval_once(
             candidate, FINAL_POOL, bind["candidate_tag"],
@@ -5356,7 +5356,7 @@ def command_eval_final() -> None:
             bind_core)
         _require(
             current_bind == bind and current_registry == registry_evidence,
-            "candidate 完成后 final registry 证据漂移",
+            "final registry evidence drift after the candidate completed",
         )
         analysis = _analyze_pair(
             baseline, baseline_sha,
@@ -5368,7 +5368,7 @@ def command_eval_final() -> None:
         )
         _write_json_exclusive(FINAL_ANALYSIS_PATH, analysis)
         _require(_stable_json(FINAL_ANALYSIS_PATH) == analysis,
-                 "final analysis 无法由冻结档案复验")
+                 "final analysis cannot be re-checked from the frozen archives")
         verdict = analysis["verdict"]["status"]
         publication = None
         if verdict == "PASS":
@@ -5378,7 +5378,7 @@ def command_eval_final() -> None:
         else:
             _require(not PUBLISHED_DIR.exists()
                      and not PUBLISHED_DIR.is_symlink(),
-                     "final FAIL 不得产生 published 工件")
+                     "final FAIL must not produce published artifacts")
         final_snapshot = _capture_final_evidence(
             bind, candidate, expected_analysis=analysis)
         final_identity = final_snapshot["identity"]
@@ -5387,7 +5387,7 @@ def command_eval_final() -> None:
             and final_identity["candidate_archive_sha256"] == candidate_sha
             and final_identity["final_registry_record_sha256"]
             == bind["final_registry_record_sha256"],
-            "terminal state 提交前 final evidence 漂移",
+            "final evidence drift before the terminal state commit",
         )
     except Exception as exc:
         state["terminal_status"] = "FINAL_OPERATIONAL_FAIL"
@@ -5427,7 +5427,7 @@ def command_eval_final() -> None:
     _write_json_atomic(STATE_PATH, state)
     print(f"R7 256-pair one-shot final verdict: {verdict}")
     _require(verdict == "PASS",
-             f"R7 final 科学失败:{analysis['verdict']['failed_checks']}")
+             f"R7 final scientific failure: {analysis['verdict']['failed_checks']}")
 
 
 def command_status() -> None:

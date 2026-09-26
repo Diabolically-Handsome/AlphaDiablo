@@ -14,7 +14,7 @@ if(APPLE AND NOT CMAKE_OSX_DEPLOYMENT_TARGET)
   if(NOT _ALPHADIABLO_SW_VERS_RESULT EQUAL 0
       OR NOT _ALPHADIABLO_HOST_MACOS MATCHES "^[0-9]+\\.[0-9]+(\\.[0-9]+)?$")
     message(FATAL_ERROR
-      "无法确定宿主 macOS 版本；请显式传 -DCMAKE_OSX_DEPLOYMENT_TARGET=<version>")
+      "Cannot determine the host macOS version; pass -DCMAKE_OSX_DEPLOYMENT_TARGET=<version> explicitly")
   endif()
   set(CMAKE_OSX_DEPLOYMENT_TARGET "${_ALPHADIABLO_HOST_MACOS}" CACHE STRING
       "Minimum macOS version for the bridge and embedded engine" FORCE)
@@ -27,7 +27,7 @@ project(diablogym CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# 上游引擎源码位置(铁律 #3:引擎住临时目录,由 bootstrap.sh 提供,不进项目文件夹)
+# Upstream engine source location (rule #3: the engine lives in the temp directory, provided by bootstrap.sh, never in the project folder)
 if(NOT DEFINED DEVILUTIONX_SRC)
   if(DEFINED ENV{TMPDIR} AND NOT "$ENV{TMPDIR}" STREQUAL "")
     set(_ALPHADIABLO_TMP "$ENV{TMPDIR}")
@@ -37,11 +37,11 @@ if(NOT DEFINED DEVILUTIONX_SRC)
   set(DEVILUTIONX_SRC "${_ALPHADIABLO_TMP}/alphadiablo-dev/devilutionX")
 endif()
 if(NOT EXISTS "${DEVILUTIONX_SRC}/Source/diablo.cpp")
-  message(FATAL_ERROR "找不到 DevilutionX 源码: ${DEVILUTIONX_SRC}\n先运行 ../bootstrap.sh 或传 -DDEVILUTIONX_SRC=...")
+  message(FATAL_ERROR "DevilutionX source not found: ${DEVILUTIONX_SRC}\nRun ../bootstrap.sh first or pass -DDEVILUTIONX_SRC=...")
 endif()
 
-# BUILD_TESTING=ON 是为了拿到测试基建里的共享库目标 libdevilutionx_so
-# (整个引擎打包成一个 .dylib,全局变量单实例 —— pybind11 嵌入的正确姿势)
+# BUILD_TESTING=ON is needed to get the shared-library target libdevilutionx_so from the test infrastructure
+# (the whole engine packaged as one .dylib with a single instance of its globals — the right way to embed it with pybind11)
 set(BUILD_TESTING ON CACHE BOOL "" FORCE)
 add_subdirectory("${DEVILUTIONX_SRC}" engine EXCLUDE_FROM_ALL)
 
@@ -96,7 +96,7 @@ if(ALPHADIABLO_EXPECTED_PYTHON_EXECUTABLE)
              NORMALIZE OUTPUT_VARIABLE _ALPHADIABLO_FOUND_PYTHON)
   if(NOT _ALPHADIABLO_FOUND_PYTHON STREQUAL _ALPHADIABLO_EXPECTED_PYTHON)
     message(FATAL_ERROR
-      "FindPython 解释器漂移: found=${_ALPHADIABLO_FOUND_PYTHON}, "
+      "FindPython interpreter mismatch: found=${_ALPHADIABLO_FOUND_PYTHON}, "
       "expected=${_ALPHADIABLO_EXPECTED_PYTHON}")
   endif()
 endif()
@@ -115,7 +115,7 @@ if(ALPHADIABLO_EXPECTED_PYTHON_INCLUDE_DIR)
        "${_ALPHADIABLO_EXPECTED_INCLUDE}" _ALPHADIABLO_INCLUDE_INDEX)
   if(_ALPHADIABLO_INCLUDE_INDEX EQUAL -1)
     message(FATAL_ERROR
-      "FindPython headers 漂移: found=${_ALPHADIABLO_NORMALIZED_INCLUDES}, "
+      "FindPython headers mismatch: found=${_ALPHADIABLO_NORMALIZED_INCLUDES}, "
       "expected=${_ALPHADIABLO_EXPECTED_INCLUDE}")
   endif()
 endif()
@@ -128,13 +128,13 @@ execute_process(
   RESULT_VARIABLE _ALPHADIABLO_SUFFIX_RESULT)
 if(NOT _ALPHADIABLO_SUFFIX_RESULT EQUAL 0 OR NOT _ALPHADIABLO_FOUND_EXT_SUFFIX)
   message(FATAL_ERROR
-    "无法从 FindPython 解释器读取 EXT_SUFFIX: ${Python_EXECUTABLE}")
+    "Cannot read EXT_SUFFIX from the FindPython interpreter: ${Python_EXECUTABLE}")
 endif()
 if(ALPHADIABLO_EXPECTED_PYTHON_EXT_SUFFIX
     AND NOT _ALPHADIABLO_FOUND_EXT_SUFFIX
             STREQUAL ALPHADIABLO_EXPECTED_PYTHON_EXT_SUFFIX)
   message(FATAL_ERROR
-    "Python EXT_SUFFIX 漂移: found=${_ALPHADIABLO_FOUND_EXT_SUFFIX}, "
+    "Python EXT_SUFFIX mismatch: found=${_ALPHADIABLO_FOUND_EXT_SUFFIX}, "
     "expected=${ALPHADIABLO_EXPECTED_PYTHON_EXT_SUFFIX}")
 endif()
 

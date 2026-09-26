@@ -1,80 +1,80 @@
-# PREREG-R9:认证班底经理再教育(下潜边疆)
+# PREREG R9: re-educating the manager of the certified team (the dive frontier)
 
-> 2026-07-31 立案。批文链:「先做R9吧 然后看看后续问题怎么解决」→
-> 「先修腿再训经理(推荐)」+「加课程臂(推荐)」→ 三开关(甲端点/
-> 锚并入R9/全集口径)→「设计完方案之后您就直接开始训练吧」(授权
-> 设计定稿后直接发车)。前置:PREREG-EFIX 已闭卷(执行修理入库)。
+> Opened on 2026-07-31. Approval chain (all 2026-07-31): R9 first, with follow-up problems handled afterwards →
+> "repair the legs first, then retrain the manager" and "add a curriculum arm" (both the recommended options) → three switches (A: keep the old
+> endpoints / anchor folded into R9 / full-set definition) → launch authorised directly once the design was finalised.
+> Prerequisite: PREREG-EFIX is closed (the execution repair is committed).
 
-## 0. 科学问题与病根(奠基卷结论)
+## 0. Scientific question and root cause (conclusion of the foundation review)
 
-认证组装体(冻结 M29 经理 + risk64 认证工人)L3+ 仅 7.8%(v28 基线
-20.7%)——**越强的工人组装体越浅**。双病根:
-- **T-lock 时间锁**:工资剥离下潜奖金后工人最优解=榨干本层;首次强制
-  交权中位 1495 微步(v28:312),第二潜被 3000 步时限挤出;
-- **E-fail 执行失败**(已由 E-fix 修复):下楼宏极限环 + 纯耗时停滞钟,
-  修后停滞率 75%→0%,深度 3 深/5 平/0 浅。
-F2 之 F-lock 对新班底不成立(M29 在认证工人下自愿选 D 12 vs 1)。
-**R9 的问题:换掉唯一没受过 v4 世界教育的部件——经理——组装体能否
-学会「榨干即下潜」。**
+The certified assembled agent (frozen M29 manager + the certified risk64 worker) reaches L3+ in only 7.8% of games (v28 baseline
+20.7%) -- **the stronger the worker, the shallower the assembled agent**. Two root causes:
+- **T-lock (time lock)**: with the dive bonus stripped from wages, the worker's optimum is to exhaust the current level; the median first forced
+  hand-over comes at 1495 micro-steps (v28: 312), so a second dive is squeezed out by the 3000-step limit;
+- **E-fail (execution failure)** (already fixed by E-fix): a limit cycle in the descend macro + a stagnation clock that only counts elapsed time;
+  after the fix the stagnation rate went 75%→0%, depth 3 deeper / 5 same / 0 shallower.
+F2's F-lock does not hold for the new team (under the certified worker M29 chooses D voluntarily, 12 vs 1).
+**R9's question: if the only component that never received v4-world education -- the manager -- is replaced, can the assembled agent
+learn "exhausted means dive"?**
 
-## 1. 战役结构(v29 选举机器骨架,双臂)
+## 1. Campaign structure (v29 election machinery skeleton, two arms)
 
-- **班底**:工人 = 认证发布件 model_final.zip(rev26,
-  dual-v4-asymmetric-v3,sha 2837288d…)冻结,经 staging 无回执路径
-  接入(规避发布回执强制闸,R8 官方评测同款先例);基线经理 = M29 npz
-  (sha 89441388…,legacy-v3 视图)。
-- **双臂**(唯一变量 = 深层课程):
-  - r9-mfresh:MaskablePPO MlpPolicy(64,64) fresh,mppo 160k 步,
-    lr 3e-4,ent 0.02,seed 22,raw-v4 经理视图(喂新协议真钟);
-  - r9-mcurr:同配方 + 深层起点课程(p=0.5 概率 prologue 代打至
-    dlvl≥2,cap 8 窗,死亡重抽封顶 8;分布断言遥测防 F3 空转)。
-  课程实现在训练侧包装(train_ppo._SeedDiscipline prologue),
-  协议束零触碰。
-- **序列**:preflight → E-fix 遗留义务 G0-6 全表 REF_BITEQ(旧端点重放
-  R8 终考 512 局位级对账)→ 新协议锚烧制 → 双臂训练(4h/臂超时保)→
-  npz 导出+parity → 臂考 → 配对判决 → 胜者终考 → 终判。
+- **Team**: worker = the certified release model_final.zip (rev26,
+  dual-v4-asymmetric-v3, sha 2837288d…), frozen, connected through the staging path without a receipt
+  (avoiding the mandatory release-receipt gate, the same precedent as the official R8 evaluation); baseline manager = M29 npz
+  (sha 89441388…, legacy-v3 view).
+- **Two arms** (the only variable = the deep-level curriculum):
+  - r9-mfresh: MaskablePPO MlpPolicy(64,64) fresh, mppo 160k steps,
+    lr 3e-4, ent 0.02, seed 22, raw-v4 manager view (fed the real clock of the new protocol);
+  - r9-mcurr: same recipe + a deep-start curriculum (with probability p=0.5 a prologue plays to
+    dlvl≥2, cap 8 windows, death re-draws capped at 8; distribution-assertion telemetry guards against an F3-style idle run).
+  The curriculum is implemented as a training-side wrapper (the train_ppo._SeedDiscipline prologue);
+  the protocol bundle is untouched.
+- **Sequence**: preflight → the obligation left over from E-fix, G0-6 full-table REF_BITEQ (replay of the old endpoints on the
+  512 games of the R8 final exam, reconciled bit for bit) → anchor burn under the new protocol → two arms trained (4h timeout per arm) →
+  npz export + parity → arm exams → paired verdict → final exam of the winner → final verdict.
 
-## 2. 池划定与锚(本案唯一新池消费,批文「锚并入R9」)
+## 2. Pool allocation and anchor (the only new-pool consumption of this case; approved: anchor folded into R9)
 
-评测银行处女段实核:2_114-2_119 ∪ 2_123-2_129。本案取:
-- **2_123_000-127 / 2_124_000-127**:两个 128 对复现池(臂考);
-- **2_125_000-255**:256 对一次性终考。
-锚 = 基线组装体(M29×认证工人)在上述三段的新协议档案;金池 9000 与
-7000/8000/12000 留出池零接触;训练种子经 _SeedDiscipline 拒采域自动
-避开全部保留段。
+Virgin ranges of the evaluation bank, checked: 2_114-2_119 ∪ 2_123-2_129. This case takes:
+- **2_123_000-127 / 2_124_000-127**: two 128-pair replication pools (arm exams);
+- **2_125_000-255**: a one-off 256-pair final exam.
+Anchor = the new-protocol archives of the baseline assembled agent (M29 × certified worker) on the three ranges above; the gold pool 9000 and the
+7000/8000/12000 held-out pools are untouched; training seeds automatically avoid every reserved range through the _SeedDiscipline
+rejection domain.
 
-## 3. 判决(R8 级统计基建 + v31-D3-10 遗留义务落点)
+## 3. Verdict (R8-level statistical infrastructure + where the v31-D3-10 leftover obligation lands)
 
-- 配对统计 = r8_statistics 同源原语复刻(经逐式数值等价回归钉死;
-  档案联检契约系 R8 几何专用,R9 对偶几何需自建判决层),族错 α=0.05;
-- **闸门肢定制(深度战役专属)**:depth 优越肢(主指标,逐种子配对
-  差 exact_sign+mean_lcb)/ wage 非劣肢(LCB ≥ −10%×锚均值,经理用农层
-  时间换下潜系期望行为,不得以 wage 未优越判死;崩塌仍拦)/ 死亡肢
-  (精确条件 McNemar 非劣 0.10 + 锚推导观测线);kills/ret/worker_kills
-  降为 record-only 诊断;
-- **死亡线按新锚现场推导,禁承继 6/32 绝对线**(v31-D3-10:死亡闸对
-  深潜行为系统性偏紧,三案实据;R8 终考实测认证组装体 died −5.5pp);
-- **主指标预注册**:L3+ 局数、depth 直方、DIVE 潜成/停滞分账、下潜
-  奖金兑现;wage 各肢照 R8 全集保留(经理再教育不得以工资崩塌为代价,
-  基线 wage 亦为非劣锚);
-- **三防呆仪表**(判「深度解锁」须同时移动,基线值=奠基卷实测):
-  首次强制交权中位 1495 微步 / DIVE 窗潜成率 25%(修后按新锚重读)/
-  dlvl1:dlvl2 停留比 16058:3512;
-- 裁决线推导式(ABANDON/FLOOR 由锚读数代入)与数值写入战役 ledger,
-  临线判决强制携「临线」注记(v31 判词纪律承继)。
+- Paired statistics = a re-implementation of the same primitives as r8_statistics (pinned by per-formula numeric-equivalence regression;
+  the archive cross-check contract is specific to the R8 geometry, so the dual geometry of R9 needs its own verdict layer), family-wise α=0.05;
+- **Gate limbs tailored to a depth campaign**: depth superiority limb (primary metric, per-seed paired
+  difference exact_sign+mean_lcb) / wage non-inferiority limb (LCB ≥ −10%×anchor mean; a manager trading farm-level
+  time for dives is the expected behaviour, so it may not be failed for wage not being superior; a collapse is still blocked) / death limb
+  (exact conditional McNemar non-inferiority 0.10 + an observed line derived from the anchor); kills/ret/worker_kills
+  are demoted to record-only diagnostics;
+- **The death line is derived on the spot from the new anchor; the absolute 6/32 line may not be inherited** (v31-D3-10: the death gate is
+  systematically tight on deep-dive behaviour, with evidence from three cases; the R8 final exam measured the certified assembled agent at died −5.5pp);
+- **Pre-registered primary metrics**: L3+ game count, depth histogram, DIVE success/stall breakdown, dive
+  bonus conversion; all wage limbs kept from the full R8 set (manager re-education may not come at the cost of a wage collapse;
+  the baseline wage is also a non-inferiority anchor);
+- **Three fool-proofing instruments** ("depth unlocked" requires all of them to move; baseline values = foundation-review measurements):
+  median first forced hand-over 1495 micro-steps / DIVE window success rate 25% (re-read against the new anchor after the fix) /
+  dlvl1:dlvl2 residence ratio 16058:3512;
+- The derivation formulas of the decision lines (ABANDON/FLOOR with anchor readings plugged in) and their values are written into the campaign ledger;
+  a borderline verdict must carry the "borderline" note (verdict discipline inherited from v31).
 
-## 4. 诚实性与红线
+## 4. Honesty and red lines
 
-- E-fix 与本案的实现束/协议束变更已作废全部旧锚;新锚在候选经理存在
-  之前烧制,候选零接触锚池;
-- 协议束五件 + eval_assembled/eval_contract/leashed_ppo/r8_statistics
-  施工零触碰(动任一 = 新锚再作废);
-- 课程臂 prologue 奖励不入经理回报账(reset 内完成),经理回报 =
-  接管后净得;
-- 金池/留出池零接触;G0-6 义务随案清偿。
+- The implementation/protocol-bundle changes of E-fix and this case have voided every old anchor; the new anchor is burned before any candidate manager
+  exists, and candidates never touch the anchor pools;
+- The five protocol-bundle files + eval_assembled/eval_contract/leashed_ppo/r8_statistics
+  are untouched during implementation (touching any of them = the new anchor is voided again);
+- The curriculum arm's prologue reward does not enter the manager's return (it completes inside reset); manager return =
+  net gain after take-over;
+- Gold pool / held-out pools untouched; the G0-6 obligation is settled with this case.
 
-## 5. 时间线(实测锚折算)
+## 5. Timeline (converted from the measured anchor)
 
-G0-6 ~35min → 锚烧制(128×2+256)~35min → 双臂训练 3.5-5h →
-臂考 4×128 ~40min → 终考 256 ~15min → 判决分钟级;
-**合计 ≈ 5.5-8 小时,一夜完赛**。
+G0-6 ~35min → anchor burn (128×2+256) ~35min → two arms trained 3.5-5h →
+arm exams 4×128 ~40min → final exam 256 ~15min → verdict in minutes;
+**about 5.5-8 hours in total**.

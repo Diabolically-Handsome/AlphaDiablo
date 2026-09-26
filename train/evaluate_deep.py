@@ -1,14 +1,14 @@
-"""深水区章 32 种子金标准（当前协议的深水变体）。
+"""Deep-water chapter 32-seed gold standard (the deep-water variant of the current protocol).
 
-与主榜(train/evaluate.py)的差异,也是不可比的原因:
-  - max_steps 3000(主榜 1500)——护甲/药水经济需要更长的会计周期;
-  - 指标以深度为纲:最深层中位数、到 L2/L3/L4 计数、战死、均杀;
-  - 检查点为 MaskablePPO(v16 起的掩码栈),predict 必须带 action_masks
-    (掩码是策略分布的一部分,不带 = 换了一个策略)。
-其余协议不动:种子 9000-9031 只用于终评、argmax、空载机器、引擎钉死
-ENGINE_REF。结果写入带当前协议版本的 leaderboard；旧榜只读。
+How it differs from the main board (train/evaluate.py), and why the two are not comparable:
+  - max_steps 3000 (main board 1500): the armor/potion economy needs a longer accounting period;
+  - metrics are depth-first: median deepest level, counts reaching L2/L3/L4, deaths, mean kills;
+  - checkpoints are MaskablePPO (the masked stack since v16); predict must pass action_masks
+    (the mask is part of the policy distribution; omitting it = a different policy).
+Everything else in the protocol is unchanged: seeds 9000-9031 are used only for final evaluation, argmax, idle machine, engine pinned to
+ENGINE_REF. Results go to the leaderboard of the current protocol version; old boards are read-only.
 
-用法(仓库根目录):
+Usage (from the repository root):
   .venv/bin/python train/evaluate_deep.py train/runs/<run>/model_final
 """
 
@@ -83,7 +83,7 @@ def evaluate(model_path: str, *, contract: Mapping | None = None):
     from sb3_contrib import MaskablePPO
 
     from diablogym import DiabloGymEnv
-    import models  # noqa: F401  (注册自定义提取器,load 时需要可导入)
+    import models  # noqa: F401  (registers the custom extractor; must be importable at load time)
     verify_loaded_native_runtime(contract)
 
     checkpoint, payload, model_sha256 = checkpoint_snapshot(model_path)
@@ -141,7 +141,7 @@ def main():
     r = evaluate(model_path, contract=contract)
     if (r.get("contract") != contract
             or r.get("contract_sha256") != contract_sha256(contract)):
-        raise RuntimeError("深水评估结果未绑定发车前 standalone contract")
+        raise RuntimeError("deep-water evaluation result is not bound to the pre-launch standalone contract")
     name = pathlib.Path(model_path).parent.name or pathlib.Path(model_path).stem
     row_key = versioned_row_key(name, r["model_sha256"])
     visible = (f"| {row_key} | {r['depth_median']} | "
@@ -150,14 +150,14 @@ def main():
     line = model_leaderboard_row(
         visible, row_key=row_key, contract=contract, model_path=r["model"],
         model_sha256=r["model_sha256"], mode=r["mode"])
-    print(f"深度中位 {r['depth_median']} | 最深 {r['depth_max']} | "
-          f"L2 {r['l2']} | L3 {r['l3']} | L4 {r['l4']} | 战死 {r['deaths']} | "
-          f"均杀 {r['kills_mean']} | 杀中位 {r['kills_median']}  [{r['secs']}s]")
+    print(f"depth median {r['depth_median']} | deepest {r['depth_max']} | "
+          f"L2 {r['l2']} | L3 {r['l3']} | L4 {r['l4']} | deaths {r['deaths']} | "
+          f"mean kills {r['kills_mean']} | kills median {r['kills_median']}  [{r['secs']}s]")
     upsert_leaderboard_rows(
         LEADERBOARD, {row_key: line}, contract=contract,
         initial_text=LEADERBOARD_HEADER,
         lock_path=LEADERBOARD_LOCK)
-    print(f"已写入 {LEADERBOARD.name}")
+    print(f"wrote {LEADERBOARD.name}")
 
 
 if __name__ == "__main__":

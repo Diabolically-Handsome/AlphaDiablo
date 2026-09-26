@@ -1,61 +1,66 @@
-# OPS-launcher:案级驱动器点火与值守细则(B1-E6 成文)
+# OPS-launcher: launching case-level drivers and operator procedure (written for B1-E6)
 
-**出处**:PREREG-B1 E6(承 v32 OPS 事故——v32 系临场手作 nohup,仓内无
-committed launcher;本文把事故补丁升格为驱动器标准条款,随冻结 commit 入库)。
+**Source**: PREREG-B1 E6 (after the v32 OPS incident: v32 was launched with a hand-typed nohup and the repo had no
+committed launcher; this document promotes the incident patch to a standard driver clause, committed with the freeze commit).
 
-## 交付件
+## Deliverables
 
-| 件 | 路径 | 说明 |
+| Item | Path | Notes |
 |---|---|---|
-| 标准点火器 | `train/launch_case.sh` | nohup 孤儿化 + `caffeinate -is` + 日志重定向 + launch receipt + caffeinate 断言 |
-| launchd 模板 | `train/ops/com.alphadiablo.case-driver.plist.template` | 孤儿化直挂(PPID=1),`__CASE__/__REPO__/__DRIVER__` 三占位符 |
-| 值守细则 | 本文 | 心跳阈值成文 |
+| Standard launcher | `train/launch_case.sh` | nohup orphaning + `caffeinate -is` + log redirection + launch receipt + caffeinate assertion |
+| launchd template | `train/ops/com.alphadiablo.case-driver.plist.template` | direct launchd hosting (PPID=1), three placeholders `__CASE__/__REPO__/__DRIVER__` |
+| Operator procedure | this document | heartbeat thresholds written down |
 
-## 标准点火
+## Standard launch
 
 ```bash
-# B1 案(示例;金牌类手启发射永不走 launcher,照旧值守手启)
+# B1 case (example; manually started gold-standard runs never go through the launcher and are still started by the operator)
 train/launch_case.sh train/runs/infra-b1 train/run_b1_infra.py
 ```
 
-点火后立即核验三项:
+Check three things right after launch:
 
-1. **孤儿化**:`ps -o ppid= -p <PID>`(壳退出后应为 `1`);
-2. **caffeinate 在树**:`pgrep -f "caffeinate -is"` 非空;
-3. **日志在写**:`tail -f <case-dir>/driver.<stamp>.log`。
+1. **Orphaned**: `ps -o ppid= -p <PID>` (should be `1` after the shell exits);
+2. **caffeinate in the tree**: `pgrep -f "caffeinate -is"` is non-empty;
+3. **Log is being written**: `tail -f <case-dir>/driver.<stamp>.log`.
 
-## 心跳检查细则(阈值成文,值守照表执行)
+`caffeinate -is` prevents idle sleep and system sleep on AC power; it does not prevent sleep when a laptop lid is
+closed (see `caffeinate -d` or keep the lid open).
 
-| 阶段 | 心跳文件 | WARN | DEAD |
+## Heartbeat checks (thresholds written down; the operator follows the table)
+
+| Phase | Heartbeat file | WARN | DEAD |
 |---|---|---|---|
-| 训练腿在跑 | `train/runs/<leg>/progress.jsonl` mtime | > 120 s | > 600 s |
-| 评测/导出/重放阶段 | `<case-dir>/driver.<stamp>.log` mtime | > 900 s | > 1800 s |
-| 全程 | `pgrep -f "caffeinate -is"` | 空 = WARN(睡眠风险) | — |
+| Training leg running | `train/runs/<leg>/progress.jsonl` mtime | > 120 s | > 600 s |
+| Evaluation/export/replay phase | `<case-dir>/driver.<stamp>.log` mtime | > 900 s | > 1800 s |
+| Throughout | `pgrep -f "caffeinate -is"` | empty = WARN (sleep risk) | — |
 
-- **WARN 处置**:只观察不干预,15 分钟内复查一次;连续两次 WARN 升级为 DEAD 处置。
-- **DEAD 处置**:按案 P 线走(B1:P1 顶层异常/中断条款)——先取证
-  (`ps`、日志尾、`status.json`、台账尾),后 `kill`;禁在未取证前重启;
-  重启走驱动器幂等续跑(exam_or_adopt/续跑对账条款),禁手改台账续命。
-- **辅助读数**:`train/runs/<leg>/status.json` 之 `sps`(v32 腿约 180 sps;
-  低于 60 sps 持续 5 分钟按 WARN 记)与 `updated_at`(与 progress mtime 同义)。
+- **On WARN**: observe only, do not intervene; re-check within 15 minutes; two WARNs in a row escalate to DEAD handling.
+- **On DEAD**: follow the case's P lines (B1: P1 top-level exception/interruption clause) -- collect evidence first
+  (`ps`, log tail, `status.json`, ledger tail), then `kill`; never restart before collecting evidence;
+  restart through the driver's idempotent resume (exam_or_adopt / resume-reconciliation clauses); never hand-edit the ledger to keep a run alive.
+- **Auxiliary readings**: `sps` in `train/runs/<leg>/status.json` (v32 legs ran at about 180 sps;
+  below 60 sps for 5 minutes counts as WARN) and `updated_at` (same meaning as the progress mtime).
 
-## launchd 直挂(可选,系统级看护)
+## launchd hosting (optional, system-level supervision)
 
 ```bash
+# run from the repository root
 sed -e "s/__CASE__/infra-b1/g" \
-    -e "s#__REPO__#$HOME/Desktop/AlphaDiablo/diablogym#g" \
+    -e "s#__REPO__#$(pwd)#g" \
     -e "s#__DRIVER__#train/run_b1_infra.py#g" \
     train/ops/com.alphadiablo.case-driver.plist.template \
     > ~/Library/LaunchAgents/com.alphadiablo.infra-b1.plist
 launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.alphadiablo.infra-b1.plist
-# 卸载
+# unload
 launchctl bootout gui/$(id -u)/com.alphadiablo.infra-b1
 ```
 
-`KeepAlive=false` 系有意为之:台账制额度(腿点火 2 次/评测发 2 次)是
-**人裁的**,自动复活会在无人值守时烧穿额度;崩溃 → 值守按 P 线取证后手动重启。
+`KeepAlive=false` is deliberate: ledger budgets (2 leg launches / 2 evaluation runs) are **decided by people**,
+and automatic revival could burn through the budget while nobody is watching; after a crash the operator collects
+evidence per the P lines and restarts by hand.
 
-## 与驱动器互斥的关系
+## Relation to the driver's mutual exclusion
 
-驱动器自带 `.driver.lock` flock 互斥(W8);launcher 不做第二套互斥,
-重复点火的第二个进程会以退出码 4(不空闲/锁冲突)自然死亡并留日志。
+The driver has its own `.driver.lock` flock mutex (W8); the launcher adds no second mutex. A second process from a
+duplicate launch dies on its own with exit code 4 (not idle / lock conflict) and leaves a log.

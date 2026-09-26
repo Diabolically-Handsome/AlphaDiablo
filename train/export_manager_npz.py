@@ -1,7 +1,7 @@
-"""v23/v25:把经理的策略侧权重导出为 npz(numpy 前向用,子进程免 torch)。
-用法:.venv/bin/python train/export_manager_npz.py [zip路径] [npz输出]
-默认:train/models/v22-h-manager/model_final.zip → 同目录 policy.npz;
-自带 1000 obs 位级 parity 自检(G-KL-C 判据,失配即退出非零)。
+"""v23/v25: export the manager's policy-side weights to npz (numpy forward pass, so subprocesses need no torch).
+Usage: .venv/bin/python train/export_manager_npz.py [zip path] [npz output]
+Default: train/models/v22-h-manager/model_final.zip -> policy.npz in the same directory;
+includes a bit-level parity self-check on 1000 obs (G-KL-C criterion; any mismatch exits non-zero).
 """
 import argparse
 import hashlib
@@ -32,11 +32,11 @@ def main():
     out = args.output or zip_p.parent / "policy.npz"
     source_file = zip_p if zip_p.suffix.lower() == ".zip" else pathlib.Path(f"{zip_p}.zip")
     if not source_file.is_file():
-        ap.error(f"checkpoint 不存在: {source_file}")
+        ap.error(f"checkpoint does not exist: {source_file}")
     if out.suffix.lower() != ".npz":
-        ap.error("输出路径必须以 .npz 结尾")
+        ap.error("output path must end with .npz")
     if out.resolve() == source_file.resolve():
-        ap.error("输出路径不能覆盖源 checkpoint")
+        ap.error("output path must not overwrite the source checkpoint")
     # Capture once: loading and provenance must describe the same immutable
     # checkpoint bytes even if the path is replaced while this export runs.
     source_payload = source_file.read_bytes()
@@ -54,8 +54,8 @@ def main():
         "ba": sd["action_net.bias"].detach().cpu().numpy(),
     }
     if not all(np.isfinite(a).all() for a in arrays.values()):
-        raise ValueError("策略权重含 NaN/Inf，拒绝导出")
-    # parity 自检:1000 个随机观测与随机有效掩码,numpy argmax ≡ SB3 predict。
+        raise ValueError("policy weights contain NaN/Inf; refusing to export")
+    # parity self-check: 1000 random observations with random valid masks, numpy argmax == SB3 predict.
     try:
         np.savez(tmp, **arrays)
         mgr = NumpyManager(str(tmp))
@@ -71,12 +71,12 @@ def main():
             a_sb3, _ = model.predict(obs, action_masks=mask, deterministic=True)
             mismatch += int(a_np != int(a_sb3))
         if mismatch:
-            raise SystemExit("PARITY FAIL —— 预注册回退:训练侧改用 SB3 predict")
+            raise SystemExit("PARITY FAIL -- pre-registered fallback: training side switches to SB3 predict")
         os.replace(tmp, out)
     finally:
         tmp.unlink(missing_ok=True)
-    print(f"npz 已存 {out};parity 失配 {mismatch}/1000;"
-          f"源 checkpoint sha256:{source_sha256[:16]}")
+    print(f"npz saved {out}; parity mismatches {mismatch}/1000; "
+          f"source checkpoint sha256: {source_sha256[:16]}")
 
 
 if __name__ == "__main__":

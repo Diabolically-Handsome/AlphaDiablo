@@ -1,268 +1,288 @@
-# R19 · 神谕老师第一步·第二轮(按窗分工与逐条消融)报告 — 登记版(2026-09-11 凌晨,主刀归档)
+# R19 oracle teacher, step one, round two (per-window split and clause-by-clause ablation): report, filed version (2026-09-11)
 
-**判决:有一条臂在不牺牲存活与杀伤的前提下赢了学生的一层:ORACLE-FARM(神谕内环只接 FARM 窗,DIVE 窗交回学生 7e31dc54)。**
-但要按「证明了什么」来说:赢的是「神谕的 FARM 内环 + 学生自己的 DIVE 行为」;一层那条统计与第一轮 ORACLE 臂逐位相同(同样三个一层死亡种子 2133017/2133021/2133026,同样 saved 7 / lost 2 / net +5 / UCB95 −0.00437),第二轮没有给一层主张增加独立证据;它增加的是「把 DIVE 窗还给学生之后,神谕的一层纪律不再以存活和杀伤为代价」。
+**Verdict: one arm beat the student on level 1 without giving up survival or kills: ORACLE-FARM (the oracle inner
+loop takes only FARM windows; DIVE windows go back to the student 7e31dc54).** But stated as "what was proven":
+what won is "the oracle's FARM inner loop + the student's own DIVE behaviour". The level-1 statistic is
+bit-identical to round one's ORACLE arm (the same three level-1 death seeds 2133017/2133021/2133026, the same
+saved 7 / lost 2 / net +5 / UCB95 -0.00437), so round two adds no independent evidence for the level-1 claim.
+What it adds is: "once the DIVE windows go back to the student, the oracle's level-1 discipline no longer costs
+survival and kills".
 
-| 臂(M2-SET,2_133 池 48 种子;三次复跑行哈希全同) | 局末存活 | 一层死亡 | 一层每千拍风险 | 二层每千拍风险 | 总击杀 | clvl≥4 | 到达三层 | rows_sha_v3 |
+| Arm (M2-SET, pool 2_133, 48 seeds; row hashes identical over three reruns) | alive at game end | L1 deaths | L1 hazard per 1,000 ticks | L2 hazard per 1,000 ticks | total kills | clvl >= 4 | reached L3 | rows_sha_v3 |
 |---|---|---|---|---|---|---|---|---|
-| PARENT 7e31dc54(回归 = M2-SET) | 28 | 8 | 0.0213 | 0.1374 | 5550 | 18 | 2 | f33f7af5… |
-| ORACLE(回归 = 第一轮) | 12 | 3 | 0.0100 | 0.2384 | 5469 | 20 | 26 | 1507c3be… |
+| PARENT 7e31dc54 (regression = M2-SET) | 28 | 8 | 0.0213 | 0.1374 | 5550 | 18 | 2 | f33f7af5… |
+| ORACLE (regression = round one) | 12 | 3 | 0.0100 | 0.2384 | 5469 | 20 | 26 | 1507c3be… |
 | **ORACLE-FARM** | **28** | **3** | **0.0072** | **0.1059** | **6353** | **31** | 5 | e47d5a58… |
-| OF-POTION(+ 药水子句) | 20 | 8 | 0.0214 | 0.1494 | 5938 | — | 4 | 17d3ea46… |
-| OF-POTION-CONTACT(+ 贴身脱离) | 20 | 8 | 0.0218 | — | 5917 | — | 4 | 525d18ef… |
-| ORACLE-PICKUP(神谕 + 仅捡拾子句) | 9 | 4 | 0.0133 | 0.2551 | 5295 | — | 29 | 3f02ce54… |
+| OF-POTION (+ potion clause) | 20 | 8 | 0.0214 | 0.1494 | 5938 | - | 4 | 17d3ea46… |
+| OF-POTION-CONTACT (+ contact disengagement) | 20 | 8 | 0.0218 | - | 5917 | - | 4 | 525d18ef… |
+| ORACLE-PICKUP (oracle + pickup clause only) | 9 | 4 | 0.0133 | 0.2551 | 5295 | - | 29 | 3f02ce54… |
 
-配对(事件口径,m2_probe_driver 单侧 UCB95;36 个比较无多重校正,零假设下预期 1.8 个越线,实得 7 个,归结为 3 个事实):
-- ORACLE-FARM 对 PARENT:局末死亡 saved 9 / lost 9(net 0);一层死亡 saved 7 / lost 2(net +5,UCB95 −0.004,**一个种子翻转即失守**);未到二层 net +5。
-- ORACLE-FARM 对 ORACLE:局末死亡 saved 18 / lost 2(net +16,UCB95 −0.202)——把 DIVE 窗还给学生,神谕就不再死在深层。
-- 药水子句(OF-POTION 对 ORACLE-FARM):一层死亡 saved 2 / lost 7(net −5),局末死亡 net −8 —— **有害**,且 53% 的想喝被饮药主权掩码拒绝。
-- 贴身脱离(对 OF-POTION):全部 0/0 —— **无作用**;只触发 132 拍,其中 68% 原地未动(第一轮缺陷未根治,只是变小)。
-- 捡拾子句(ORACLE-PICKUP 对 ORACLE):一层 net −1(无害),但补给窗 7761 对 1735 —— **补给窗爆炸归因定案**:捡拾是多拍行走宏,把人带离怪物后 `_farm_handoff` 把 FARM 掩掉,经理只剩 RESUPPLY 可选,开一个 9.7 拍的短窗又关,循环;不是 a13 按得多(698 对 909)。
+Paired (event criterion, one-sided UCB95 from m2_probe_driver; 36 comparisons without multiplicity correction,
+1.8 expected to cross the line under the null, 7 did, reducing to 3 facts):
+- ORACLE-FARM vs PARENT: death by game end saved 9 / lost 9 (net 0); L1 death saved 7 / lost 2 (net +5, UCB95
+  -0.004, **lost if a single seed flips**); not reaching L2 net +5.
+- ORACLE-FARM vs ORACLE: death by game end saved 18 / lost 2 (net +16, UCB95 -0.202): once the DIVE windows go back
+  to the student, the oracle no longer dies deep.
+- Potion clause (OF-POTION vs ORACLE-FARM): L1 death saved 2 / lost 7 (net -5), death by game end net -8:
+  **harmful**, and 53% of the wanted drinks are refused by the potion-autonomy mask.
+- Contact disengagement (vs OF-POTION): 0/0 everywhere, **no effect**; it triggered on only 132 ticks, and 68% of
+  those did not move (round one's defect is not cured, only smaller).
+- Pickup clause (ORACLE-PICKUP vs ORACLE): L1 net -1 (harmless), but resupply windows 7761 vs 1735: **the cause of
+  the resupply-window explosion is settled**. Pickup is a multi-tick walking macro; once it leads the character
+  away from monsters, `_farm_handoff` masks FARM, the manager has only RESUPPLY left, opens a 9.7-tick short window,
+  closes it, and loops. It is not that a13 is pressed more often (698 vs 909).
 
-路由是引擎自己的机制(`options_env.py:2815 self._workers.get(int(option))`),单元卷 85 项全过,真实局里两个 callable 服务的拍数与环境台账逐窗相等;神谕槽 38794 FARM 拍,学生槽 51624 DIVE 拍(其中 33901 在 mask_forced 窗)。
-主树指纹编队前后逐位相同(a7a4c75c93b2cd1f);m2-merge、oracle-tree 零写入;teacher_v1.py 未动;处女池零接触。
+Routing uses the engine's own mechanism (`self._workers.get(int(option))` in `options_env.py`); all 85 unit tests
+pass; in real games the tick counts served by the two callables match the environment ledger window by window;
+oracle slot 38794 FARM ticks, student slot 51624 DIVE ticks (33901 of them in mask_forced windows). The main-tree
+fingerprint was bit-identical before and after the work (a7a4c75c93b2cd1f); zero writes to m2-merge and
+oracle-tree; teacher_v1.py untouched; fresh pools not touched.
 
-**归档**:完整报告(含复核轮 §十六)、pass1 报告、`diagnostics.md`、`teacher_v2.py` + 85 项单元卷、驱动、六臂全部行文件与收据、`teacher-round2.patch` 在 `train/runs/r19-reports/teacher-round2/`。
+**Archive**: the full report (including review-round section 16), the pass-1 report, `diagnostics.md`,
+`teacher_v2.py` + 85 unit tests, the drivers, all row files and receipts of the six arms, and
+`teacher-round2.patch` were filed in `train/runs/r19-reports/teacher-round2/` (not published).
 
-**给主席的两项裁定请求(凌晨未叫醒您,等您裁)**:
-1. 一层主张的复现:在一个处女池(建议 2_116,48 种子)上只跑 PARENT 与 ORACLE-FARM 两臂,零训练;这会消耗一个处女池。
-2. 第二步的老师改为 ORACLE-FARM:它的 FARM 内环本质上就是 bc_worker 第 1 世代的教师(`dispatch("farm")`),第二步可直接沿用既有 gen-1 BC 管线(M2-SET 世界 + 新示范池 2_144 + 挂载旗标),不含任何本能子句,修订二稿里的「teacher-v1-obs」与 a12/a14 排除问题随之消失;请裁是否据此出修订三稿。
-
----
-
-以下为编队报告原文(实施者 + 两名对抗审稿 + 修复员,Opus;数字均出自其自产文件):
-
-# R19 · TEACHER 第二轮报告（合成臂 ORACLE-FARM 与逐条消融）
-
-- 日期：2026-09-10 深夜 → 2026-09-11 凌晨（第二轮；第一轮与复核轮同为 2026-09-10）
-- 角色：teacher 第二轮实施者
-- 裁定依据：主席 2026-09-10 ~23:00 批准的第二轮臂（ledger `R19_TEACHER_ROUND2_PLAN`）；
-  主席已入睡，授权自主执行**且仅执行**本轮。
-- 工作树：`/home/user/r17_work/r19/oracle2-tree`
-  （`rsync -a --exclude __pycache__ --exclude .pytest_cache` 自**只读**的第一轮
-  `oracle-tree`；`build -> /home/user/r17_work/r17-1/build-res`）
-- 只读且零写入：主树 `/home/user/AlphaDiablo/diablogym`、`m2-merge`、`oracle-tree`（见 §十二）
-- 新代码只有一个模块 `train/runs/r10-staging/teacher_v2.py` 与它自己的
-  `test_teacher_v2.py`。**第一轮的 `teacher_v1.py` / `test_teacher_v1.py` 一字未动**
-  （sha256 与 `oracle-tree` 逐位相同，§十二）。**没有任何 C++／引擎改动，没有动任何已注册法条。**
-- 种子：只用 2_133 池 2133000–2133047，3 片（a/b/c）。
-  处女池 2_116-119、2_126-128：**零接触**（§十二 枚举了本轮全部产物里的全部 48 个种子）。
-- 本报告所有数字来自本轮自产文件 `round2/probe/`；第一轮数字标明「第一轮」并取自原样保留的
-  `r19/teacher-probe/`；没有文件支持的一律写「未验证」。
-- **复核轮**（2026-09-11 凌晨）：独立复核给了 7 条 finding（`verdict: ship`，无 blocker／major），
-  **全部已修**；其中两条动到遥测，因此**六条臂全部重跑、两道回归闸重过**，
-  而 **`rows_sha_v3` 六条臂逐位不变**。整段见 **§十六**，最终裁定见 **§16.4**。
+**Two decisions requested**:
+1. Replicate the level-1 claim: on a fresh pool (suggested 2_116, 48 seeds) run only the PARENT and ORACLE-FARM
+   arms, zero training; this consumes one fresh pool.
+2. Make ORACLE-FARM the teacher for step two: its FARM inner loop is essentially the generation-1 teacher of
+   bc_worker (`dispatch("farm")`), so step two can reuse the existing gen-1 BC pipeline (M2-SET world + a new
+   demonstration pool 2_144 + attachment flags) without any instinct clause, and the "teacher-v1-obs" and a12/a14
+   exclusion problems of the second revision of the R19-A draft (not published) go away. Decision requested on
+   whether to write a third revision on that basis.
 
 ---
 
-## 零、一句话结论（VERDICT）
+The implementer's report follows (all numbers come from its own output files).
 
-**有一条臂在 L1 死亡上过线：`ORACLE-FARM`。但这句话必须逐字写全，
-否则它会被读成一句它撑不住的话（复核轮 finding 3，§十六）：**
+# R19 TEACHER round-two report (composite arm ORACLE-FARM and clause-by-clause ablation)
 
-> **赢的是「神谕的 FARM 内环」，不是「一个脚本老师赢了学生」。**
-> `ORACLE-FARM` 里 **57.1% 的工人拍（51624 / 90418）仍然是学生本人在打**
-> （其中 33901 拍落在 `mask_forced` 窗里），整个 DIVE 窗原样交还给 7e31dc54；
-> 神谕只服务了 38794 拍 FARM。
-> **而且承载这条结论的 L1 统计，和第一轮 `ORACLE` 是同一个统计**：
-> 两条臂的三个 L1 死亡种子**完全相同**（2133017 / 2133021 / 2133026），
-> 配对数字逐位相同（saved 7 / lost 2 / net **+5** / UCB95 **−0.00437**），
-> 而 `oracle-farm` 对 `oracle` 的 L1 配对是 **0 / 0 / 0**。
-> **所以第二轮没有为那条 L1 结论提供任何独立确认。**
-> 第二轮真正新增的事实是另一件：**把 DIVE 窗还给学生之后，
-> 神谕那套 L1 纪律不再以「冲下去送死」为代价**——
-> 局末存活 28 对 28 没掉，杀伤反涨 14.5%，而第一轮的 `ORACLE` 存活只有 12。
+- Date: 2026-09-10 to 2026-09-11 (round two; round one and its review round were both on 2026-09-10)
+- Role: teacher round-two implementer
+- Basis: the round-two arms approved on 2026-09-10 (ledger event `R19_TEACHER_ROUND2_PLAN`; ledger not
+  published), with authorisation to execute this round, **and only this round**, on its own.
+- Where things lived: the work tree, scripts and outputs named below were kept in a local R19 work directory and
+  are not published; paths are relative to that directory.
+- Work tree: `oracle2-tree/` (`rsync -a --exclude __pycache__ --exclude .pytest_cache` from round one's
+  **read-only** `oracle-tree`; the `build` symlink points to the R17.1 resource build)
+- Read-only, zero writes: the main tree, `m2-merge`, `oracle-tree` (see section 12)
+- The only new code is one module, `train/runs/r10-staging/teacher_v2.py`, and its own `test_teacher_v2.py`.
+  **Round one's `teacher_v1.py` / `test_teacher_v1.py` are untouched** (sha256 bit-identical to `oracle-tree`,
+  section 12). **No C++ or engine change, and no registered rule was touched.**
+- Seeds: only pool 2_133, 2133000-2133047, in 3 shards (a/b/c). Fresh pools 2_116-119 and 2_126-128: **not
+  touched** (section 12 enumerates all 48 seeds found in every output of this round).
+- All numbers in this report come from this round's own files in `round2/probe/`; round-one numbers are marked
+  "round one" and come from the unchanged `teacher-probe/`; anything without a supporting file is marked "not
+  verified".
+- **Review round** (2026-09-11): an independent review gave 7 findings (`verdict: ship`, no blocker or major),
+  **all fixed**; two of them touched telemetry, so **all six arms were rerun and both regression gates were passed
+  again**, and **`rows_sha_v3` is bit-identical for all six arms**. The whole account is in **section 16**, the
+  final verdict in **section 16.4**.
 
-`ORACLE-FARM` = **FARM 窗交给冻结的神谕内环，DIVE 窗交还给学生 7e31dc54**。
+---
 
-| 对 PARENT | ORACLE-FARM | PARENT | 配对（事件=坏事） |
+## 0. One-sentence conclusion (VERDICT)
+
+**One arm clears the line on L1 deaths: `ORACLE-FARM`. But this sentence must be written out in full, or it will
+be read as something it cannot support (review-round finding 3, section 16):**
+
+> **What won is "the oracle's FARM inner loop", not "a scripted teacher beat the student".**
+> In `ORACLE-FARM`, **57.1% of worker ticks (51624 / 90418) are still played by the student itself** (33901 of
+> them in `mask_forced` windows); the whole DIVE window goes back unchanged to 7e31dc54, and the oracle served only
+> 38794 FARM ticks.
+> **And the L1 statistic that carries this conclusion is the same statistic as round one's `ORACLE`**: the two
+> arms' three L1 death seeds are **exactly the same** (2133017 / 2133021 / 2133026), the paired numbers are
+> bit-identical (saved 7 / lost 2 / net **+5** / UCB95 **-0.00437**), and the L1 pairing of `oracle-farm` against
+> `oracle` is **0 / 0 / 0**.
+> **So round two provides no independent confirmation of that L1 result.**
+> What round two really adds is something else: **once the DIVE windows go back to the student, the oracle's L1
+> discipline no longer comes at the price of "charging down and dying"**: survival at game end stays at 28 vs 28,
+> kills rise 14.5%, while round one's `ORACLE` had only 12 survivors.
+
+`ORACLE-FARM` = **FARM windows go to the frozen oracle inner loop, DIVE windows go back to the student 7e31dc54**.
+
+| vs PARENT | ORACLE-FARM | PARENT | paired (event = bad) |
 |---|---|---|---|
-| **死于 L1** | **3** | 8 | saved 7 / lost 2 / net **+5** / UCB95 **−0.00437** |
-| 局末存活 | **28** | 28 | saved 9 / lost 9 / net 0 / UCB95 +0.14540 |
-| 总杀伤 | **6353** | 5550 | ＋14.5% |
-| clvl≥4 的局 | **31** | 18 | — |
-| L1 每千拍危害 | **0.0072** | 0.0213 | 三分之一 |
-| L2 每千拍危害 | **0.1059** | 0.1374 | — |
-| 首降后 1800 拍仍活 | **42 / 44** | 34 / 37 | — |
+| **death on L1** | **3** | 8 | saved 7 / lost 2 / net **+5** / UCB95 **-0.00437** |
+| alive at game end | **28** | 28 | saved 9 / lost 9 / net 0 / UCB95 +0.14540 |
+| total kills | **6353** | 5550 | +14.5% |
+| games with clvl >= 4 | **31** | 18 | - |
+| L1 hazard per 1,000 ticks | **0.0072** | 0.0213 | one third |
+| L2 hazard per 1,000 ticks | **0.1059** | 0.1374 | - |
+| alive 1800 ticks after the first descent | **42 / 44** | 34 / 37 | - |
 
-**主席问的那句话逐字回答：**
-「有没有任何一条臂在 L1 死亡上赢过学生（配对 net > 0 且单侧 UCB95 < 0），
-**同时**没有把局末存活和杀伤打崩？」——**有，且只有 ORACLE-FARM 一条**
-（`ORACLE` 的 L1 配对同样过线，但它把局末存活从 28 打到 12，所以不满足后半句）。
-它把 L1 死亡从 8 压到 3（UCB95 −0.00437），**局末存活 28 对 28 没有掉**，
-**杀伤反而涨了 14.5%**，深度只从 1.667 轻涨到 1.833（不是神谕那种冲下去送死）。
+**The question as posed, answered literally:** "Did any arm beat the student on L1 deaths (paired net > 0 and
+one-sided UCB95 < 0) **while** not wrecking survival at game end and kills?" **Yes, and only ORACLE-FARM**
+(`ORACLE`'s L1 pairing also clears the line, but it drops survival at game end from 28 to 12, so it fails the
+second half). It brings L1 deaths from 8 down to 3 (UCB95 -0.00437), **survival at game end stays at 28 vs 28**,
+**kills even rise 14.5%**, and depth only rises slightly from 1.667 to 1.833 (not the oracle's charge downstairs).
 
-**三条消融的结论，和第一轮的猜测部分相反：**
+**The three ablations partly contradict round one's guesses:**
 
-1. **喝药条是 L1 的凶手，不是拾药条。**
-   `OF-POTION`（= ORACLE-FARM ＋ 只加喝药条）把 L1 死亡从 **3 直接推回 8**
-   （对 ORACLE-FARM 配对：L1 saved 2 / lost 7 / net **−5**；局末死亡 net **−8**，
-   存活 28 → 20）。**它一条就把整个 L1 胜利吃光了。**
-2. **接触脱离条几乎什么都没做。** `OF-POTION-CONTACT` 对 `OF-POTION`：
-   L1 死亡 saved 0 / lost 0，局末死亡 saved 1 / lost 1，八个 L1 死亡种子**一模一样**。
-   全 48 局只触发 193 拍、真开火 132 拍（第一轮是 859 拍），
-   而且**仍有 68.0%（87/128）原地没动**——老毛病没治好，只是量小到看不见。
-3. **拾药条确实是 RESUPPLY 窗口爆炸的原因，这一条第一轮猜对了。**
-   `ORACLE-PICKUP`（= 完整神谕 base 两边窗 ＋ 只加拾药条）
-   把 RESUPPLY 窗从 ORACLE 的 **1735 炸到 7761**、总窗口从 4396 炸到 10560——
-   几乎完全复现了第一轮 TEACHER-V1 的 7605 / 10244。
-   **但它对 L1 几乎无害**（L1 死亡 4 对神谕的 3，配对 net −1）。
-   所以第一轮报告 §十一 第 4 条「拾药条现在最可疑」——
-   **对窗口爆炸是对的，对 L1 伤害是错的**。
+1. **The drink clause, not the pickup clause, is the L1 killer.** `OF-POTION` (= ORACLE-FARM + the drink clause
+   only) pushes L1 deaths **straight back from 3 to 8** (paired against ORACLE-FARM: L1 saved 2 / lost 7 / net
+   **-5**; death by game end net **-8**, survival 28 -> 20). **On its own it wipes out the whole L1 win.**
+2. **The contact disengage clause does almost nothing.** `OF-POTION-CONTACT` vs `OF-POTION`: L1 death saved 0 /
+   lost 0, death by game end saved 1 / lost 1, and the eight L1 death seeds are **exactly the same**. Over all 48
+   games it triggers on only 193 ticks and really fires on 132 (round one: 859), and **68.0% (87/128) still do not
+   move**: the old defect is not cured, just too small to see.
+3. **The pickup clause really causes the RESUPPLY window explosion; round one guessed this one right.**
+   `ORACLE-PICKUP` (= the full oracle base on both window types + the pickup clause only) blows RESUPPLY windows up
+   from ORACLE's **1735 to 7761** and total windows from 4396 to 10560, almost exactly reproducing round one's
+   TEACHER-V1 figures of 7605 / 10244. **But it is nearly harmless on L1** (4 L1 deaths vs the oracle's 3, paired
+   net -1). So item 4 of section 11 of round one's report, "the pickup clause is now the most suspicious", **was
+   right about the window explosion and wrong about L1 harm**.
 
-**为什么合成臂有效，有机制证据，不是运气：**
-引擎自己的审计（`options_env.py:2014/2294`，本轮由只读的 env 子类逐窗汇总）显示，
-**神谕在 DIVE 窗里 77% 的拍是空转**：18514 拍里只有 4298 拍真的被执行
-（`no_effect_requests` 14216、`fuse_trips` 567）。
-把 DIVE 窗还给学生之后，同样的窗口执行率变成 **37939 / 51676 = 73% 真执行**。
-神谕会打架，不会下楼；学生会下楼，不会打 L1。**合成臂就是把这两件事各归其主。**
+**Why the composite arm works has mechanistic evidence, not luck:** the engine's own audit (in `options_env.py`,
+aggregated window by window in this round by a read-only env subclass) shows that **77% of the oracle's ticks in
+DIVE windows are idle**: of 18514 ticks only 4298 are actually executed (`no_effect_requests` 14216,
+`fuse_trips` 567). Once the DIVE windows go back to the student, the execution rate in those windows becomes
+**37939 / 51676 = 73% executed**. The oracle can fight but cannot go downstairs; the student can go downstairs
+but cannot fight on L1. **The composite arm gives each job to the one that can do it.**
 
-**一句必须和上面那句一起看的话：**
-`ORACLE-FARM` 的 L1 胜利，**和第一轮 ORACLE 的那条是同一个统计**——
-三个 L1 死亡种子完全相同（2133017 / 2133021 / 2133026），
-所以 **−0.00437 只比线低 0.004，翻一个种子就变成 +0.039**（§6.1），
-而且它建在 2_133 这个已经被反复消费的池子上。
-**在处女池上复验之前，不该有任何东西建在这条 95% 结论上。**
+**A sentence that must be read together with the one above:** `ORACLE-FARM`'s L1 win **is the same statistic as
+round one's ORACLE**: the three L1 death seeds are exactly the same (2133017 / 2133021 / 2133026), so
+**-0.00437 is only 0.004 below the line and becomes +0.039 if one seed flips** (section 6.1), and it rests on pool
+2_133, which has been consumed repeatedly. **Nothing should be built on this 95% result before it is replicated
+on a fresh pool.**
 
 ---
 
-## 一、本轮问什么、跑了哪六条臂
+## 1. What this round asks, and the six arms it ran
 
-第一轮的结论是：冻结的神谕 base 单独把 L1 每拍危害砍半（0.0100 对学生 0.0213），
-但**冲下去送死**（26 局到 L3，局末存活 12 对 28）；而本能层（喝药 0.60 / 拾药 / 人群＋接触脱离）
-在同一个 base 上是**净负**（L1 死亡 3 → 10）。第一轮自曝的两个缺口是
-「本能层没有逐条消融」和「窗口爆炸的归因只有相关没有因果」。
+Round one concluded that the frozen oracle base alone halves the L1 per-tick hazard (0.0100 vs the student's
+0.0213) but **charges down and dies** (26 games reach L3, survival at game end 12 vs 28), and that the instinct
+layer (drink at 0.60 / pickup / crowd + contact disengagement) is **net negative** on the same base (L1 deaths
+3 -> 10). Round one reported two gaps itself: "no clause-by-clause ablation of the instinct layer" and "the window
+explosion is attributed by correlation only, not causally".
 
-本轮六条臂，同一个 M2-SET 世界（17 键，从 `r19/teacher_probe_driver.py` **逐字复制**），
-同一个 2_133 池 48 个种子、同样的 a/b/c 三片：
+Six arms in this round, in the same M2-SET world (17 keys, **copied verbatim** from `teacher_probe_driver.py`),
+on the same 48 seeds of pool 2_133 and the same three shards a/b/c:
 
-| 臂 | FARM 窗 | DIVE 窗 | 作用 |
+| Arm | FARM windows | DIVE windows | Purpose |
 |---|---|---|---|
-| `parent` | 学生 7e31dc54 | 学生 | 回归闸，必须等于 `f33f7af5…` |
-| `oracle` | teacher_v1 "oracle" | 同一个对象 | 回归闸，必须等于 `1507c3be…` |
-| `oracle-farm` | teacher_v1 "oracle" | 学生 7e31dc54 | **合成臂** |
-| `of-potion` | 神谕 base ＋ 喝药条 | 学生 | 只加喝药条 |
-| `of-potion-contact` | 神谕 base ＋ 喝药 ＋ 接触脱离 | 学生 | 再加接触脱离 |
-| `oracle-pickup` | 神谕 base ＋ 拾药条 | **同一个对象**（两边窗） | 只加拾药条 |
+| `parent` | student 7e31dc54 | student | regression gate, must equal `f33f7af5…` |
+| `oracle` | teacher_v1 "oracle" | the same object | regression gate, must equal `1507c3be…` |
+| `oracle-farm` | teacher_v1 "oracle" | student 7e31dc54 | **composite arm** |
+| `of-potion` | oracle base + drink clause | student | drink clause only |
+| `of-potion-contact` | oracle base + drink + contact disengagement | student | adds contact disengagement |
+| `oracle-pickup` | oracle base + pickup clause | **the same object** (both window types) | pickup clause only |
 
-`RESUPPLY` 窗（以及它名下的 sweep / gold-grab / portal / retreat 各级）
-**全程是法条脚本，不经过任何 worker**——所以 `workers` 里根本没有 RESUPPLY 项，
-六条臂的 `resupply` 拍数**全部是 0**（§七），这是本轮测出来的，不是假设的。
+`RESUPPLY` windows (and the sweep / gold-grab / portal / retreat stages under them) are **scripted rules
+throughout and never go through a worker**, so `workers` has no RESUPPLY entry at all, and the `resupply` tick
+count is **0 in all six arms** (section 7). This was measured in this round, not assumed.
 
 ---
 
-## 二、交付物
+## 2. Deliverables (local work directory, not published)
 
-| 文件 | 是什么 |
+| File | What it is |
 |---|---|
-| `oracle2-tree/train/runs/r10-staging/teacher_v2.py` | 本轮唯一的新代码：`make_teacher2(variant, env=None, drink_sovereignty=True, parent_zip=…)` |
-| `oracle2-tree/train/runs/r10-staging/test_teacher_v2.py` | 本轮单元卷：第一遍 70 项全过（`round2/tests-full.log`），复核轮加严并新增后 85 项全过（`round2/tests-full-review.log`） |
-| `round2/teacher2_shard.py` | 一片一臂，行经 `probe_r17_deployment.run_episode` 逐字不动 |
-| `round2/teacher2_driver.py` | 六臂驱动、回归闸、`arm_stats`、配对检定 |
-| `round2/teacher2_extra.py` | 本报告全部表格的生成器（只读本轮产物） |
-| `round2/probe/*-rows.json` | 六条臂的全部行与遥测 |
-| `round2/probe/regression-{parent,oracle}.json` | 两道回归闸的收据 |
-| `round2/probe/round2-summary.json` | 汇总（含全部 36 个配对） |
-| `round2/diagnostics.md` | 机器生成的原始表格 |
-| `round2/tests-full.log` / `tests-nonepisode.log` | 单元卷 |
-| `round2/driver-*.log`、`round2/probe/*.cmd` | 每一条命令行的收据 |
-| `round2/gate_then_arms.sh`、`run_regressions.sh`、`finalize.sh`、`smoke.sh`、`run_tests_*.sh`、`deploy.sh` | 第一遍实际跑过的脚本 |
-| `round2/rr_full.sh`、`rr_regressions.sh`、`rr_arms.sh`、`prelaunch_review.sh`、`compare_passes.py`、`ledger_review.py` | **复核轮**实际跑过的脚本（§十六） |
-| `round2/probe-pass1/`、`round2/probe-pass2/` | 第一遍与复核轮第一次重跑的全部产物，原样保留 |
-| `round2/review-round-compare.txt` | 三遍之间的逐臂 SHA／`arm_stats` 对照 |
-| `round2/review-round-manifest-before.txt` | **启动前**对每个将要运行的脚本的 sha256 ＋ 时间戳（finding 4） |
-| `round2/tests-full-review.log` | 复核轮的完整单元卷 |
-| `round2/TEACHER-ROUND2-REPORT.pass1.md`、`driver-*.pass1.log` | 复核前的报告与日志，原样保留 |
-| `round2/mk_report.py`、`round2/verdict.json` | 本报告的生成器与裁定问答 |
-| `round2/main-tree-fingerprint-{mid,after}.txt`、`…-review-{before,after}.txt` | 主树只读证明（第一遍 ＋ 复核轮） |
+| `oracle2-tree/train/runs/r10-staging/teacher_v2.py` | the only new code of this round: `make_teacher2(variant, env=None, drink_sovereignty=True, parent_zip=…)` |
+| `oracle2-tree/train/runs/r10-staging/test_teacher_v2.py` | this round's unit tests: 70 pass in the first pass (`round2/tests-full.log`), 85 pass after the review round tightened and added tests (`round2/tests-full-review.log`) |
+| `round2/teacher2_shard.py` | one shard, one arm; rows go through `probe_r17_deployment.run_episode` unchanged |
+| `round2/teacher2_driver.py` | six-arm driver, regression gates, `arm_stats`, paired tests |
+| `round2/teacher2_extra.py` | generator of every table in this report (reads only this round's outputs) |
+| `round2/probe/*-rows.json` | all rows and telemetry of the six arms |
+| `round2/probe/regression-{parent,oracle}.json` | receipts of the two regression gates |
+| `round2/probe/round2-summary.json` | summary (including all 36 pairings) |
+| `round2/diagnostics.md` | machine-generated raw tables |
+| `round2/tests-full.log` / `tests-nonepisode.log` | unit tests |
+| `round2/driver-*.log`, `round2/probe/*.cmd` | a receipt for every command line |
+| `round2/gate_then_arms.sh`, `run_regressions.sh`, `finalize.sh`, `smoke.sh`, `run_tests_*.sh`, `deploy.sh` | scripts actually run in the first pass |
+| `round2/rr_full.sh`, `rr_regressions.sh`, `rr_arms.sh`, `prelaunch_review.sh`, `compare_passes.py`, `ledger_review.py` | scripts actually run in the **review round** (section 16) |
+| `round2/probe-pass1/`, `round2/probe-pass2/` | all outputs of the first pass and the review round's first rerun, kept unchanged |
+| `round2/review-round-compare.txt` | per-arm SHA / `arm_stats` comparison across the three passes |
+| `round2/review-round-manifest-before.txt` | sha256 + timestamp of every script about to run, taken **before launch** (finding 4) |
+| `round2/tests-full-review.log` | the review round's full unit-test log |
+| `round2/TEACHER-ROUND2-REPORT.pass1.md`, `driver-*.pass1.log` | report and logs from before the review, kept unchanged |
+| `round2/mk_report.py`, `round2/verdict.json` | this report's generator and the verdict Q&A |
+| `round2/main-tree-fingerprint-{mid,after}.txt`, `…-review-{before,after}.txt` | proof that the main tree stayed read-only (first pass + review round) |
 
 ---
 
-## 三、老师是什么，以及「路由」是验过的不是猜的
+## 3. What the teacher is, and why the "routing" is verified rather than guessed
 
-`teacher_v2.py` 和 `teacher_v1.py` 一样是**探针侧策略**：不注册任何法条、不改任何阈值、
-不被任何运行时路径 import，住在探针旁边的 `train/runs/r10-staging/`，
-**不属于 `probe_r17_deployment._SOURCE_FILES` 指纹包，也不属于任何其它指纹包**。
+`teacher_v2.py`, like `teacher_v1.py`, is a **probe-side policy**: it registers no rule, changes no threshold, is
+not imported by any runtime path, lives next to the probe in `train/runs/r10-staging/`, and **is not part of the
+`probe_r17_deployment._SOURCE_FILES` fingerprint bundle or any other fingerprint bundle**.
 
-**路由用的是引擎自己的机制，代码位置逐处标注：**
+**Routing uses the engine's own mechanism; code locations as of that work tree (then `options_env.py` line
+numbers):**
 
-- `options_env.py:2815`：`worker = self._workers.get(int(option))`——
-  每个选项窗**只解析一次** worker，然后 `:3112-3137` 整扇窗都走这一个 callable。
-- `options_env.py:67`：`FARM, DIVE, RESUPPLY = 0, 1, 2`；
-  `:1465`：`_win["mode"] = ("farm","dive","resupply")[option]`——**选项就是窗口种类**。
-- 所以 `workers={FARM: oracle_cb, DIVE: parent_cb}` 就是引擎原生的按窗分派，
-  不需要在一个 callable 里偷看窗口种类。
-- `RESUPPLY` 窗整扇由 `:2822-3110` 的脚本服务链跑完；
-  sweep / gold-grab / portal / retreat 是同一条链上的级（`:2846-2851`），同样不碰 worker。
-- `forced_dive` / `mask_forced` 是**经理侧**的事实（`m[FARM] = not forced_dive`，
-  `:1089` 与 `:1371`），探针逐窗记录（`run_episode:600-621`）。
-  本轮把每扇 DIVE 窗的拍数按 `_win["window_id"]` 记下来，
-  再和探针行自己的 `dive_windows[].forced` 做**连接**，才得出 §七 的「强制下楼拍」一列。
+- `options_env.py:2815`: `worker = self._workers.get(int(option))`: each option window **resolves its worker
+  once**, and then the whole window (`:3112-3137`) goes through that one callable.
+- `options_env.py:67`: `FARM, DIVE, RESUPPLY = 0, 1, 2`; `:1465`: `_win["mode"] = ("farm","dive","resupply")[option]`:
+  **the option is the window type**.
+- So `workers={FARM: oracle_cb, DIVE: parent_cb}` is the engine's native per-window dispatch, and no callable has
+  to peek at the window type.
+- A `RESUPPLY` window runs entirely through the scripted service chain in `:2822-3110`; sweep / gold-grab /
+  portal / retreat are stages of the same chain (`:2846-2851`) and also never touch a worker.
+- `forced_dive` / `mask_forced` are **manager-side** facts (`m[FARM] = not forced_dive`, `:1089` and `:1371`),
+  recorded per window by the probe (`run_episode:600-621`). This round records the tick count of every DIVE window
+  by `_win["window_id"]` and **joins** it with the probe row's own `dive_windows[].forced` to get the
+  "forced-dive ticks" column in section 7.
 
-**钩子**：`run_episode` 只把 `on_beat` / `episode_reseed` 交给**一个** `cb`（`:564` 与 `:567`），
-它看不见 `workers`。所以 `TeacherV2` 是一个**路由对象**：
-`.workers` 进 env，它本身作为 `cb` 进 `run_episode`，
-它的 `on_beat` setter / `episode_reseed` / `bind` **扇出到每一个内层 callable**。
-因为一拍只会有一个 callable 被调用，`on_beat` **每个工人拍仍然恰好触发一次**
-（单元卷里直接数了：3 拍 → 3 次）。学生那一侧的定种纪律
-（`model.set_random_seed(seed)` 每局一次，`load_zip_policy:201-203`）
-与认证对照行**逐位相同**。
+**Hooks**: `run_episode` hands `on_beat` / `episode_reseed` to **one** `cb` only (`:564` and `:567`) and cannot
+see `workers`. So `TeacherV2` is a **routing object**: `.workers` goes into the env, the object itself goes into
+`run_episode` as `cb`, and its `on_beat` setter / `episode_reseed` / `bind` **fan out to every inner callable**.
+Since only one callable is called per tick, `on_beat` **still fires exactly once per worker tick** (counted
+directly in the unit tests: 3 ticks -> 3 calls). The student side's seeding discipline
+(`model.set_random_seed(seed)` once per game, `load_zip_policy:201-203`) is **bit-identical** to the certified
+control rows.
 
-**常数**：本轮**没有引入任何新的数值阈值**。
-`teacher_v2.py` 的那一个常数块把第一轮冻结常数块里的值**原样 import**，
-逐条写明出处（0.60 喝药、拾药 Chebyshev 1、接触 0.35 / 半径 1 / 计数 1、400 拍围栏、地形半径 1）。
-**人群触发条与 `STAIRS_TIEBREAK_RADIUS` 按主席本轮的措辞被刻意不 import**
-（「NO crowd trigger、NO stairs tie-break」）。
+**Constants**: this round **introduces no new numeric threshold**. The single constants block of
+`teacher_v2.py` **imports the values unchanged** from round one's frozen constants block, each with its source
+(drink at 0.60, pickup Chebyshev 1, contact 0.35 / radius 1 / count 1, the 400-tick fence, terrain radius 1).
+**The crowd trigger and `STAIRS_TIEBREAK_RADIUS` are deliberately not imported, per this round's plan** (no crowd
+trigger, no stairs tiebreak).
 
-**两处与第一轮 shard 的差别，都是只读的，而且被回归闸证明为零影响：**
-(1) 每个 worker callable 外面套了一层 `WorkerProbe`（先记数，再原样转调）；
-(2) env 用 `teacher_v2.observing_env_class()`——一个只 `super().step()` 之后
-**读已经返回的 info 字典**的 `OptionsEnv` 子类，用来汇总探针行不带的
-`worker_no_effect_requests` 审计。两条回归 SHA 完全复现（§四），
-**这就是这两样东西没有扰动世界的证明**，不是断言。
+**Two differences from round one's shard, both read-only and both shown by the regression gates to have zero
+effect:** (1) each worker callable is wrapped in a `WorkerProbe` (count first, then forward unchanged); (2) the env
+uses `teacher_v2.observing_env_class()`, an `OptionsEnv` subclass that only **reads the info dict already
+returned** after `super().step()`, to aggregate the `worker_no_effect_requests` audit that the probe rows do not
+carry. Both regression SHAs reproduce exactly (section 4), **which is the proof, not a claim, that these two
+things do not disturb the world**.
 
 ---
 
-## 四、回归（第一道闸）
+## 4. Regression (the first gate)
 
   parent: got f33f7af5f236f1fc... expected f33f7af5f236f1fc... equal=True all_refs_agree=True
-      ref /home/user/r17_work/r19/m2rr-probe/rr-set-rows.json: f33f7af5f236f1fc
-      ref /home/user/r17_work/r19/m2-probe/m2-set-rows.json: f33f7af5f236f1fc
-      ref /home/user/r17_work/r19/teacher-probe/parent-rows.json: f33f7af5f236f1fc
+      ref m2rr-probe/rr-set-rows.json: f33f7af5f236f1fc
+      ref m2-probe/m2-set-rows.json: f33f7af5f236f1fc
+      ref teacher-probe/parent-rows.json: f33f7af5f236f1fc
   oracle: got 1507c3be68a0da29... expected 1507c3be68a0da29... equal=True all_refs_agree=True
-      ref /home/user/r17_work/r19/teacher-probe/oracle-rows.json: 1507c3be68a0da29
+      ref teacher-probe/oracle-rows.json: 1507c3be68a0da29
 
-两道闸**都过**，而且 `parent` 的 SHA 同时与三个独立的既有产物一致
-（`m2rr-probe/rr-set-rows.json`、`m2-probe/m2-set-rows.json`、
-第一轮的 `teacher-probe/parent-rows.json`），
-`oracle` 与第一轮 `teacher-probe/oracle-rows.json` 一致。
-**只有闸过了，四条新臂才被启动**（`round2/rr_full.sh` 把这条纪律写死成条件分支：
-两张收据都 `equal=true`、两张都 `all_references_agree`、且两张都是 `"pass": "run"`
-才启动四条新臂，否则 `exit 2`）。
+**Both gates pass**, and the `parent` SHA agrees at the same time with three independent existing outputs
+(`m2rr-probe/rr-set-rows.json`, `m2-probe/m2-set-rows.json`, and round one's `teacher-probe/parent-rows.json`),
+while `oracle` agrees with round one's `teacher-probe/oracle-rows.json`. **Only after the gates passed were the
+four new arms started** (`round2/rr_full.sh` hard-codes this discipline as a conditional: the four new arms start
+only if both receipts have `equal=true`, both have `all_references_agree`, and both are `"pass": "run"`;
+otherwise `exit 2`).
 
-**这条纪律现在在磁盘上可查（复核轮 finding 4 的修复）**：第一遍时 `--reuse` 汇总腿
-会把两张收据覆盖重写，于是收据的 mtime 反而晚于它本该把关的四条臂，
-光看 mtime 无法证明先后。现在 `--reuse` 腿写的是兄弟文件
-`probe/regression-*-reuse.json`（`"pass": "reuse-summarize"`），
-**闸收据 `probe/regression-parent.json` / `regression-oracle.json` 只由真正跑的那一腿写
-（`"pass": "run"`），闸本身现在也要求 `pass == "run"`**。
-复核轮最终那一遍的磁盘时间戳（`ls --time-style=+%H:%M:%S`）：
+**This discipline can now be checked on disk (fix for review-round finding 4)**: in the first pass the `--reuse`
+summarising leg rewrote both receipts, so their mtimes ended up later than the four arms they were supposed to
+gate, and mtimes alone could not prove the order. Now the `--reuse` leg writes sibling files
+`probe/regression-*-reuse.json` (`"pass": "reuse-summarize"`); **the gate receipts `probe/regression-parent.json`
+/ `regression-oracle.json` are written only by the leg that actually runs (`"pass": "run"`), and the gate itself
+now requires `pass == "run"`**. File times of the review round's final pass, relative to the pre-launch manifest:
 
-| 文件 | mtime | 含义 |
+| File | time after the pre-launch manifest | Meaning |
 |---|---|---|
-| `probe/regression-oracle.json` | 01:09:27 | 神谕回归收据（先完成的那条） |
-| `probe/regression-parent.json` | 01:10:48 | 学生回归收据 |
-| `probe/r2-oracle-farm-a.cmd`、`r2-of-potion-a.cmd` | 01:10:48 | 四条新臂的命令行收据，**闸判定之后同一秒才写出** |
-| `probe/regression-*-reuse.json` | 01:22:15 | `--reuse` 汇总腿的兄弟文件，**不再覆盖闸收据** |
+| `round2/review-round-manifest-before.txt` | 0 | sha256 of every script about to run, **before launch** |
+| `probe/regression-oracle.json` | +8 min 32 s | oracle regression receipt (the one that finished first) |
+| `probe/regression-parent.json` | +9 min 53 s | student regression receipt |
+| `probe/r2-oracle-farm-a.cmd`, `r2-of-potion-a.cmd` | +9 min 53 s | command-line receipts of the four new arms, **written in the same second, after the gate decision** |
+| `probe/regression-*-reuse.json` | +21 min 20 s | sibling files of the `--reuse` summarising leg, **no longer overwriting the gate receipts** |
 
-两张闸收据**都不晚于**四条新臂的 `.cmd`（神谕早 81 秒，学生同一秒——
-闸的判定 `GATE result: YES` 打在 01:10:48，四条臂在同一秒被启动）；
-`driver-parent.log` / `driver-oracle.log` 里的 `REGRESSION` 行（`equal` 为 true）同样在启动之前；
-`round2/review-round-manifest-before.txt` 在 **01:00:55、也就是启动前**
-把每个将要运行的脚本逐个 sha256 并打了时间戳，
-`round2/review-round-manifest-after.txt` 是收尾时的同一张表。
+Neither gate receipt is later than the four new arms' `.cmd` files (the oracle's is 81 s earlier, the student's
+in the same second: the gate decision `GATE result: YES` was printed in that second, and the four arms started in
+the same second); the `REGRESSION` lines (`equal` true) in `driver-parent.log` / `driver-oracle.log` also come
+before the launch; `round2/review-round-manifest-after.txt` is the same table taken at the end.
 
-### 4.1 运行收据
+### 4.1 Run receipts
 
 | arm | rows_sha_v3 | n | runtime_errors | elapsed_s | source_changed_during_run |
 |---|---|---|---|---|---|
@@ -273,12 +293,12 @@
 | of-potion-contact | `525d18ef98ddbe8d…` | 48 | 0 | 648.5 | [] |
 | oracle-pickup | `3f02ce54b8922626…` | 48 | 0 | 681.7 | [] |
 
-`runtime_errors` 六条臂全 0；`source_changed_during_run` 六条臂全空
-（跑之前和跑之后对 10 个源文件 ＋ worker zip 逐个 sha256）。
+`runtime_errors` is 0 for all six arms; `source_changed_during_run` is empty for all six (sha256 of 10 source
+files + the worker zip before and after each run).
 
 ---
 
-## 五、全表
+## 5. Full table
 
 | stat | parent | oracle | oracle-farm | of-potion | of-potion-contact | oracle-pickup |
 |---|---|---|---|---|---|---|
@@ -331,7 +351,7 @@
 | windows_mask_forced | 2208 | 2453 | 2553 | 2414 | 2386 | 8426 |
 | deaths_by_floor | {"1": 8, "2": 12} | {"1": 3, "2": 14, "3": 11, "4": 7, "5": 1} | {"1": 3, "2": 14, "3": 3} | {"1": 8, "2": 18, "3": 1, "4": 1} | {"1": 8, "2": 18, "3": 1, "4": 1} | {"1": 4, "2": 13, "3": 12, "4": 8, "5": 1, "6": 1} |
 
-### 5.1 逐层曝光与危害
+### 5.1 Exposure and hazard per floor
 
 | arm | L1 beats/deaths/hazard per 1k | L2 beats/deaths/hazard per 1k | L3 beats/deaths/hazard per 1k | L4 beats/deaths/hazard per 1k | L5 beats/deaths/hazard per 1k |
 |---|---|---|---|---|---|
@@ -342,13 +362,12 @@
 | of-potion-contact | 366841 / 8 / 0.0218 | 112884 / 18 / 0.1595 | 2472 / 1 / 0.4045 | 113 / 1 / 8.8496 | 0 / 0 / 0.0 |
 | oracle-pickup | 300145 / 4 / 0.0133 | 50962 / 13 / 0.2551 | 8632 / 12 / 1.3902 | 14758 / 8 / 0.5421 | 1029 / 1 / 0.9718 |
 
-**这张表是本轮最关键的一张。**
-`ORACLE-FARM` 在 **L1 上把每千拍危害压到 0.0072**（学生 0.0213、神谕 0.0100），
-**同时**没有像神谕那样把自己送到 L3/L4（神谕 L3 危害 1.12、L4 1.30；
-合成臂 L3 只有 3 次死亡、L4 零曝光）。
-`OF-POTION` 把 L1 危害打回 0.0214——**和学生一模一样**，等于喝药条把 base 的 L1 纪律整个抵消了。
+**This is the key table of this round.** `ORACLE-FARM` **brings the L1 hazard down to 0.0072 per 1,000 ticks**
+(student 0.0213, oracle 0.0100) **while** not sending itself to L3/L4 as the oracle does (oracle L3 hazard 1.12,
+L4 1.30; the composite arm has only 3 deaths on L3 and zero exposure on L4). `OF-POTION` pushes the L1 hazard back
+to 0.0214, **exactly the student's**: the drink clause cancels the base's L1 discipline entirely.
 
-### 5.2 到达深度阶梯
+### 5.2 Depth-reached ladder
 
 | arm | >=L2 | >=L3 | >=L4 | >=L5 |
 |---|---|---|---|---|
@@ -359,29 +378,28 @@
 | of-potion-contact | 35 | 4 | 1 | 0 |
 | oracle-pickup | 41 | 29 | 14 | 2 |
 
-神谕与 `ORACLE-PICKUP` 到 L3 的局是 26 / 29，合成臂只有 5——
-**这正是合成臂活下来的原因**：它没有拿 DIVE 窗去冲。
+The oracle and `ORACLE-PICKUP` reach L3 in 26 / 29 games, the composite arm in only 5; **this is exactly why the
+composite arm survives**: it does not use DIVE windows to charge.
 
 ---
 
-## 六、配对检定（全部 36 个，不是挑出来的）
+## 6. Paired tests (all 36, not a selection)
 
-**先说多重比较（复核轮 finding 5）**：下面是 **36 个单侧 95% 检定**，
-**没有做任何多重性校正**。在零假设下，36 个单侧 95% 检定里
-**平均会有 36 × 0.05 ≈ 1.8 个**纯靠运气越过 0 线；本轮实际越线 **7 个**。
-但这 7 个**不是 7 件独立的事**，它们只是 **3 件事**被数了 7 次：
+**Multiple comparisons first (review-round finding 5)**: below are **36 one-sided 95% tests** with **no
+multiplicity correction**. Under the null hypothesis, **on average 36 x 0.05 = 1.8** of them cross the 0 line by
+luck alone; in this round **7** actually cross. But these 7 are **not 7 independent things**; they are **3 facts**
+counted 7 times:
 
-| 底层事实 | 越线的比较 | 次数 |
+| Underlying fact | Comparisons that cross the line | Count |
 |---|---|---|
-| 冻结神谕 base 把 L1 危害砍半（**同样三个种子** 2133017/2133021/2133026） | `oracle_vs_parent · died_on_L1`、`oracle-farm_vs_parent · died_on_L1` | 2 |
-| 神谕 base 两边窗就会**往下冲**（`oracle` 与 `oracle-pickup` 的两边窗是同一个 base） | `oracle_vs_parent · not_reached_L2`、`· not_reached_L3`、`oracle-pickup_vs_parent · not_reached_L2`、`· not_reached_L3` | 4 |
-| 把 DIVE 窗还给学生，神谕就不再冲下去送死 | `oracle-farm_vs_oracle · died` | 1 |
+| the frozen oracle base halves the L1 hazard (**the same three seeds** 2133017/2133021/2133026) | `oracle_vs_parent · died_on_L1`, `oracle-farm_vs_parent · died_on_L1` | 2 |
+| the oracle base on both window types **charges down** (`oracle` and `oracle-pickup` use the same base on both window types) | `oracle_vs_parent · not_reached_L2`, `· not_reached_L3`, `oracle-pickup_vs_parent · not_reached_L2`, `· not_reached_L3` | 4 |
+| once the DIVE windows go back to the student, the oracle no longer charges down and dies | `oracle-farm_vs_oracle · died` | 1 |
 
-**承载本轮 VERDICT 的那一个只比 0 线低 0.004**（−0.00437），
-且属于上表第一行——**它和第一轮是同一个统计**。
-再加上 §十四.2（2_133 池今晚又被消费了四次），
-**这个「95%」的标签比字面上要弱**。真正的解药是处女池复验
-（2_116-119 / 2_126-128 本轮零接触，§十二），已经写进 §十五.2。
+**The one comparison that carries this round's VERDICT is only 0.004 below the 0 line** (-0.00437) and belongs to
+the first row above: **it is the same statistic as round one's**. Add section 14.2 (pool 2_133 was consumed four
+more times in this round), and **this "95%" label is weaker than it reads**. The real remedy is replication on a
+fresh pool (2_116-119 / 2_126-128 untouched in this round, section 12), already written into section 15.2.
 
 | pair (event = the BAD thing) | saved | lost | net | UCB95 one-sided |
 |---|---|---|---|---|
@@ -431,18 +449,18 @@
      - oracle-pickup vs parent | not_reached_L3
      - oracle-farm vs oracle | died
 
-### 6.1 单种子敏感度（凡是 L1 类过线的都算一遍）
+### 6.1 Single-seed sensitivity (computed for every L1 comparison that crosses the line)
 
   oracle vs parent · died_on_L1: measured -0.00437; one saved->lost +0.03924; one saved->concordant +0.01156
   oracle-farm vs parent · died_on_L1: measured -0.00437; one saved->lost +0.03924; one saved->concordant +0.01156
 
-`ORACLE-FARM` 和 `ORACLE` 的 L1 胜利**是同一个统计**：
-两条臂的 L1 死亡种子集合完全相同（2133017 / 2133021 / 2133026，§10.2）。
-所以这条 95% 结论的脆弱程度和第一轮完全一样：**翻一个种子就没了**。
+`ORACLE-FARM`'s and `ORACLE`'s L1 wins **are the same statistic**: the two arms' L1 death seed sets are exactly the
+same (2133017 / 2133021 / 2133026, section 10.2). So this 95% result is exactly as fragile as in round one:
+**flip one seed and it is gone**.
 
 ---
 
-## 七、路由遥测：哪个 callable 服务了哪种窗
+## 7. Routing telemetry: which callable served which windows
 
 | arm | slot | role | farm beats | dive beats | resupply beats | forced-dive beats | unforced-dive beats | a12 | a13 |
 |---|---|---|---|---|---|---|---|---|---|
@@ -456,17 +474,17 @@
 | of-potion-contact | dive_slot | parent | 0 | 43980 | 0 | 30983 | 12997 | 24 | 170 |
 | oracle-pickup | farm_slot | oracle | 27176 | 27097 | 0 | 15095 | 12002 | 0 | 698 |
 
-三件事被这张表证死：
+This table settles three things:
 
-1. **合成臂的路由是真的**：`oracle-farm` / `of-potion` / `of-potion-contact`
-   三条臂里，神谕那一格的 `dive beats` 恒为 **0**，学生那一格的 `farm beats` 恒为 **0**。
-2. **RESUPPLY 窗从不经过 worker**：六条臂的 `resupply beats` 全部是 **0**。
-3. **强制下楼（forced_dive）的拍归属可以查**：例如合成臂 51624 个 DIVE 拍里
-   33901 拍落在 `mask_forced` 的窗里，全部由学生服务。
+1. **The composite arms' routing is real**: in `oracle-farm` / `of-potion` / `of-potion-contact`, the oracle
+   slot's `dive beats` is always **0** and the student slot's `farm beats` is always **0**.
+2. **RESUPPLY windows never go through a worker**: `resupply beats` is **0** in all six arms.
+3. **Ticks in forced dives (forced_dive) can be attributed**: for example, of the composite arm's 51624 DIVE ticks,
+   33901 fall in `mask_forced` windows, all served by the student.
 
 ---
 
-## 八、逐条消融：哪条帮、哪条害
+## 8. Clause-by-clause ablation: which helps, which hurts
 
 | telemetry | oracle | oracle-farm | of-potion | of-potion-contact | oracle-pickup |
 |---|---|---|---|---|---|
@@ -504,29 +522,29 @@
   of-potion-contact: disengage beats per episode {"n": 48, "total": 132, "min": 0, "max": 37, "median": 0.0, "mean": 2.8, "episodes_over_100": 0, "max_fraction_of_budget": 0.092, "episodes_shorter_than_budget": 8}
   oracle-pickup: disengage beats per episode {"n": 48, "total": 0, "min": 0, "max": 0, "median": 0.0, "mean": 0.0, "episodes_over_100": 0, "max_fraction_of_budget": 0.0, "episodes_shorter_than_budget": 5}
 
-**喝药条（害）**：249 次想喝，**132 次被 `drink_sovereignty` 掩码拒绝（53.0%）**，
-真喝到 117 次。第一轮的拒绝率是 71.3%，本轮低一些但仍然过半。
-代价是 L1 死亡 3 → 8、局末存活 28 → 20、杀伤 6353 → 5938。
-看 §十 的点名种子最直观：`2133027` 合成臂死在 L2 第 13774 拍（159 杀），
-加了喝药条之后**死在 L1 第 883 拍、clvl 1、20 杀、belt 0**；
-`2133029` 合成臂活着（189 杀），加喝药条后**死在 L1 第 2821 拍、belt 0**；
-`2133038` 同理（活着 → L1 第 1459 拍）。
-**它把 belt 提前烧掉，然后在 L1 早期空手送命。**
-（第一轮 §十 缺口 8 点名的 `2133027` / `2133029` 两局「零脱离拍却死在 L1」，
-**本轮的答案就是喝药条**：这两局在 `of-potion` 里脱离拍也是 0，照样死在 L1。）
+**Drink clause (harmful)**: 249 wanted drinks, **132 refused by the `drink_sovereignty` mask (53.0%)**, 117
+actually drunk. Round one's refusal rate was 71.3%; lower this round, but still more than half. The cost: L1
+deaths 3 -> 8, survival at game end 28 -> 20, kills 6353 -> 5938. The named seeds in section 10 show it most
+directly: `2133027` dies in the composite arm on L2 at tick 13774 (159 kills), but with the drink clause **dies on
+L1 at tick 883, clvl 1, 20 kills, belt 0**; `2133029` survives in the composite arm (189 kills) but with the drink
+clause **dies on L1 at tick 2821, belt 0**; `2133038` likewise (alive -> L1 at tick 1459). **It burns the belt
+early and then dies empty-handed early on L1.** (Round one's gap 8 in section 10 named `2133027` / `2133029` as
+the two games that "died on L1 with zero disengage ticks"; **this round's answer is the drink clause**: in
+`of-potion` these two games also have 0 disengage ticks and still die on L1.)
 
-**接触脱离条（几乎无效）**：193 拍触发、132 拍开火、
-**87/128 = 68.0% 原地没动**，实测分离增益 31 格 / 132 拍 = **0.235 格/拍**。
-第一轮是 0.180 格/拍、63.5% 不动；**去掉人群条只是把量从 859 拍降到 132 拍，
-毛病一点没治**。400 拍围栏本轮**一次都没够到**（单局最多 37 拍 = 围栏的 9.2%），
-8 局整局不到 400 个工人拍——**围栏这一轮仍然没有被测到**。
-对结果的影响：L1 死亡种子集合与 `of-potion` **完全相同**，局末存活 1 救 1 亏。
+**Contact disengage clause (nearly ineffective)**: 193 trigger ticks, 132 firing ticks, **87/128 = 68.0% did not
+move**, measured separation gain 31 tiles / 132 ticks = **0.235 tiles/tick**. Round one had 0.180 tiles/tick and
+63.5% not moving; **removing the crowd condition only reduced the volume from 859 ticks to 132, without curing the
+defect**. The 400-tick fence was **never reached** in this round (at most 37 ticks in one game = 9.2% of the
+fence), and 8 games had fewer than 400 worker ticks in total, so **the fence is again untested in this round**.
+Effect on results: the L1 death seed set is **exactly the same** as `of-potion`, and survival at game end is one
+saved, one lost.
 
-**拾药条（对 L1 无害，但炸窗口）**：见 §九。
+**Pickup clause (harmless on L1, but blows up the window count)**: see section 9.
 
 ---
 
-## 九、RESUPPLY 窗口爆炸：归因定案
+## 9. RESUPPLY window explosion: attribution settled
 
 | arm | windows total | farm | dive | resupply | forced_dive | a13 total (both slots) | a12 total | env beats (all windows) | farm+dive beats | worker calls | worker_no_effect_requests (farm+dive) | no-effect share (farm+dive beats) | no-effect share (per worker call) | no-effect share (OLD, all windows -- NOT comparable) |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
@@ -552,70 +570,74 @@
   round1 oracle: windows total 4396, resupply 1735, a13 909, a12 n/a, alive 12, l1_deaths 3
   round1 teacher-v1: windows total 10244, resupply 7605, a13 2088, a12 159, alive 7, l1_deaths 10
 
-**结论：`ORACLE-PICKUP` 一条就复现了第一轮的整个窗口爆炸。**
-神谕 base 两边窗 ＋ **只加拾药条** → RESUPPLY 窗 1735 → **7761**、
-总窗 4396 → **10560**、`mask_forced` 2453 → **8426**；
-第一轮三条本能条一起上是 7605 / 10244 / 8293。**几乎逐位重现。**
+**Conclusion: `ORACLE-PICKUP` alone reproduces round one's entire window explosion.** The oracle base on both
+window types + **the pickup clause only** -> RESUPPLY windows 1735 -> **7761**, total windows 4396 -> **10560**,
+`mask_forced` 2453 -> **8426**; round one, with all three instinct clauses, had 7605 / 10244 / 8293. **Almost an
+exact reproduction.**
 
-**机制**（引擎代码 ＋ 本轮审计，两头对得上）：
+**Mechanism** (engine code + this round's audit, and the two agree; line numbers as of that work tree):
 
-- `options_env.py:1082`：`m[RESUPPLY] = bool(controller_mask[13])`——
-  **RESUPPLY 窗合法 ⟺ a13 合法**（半径 12 内有可见可达的药）。
-- `options_env.py:411-422` `_farm_handoff`：**有剧情目标且半径 6 内无可战怪 ⇒ `m[FARM] = False`**。
-- `resource_option_choice`（`:1422`）在不下楼时按 `FARM → RESUPPLY → DIVE` 取第一个合法项。
-- 拾药条是个**多拍走路宏**：它把角色从怪身边带走去捡地上的药。
-  一旦走开，`_farm_handoff` 成立 → FARM 被掩码 → 药还在地上（a13 仍合法）→
-  **经理只剩 RESUPPLY 可选** → 脚本服务跑一扇极短的窗 → 收窗 → 重复。
-- 数字对得上：`ORACLE-PICKUP` 的 RESUPPLY 是 75501 拍 / 7761 扇 = **9.7 拍一扇**，
-  神谕是 62616 / 1735 = **36.1 拍一扇**——**扇数炸了，每扇变短**，正是这个循环的形状。
-  而且只有这条臂的 RESUPPLY 窗里出现了 `fuse_trips 427` 与 `no_effect_requests 10693`
-  （其余五条臂的 RESUPPLY 这两项都是 0）——**脚本服务在空转**。
+- `options_env.py:1082`: `m[RESUPPLY] = bool(controller_mask[13])`: **a RESUPPLY window is legal if and only if
+  a13 is legal** (a visible, reachable potion within radius 12).
+- `options_env.py:411-422`, `_farm_handoff`: **a story target exists and no fightable monster within radius 6 =>
+  `m[FARM] = False`**.
+- `resource_option_choice` (`:1422`), when not descending, takes the first legal item in the order
+  `FARM -> RESUPPLY -> DIVE`.
+- The pickup clause is a **multi-tick walking macro**: it takes the character away from the monsters to pick up a
+  potion from the floor. Once away, `_farm_handoff` holds -> FARM is masked -> the potion is still on the floor
+  (a13 still legal) -> **the manager has only RESUPPLY left** -> the scripted service runs a very short window ->
+  the window closes -> repeat.
+- The numbers agree: `ORACLE-PICKUP`'s RESUPPLY is 75501 ticks / 7761 windows = **9.7 ticks per window**, the
+  oracle's 62616 / 1735 = **36.1 ticks per window**: **many more windows, each shorter**, exactly the shape of
+  this loop. And only this arm's RESUPPLY windows show `fuse_trips 427` and `no_effect_requests 10693` (both are 0
+  in the RESUPPLY windows of the other five arms): **the scripted service is spinning idle**.
 
-**一个必须说出来的反直觉事实**：爆炸**不是** a13 变多造成的。
-`ORACLE-PICKUP` 的 a13 总数是 **698**，比不带拾药条的 `ORACLE` 的 **909 还少**
-（拾药条开火 695 次、被接触挡掉 736 次；冻结 base 自己只剩 3 次想要 a13）。
-**所以第一轮「a13 从 857 涨到 2088，所以是拾药条」的推理链条是错的，结论碰巧是对的**：
-真正的原因是**这个宏把角色带离怪群**，不是它按了多少次。
+**A counter-intuitive fact that must be stated**: the explosion is **not** caused by more a13 presses.
+`ORACLE-PICKUP`'s a13 total is **698**, **fewer** than the **909** of `ORACLE` without the pickup clause (the pickup
+clause fires 695 times and is blocked by contact 736 times; the frozen base itself asks for a13 only 3 more times).
+**So round one's chain of reasoning, "a13 rose from 857 to 2088, so it is the pickup clause", was wrong, and its
+conclusion happened to be right**: the real cause is that **this macro leads the character away from the
+monsters**, not how many times it presses.
 
-**神谕在 DIVE 窗里的空转**（同一张审计表，另一条更重要的读数）：
+**The oracle idling in DIVE windows** (same audit table, another and more important reading):
 
-| 臂 | DIVE 窗拍数 | 真执行 | 空请求 | fuse | 真执行率 |
+| Arm | DIVE window ticks | executed | empty requests | fuse | execution rate |
 |---|---|---|---|---|---|
 | parent | 41278 | 28941 | 10708 | 213 | **70.1%** |
 | **oracle** | 18514 | **4298** | 14216 | 567 | **23.2%** |
-| **oracle-farm**（DIVE 归学生） | 51676 | 37939 | 11748 | 200 | **73.4%** |
+| **oracle-farm** (DIVE goes to the student) | 51676 | 37939 | 11748 | 200 | **73.4%** |
 | oracle-pickup | 27167 | 4629 | 22538 | 899 | **17.0%** |
 
-**神谕的 DIVE 窗有 77% 的拍是没有效果的请求。**
-这是「神谕会打架、不会下楼」的定量形状，也是合成臂为什么有效的机制解释。
-（这张小表一直用的是**逐窗种**的分母，所以它是对的；被复核轮挑出来的是上面那张大表的
-**总计**那一列，见下。）
+**77% of the oracle's DIVE-window ticks are requests with no effect.** This is the quantitative shape of "the
+oracle can fight but cannot go downstairs", and the mechanistic explanation of why the composite arm works. (This
+small table always used the **per-window-type** denominator, so it is correct; what the review round flagged was
+the **total** column of the large table above, see below.)
 
-**分母更正（复核轮 finding 1）**：§九 大表原先只有一列「no-effect share」，
-分母是 env 在**全部三种窗**上的拍数——**RESUPPLY 也算在内，而 RESUPPLY 窗根本不叫 worker**
-（`options_env.py:2815` 对 option 2 没有条目；逐窗审计里六条臂的 resupply
-`worker_no_effect_requests` 全是 0）。RESUPPLY 占全部拍数的比例在各臂之间差得很远
-（parent 46%、oracle-pickup 58%），**所以那一列恰恰在它被印出来做比较的那些臂之间不可比**。
-现在表里印四个分母，旧的那一列保留但改名并标注不可比：
+**Denominator correction (review-round finding 1)**: the large table in section 9 originally had a single
+"no-effect share" column whose denominator was the env's ticks over **all three window types**, **including
+RESUPPLY, and RESUPPLY windows never call a worker** (`options_env.py:2815` has no entry for option 2; in the
+per-window audit the resupply `worker_no_effect_requests` is 0 in all six arms). The RESUPPLY share of all ticks
+differs a lot between arms (parent 46%, oracle-pickup 58%), **so that column is not comparable exactly between the
+arms it was printed to compare**. The table now prints four denominators; the old column is kept but renamed and
+marked as not comparable:
 
-- **env beats (all windows)**：旧口径，仅作存档；
-- **farm+dive beats**：worker 拥有的窗里的全部拍（含脚本拍）；
-- **worker calls**：worker callable**真正被问了多少次**——由两个 `WorkerProbe` 直接数出来，
-  并由 env 自己的账 `beats + fuse_trips − drain_attempts − recovery_actions` 逐窗复算对上
-  （`teacher_v2.observing_env_class()._AUDIT_IDENTITY`，由 `test_teacher_v2.routing_real`
-  在一整局真实局上逐窗钉死）；
-- 相应的两列 share。
+- **env beats (all windows)**: the old criterion, archive only;
+- **farm+dive beats**: all ticks in worker-owned windows (including scripted ticks);
+- **worker calls**: how many times the worker callable **was actually asked**, counted directly by the two
+  `WorkerProbe`s and recomputed window by window from the env's own ledger
+  `beats + fuse_trips - drain_attempts - recovery_actions`
+  (`teacher_v2.observing_env_class()._AUDIT_IDENTITY`, pinned window by window on a whole real game by
+  `test_teacher_v2.routing_real`);
+- the two corresponding share columns.
 
-**换成诚实分母之后，名次和倍数都变了**：
-parent 0.1876、oracle **0.4424**、oracle-farm 0.3033、of-potion 0.2740、
-of-potion-contact 0.2662、oracle-pickup **0.5021**。
-旧口径下 oracle-farm 0.1606 对 oracle-pickup 0.2105 看起来是 1.3 倍，
-**真实的 worker 侧差距是 1.7 倍**。
-（结论不因此改变：§零 的机制论证用的一直是逐窗种分母 18514 / 4298。）
+**With the honest denominator, the ranking and ratios change**: parent 0.1876, oracle **0.4424**, oracle-farm
+0.3033, of-potion 0.2740, of-potion-contact 0.2662, oracle-pickup **0.5021**. Under the old criterion oracle-farm
+0.1606 vs oracle-pickup 0.2105 looked like 1.3 times; **the real worker-side gap is 1.7 times**. (The conclusion
+does not change: the mechanism argument in section 0 always used the per-window-type denominator 18514 / 4298.)
 
 ---
 
-## 十、点名的种子
+## 10. Named seeds
 
 | seed | parent | oracle | oracle-farm | of-potion | of-potion-contact | oracle-pickup |
 |---|---|---|---|---|---|---|
@@ -630,7 +652,7 @@ of-potion-contact 0.2662、oracle-pickup **0.5021**。
 | 2133027 | DIED L2@12214 belt0, depth 2, kills 125, clvl 3 | DIED L4@7254 belt4, depth 4, kills 119, clvl 3 | DIED L2@13774 belt3, depth 2, kills 159, clvl 4 | DIED L1@883 belt0, depth 1, kills 20, clvl 1 | DIED L1@883 belt0, depth 1, kills 20, clvl 1 | DIED L4@7341 belt4, depth 4, kills 118, clvl 3 |
 | 2133029 | DIED L2@9762 belt8, depth 2, kills 121, clvl 3 | DIED L2@12293 belt0, depth 2, kills 141, clvl 4 | alive, depth 2, kills 189, clvl 5 | DIED L1@2821 belt0, depth 1, kills 68, clvl 2 | DIED L1@2821 belt0, depth 1, kills 68, clvl 2 | DIED L2@12714 belt0, depth 2, kills 142, clvl 4 |
 
-### 10.1 点名种子上的逐条本能活动
+### 10.1 Clause activity on the named seeds
 
   2133002 oracle: potion 0(refused 0) pickup 0 disengage 0 moved 0/0
   2133002 oracle-farm: potion 0(refused 0) pickup 0 disengage 0 moved 0/0
@@ -683,7 +705,7 @@ of-potion-contact 0.2662、oracle-pickup **0.5021**。
   2133029 of-potion-contact: potion 3(refused 0) pickup 0 disengage 0 moved 0/0
   2133029 oracle-pickup: potion 0(refused 0) pickup 18 disengage 0 moved 0/0
 
-### 10.2 L1 死亡的种子与当时的等级
+### 10.2 L1 death seeds and the character level at death
 
   parent: 8 L1 deaths -> [(2133008, 2, 0), (2133009, 2, 0), (2133015, 3, 0), (2133017, 1, 0), (2133023, 3, 0), (2133024, 2, 0), (2133039, 2, 0), (2133044, 1, 0)]
   oracle: 3 L1 deaths -> [(2133017, 1, 0), (2133021, 2, 0), (2133026, 1, 0)]
@@ -692,13 +714,12 @@ of-potion-contact 0.2662、oracle-pickup **0.5021**。
   of-potion-contact: 8 L1 deaths -> [(2133009, 2, 0), (2133021, 1, 0), (2133027, 1, 0), (2133029, 2, 0), (2133033, 3, 0), (2133038, 2, 0), (2133039, 2, 0), (2133041, 1, 0)]
   oracle-pickup: 4 L1 deaths -> [(2133011, 2, 0), (2133021, 2, 0), (2133026, 1, 0), (2133036, 2, 0)]
 
-`ORACLE` 与 `ORACLE-FARM` 的三个 L1 死亡种子**完全相同**；
-`OF-POTION` 与 `OF-POTION-CONTACT` 的八个也**完全相同**。
-所有 L1 死亡（六条臂共 34 局）**无一例外 belt = 0**。
+`ORACLE`'s and `ORACLE-FARM`'s three L1 death seeds are **exactly the same**; so are the eight of `OF-POTION` and
+`OF-POTION-CONTACT`. Every L1 death (34 games across the six arms) has **belt = 0, without exception**.
 
 ---
 
-## 十一、杀伤与深度有没有被打崩
+## 11. Were kills and depth wrecked?
 
 | arm | alive | kills_total | depth_mean | L3 reach | clvl_ge_4 | median micro_steps |
 |---|---|---|---|---|---|---|
@@ -709,156 +730,156 @@ of-potion-contact 0.2662、oracle-pickup **0.5021**。
 | of-potion-contact | 20 | 5917 | 1.833 | 4 | 26 | 12083.5 |
 | oracle-pickup | 9 | 5295 | 2.812 | 29 | 24 | 9268.5 |
 
-`ORACLE-FARM`：存活 28（＝学生）、杀伤 6353（＞学生 5550）、clvl≥4 31 局（＞学生 18）、
-中位微拍 13420（＞学生 12000）。**没有任何一项被打崩，多数项还更好。**
-`OF-POTION` / `OF-POTION-CONTACT`：存活掉到 20，杀伤仍高于学生。
-`ORACLE-PICKUP`：存活 9、杀伤 5295，**和第一轮神谕一样是「冲下去送死」的形状**。
+`ORACLE-FARM`: alive 28 (= student), kills 6353 (> student's 5550), 31 games with clvl >= 4 (> student's 18),
+median micro-steps 13420 (> student's 12000). **Nothing is wrecked, and most items are better.**
+`OF-POTION` / `OF-POTION-CONTACT`: survival drops to 20, kills still above the student.
+`ORACLE-PICKUP`: alive 9, kills 5295, **the same "charge down and die" shape as round one's oracle**.
 
 ---
 
-## 十二、只读证明与种子枚举
+## 12. Read-only proof and seed enumeration
 
   distinct seeds across every round-2 artefact: 48, min 2133000, max 2133047
   contiguous 2133000-2133047: True
   any seed in virgin pools 2_116-119 / 2_126-128: False
   seeds per arm: {'parent': 48, 'oracle': 48, 'oracle-farm': 48, 'of-potion': 48, 'of-potion-contact': 48, 'oracle-pickup': 48}
 
-- 主树 `tree_fp.sh` 指纹（283 项 ＋ build 链接 ＋ `_diablogym*.so`）
-  在本轮开工前与收工后**逐字节相同**：`round2/main-tree-fingerprint-{mid,after}.txt`
-  与 `r19/main-tree-fingerprint-before-round2.txt` `diff` 为空。
-- `m2-merge`、`oracle-tree` 在本轮时间窗内**没有任何文件被修改**（`find -newermt` 为空）。
-- `oracle2-tree` 里的 `teacher_v1.py` / `test_teacher_v1.py` 的 sha256
-  与 `oracle-tree` 的**逐位相同**（`65c1a14f…` / `f12d94d9…`）。
-- 本轮全部产物里出现的种子：**恰好 48 个，2133000–2133047 连续**，
-  与处女池 2_116-119 / 2_126-128 的交集为**空**。
+- The main-tree `tree_fp.sh` fingerprint (283 entries + the build link + `_diablogym*.so`) is **byte-identical**
+  before and after this round: `diff` of `round2/main-tree-fingerprint-{mid,after}.txt` against
+  `main-tree-fingerprint-before-round2.txt` is empty.
+- In `m2-merge` and `oracle-tree`, **no file was modified** during this round (`find -newermt` is empty).
+- The sha256 of `teacher_v1.py` / `test_teacher_v1.py` in `oracle2-tree` is **bit-identical** to `oracle-tree`
+  (`65c1a14f…` / `f12d94d9…`).
+- Seeds appearing in all outputs of this round: **exactly 48, contiguous 2133000-2133047**, with an **empty**
+  intersection with the fresh pools 2_116-119 / 2_126-128.
 
 ---
 
-## 十三、单元卷（`round2/tests-full-review.log`，85 项全过、0 项失败）
+## 13. Unit tests (`round2/tests-full-review.log`, 85 pass, 0 fail)
 
-| 组 | 覆盖 |
+| Group | Coverage |
 |---|---|
-| 路由（合成） | `workers` 只有 FARM/DIVE 两项、两格是不同 callable、FARM 是神谕/DIVE 是学生、RESUPPLY 无 worker；驱动 FakeEnv 逐窗验证「哪个 callable 服务了哪种窗」；`on_beat` 扇出且每拍恰好一次；`episode_reseed` 扇出到学生；action-12 契约；`bind` 拒绝 `drink_sovereignty` 不一致的 env；路由对象拒绝被当 worker 调用 |
-| 路由（真实局）**复核轮加严** | 一整局真 `OptionsEnv`：神谕格只有 farm 拍、学生格只有 dive 拍、`resupply` 拍为 0、观测 env 的窗口账与探针窗口账一致、`forced_dive` 可按 `window_id` 连接；**并且**（复核轮 finding 2 之前是三条弱断言）：两格的拍数**等于** env 自己的 worker 调用账 `beats + fuse_trips − drain_attempts − recovery_actions`；学生格服务的窗口 id 集合与 env 的 dive 窗口集合**集合相等**、神谕格与 farm 窗口集合**集合相等**；每一扇 farm/dive 窗**逐窗**满足那条恒等式；探针计到的窗 ＋ 零调用窗 ＝ 探针窗口数；RESUPPLY 窗有拍但 env 自己的 worker 计数器全 0 |
-| 排名等价（复核轮新增） | `_disengage_move_contact` 是冻结 `TeacherV1._disengage_move` 去掉楼梯 tie-break 的手抄本：**1200 个随机状态上两者动作与增益逐个相同**（在 `STAIRS_TIEBREAK_RADIUS` 内没有上楼梯时），且在有楼梯时两者**必须不同**（否则该测试是空的）——所以下一轮谁改了冻结的排名，这条会红 |
-| 臂名遥测（复核轮新增） | 三条条款臂的 `telemetry["variant"]` 是**臂名**而不是底座名 `oracle`（finding 7），`oracle` / `oracle-farm` 仍报 `oracle` |
-| 条款真值表 | 喝药（belt/0.60 严格小于/掩码拒绝计数）、拾药（Chebyshev 1 边界、半径 2 不挡、暗处怪不挡）、接触脱离（0.35 双边界、**人群不触发**、**楼梯不改变选择**、地形筛选含 hazard/door、条款次序、400 拍安全帽）、gear-grace 仍由冻结的第 0 层回答、每条臂只跑自己的条款 |
-| 合法性 | 3 套条款 × 900 个随机状态 = **2700** 个状态，emit 的动作**永远在掩码内** |
-| 确定性 | 四条新臂，每条同一种子跑两遍，**动作序列逐位相同、`rows_sha_v3` 相同** |
+| routing (synthetic) | `workers` has only the FARM/DIVE entries, the two slots are different callables, FARM is the oracle and DIVE the student, RESUPPLY has no worker; a FakeEnv driver checks window by window "which callable served which window"; `on_beat` fans out and fires exactly once per tick; `episode_reseed` fans out to the student; the action-12 contract; `bind` rejects an env with inconsistent `drink_sovereignty`; the routing object refuses to be called as a worker |
+| routing (real game) **tightened in the review round** | one whole real `OptionsEnv` game: the oracle slot has only farm ticks, the student slot only dive ticks, `resupply` ticks are 0, the observing env's window ledger agrees with the probe's, `forced_dive` can be joined by `window_id`; **and** (before review finding 2 these were three weak assertions): each slot's tick count **equals** the env's own worker-call ledger `beats + fuse_trips - drain_attempts - recovery_actions`; the set of window ids served by the student slot is **set-equal** to the env's dive windows, and the oracle slot's to the farm windows; every farm/dive window satisfies the identity **window by window**; windows counted by the probe + zero-call windows = the probe's window count; RESUPPLY windows have ticks but the env's own worker counters are all 0 |
+| ranking equivalence (new in the review round) | `_disengage_move_contact` is a hand copy of the frozen `TeacherV1._disengage_move` without the stairs tiebreak: **on 1200 random states both give identical actions and gains** (when there is no up staircase within `STAIRS_TIEBREAK_RADIUS`), and with stairs present they **must differ** (otherwise the test is vacuous), so if anyone changes the frozen ranking in a later round, this test turns red |
+| arm-name telemetry (new in the review round) | the three clause arms' `telemetry["variant"]` is the **arm name**, not the base name `oracle` (finding 7); `oracle` / `oracle-farm` still report `oracle` |
+| clause truth tables | drink (belt / strictly below 0.60 / mask-refusal count), pickup (Chebyshev 1 boundary, radius 2 does not block, monsters in darkness do not block), contact disengagement (both 0.35 boundaries, **the crowd does not trigger**, **stairs do not change the choice**, terrain filter including hazard/door, clause order, 400-tick safety cap), gear grace still answered by the frozen layer 0, each arm runs only its own clauses |
+| legality | 3 clause sets x 900 random states = **2700** states; emitted actions are **always inside the mask** |
+| determinism | each of the four new arms run twice on the same seed: **bit-identical action sequences, identical `rows_sha_v3`** |
 
-**一处必须自曝的记录错误（第一遍就自曝过，这里保留）**：ledger 的
-`R19_TEACHER_ROUND2_BUILT` 那条里，`tests` 字段写的是
-「Full run (incl. two real-episode legs): ==== 54 passed ====」，
-那个 54 其实是 `--no-episode` 那一腿的数。
-第一遍的完整单元卷是 **70 项全过**（`round2/tests-full.log`），
-复核轮加严并新增之后是 **85 项全过**（`round2/tests-full-review.log`）。
-ledger 只能追加不能改，所以更正写在 `R19_TEACHER_ROUND2_RESULT` 的 `corrections` 字段里，
-本轮的数写在 `R19_TEACHER_ROUND2_REVIEW_ROUND` 里，也写在这里。
-**本报告里的两个测试计数都是从日志里读出来的，不是手打的**（`mk_report._tests`）。
+**A recording error that must be disclosed (already disclosed in the first pass, kept here)**: in the ledger
+entry `R19_TEACHER_ROUND2_BUILT`, the `tests` field says "Full run (incl. two real-episode legs): ==== 54 passed
+====", but 54 is the count of the `--no-episode` leg. The first pass's full unit-test run is **70 passing**
+(`round2/tests-full.log`), and after the review round tightened and added tests it is **85 passing**
+(`round2/tests-full-review.log`). The ledger is append-only, so the correction is in the `corrections` field of
+`R19_TEACHER_ROUND2_RESULT`, and this round's count is in `R19_TEACHER_ROUND2_REVIEW_ROUND` as well as here.
+**Both test counts in this report are read from the logs, not typed by hand** (`mk_report._tests`).
 
 ---
 
-## 十四、方法学缺口（自曝）
+## 14. Methodological gaps (self-reported)
 
-1. **合成臂里装着学生。** `ORACLE-FARM` 不是一个纯脚本老师：它的 DIVE 窗就是学生本人。
-   作为 BC/DAgger 的老师它是合法的（它是一个 worker callable），
-   但**它能教给学生的只有 FARM 窗里的行为**；DIVE 窗上它和学生逐位相同，没有信息可教。
-   「老师赢了学生」这句话的准确版本是：
-   **「神谕的 FARM 内环 ＋ 学生的 DIVE 行为」赢了「学生的 FARM ＋ 学生的 DIVE」。**
-2. **那条 L1 胜利只比线低 0.004，且与第一轮是同一个统计**（同样三个种子）。
-   2_133 池今晚又被消费了 **4 次**（四条新臂），加上第一轮/复核轮已经很多次。
-   **在处女池上复验之前不要建任何东西在它上面。**
-3. **「局末存活」在深度不同的两条臂之间仍然不是公平的问句**，
-   §5.1 的逐层危害表与「未到达 L2/L3」配对是补救，但没有跑「钉在同一深度」的匹配臂。
-4. **接触脱离条仍有 68% 的拍原地不动**，本轮只是把量降下来；
-   最可能的剩余原因仍是**落点上站着怪**，而读 `local_map["monster"]` 会突破
-   「只看可见怪」的宪章——**要不要允许，仍然上呈**。
-5. **400 拍围栏第三轮仍然没有被够到**（本轮单局最多 37 拍），
-   8 局整局不到 400 个工人拍。**这个数合不合适仍然没有测到。**
-6. **跨窗结算**：合成臂里神谕只服务 FARM 窗，所以在一扇 FARM 窗最后一拍开火的脱离，
-   要等下一扇 FARM 窗才能结算「到底走动了没有」。本轮加了计数：
-   128 次结算里 **127 次同窗、1 次跨窗**，所以这个偏差可以忽略——但它是存在的，记在这里。
-7. **`grace_decisions = 0`、`base_fallbacks = 0` 两轮零对局证据**，只有单元卷覆盖。
-8. ~~**引擎窗口账与探针拍账差 1**~~ —— **复核轮已结清，不再是缺口**。
-   那个差额现在有精确的名字和精确的账：worker 拥有的窗里 `_win_beat` 只从三处被调用
-   （脑干排水 `drain_attempts`、worker 自己的一拍、上一次 fuse 之后开窗那一拍脚本恢复
-   `recovery_actions`），而跳闸的一拍在 `w["beats"] += 1` 之前就返回了，于是
-   **worker_calls + drain_attempts + recovery_actions == beats + fuse_trips**。
-   六条臂上这条恒等式逐臂闭合（`env_audit.worker_calls_ledger_closes`），
-   真实局上逐窗闭合（§十三）。§九 的表现在同时印 env 口径与 worker 口径，
-   并明说旧那一列不可比（finding 1）。
-   （本轮世界里 `resource_emergency_stop` 是 `off`，所以 `options_env.py:2044`
-   的 stop-v1 脚本尾巴一拍都没跑；若哪天打开，这条恒等式需要第四项。）
-9. `sweep_gold` 六条臂皆 0（遥测口径问题，与第一轮相同），本轮不追。
-10. **只测了一个世界（M2-SET）、一个池、48 个种子、`sample` 解码。** 没有别的。
-11. **36 个配对检定没有做多重性校正**，越线的 7 个其实只是 3 件事（§六）。
-12. **`_disengage_move_contact` 仍然是冻结排名的第二份拷贝**：复核轮加了一条
-    1200 状态的等价测试把两份钉在一起（§十三），但**没有合并成一份**——
-    合并要动冻结的 `teacher_v1.py`，本轮明令不许动。
-    真正没修的老毛病仍然是那 **68% 原地不动**（见上面第 4 条）。
-
----
-
-## 十五、给主席的建议（不是裁定）
-
-1. **第一步过了，但过的是合成臂，不是纯脚本老师。**
-   按裁定，「老师打赢父代」是 BC/DAgger 的前置闸。
-   `ORACLE-FARM` 在 L1 死亡上过线（3 对 8，UCB95 −0.00437），
-   **且没有牺牲局末存活（28 对 28）或杀伤（＋14.5%）**。
-   但它的 DIVE 窗就是学生（§十四.1）。
-   **建议：可以走第二步，但演示数据只取 FARM 窗的决策**——
-   那才是老师真正多出来的东西。
-2. **先在处女池上复验那条 L1 结论。** 它只比线低 0.004，翻一个种子就没了，
-   而且和第一轮是同一个统计。**这是我认为最该先做的一件事。**
-3. **喝药条建议直接砍掉，不要调参。**
-   本轮证明它一条就把整个 L1 胜利吃光（3 → 8），
-   而且 53% 的想喝被掩码拒绝——**它真正需要的是动 `drink_sovereignty` 的安全包络，
-   那是法条改动，本轮明令不许碰**。在那之前，`0.60` 这条规则在 M2-SET 世界里
-   只会做一件事：**把 belt 提前烧光**。
-4. **接触脱离条建议也砍掉。** 它在同一个 base 上什么都没改变
-   （L1 死亡种子集合一模一样），而 68% 的拍原地不动这个老毛病还在。
-   要再试，仍然需要 §十四.4 的那条裁定（允不允许读物理占位通道）。
-5. **拾药条：不要在「本能层」里做。** 它对 L1 无害，
-   但它和 `m[RESUPPLY] = controller_mask[13]` ＋ `_farm_handoff` 一起
-   形成了一个**每扇 9.7 拍的 RESUPPLY 空转循环**（7761 扇）。
-   捡药这件事本来就是脚本服务的职权；让 worker 也去捡，只会让经理反复开短窗。
-   **如果还想要它，该改的是经理侧的开窗条件，那是法条，不是老师。**
-6. **下一轮如果只能做一件事**：把 `ORACLE-FARM` 原样搬到一个处女池上复验 L1
-   （不改任何代码，只换池）。本轮的 `teacher_v2.py` 与驱动可以直接复用。
+1. **The composite arm contains the student.** `ORACLE-FARM` is not a pure scripted teacher: its DIVE windows are
+   the student itself. As a BC/DAgger teacher it is legitimate (it is a worker callable), but **it can teach the
+   student only its FARM-window behaviour**; in DIVE windows it is bit-identical to the student and has nothing to
+   teach. The accurate version of "the teacher beat the student" is: **"the oracle's FARM inner loop + the
+   student's DIVE behaviour" beat "the student's FARM + the student's DIVE".**
+2. **That L1 win is only 0.004 below the line, and it is the same statistic as round one** (the same three seeds).
+   Pool 2_133 was consumed **4 more times** in this round (the four new arms), on top of many times in round one
+   and its review. **Build nothing on it before it is replicated on a fresh pool.**
+3. **"Alive at game end" is still not a fair question between arms of different depth**; the per-floor hazard
+   table in section 5.1 and the "did not reach L2/L3" pairings are remedies, but no matched arm "pinned to the same
+   depth" was run.
+4. **The contact disengage clause still does not move on 68% of its ticks**; this round only reduced its volume.
+   The most likely remaining cause is still **a monster standing on the target tile**, and reading
+   `local_map["monster"]` would break the "visible monsters only" charter; **whether to allow it is still
+   escalated**.
+5. **The 400-tick fence was not reached in the third round either** (at most 37 ticks in one game in this round),
+   and 8 games had fewer than 400 worker ticks in total. **Whether the number is right is still untested.**
+6. **Cross-window settlement**: in the composite arm the oracle serves only FARM windows, so a disengagement fired
+   on the last tick of a FARM window can only be settled ("did it actually move?") in the next FARM window. This
+   round added a counter: of 128 settlements, **127 were in the same window and 1 crossed windows**, so the bias is
+   negligible, but it exists and is recorded here.
+7. **`grace_decisions = 0` and `base_fallbacks = 0`: zero game evidence in both rounds**, covered only by unit
+   tests.
+8. ~~**The engine window ledger and the probe tick ledger differ by 1**~~: **settled in the review round, no longer
+   a gap.** The difference now has an exact name and an exact account: in worker-owned windows `_win_beat` is
+   called from only three places (the brainstem drain `drain_attempts`, the worker's own tick, and the scripted
+   recovery tick when a window opens after the previous fuse, `recovery_actions`), and a tripped tick returns before
+   `w["beats"] += 1`, so **worker_calls + drain_attempts + recovery_actions == beats + fuse_trips**. This identity
+   closes on every arm (`env_audit.worker_calls_ledger_closes`) and window by window on a real game (section 13).
+   The table in section 9 now prints both the env criterion and the worker criterion and says explicitly that the
+   old column is not comparable (finding 1). (In this round's world `resource_emergency_stop` is `off`, so the
+   stop-v1 scripted tail in `options_env.py` (then line 2044) never ran a tick; if it is ever turned on, this
+   identity needs a fourth term.)
+9. `sweep_gold` is 0 in all six arms (a telemetry definition issue, as in round one); not pursued in this round.
+10. **Only one world (M2-SET), one pool, 48 seeds and `sample` decoding were tested.** Nothing else.
+11. **The 36 paired tests have no multiplicity correction**; the 7 that cross the line are really only 3 facts
+    (section 6).
+12. **`_disengage_move_contact` is still a second copy of the frozen ranking**: the review round added a
+    1200-state equivalence test pinning the two copies together (section 13), but **did not merge them into one**;
+    merging would mean touching the frozen `teacher_v1.py`, which this round was explicitly not allowed to do. The
+    old defect that is really still unfixed is the **68% not moving** (item 4 above).
 
 ---
 
-## 十六、复核轮（REVIEW ROUND，2026-09-11 00:22–01:27）
+## 15. Recommendations (not rulings)
 
-独立复核给出 **7 条 finding，全部为报告／测试／取证卫生，`verdict: ship`，
-没有一条改变任何数字或结论**。复核轮把 7 条**全部**修了，
-并且因为其中两条动到了遥测，**六条臂全部重跑**。
+1. **Step one passed, but through the composite arm, not a pure scripted teacher.** Per the ruling, "the teacher
+   beats the parent" is the precondition gate for BC/DAgger. `ORACLE-FARM` clears the line on L1 deaths (3 vs 8,
+   UCB95 -0.00437) **without sacrificing survival at game end (28 vs 28) or kills (+14.5%)**. But its DIVE windows
+   are the student (section 14.1). **Recommendation: step two can proceed, but the demonstration data should take
+   only FARM-window decisions**, which is what the teacher really adds.
+2. **First replicate the L1 result on a fresh pool.** It is only 0.004 below the line, one seed flip removes it,
+   and it is the same statistic as round one. **This is what I think should be done first.**
+3. **Recommendation: drop the drink clause outright, do not tune it.** This round shows that on its own it wipes
+   out the whole L1 win (3 -> 8), and 53% of the wanted drinks are refused by the mask. **What it really needs is a
+   change to the safety envelope of `drink_sovereignty`, a rule change this round was explicitly not allowed to
+   make.** Until then the `0.60` rule does only one thing in the M2-SET world: **burn the belt early**.
+4. **Recommendation: drop the contact disengage clause too.** On the same base it changes nothing (the L1 death
+   seed set is exactly the same), and the old defect of 68% of ticks not moving is still there. Trying again
+   still needs the ruling in section 14.4 (whether the physical occupancy channel may be read).
+5. **Pickup clause: do not do it in the "instinct layer".** It is harmless on L1, but together with
+   `m[RESUPPLY] = controller_mask[13]` + `_farm_handoff` it forms a **RESUPPLY idle loop of 9.7 ticks per window**
+   (7761 windows). Picking up potions is already the scripted service's job; letting the worker do it too only
+   makes the manager open short windows over and over. **If it is still wanted, what should change is the
+   manager-side window-opening condition, which is a rule, not the teacher.**
+6. **If the next round can do only one thing**: move `ORACLE-FARM` unchanged to a fresh pool and replicate L1 (no
+   code change, only a different pool). This round's `teacher_v2.py` and driver can be reused directly.
 
-### 16.1 逐条
+---
 
-| # | 级别 | 问题 | 处置 |
+## 16. Review round (REVIEW ROUND, 2026-09-11)
+
+The independent review gave **7 findings, all about report / test / evidence hygiene, `verdict: ship`, none
+changing any number or conclusion**. The review round fixed **all** 7, and because two of them touched telemetry,
+**all six arms were rerun**.
+
+### 16.1 One by one
+
+| # | Level | Issue | Action |
 |---|---|---|---|
-| 1 | medium | §九 的 `no-effect share` 分母是**全部三种窗**的拍数，含从不叫 worker 的 RESUPPLY；RESUPPLY 占比在各臂间从 46% 到 58%，**所以这一列在它要比较的臂之间不可比** | **已修**：表里改印 `env beats (all windows)`（存档、标注不可比）、`farm+dive beats`、`worker calls`（探针直接数出、并由 env 自己的账逐窗复算）以及两个诚实分母的 share。数值：parent 0.1876 / oracle 0.4424 / oracle-farm 0.3033 / of-potion 0.2740 / of-potion-contact 0.2662 / oracle-pickup 0.5021 |
-| 2 | medium | `test_teacher_v2.routing_real` 里三条断言**弱于它们自己的名字**（`> 0`、`<=`、`>=`），其中 `<=` 那条即使 12 扇 dive 窗只有 1 扇走了学生也会 PASS | **已修**：改成集合相等与精确恒等式（见 §十三）。为了写得出精确恒等式，观测 env 新增了 `drain_attempts` / `drains` / `recovery_actions` 三个逐窗计数 |
-| 3 | medium | §零 的一句话 VERDICT「老师第一次赢过了学生」读起来比这条臂能撑的多：这条臂 57.1% 的拍是学生打的，且那条 L1 统计与第一轮是同一个统计 | **已修**：§零 的头一句改写成实际被证明的那句，并把「57.1% 是学生」「同样三个种子」「`oracle-farm vs oracle` 的 L1 配对是 0/0/0」放进头一句本身；ledger 只能追加，更正写进 `R19_TEACHER_ROUND2_REVIEW_ROUND` 的 `corrections` |
-| 4 | low | 两张回归收据的 mtime（23:59）**晚于**它们本该把关的四条臂（23:49–23:53），因为 `--reuse` 汇总腿把它们覆盖重写了；闸脚本自己也是收尾时才归档的 | **已修**：`--reuse` 改写兄弟文件 `regression-*-reuse.json`（`"pass": "reuse-summarize"`），闸收据只由真跑那一腿写（`"pass": "run"`）；`round2/review-round-manifest-before.txt` 在**启动前**把每个将要运行的脚本 sha256 ＋ 时间戳存档（§四） |
-| 5 | low | 36 个单侧 95% 检定没有多重性说明；越线的 7 个里多数不独立 | **已修**：§六 开头给出零假设下的期望越线数 1.8，并列表指出那 7 个其实是 3 件事 |
-| 6 | low | `_disengage_move_contact` 是冻结排名的手抄本，冻结那份将来被修时这份不会跟着修，且没有任何测试会红 | **已修（钉住，未合并）**：新增 1200 状态的纯 Python 等价测试 ＋ 一条「有楼梯时必须不同」的非空性测试。合并成一份要动冻结的 `teacher_v1.py`，本轮不许 |
-| 7 | low | `ClauseTeacher` 把 `variant="oracle"` 传给底座，于是三条条款臂每一行的 `telemetry["variant"]` 都写着 `oracle` | **已修**：`ClauseTeacher` 在 `super().__init__` 之后把 `self.variant` 改成臂名，并在 `_blank_telemetry` 里再写一次。`self.variant` 在冻结的 `teacher_v1` 里只被两处读到（遥测 `:282`、strict 断言文案 `:350`），**从不作为决策输入**——这一点由「六条臂 SHA 全部不变」实测证明 |
+| 1 | medium | the denominator of `no-effect share` in section 9 was the tick count over **all three window types**, including RESUPPLY, which never calls a worker; RESUPPLY's share ranges from 46% to 58% across arms, **so the column is not comparable between the arms it compares** | **Fixed**: the table now prints `env beats (all windows)` (archive, marked not comparable), `farm+dive beats`, `worker calls` (counted directly by the probes and recomputed window by window from the env's own ledger), and the shares for the two honest denominators. Values: parent 0.1876 / oracle 0.4424 / oracle-farm 0.3033 / of-potion 0.2740 / of-potion-contact 0.2662 / oracle-pickup 0.5021 |
+| 2 | medium | three assertions in `test_teacher_v2.routing_real` were **weaker than their own names** (`> 0`, `<=`, `>=`); the `<=` one would PASS even if only 1 of 12 dive windows went to the student | **Fixed**: changed to set equality and exact identities (see section 13). To write exact identities, the observing env gained three per-window counters, `drain_attempts` / `drains` / `recovery_actions` |
+| 3 | medium | the one-sentence VERDICT in section 0, "the teacher beat the student for the first time", reads as more than this arm can support: 57.1% of this arm's ticks are played by the student, and the L1 statistic is the same as round one's | **Fixed**: the first sentence of section 0 was rewritten as what was actually proven, and "57.1% is the student", "the same three seeds" and "the L1 pairing of `oracle-farm vs oracle` is 0/0/0" were put into that sentence itself; the ledger is append-only, so the correction is in the `corrections` field of `R19_TEACHER_ROUND2_REVIEW_ROUND` |
+| 4 | low | the two regression receipts' mtimes were 6-10 minutes **later** than the four arms they were supposed to gate, because the `--reuse` summarising leg rewrote them; the gate script itself was archived only at the end | **Fixed**: `--reuse` now writes sibling files `regression-*-reuse.json` (`"pass": "reuse-summarize"`), and the gate receipts are written only by the leg that actually runs (`"pass": "run"`); `round2/review-round-manifest-before.txt` records the sha256 + timestamp of every script about to run **before launch** (section 4) |
+| 5 | low | no multiplicity statement for the 36 one-sided 95% tests; most of the 7 that cross the line are not independent | **Fixed**: section 6 now opens with the expected number of crossings under the null (1.8) and a table showing that the 7 are really 3 facts |
+| 6 | low | `_disengage_move_contact` is a hand copy of the frozen ranking; if the frozen copy is fixed later, this one will not follow, and no test would turn red | **Fixed (pinned, not merged)**: a new 1200-state pure-Python equivalence test + a non-vacuity test ("must differ when stairs are present"). Merging into one copy would touch the frozen `teacher_v1.py`, which this round was not allowed to do |
+| 7 | low | `ClauseTeacher` passed `variant="oracle"` to the base, so every row of the three clause arms had `telemetry["variant"]` = `oracle` | **Fixed**: `ClauseTeacher` sets `self.variant` to the arm name after `super().__init__` and writes it again in `_blank_telemetry`. In the frozen `teacher_v1`, `self.variant` is read in only two places (telemetry `:282`, the strict-assertion message `:350`) and **is never a decision input**, which the unchanged SHAs of all six arms prove empirically |
 
-### 16.2 重跑（finding 2 与 finding 7 动了遥测，所以六条臂全跑）
+### 16.2 Reruns (findings 2 and 7 touched telemetry, so all six arms were run)
 
-**两道回归闸都过，四条新臂的 SHA 也逐位不变**——即上面所有改动都是**纯遥测／纯报告**，
-没有一条改变过任何一次决策：
+**Both regression gates pass, and the four new arms' SHAs are also bit-identical**, i.e. every change above is
+**pure telemetry / pure reporting** and none of them changed a single decision:
 
-| arm | pass1 (first run, 2026-09-10 23:42-23:53) | pass2 (review round, 2026-09-11 00:31-00:53) | pass3 (review round final, 2026-09-11 01:00-) | all equal | expected (regression) |
+| arm | pass1 (first run, 2026-09-10) | pass2 (review round, 2026-09-11) | pass3 (review round final, 2026-09-11) | all equal | expected (regression) |
 |---|---|---|---|---|---|
 | parent | f33f7af5f236f1fc | f33f7af5f236f1fc | f33f7af5f236f1fc | True | f33f7af5f236f1fc == expected |
 | oracle | 1507c3be68a0da29 | 1507c3be68a0da29 | 1507c3be68a0da29 | True | 1507c3be68a0da29 == expected |
-| oracle-farm | e47d5a5850ae1c46 | e47d5a5850ae1c46 | e47d5a5850ae1c46 | True | (new arm, no chairman constant) |
-| of-potion | 17d3ea46f63f88a6 | 17d3ea46f63f88a6 | 17d3ea46f63f88a6 | True | (new arm, no chairman constant) |
-| of-potion-contact | 525d18ef98ddbe8d | 525d18ef98ddbe8d | 525d18ef98ddbe8d | True | (new arm, no chairman constant) |
-| oracle-pickup | 3f02ce54b8922626 | 3f02ce54b8922626 | 3f02ce54b8922626 | True | (new arm, no chairman constant) |
+| oracle-farm | e47d5a5850ae1c46 | e47d5a5850ae1c46 | e47d5a5850ae1c46 | True | (new arm, no reference constant) |
+| of-potion | 17d3ea46f63f88a6 | 17d3ea46f63f88a6 | 17d3ea46f63f88a6 | True | (new arm, no reference constant) |
+| of-potion-contact | 525d18ef98ddbe8d | 525d18ef98ddbe8d | 525d18ef98ddbe8d | True | (new arm, no reference constant) |
+| oracle-pickup | 3f02ce54b8922626 | 3f02ce54b8922626 | 3f02ce54b8922626 | True | (new arm, no reference constant) |
 
   every arm identical across all three passes: True
 
@@ -908,52 +929,47 @@ ledger 只能追加不能改，所以更正写在 `R19_TEACHER_ROUND2_RESULT` �
   of-potion-contact: total 75963 -- dive_slot(parent) 43980 = 57.9% [farm 0 / dive 43980 / resupply 0; forced_dive beats 30983], farm_slot(oracle) 31983 = 42.1% [farm 31983 / dive 0 / resupply 0; forced_dive beats 0]
   oracle-pickup: total 54273 -- farm_slot(oracle) 54273 = 100.0% [farm 27176 / dive 27097 / resupply 0; forced_dive beats 15095]
 
-### 16.3 复核轮的读写纪律
+### 16.3 Read/write discipline of the review round
 
-- 主树 `/home/user/AlphaDiablo/diablogym`：283 条指纹 ＋ `build` 符号链接 ＋ `_diablogym*.so`
-  与 `r19/main-tree-fingerprint-before-round2.txt` **diff 为空**
-  （`round2/main-tree-fingerprint-review-before.txt` 与 `…-review-after.txt`）；
-  唯一新于 23:14 的主树文件仍然只有 `r13_ledger.jsonl`。
-- `m2-merge` 与 `oracle-tree`：`find … -newermt '2026-09-10 23:14'` **为空**。
-- `oracle2-tree` 里 `teacher_v1.py`（`65c1a14f…`）与 `test_teacher_v1.py`（`f12d94d9…`）
-  与只读的 `oracle-tree` **逐位相同**。
-- 第一遍与第二遍的全部产物都原样留着：`round2/probe-pass1/`、`round2/probe-pass2/`、
-  `round2/TEACHER-ROUND2-REPORT.pass1.md`、`round2/driver-*.pass1.log`；
-  第一遍与最终那一遍的逐臂对照（SHA、整个 `arm_stats` 字典、配对块、点名种子）
-  在 `round2/review-round-compare.txt`；三遍的 SHA 对照见 §16.2。
-- 种子：仍然只有 2133000–2133047，六条臂各 48 个、逐臂集合相同；
-  处女池 2_116-119 / 2_126-128 **零接触**。
+- The main tree: 283 fingerprint entries + the `build` symlink + `_diablogym*.so`, **diff empty** against
+  `main-tree-fingerprint-before-round2.txt` (`round2/main-tree-fingerprint-review-before.txt` and
+  `…-review-after.txt`); the only main-tree file newer than the start of the round is still `r13_ledger.jsonl`.
+- `m2-merge` and `oracle-tree`: `find … -newermt <start of the round>` is **empty**.
+- `teacher_v1.py` (`65c1a14f…`) and `test_teacher_v1.py` (`f12d94d9…`) in `oracle2-tree` are **bit-identical** to
+  the read-only `oracle-tree`.
+- All outputs of the first and second passes are kept unchanged: `round2/probe-pass1/`, `round2/probe-pass2/`,
+  `round2/TEACHER-ROUND2-REPORT.pass1.md`, `round2/driver-*.pass1.log`; the per-arm comparison of the first and
+  final passes (SHA, the whole `arm_stats` dict, the pairing block, named seeds) is in
+  `round2/review-round-compare.txt`; the SHA comparison of the three passes is in section 16.2.
+- Seeds: still only 2133000-2133047, 48 per arm, the same set in every arm; fresh pools 2_116-119 / 2_126-128
+  **not touched**.
 
-### 16.4 复核轮之后的最终 VERDICT
+### 16.4 Final VERDICT after the review round
 
-**不变。** 七条 finding 没有改动任何一个数字，六条臂的 `rows_sha_v3` 全部不变。
+**Unchanged.** The seven findings changed no number, and `rows_sha_v3` is unchanged for all six arms.
 
-> **有一条臂在 L1 死亡上过线：`ORACLE-FARM`**
-> （L1 死亡 3 对 8，配对 saved 7 / lost 2 / net +5 / 单侧 UCB95 −0.00437），
-> **同时没有把局末存活（28 对 28）和杀伤（5550 → 6353，＋14.5%）打崩**——
-> 这是主席那句话的字面答案，答案是「有，且只有这一条」。
+> **One arm clears the line on L1 deaths: `ORACLE-FARM`** (L1 deaths 3 vs 8, paired saved 7 / lost 2 / net +5 /
+> one-sided UCB95 -0.00437), **while not wrecking survival at game end (28 vs 28) or kills (5550 -> 6353,
+> +14.5%)**. This is the literal answer to the question as posed: "yes, and only this one".
 >
-> **但它赢的是「神谕的 FARM 内环 ＋ 学生的 DIVE 行为」**，
-> 这条臂 57.1% 的工人拍仍然是学生本人；
-> **而且它的 L1 统计与第一轮的 `ORACLE` 是同一个统计**（同样三个种子，
-> `oracle-farm vs oracle` 的 L1 配对是 0/0/0），只比 0 线低 0.004，
-> 36 个未校正的检定里期望有 1.8 个纯靠运气越线。
-> **在处女池上复验之前，不该有任何东西建在这条 95% 结论上。**
+> **But what won is "the oracle's FARM inner loop + the student's DIVE behaviour"**; 57.1% of this arm's worker
+> ticks are still the student itself; **and its L1 statistic is the same statistic as round one's `ORACLE`** (the
+> same three seeds; the L1 pairing of `oracle-farm vs oracle` is 0/0/0), only 0.004 below the 0 line, with 1.8 of
+> 36 uncorrected tests expected to cross by luck alone. **Nothing should be built on this 95% result before it is
+> replicated on a fresh pool.**
 >
-> **哪条帮、哪条害**：喝药条 **害**（一条就把 L1 从 3 推回 8，存活 28 → 20）；
-> 接触脱离条 **什么都没做**（L1 死亡种子集合与 of-potion 完全相同，
-> 且仍有 68.0% 的脱离拍原地不动）；拾药条 **对 L1 无害但炸窗口**。
-> **RESUPPLY 窗口爆炸的解释**：`m[RESUPPLY] = controller_mask[13]` ＋ `_farm_handoff`
-> ＋ `FARM → RESUPPLY → DIVE` 的回退阶梯，被**拾药这个多拍走路宏把角色带离怪群**触发，
-> 形成每扇 9.7 拍的空转短窗循环（1735 → 7761 扇）——
-> **不是**因为 a13 按得多（`ORACLE-PICKUP` 的 a13 是 698，比 `ORACLE` 的 909 还少）。
+> **Which helps, which hurts**: the drink clause **hurts** (on its own it pushes L1 from 3 back to 8, survival
+> 28 -> 20); the contact disengage clause **does nothing** (its L1 death seed set is exactly that of of-potion, and
+> 68.0% of its disengage ticks still do not move); the pickup clause **is harmless on L1 but blows up the window
+> count**. **Explanation of the RESUPPLY window explosion**: `m[RESUPPLY] = controller_mask[13]` +
+> `_farm_handoff` + the `FARM -> RESUPPLY -> DIVE` fallback ladder, triggered by **the pickup walking macro leading
+> the character away from the monsters**, form an idle loop of short windows at 9.7 ticks each (1735 -> 7761
+> windows), **not** more a13 presses (`ORACLE-PICKUP`'s a13 is 698, fewer than `ORACLE`'s 909).
 
 ---
 
-*本报告由 teacher 第二轮实施者写于 2026-09-10 深夜至 2026-09-11 凌晨。
-所有数字来自 `/home/user/r17_work/r19/round2/probe/` 下本轮自产的文件，
-表格由 `round2/teacher2_extra.py` 机器生成；
-第一轮的数字来自原样保留的 `/home/user/r17_work/r19/teacher-probe/`；
-没有出处的地方一律写了「未验证」。
-复核轮（§十六）于 2026-09-11 凌晨在同一棵树上执行，
-六条臂全部重跑、两道回归闸重过，单元卷 85 项全过。*
+*This report was written by the teacher round-two implementer on 2026-09-10 and 2026-09-11. All numbers come from
+files this round produced under `round2/probe/`, and the tables are machine-generated by
+`round2/teacher2_extra.py`; round-one numbers come from the unchanged `teacher-probe/` (both in the local work
+directory, not published); every place without a source is marked "not verified". The review round (section 16)
+ran on 2026-09-11 on the same tree: all six arms rerun, both regression gates passed again, 85 unit tests pass.*

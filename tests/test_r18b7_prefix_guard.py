@@ -1,6 +1,6 @@
 """R18-B7 (2026-09-07): the earned prefix must never descend under the frozen parent.
 
-The R18-B training arm crashed at 23:25 with "completion L2 arrival before learner handoff":
+The R18-B training arm crashed on 2026-09-07 with "completion L2 arrival before learner handoff":
 a DIVE window whose opening verdict was not eligible (coach-v03 opens on the six-condition law,
 the handoff needs the seven-condition native verdict) was played by the parent, which pressed
 the descend macro. WorkerWindowEnv._prefix_guard_masks withholds a11 and the trigger-tile steps

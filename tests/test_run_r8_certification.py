@@ -1,4 +1,4 @@
-"""R8 认证战役冻结协议测试(PREREG-R8,批文「接受并且开始R8」+「4 核认证纯度」)。"""
+"""Frozen-protocol tests for the R8 certification campaign (PREREG-R8; 4-core certification purity)."""
 from __future__ import annotations
 
 import pathlib
@@ -15,7 +15,7 @@ import run_r8_certification as r8  # noqa: E402
 class R8FrozenProtocolTests(unittest.TestCase):
     def test_campaign_identity_frozen(self):
         self.assertEqual(r8.CAMPAIGN_REVISION, 2)
-        self.assertEqual(r8.NUM_ENVS, 4)  # A 案:与 R7 配方逐字节同款
+        self.assertEqual(r8.NUM_ENVS, 4)  # option A: byte-for-byte the same recipe as R7
         self.assertEqual(r8.N_STEPS, 512)
         self.assertEqual(r8.LEG_STEPS, 266_240)
         self.assertEqual(r8.TRAIN_CALLS, 130)
@@ -62,7 +62,7 @@ class R8FrozenProtocolTests(unittest.TestCase):
             self.assertNotIn(token, source)
 
     def test_registry_shared_ledger_accepts_both_campaign_names(self):
-        # 全局 final registry 与 R7 共册:R7 历史记录(2_120/2_121)双名放行
+        # The global final registry is shared with R7: R7's historical records (2_120/2_121) are admitted under both names
         source = pathlib.Path(r8.__file__).read_text()
         self.assertIn("_r7_final_pool_registry", source)
         self.assertIn(
@@ -72,7 +72,7 @@ class R8FrozenProtocolTests(unittest.TestCase):
 
 
 class R8DeathScaleKATTests(unittest.TestCase):
-    """精确条件 McNemar 尺的已知答案测试(校准向量 = R7 终考实况)。"""
+    """Known-answer tests for the exact conditional McNemar scale (calibration vector = the actual R7 final exam)."""
 
     def _ucb(self, c_only, b_only, n=256, alpha=0.005):
         discordant = c_only + b_only
@@ -83,7 +83,7 @@ class R8DeathScaleKATTests(unittest.TestCase):
         return (2.0 * theta_up - 1.0) * discordant / n
 
     def test_r7_final_calibration_vector(self):
-        # R7 终考实况:c=31, b=31, n=256 → 0.0805(旧 CP 尺给 0.1086)
+        # Actual R7 final exam: c=31, b=31, n=256 -> 0.0805 (the old CP scale gave 0.1086)
         self.assertAlmostEqual(self._ucb(31, 31), 0.0805, places=4)
 
     def test_zero_discordance_gives_zero_bound(self):
@@ -213,7 +213,7 @@ class R8Amendment1GateTests(unittest.TestCase):
         seeds = r8.DEVELOPMENT_TRAIN_SEEDS
         fixture = {}
         for i, seed in enumerate(seeds):
-            # 全部腿 nondeath 干净,但第一腿双池合计超额 +14/256 > 5pp
+            # every leg is nondeath-clean, but the first leg's two pools together overrun by +14/256 > 5pp
             cand = 105 if (i == 0) else 98
             fixture[f"dev-a:risk64:{seed}"] = self._analysis([ni], cand, 98)
             fixture[f"dev-b:risk64:{seed}"] = self._analysis([ni], cand, 98)
@@ -227,8 +227,8 @@ class R8Amendment1GateTests(unittest.TestCase):
     def test_machinery_registered(self):
         source = pathlib.Path(r8.__file__).read_text()
         self.assertIn("adopt-replication", source)
-        self.assertIn("复现评测阶段已封存", source)
-        self.assertIn("复现训练阶段已封存", source)
+        self.assertIn("the replication evaluation stage is sealed", source)
+        self.assertIn("the replication training stage is sealed", source)
         self.assertTrue(callable(r8.command_adopt_replication))
         self.assertTrue(callable(r8._validate_r8a1_adoption))
 

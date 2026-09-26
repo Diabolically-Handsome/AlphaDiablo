@@ -1,52 +1,52 @@
-"""R9「认证班底经理再教育」驱动(docs/prereg/PREREG-R9-manager-reeducation.md 条款唯一执行者;
-run_v29_relection.py 定向改造克隆,非薄包装)。
+"""R9 "manager re-education of the certified team" driver (sole executor of docs/prereg/PREREG-R9-manager-reeducation.md;
+a targeted rework clone of run_v29_relection.py, not a thin wrapper).
 
-克隆差异表(PREREG-R9 逐条对应):
-- 班底:工人 = R8 认证发布件 model_final.zip(rev26,dual-v4-asymmetric-v3,sha 2837288d…)
-  经 staging 无回执路径接入(0o444,借 run_r8_certification._stage_eval_file 模式,
-  规避 eval_assembled 发布回执强制闸);基线经理 = M29 npz(sha 89441388…,legacy-v3)。
-- CALIBRATED_PROTOCOL_VERSION = 4;裁决线区(ABANDON/FLOOR)不再钉常数,由新锚现场
-  推导(ABANDON = 锚均值×0.66,FLOOR = 锚均值×85/92,推导式+数值入 ledger)。
-- exam 评测命令补 --manager-policy-observation-view(M29 = legacy-v3;候选臂 = raw-v4)
-  + --worker 指 staged zip。
-- 种子集:复现池 A = 2_123_000-127,池 B = 2_124_000-127,终考 = 2_125_000-255
-  (评测银行处女段,批文「锚并入R9」唯一新池消费);by_seed 随动。
-- ARMS:r9-mfresh(纯 fresh)与 r9-mcurr(同 + --deep-start-curriculum p=0.5,target=2,cap=8);
-  两臂皆 --worker-zip <staged> --worker-zip-sha256 <sha> --manager-policy-observation-view
-  raw-v4;160k 步,4h/臂超时保。
-- 序列:preflight → G0-6 旧端点全表重放(probe_efix_g0 双旋钮拨旧,重放 R8 终考
-  official-r8-final-{baseline,candidate} 各 256 局位级对账)→ 新锚烧制(M29×认证工人,
-  2_123/2_124 各 128 + 2_125 的 256)→ 双臂训练 → export_manager_npz+parity → 臂考
-  (每臂 2_123/2_124 各 128)→ 配对判决 → 胜者 2_125 终考 256 对 + 终判。
-- 判决层:import r8_statistics(不改它)。其 analyze_paired_archives 的档案联检契约把
-  「经理」槽钉为 numpy_policy 且两侧内容必须等同(R8 几何:变量=工人,共享=经理);
-  R9 恰为对偶(共享=认证工人 zip[sb3_checkpoint],变量=经理 npz),任何槽位改写都要
-  伪造 kind/num_timesteps 身份字段。故本驱动以其注册原语(_student_t_upper_critical/
-  _exact_sign_p_value/_clopper_pearson_upper)逐式复刻同一判决数学
-  (phase=development/final 最小对数语义);tests/test_r9_machinery.py 对共享原语层
-  (t 临界/符号检验/Clopper-Pearson)保持数值等价断言,防实现漂移。
-- 闸门肢(主席回炉令 2026-07-31:R9 科学问题=深度,闸门随之;族错 α=0.05 按
-  3 约束重摊):
-  ① depth 优越肢(主指标,新增):逐种子配对 depth 差(候选−基线),
-     mean_lcb + exact_sign 双检,minimum_effect=0;键名 'depth' 系官方 R8 档案
-     rows 现场核认(无 dungeon_level 键);
-  ② wage 非劣肢(由优越改非劣):mean LCB ≥ −0.10×锚池 wage 均值(逐池随锚
-     现场推导,推导式+线值入 ledger;exact_sign 撤出闸门,sign 信息照记不裁)。
-     经理用农层时间换下潜系本案期望行为,不以 wage 未优越判死;wage 崩塌
-     (跌破锚均值一成)仍拦;
-  ③ 死亡肢不动:精确条件 McNemar 非劣(边距 0.10)+ 死亡观测线按 v31-D3-10
-     遗留义务由新锚现场推导(line = 锚 died 数 + 边距×对数),禁承继 6/32 绝对线;
-  ④ ret/kills/worker_kills 从闸门肢降为 record-only 诊断:照算入档,
-     不进 failed_checks 判决。
-- 胜者拣选(末令):过门臂比 depth 配对均差,带宽 0.10 内视为并列;并列破格
-  ①合并池逐种子 died 总数更低者,②仍平取 r9-mfresh(奥卡姆:课程臂须以
-  可见深度优势自证)。ret 带撤出拣选(照记入 quals)。
-- 判词强制携 depth 直方 + 逐种子 died + 三防呆仪表(首次强制交权中位/DIVE 潜成率/
-  dlvl 停留比,奠基卷基线 1495/25%/16058:3512;仪表二/三系 probe 级读数,
-  ledger 登记 probe 复核命令,机器不擅自增发探针)。
-- 金池 9000 与 7000/8000/12000 留出池零接触;--board 不用;本案不烧金牌。
-账本:train/runs/r9-reeducation/gate_ledger.jsonl。
-用法:.venv/bin/python train/run_r9_reeducation.py(发车须主席亲批)。
+Clone difference table (item by item against PREREG-R9):
+- Team: worker = the R8 certified release model_final.zip (rev26, dual-v4-asymmetric-v3, sha 2837288d…)
+  connected through the staging path without a receipt (0o444, borrowing the run_r8_certification._stage_eval_file pattern,
+  avoiding the mandatory eval_assembled release-receipt gate); baseline manager = M29 npz (sha 89441388…, legacy-v3).
+- CALIBRATED_PROTOCOL_VERSION = 4; the decision-line region (ABANDON/FLOOR) is no longer pinned as constants but derived
+  on the spot from the new anchor (ABANDON = anchor mean×0.66, FLOOR = anchor mean×85/92; formula + values go into the ledger).
+- the exam evaluation command adds --manager-policy-observation-view (M29 = legacy-v3; candidate arms = raw-v4)
+  + --worker pointing at the staged zip.
+- Seed sets: replication pool A = 2_123_000-127, pool B = 2_124_000-127, final exam = 2_125_000-255
+  (virgin ranges of the evaluation bank; the only new-pool consumption, approved as "anchor folded into R9"); by_seed follows.
+- ARMS: r9-mfresh (pure fresh) and r9-mcurr (same + --deep-start-curriculum p=0.5, target=2, cap=8);
+  both arms --worker-zip <staged> --worker-zip-sha256 <sha> --manager-policy-observation-view
+  raw-v4; 160k steps, 4h timeout per arm.
+- Sequence: preflight → G0-6 full-table replay at the old endpoints (probe_efix_g0 with both knobs set to old, replaying the R8 final exam
+  official-r8-final-{baseline,candidate}, 256 games each, reconciled bit for bit) → new anchor burn (M29 × certified worker,
+  128 each on 2_123/2_124 + 256 on 2_125) → two arms trained → export_manager_npz+parity → arm exams
+  (128 each on 2_123/2_124 per arm) → paired verdict → winner's 2_125 final exam, 256 pairs + final verdict.
+- Verdict layer: imports r8_statistics (unchanged). The archive cross-check contract of its analyze_paired_archives pins
+  the "manager" slot to numpy_policy and requires identical content on both sides (R8 geometry: variable = worker, shared = manager);
+  R9 is exactly the dual (shared = certified worker zip[sb3_checkpoint], variable = manager npz), and any slot rewrite would
+  fake the kind/num_timesteps identity fields. So this driver re-implements the same verdict maths formula by formula from its registered primitives (_student_t_upper_critical/
+  _exact_sign_p_value/_clopper_pearson_upper)
+  (phase=development/final minimum-pair semantics); tests/test_r9_machinery.py keeps numeric-equivalence assertions on the shared primitive layer
+  (t critical value/sign test/Clopper-Pearson) against implementation drift.
+- Gate limbs (design decision of 2026-07-31 on re-education: R9's scientific question is depth, so the gates follow; family-wise α=0.05
+  re-split over 3 constraints):
+  (1) depth superiority limb (primary metric, new): per-seed paired depth difference (candidate−baseline),
+     both mean_lcb + exact_sign, minimum_effect=0; the key name 'depth' was verified on the spot against the official R8 archive
+     rows (there is no dungeon_level key);
+  (2) wage non-inferiority limb (changed from superiority to non-inferiority): mean LCB ≥ −0.10×anchor-pool wage mean (derived per pool from the anchor
+     on the spot; formula + line value go into the ledger; exact_sign leaves the gate, sign information is recorded but not ruled on).
+     A manager trading farm-level time for dives is the expected behaviour in this case, so it is not failed for wage not being superior; a wage collapse
+     (falling more than 10% below the anchor mean) is still blocked;
+  (3) death limb unchanged: exact conditional McNemar non-inferiority (margin 0.10) + an observed death line derived on the spot from the new anchor per the
+     v31-D3-10 leftover obligation (line = anchor died count + margin×pairs); inheriting the absolute 6/32 line is forbidden;
+  (4) ret/kills/worker_kills are demoted from gate limbs to record-only diagnostics: computed and archived,
+     not part of the failed_checks verdict.
+- Winner selection (final design decision): passing arms are compared by paired depth mean difference, within a 0.10 band counted as tied; tie-break
+  (1) lower total per-seed died over the combined pools, (2) still tied, take r9-mfresh (Occam: the curriculum arm must prove itself
+  with a visible depth advantage). The ret band leaves the selection (recorded in quals).
+- The verdict must carry the depth histogram + per-seed died + the three fool-proofing instruments (median first forced hand-over / DIVE success rate /
+  dlvl residence ratio; foundation-review baselines 1495/25%/16058:3512; instruments 2/3 are probe-level readings;
+  the ledger records the probe re-check command, and the machine does not launch extra probes on its own).
+- Gold pool 9000 and the 7000/8000/12000 held-out pools untouched; --board not used; this case burns no gold run.
+Ledger: train/runs/r9-reeducation/gate_ledger.jsonl.
+Usage: .venv/bin/python train/run_r9_reeducation.py (launch requires recorded approval).
 """
 from __future__ import annotations
 
@@ -71,19 +71,19 @@ from eval_contract import (PROTOCOL_VERSION, OperationalFailure, OutputReservati
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 PY = str(ROOT / ".venv" / "bin" / "python")
 RUNS = ROOT / "train" / "runs"
-R9 = RUNS / "r9-reeducation"          # 战役控制目录(惰性创建,施工/import 零写盘)
+R9 = RUNS / "r9-reeducation"          # campaign control directory (created lazily; implementation/import writes nothing)
 LEDGER = R9 / "gate_ledger.jsonl"
 STAGING = R9 / "staging"
 STAGED_WORKER = STAGING / "worker.zip"
 EVAL = RUNS / "eval-assembled"
 
-# ---- 班底常量(现场 sha256sum 取全,2026-07-31) ----
+# ---- team constants (full sha256sum taken on the spot, 2026-07-31) ----
 W_ZIP_SRC = RUNS / "r8-certification-published" / "model_final.zip"
 W_ZIP_SHA = "2837288dad19a685925558a0d86e1cecd951d5f065d1d2f367f667c13b9cf006"
 M29_NPZ = ROOT / "train" / "models" / "v29-manager-mfresh" / "policy.npz"
 M29_SHA = "894413884d04adfdb2a574866a15dfed0c1c01d6781403d9ab4ff07b1f7b66d6"
 
-# ---- G0-6 遗留义务(E-fix):R8 终考旧端点全表重放素材 ----
+# ---- G0-6 leftover obligation (E-fix): material for the full-table replay of the R8 final exam at the old endpoints ----
 G0_PROBE = RUNS / "efix-g0-evidence" / "probe_efix_g0.py"
 R8_FINAL = {
     "official-r8-final-baseline-2122000": {
@@ -104,7 +104,7 @@ R8_FINAL = {
 }
 R8_FINAL_SEEDS = (2_122_000, 2_122_255)
 
-# ---- 池划定(PREREG-R9 §2;本案唯一新池消费) ----
+# ---- pool allocation (PREREG-R9 §2; the only new-pool consumption of this case) ----
 POOL_A = (2_123_000, 2_123_127)
 POOL_B = (2_124_000, 2_124_127)
 POOL_FINAL = (2_125_000, 2_125_255)
@@ -115,29 +115,29 @@ POOLS = {"a": POOL_A, "b": POOL_B, "final": POOL_FINAL}
 
 STEPS = 160_000
 CALIBRATED_PROTOCOL_VERSION = 4
-# 裁决线推导系数(基数 = 新锚 A+B 合并均值;数值发车夜由锚读数代入并入 ledger):
-ABANDON_FACTOR = 0.66            # v29 先例 75/112.4≈0.667 的注册化
-FLOOR_NUM, FLOOR_DEN = 85.0, 92.0  # v25/v29 比例 85/92 沿用,基数换新锚
-DEATH_MARGIN = 0.10              # 精确条件 McNemar 非劣边距(PREREG-R8 §1.3 同值)
+# decision-line derivation factors (base = combined mean of the new anchor A+B; values are plugged in from the anchor readings at launch and go into the ledger):
+ABANDON_FACTOR = 0.66            # registered form of the v29 precedent 75/112.4≈0.667
+FLOOR_NUM, FLOOR_DEN = 85.0, 92.0  # the v25/v29 ratio 85/92 kept, with the new anchor as base
+DEATH_MARGIN = 0.10              # exact conditional McNemar non-inferiority margin (same value as PREREG-R8 §1.3)
 FAMILYWISE_ALPHA = 0.05
-# 胜者拣选带(末令):depth 配对均差,带宽 0.10 内并列→①低死②mfresh。
+# winner selection band (final design decision): paired depth mean difference, tied within a 0.10 band → (1) fewer deaths (2) mfresh.
 WINNER_DEPTH_TIE_BAND = 0.10
-# 临线注记阈(v31 判词纪律承继;注册于此,判词强制携带):
-NEAR_LINE_DEATH_GAP = 1          # |candidate_deaths − 推导线| ≤ 1 命
-NEAR_LINE_LCB_BAND = 0.5         # 任一均值肢 LCB ∈ [0, 0.5)
-NEAR_LINE_FLOOR_GAP = 1.0        # |胜者均值 − FLOOR| ≤ 1.0
-NEAR_LINE_UCB_BAND = 0.01        # McNemar UCB 距边距 ≤ 0.01
+# borderline-note thresholds (verdict discipline inherited from v31; registered here, mandatory with the verdict):
+NEAR_LINE_DEATH_GAP = 1          # |candidate_deaths − derived line| ≤ 1 life
+NEAR_LINE_LCB_BAND = 0.5         # any mean limb with LCB ∈ [0, 0.5)
+NEAR_LINE_FLOOR_GAP = 1.0        # |winner mean − FLOOR| ≤ 1.0
+NEAR_LINE_UCB_BAND = 0.01        # McNemar UCB within 0.01 of the margin
 
-# ---- 判决闸门肢(主席回炉令 2026-07-31,预注册于模块 docstring) ----
-# 主指标 = depth 优越肢:键名 'depth' 系官方 R8 档案 rows 现场核认。
+# ---- verdict gate limbs (design decision of 2026-07-31 on re-education; pre-registered in the module docstring) ----
+# primary metric = depth superiority limb: the key name 'depth' was verified on the spot against the official R8 archive rows.
 DEPTH_RULE = r8_statistics.MetricRule("depth")
-# wage 非劣肢:线 = −WAGE_NI_FRACTION×锚池 wage 均值(逐池现场推导,含端点过)。
+# wage non-inferiority limb: line = −WAGE_NI_FRACTION×anchor-pool wage mean (derived per pool on the spot; the endpoint passes).
 WAGE_KEY = "farm_worker_wage"
 WAGE_NI_FRACTION = 0.10
-# 闸门约束数 = depth + wage 非劣 + 死亡 = 3;族错 α=0.05 按此重摊。
+# number of gate constraints = depth + wage non-inferiority + death = 3; family-wise α=0.05 is re-split over them.
 GATE_CONSTRAINT_COUNT = 3
-# ret/kills/worker_kills 降为 record-only 诊断(0-优越口径照算,与旧闸读数
-# 可比;不占 α、不进 failed_checks)。
+# ret/kills/worker_kills demoted to record-only diagnostics (computed on the 0-superiority definition, comparable with the old gate readings;
+# they use no α and are not in failed_checks).
 RECORD_ONLY_RULES = (
     r8_statistics.MetricRule("ret"),
     r8_statistics.MetricRule("kills"),
@@ -147,11 +147,11 @@ R9_STATISTICS_SCHEMA = "diablogym-r9-paired-statistics/2"
 R9_METHOD_REVISION = (r8_statistics.R8_METHOD_REVISION
                       + "+r9-role-dual-depth-gate/2")
 
-# 三防呆仪表(判「深度解锁」须同时移动;基线值 = 奠基卷实测,修后按新锚重读):
+# three fool-proofing instruments ("depth unlocked" requires all of them to move; baselines = foundation-review measurements, re-read against the new anchor after the fix):
 GAUGE_BASELINES = {
-    "first_forced_handover_median_micro_steps": 1495,   # probe 级(决策流)
-    "dive_window_success_rate": 0.25,                    # 档案可算(mode_seq/depth)
-    "dlvl_dwell_ratio_l1_l2": [16058, 3512],             # probe 级(逐拍 dlvl)
+    "first_forced_handover_median_micro_steps": 1495,   # probe level (decision stream)
+    "dive_window_success_rate": 0.25,                    # computable from archives (mode_seq/depth)
+    "dlvl_dwell_ratio_l1_l2": [16058, 3512],             # probe level (per-beat dlvl)
 }
 
 ARMS = {
@@ -162,7 +162,7 @@ ARMS = {
 
 
 class CampaignError(RuntimeError):
-    """R9 战役输入/文件系统不满足预注册契约。"""
+    """R9 campaign inputs / file system do not meet the pre-registered contract."""
 
 
 def log(event: dict):
@@ -188,7 +188,7 @@ def sha16(p) -> str:
     return sha256(p)[:16]
 
 
-# ---- staging 三函数(借 run_r8_certification.py:741/1333/1360/3030 模式) ----
+# ---- the three staging functions (borrowing the run_r8_certification.py:741/1333/1360/3030 pattern) ----
 
 def _stable_read(path: pathlib.Path) -> bytes:
     """Read one regular file identity and reject symlink/replace races."""
@@ -196,19 +196,19 @@ def _stable_read(path: pathlib.Path) -> bytes:
     try:
         before_path = path.lstat()
     except OSError as exc:
-        raise CampaignError(f"文件不可读:{path}: {exc}") from exc
-    require(not stat.S_ISLNK(before_path.st_mode), f"拒绝符号链接输入:{path}")
-    require(stat.S_ISREG(before_path.st_mode), f"输入不是普通文件:{path}")
+        raise CampaignError(f"file unreadable: {path}: {exc}") from exc
+    require(not stat.S_ISLNK(before_path.st_mode), f"refusing symlink input: {path}")
+    require(stat.S_ISREG(before_path.st_mode), f"input is not a regular file: {path}")
     flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0)
     if hasattr(os, "O_NOFOLLOW"):
         flags |= os.O_NOFOLLOW
     try:
         fd = os.open(path, flags)
     except OSError as exc:
-        raise CampaignError(f"文件不可稳定打开:{path}: {exc}") from exc
+        raise CampaignError(f"file cannot be opened stably: {path}: {exc}") from exc
     try:
         first = os.fstat(fd)
-        require(stat.S_ISREG(first.st_mode), f"已打开输入不是普通文件:{path}")
+        require(stat.S_ISREG(first.st_mode), f"opened input is not a regular file: {path}")
         chunks = []
         while True:
             chunk = os.read(fd, 1024 * 1024)
@@ -221,7 +221,7 @@ def _stable_read(path: pathlib.Path) -> bytes:
     try:
         after_path = path.lstat()
     except OSError as exc:
-        raise CampaignError(f"文件读取后身份消失:{path}: {exc}") from exc
+        raise CampaignError(f"file identity vanished after reading: {path}: {exc}") from exc
     identity = lambda item: (
         item.st_dev, item.st_ino, item.st_mode, item.st_size,
         item.st_mtime_ns, item.st_ctime_ns,
@@ -229,7 +229,7 @@ def _stable_read(path: pathlib.Path) -> bytes:
     require(
         identity(before_path) == identity(first)
         == identity(second) == identity(after_path),
-        f"文件读取期间被替换或修改:{path}",
+        f"file replaced or modified while being read: {path}",
     )
     return b"".join(chunks)
 
@@ -242,7 +242,7 @@ def _fsync_directory(path: pathlib.Path) -> None:
     try:
         fd = os.open(path, os.O_RDONLY | getattr(os, "O_CLOEXEC", 0))
     except OSError as exc:
-        raise CampaignError(f"目录不可打开以 fsync:{path}: {exc}") from exc
+        raise CampaignError(f"directory cannot be opened for fsync: {path}: {exc}") from exc
     try:
         os.fsync(fd)
     finally:
@@ -260,7 +260,7 @@ def _write_bytes_exclusive(
         )
     except FileExistsError:
         require(_stable_read(path) == payload,
-                f"不可变文件已存在但内容漂移:{path}")
+                f"immutable file already exists with content drift: {path}")
         return
     with os.fdopen(fd, "wb", closefd=True) as stream:
         stream.write(payload)
@@ -277,20 +277,20 @@ def _stage_eval_file(
     if expected_sha256 is not None:
         require(
             digest == expected_sha256,
-            f"eval staging 源 SHA 漂移:{source}:{digest} != {expected_sha256}",
+            f"eval staging source SHA drift: {source}:{digest} != {expected_sha256}",
         )
     _write_bytes_exclusive(destination, payload, mode=0o444)
     try:
         os.chmod(destination, 0o444)
     except OSError as exc:
-        raise CampaignError(f"eval staging 无法设为只读:{destination}: {exc}") from exc
+        raise CampaignError(f"eval staging cannot be made read-only: {destination}: {exc}") from exc
     _fsync_directory(destination.parent)
     require(sha256(destination) == digest,
-            f"eval staging 副本 SHA 漂移:{destination}")
+            f"eval staging copy SHA drift: {destination}")
     return digest
 
 
-# ---- 运维原语(v29 骨架) ----
+# ---- operational primitives (v29 skeleton) ----
 
 def run(cmd, logfile, timeout) -> int:
     R9.mkdir(parents=True, exist_ok=True)
@@ -301,15 +301,15 @@ def run(cmd, logfile, timeout) -> int:
             return proc.wait(timeout=timeout)
         except subprocess.TimeoutExpired:
             try:
-                os.killpg(proc.pid, signal.SIGKILL)   # 连锅端:SubprocVecEnv 孙进程防孤儿
+                os.killpg(proc.pid, signal.SIGKILL)   # kill the whole group: prevents orphaned SubprocVecEnv grandchildren
             except ProcessLookupError:
                 pass
             proc.wait()
-            return 124    # 挂死护栏:按崩溃/失败落账(运维护栏,非判决输入)
+            return 124    # hang guard: recorded as a crash/failure (operational guard, not a verdict input)
 
 
 def zip_steps(p: pathlib.Path) -> int:
-    """SB3 真链读数(v29 面板 blocker 修正:status 节流计数必滞后)。"""
+    """SB3 real-chain reading (v29 panel blocker fix: the throttled status count always lags)."""
     try:
         with zipfile.ZipFile(p) as z:
             return int(json.loads(z.read("data"))["num_timesteps"])
@@ -325,34 +325,34 @@ def seeds_arg(pool: tuple[int, int]) -> str:
 def by_seed(rows, pool: tuple[int, int]) -> dict:
     lo, hi = pool
     m = {r["seed"]: r for r in rows}
-    require(len(rows) == len(m), "种子集合异常(含重复 seed)")
+    require(len(rows) == len(m), "abnormal seed set (duplicate seed)")
     require(set(m) == set(range(lo, hi + 1)),
-            f"种子集合异常(须为 {lo}-{hi})")
+            f"abnormal seed set (must be {lo}-{hi})")
     return m
 
 
 def require_calibrated_protocol() -> None:
     if PROTOCOL_VERSION != CALIBRATED_PROTOCOL_VERSION:
         raise OperationalFailure(
-            "R9 的裁决线推导式/池划定仅在 protocol-v4 环境语义下预注册;"
-            f"当前 PROTOCOL_VERSION={PROTOCOL_VERSION}。协议再迁移须先重开预注册,"
-            "禁止混用旧阈值")
+            "R9's decision-line formulas / pool allocation are pre-registered only under protocol-v4 environment semantics; "
+            f"current PROTOCOL_VERSION={PROTOCOL_VERSION}. A further protocol migration must reopen the pre-registration first; "
+            "mixing old thresholds is forbidden")
 
 
-# ---- 评测(exam) ----
+# ---- evaluation (exam) ----
 
 def exam(tag: str, pool: tuple[int, int], manager_npz: pathlib.Path,
          manager_view: str, timeout: int):
-    """staged 认证工人 × 指定经理;返回 (validated_doc, archive_sha256) 或 None。"""
-    require(manager_view in ("legacy-v3", "raw-v4"), f"经理视图非法:{manager_view}")
+    """staged certified worker × given manager; returns (validated_doc, archive_sha256) or None."""
+    require(manager_view in ("legacy-v3", "raw-v4"), f"invalid manager view: {manager_view}")
     out = EVAL / f"{tag}.json"
-    require(not out.exists(), f"档案不可变性:{out} 已存在,拒绝覆写")
+    require(not out.exists(), f"archive immutability: {out} already exists, refusing to overwrite")
     lo, hi = pool
     seed_values = list(range(lo, hi + 1))
     snapshot = freeze_eval_identity(ROOT, str(STAGED_WORKER), str(manager_npz))
     require(snapshot["worker"]["kind"] == "sb3_checkpoint"
             and snapshot["worker"]["sha256"] == W_ZIP_SHA,
-            "staged 认证工人身份漂移")
+            "staged certified worker identity drift")
     expected = expected_eval_identity(snapshot, tag=tag, seeds=seed_values)
     cmd = [PY, "train/eval_assembled.py",
            "--worker", snapshot["worker"]["path"],
@@ -360,7 +360,7 @@ def exam(tag: str, pool: tuple[int, int], manager_npz: pathlib.Path,
            "--manager-policy-observation-view", manager_view,
            "--seeds", seeds_arg(pool), "--tag", tag]
     if run(cmd, f"exam-{tag}.{time.time_ns()}.log", timeout=timeout) != 0:
-        if out.exists():    # 半截档案轮转,给重考让路
+        if out.exists():    # rotate the partial archive to make way for the re-exam
             out.rename(out.with_suffix(f".{time.time_ns()}.void"))
         return None
     try:
@@ -376,12 +376,12 @@ def exam(tag: str, pool: tuple[int, int], manager_npz: pathlib.Path,
 def exam_retry(tag, pool, manager_npz, manager_view, timeout):
     result = exam(tag, pool, manager_npz, manager_view, timeout)
     if result is None:
-        log({"event": "exam_crash", "tag": tag, "note": "评测失败,按崩溃条款重考一次"})
+        log({"event": "exam_crash", "tag": tag, "note": "evaluation failed; re-exam once under the crash clause"})
         result = exam(tag, pool, manager_npz, manager_view, timeout)
     return result
 
 
-# ---- 深度仪表(判词强制随行) ----
+# ---- depth instruments (mandatory with the verdict) ----
 
 def depth_hist(rows) -> dict:
     hist: dict[str, int] = {}
@@ -403,8 +403,8 @@ def dive_per_ep(rows) -> float:
 
 
 def dive_gauges(rows) -> dict:
-    """DIVE 潜成率(档案口径):Σ(depth−1)/Σ(D 窗数)。起点恒 1 层,
-    每次潜成恰移一层;probe 口径(逐窗 dlvl0→dlvl_end)由 probe 复核。"""
+    """DIVE success rate (archive definition): Σ(depth−1)/Σ(D windows). The start is always level 1,
+    and each successful dive moves exactly one level; the probe definition (per-window dlvl0→dlvl_end) is re-checked by the probe."""
     dives = sum(r["mode_seq"].count("D") for r in rows)
     descents = sum(max(0, int(r["depth"]) - 1) for r in rows)
     return {
@@ -415,7 +415,7 @@ def dive_gauges(rows) -> dict:
 
 
 def bonus_per_ep(rows) -> float:
-    # 下楼奖金兑现:depth=d 兑现 8×(1+2+…+(d−1));d≤1 为 0
+    # stairs-bonus conversion: depth=d converts 8×(1+2+…+(d−1)); 0 for d≤1
     return sum(8 * sum(range(1, r["depth"])) for r in rows) / max(1, len(rows))
 
 
@@ -433,11 +433,11 @@ def depth_dashboard(rows) -> dict:
 
 
 def gauge_report(anchor_rows, candidate_rows, anchor_tag: str) -> dict:
-    """三防呆仪表:仪表 2 档案可算(锚/候选双读);仪表 1/3 系 probe 级,
-    登记基线值 + 锚侧复核命令(probe_r9_dive 经理钉 M29,恰为锚组装体;
-    候选侧须经理可参数化探针变体,机器不擅增发,义务入册)。"""
+    """Three fool-proofing instruments: instrument 2 is computable from archives (read for anchor and candidate); instruments 1/3 are probe level:
+    register the baseline values + the anchor-side re-check command (probe_r9_dive pins the manager to M29, which is exactly the anchor assembled agent;
+    the candidate side needs a probe variant with a parameterisable manager; the machine does not launch extra probes on its own, and the obligation is recorded)."""
     probe_cmd = (f"{PY} {G0_PROBE.with_name('probe_r9_dive.py')} "
-                 f"<out.json> <逗号种子表> {STAGED_WORKER} {anchor_tag}.json")
+                 f"<out.json> <comma-separated seed list> {STAGED_WORKER} {anchor_tag}.json")
     return {
         "baselines_foundation_dossier": GAUGE_BASELINES,
         "dive_window_success_rate": {
@@ -449,22 +449,22 @@ def gauge_report(anchor_rows, candidate_rows, anchor_tag: str) -> dict:
                        "dlvl_dwell_ratio_l1_l2"],
             "anchor_recheck_cmd": probe_cmd,
             "candidate_recheck_note":
-                "probe_r9_dive 经理硬编码 M29;胜者侧复核须经理可参数化探针"
-                "变体,属人工义务,本机器不擅自增发探针",
+                "probe_r9_dive hard-codes the M29 manager; a winner-side re-check needs a probe variant with a parameterisable manager,"
+                " a manual obligation; this machine does not launch extra probes on its own",
         },
     }
 
 
-# ---- 判决核(r8_statistics 同械同式,R9 角色几何) ----
+# ---- verdict core (same machinery and formulas as r8_statistics, R9 role geometry) ----
 
 def _shared_worker_identity(meta_worker: dict, label: str) -> dict:
-    require(isinstance(meta_worker, dict), f"{label} worker identity 非法")
+    require(isinstance(meta_worker, dict), f"{label} worker identity invalid")
     require(meta_worker.get("kind") == "sb3_checkpoint",
-            f"{label} 共享工人 kind 必须是 sb3_checkpoint")
+            f"{label} shared worker kind must be sb3_checkpoint")
     require(meta_worker.get("sha256") == W_ZIP_SHA,
-            f"{label} 共享工人 sha 必须等于认证发布件:{meta_worker.get('sha256')!r}")
+            f"{label} shared worker sha must equal the certified release: {meta_worker.get('sha256')!r}")
     require(meta_worker.get("gate_report_sha256") is None,
-            f"{label} 共享工人不得携发布回执(staging 无回执路径)")
+            f"{label} shared worker must not carry a release receipt (staging path without a receipt)")
     return {key: meta_worker.get(key)
             for key in ("kind", "sha256", "num_timesteps", "gate_report_sha256")}
 
@@ -472,58 +472,58 @@ def _shared_worker_identity(meta_worker: dict, label: str) -> dict:
 def paired_judgment(baseline: dict, candidate: dict, *,
                     baseline_sha256: str, candidate_sha256: str,
                     phase: str) -> dict:
-    """R9 配对判决:R8 注册原语逐式复刻,闸门肢按主席回炉令重定。
+    """R9 paired verdict: the registered R8 primitives re-implemented formula by formula, with the gate limbs reset per the re-education design decision.
 
-    baseline = 新锚档案(M29×认证工人);candidate = 候选经理档案(候选×同一工人)。
-    闸门(3 约束,族错 α=0.05 均摊):① depth 优越(主指标,mean_lcb +
-    exact_sign 双检,minimum_effect=0);② wage 非劣(mean LCB ≥
-    −WAGE_NI_FRACTION×锚池 wage 均值,现场推导,含端点;sign 撤出闸门);
-    ③ 死亡:精确条件 McNemar 非劣(边距 0.10)+ 观测线按新锚推导
-    (line = 锚 died 数 + 边距×对数;禁绝对常数线)。
-    ret/kills/worker_kills 系 record-only 诊断,照算入档不进判决。
+    baseline = new anchor archive (M29 × certified worker); candidate = candidate-manager archive (candidate × the same worker).
+    Gates (3 constraints, family-wise α=0.05 split evenly): (1) depth superiority (primary metric, mean_lcb +
+    exact_sign both, minimum_effect=0); (2) wage non-inferiority (mean LCB ≥
+    −WAGE_NI_FRACTION×anchor-pool wage mean, derived on the spot, endpoint included; sign leaves the gate);
+    (3) death: exact conditional McNemar non-inferiority (margin 0.10) + an observed line derived from the new anchor
+    (line = anchor died count + margin×pairs; no absolute constant line).
+    ret/kills/worker_kills are record-only diagnostics, computed and archived but not part of the verdict.
     """
-    require(phase in ("development", "final"), f"phase 非法:{phase}")
+    require(phase in ("development", "final"), f"invalid phase: {phase}")
     floor_pairs = (r8_statistics.MIN_DEVELOPMENT_PAIRS if phase == "development"
                    else r8_statistics.MIN_FINAL_PAIRS)
     for label, document in (("baseline", baseline), ("candidate", candidate)):
         require(isinstance(document, dict)
                 and set(document) == {"schema_version", "meta", "agg", "rows"},
-                f"{label} 档案必须是已验 schema-v5 档案")
+                f"{label} archive must be a validated schema-v5 archive")
         require(document["schema_version"]
                 == r8_statistics.SUPPORTED_EVAL_ARCHIVE_SCHEMA,
-                f"{label} 档案 schema 必须为 v5")
+                f"{label} archive schema must be v5")
     b_meta, c_meta = baseline["meta"], candidate["meta"]
     require(b_meta["protocol"] == c_meta["protocol"],
-            "baseline/candidate 协议或种子表不一致")
+            "baseline/candidate protocol or seed table differ")
     require(b_meta["runtime"] == c_meta["runtime"],
-            "baseline/candidate 运行时/内容身份不一致")
-    # R9 角色几何:共享件 = 认证工人 zip(内容身份必须等同),变量 = 经理 npz。
+            "baseline/candidate runtime/content identity differ")
+    # R9 role geometry: shared = certified worker zip (content identity must be equal), variable = manager npz.
     require(_shared_worker_identity(b_meta["worker"], "baseline")
             == _shared_worker_identity(c_meta["worker"], "candidate"),
-            "baseline/candidate 共享工人内容身份不一致")
+            "baseline/candidate shared worker content identity differ")
     for label, meta in (("baseline", b_meta), ("candidate", c_meta)):
         require(meta["manager"].get("kind") == "numpy_policy",
-                f"{label} 经理 kind 必须是 numpy_policy")
+                f"{label} manager kind must be numpy_policy")
     b_mgr_sha = b_meta["manager"]["sha256"]
     c_mgr_sha = c_meta["manager"]["sha256"]
-    require(b_mgr_sha == M29_SHA, f"基线经理必须是 M29:{b_mgr_sha!r}")
-    require(b_mgr_sha != c_mgr_sha, "配对两侧经理内容必须不同(变量=经理)")
+    require(b_mgr_sha == M29_SHA, f"baseline manager must be M29: {b_mgr_sha!r}")
+    require(b_mgr_sha != c_mgr_sha, "the managers of the two paired sides must differ (variable = manager)")
     require(isinstance(baseline_sha256, str) and isinstance(candidate_sha256, str)
             and baseline_sha256 != candidate_sha256,
-            "档案字节 SHA 必须给全且不同")
+            "archive byte SHA must be given in full and must differ")
 
     protocol = b_meta["protocol"]
     require(protocol.get("deterministic") is True
             and isinstance(protocol.get("seeds"), list),
-            "确定性协议种子表缺失")
+            "deterministic protocol seed table missing")
     seeds = protocol["seeds"]
     b_rows, c_rows = baseline["rows"], candidate["rows"]
     require([row.get("seed") for row in b_rows] == seeds
             and [row.get("seed") for row in c_rows] == seeds,
-            "行序必须与协议种子表逐位一致")
+            "row order must match the protocol seed table exactly")
     n_pairs = len(seeds)
     require(n_pairs >= floor_pairs,
-            f"{phase} 判决至少需要 {floor_pairs} 对(收到 {n_pairs})")
+            f"{phase} verdict needs at least {floor_pairs} pairs (got {n_pairs})")
 
     all_metric_keys = ([DEPTH_RULE.key, WAGE_KEY]
                        + [rule.key for rule in RECORD_ONLY_RULES])
@@ -533,7 +533,7 @@ def paired_judgment(baseline: dict, candidate: dict, *,
     checks: dict = {}
     paired_hash_rows = []
     for b_row, c_row in zip(b_rows, c_rows):
-        require(b_row.get("seed") == c_row.get("seed"), "配对行 seed 不一致")
+        require(b_row.get("seed") == c_row.get("seed"), "paired row seed mismatch")
         hash_row = {"seed": b_row["seed"], "baseline": {}, "candidate": {}}
         for key in all_metric_keys:
             r8_statistics._finite_number(
@@ -544,13 +544,13 @@ def paired_judgment(baseline: dict, candidate: dict, *,
             hash_row["candidate"][key] = c_row[key]
         require(isinstance(b_row.get("died"), bool)
                 and isinstance(c_row.get("died"), bool),
-                "died 必须是逐行 bool")
+                "died must be a per-row bool")
         hash_row["baseline"]["died"] = b_row["died"]
         hash_row["candidate"]["died"] = c_row["died"]
         paired_hash_rows.append(hash_row)
 
     def limb_stats(key: str, minimum_effect: float) -> dict:
-        """r8 注册式逐字复刻的配对统计(全肢 higher 方向;过门判定由闸门层定)。"""
+        """Paired statistics re-implemented verbatim from the registered r8 formulas (all limbs in the higher direction; pass/fail is decided by the gate layer)."""
         baseline_values = [float(row[key]) for row in b_rows]
         candidate_values = [float(row[key]) for row in c_rows]
         improvement_values = [c - b for b, c
@@ -565,7 +565,7 @@ def paired_judgment(baseline: dict, candidate: dict, *,
         lower_bound = improvement_mean - t_critical * standard_error
         for label, value in (("improvement_mean", improvement_mean),
                              ("lower_confidence_bound", lower_bound)):
-            require(math.isfinite(value), f"{key}.{label} 必须有限")
+            require(math.isfinite(value), f"{key}.{label} must be finite")
         centered = [v - float(minimum_effect) for v in improvement_values]
         wins = sum(v > 0.0 for v in centered)
         losses = sum(v < 0.0 for v in centered)
@@ -591,7 +591,7 @@ def paired_judgment(baseline: dict, candidate: dict, *,
         }
 
     metrics: dict = {}
-    # ① depth 优越肢(主指标;mean+sign 双检共用同一 α 份额,r8 同型)。
+    # (1) depth superiority limb (primary metric; mean+sign share one α share, same form as r8).
     depth = limb_stats(DEPTH_RULE.key, float(DEPTH_RULE.minimum_effect))
     depth_mean_passed = (depth["lower_confidence_bound"]
                          > float(DEPTH_RULE.minimum_effect))
@@ -607,8 +607,8 @@ def paired_judgment(baseline: dict, candidate: dict, *,
         "passed": depth_mean_passed and depth_sign_passed,
     })
     metrics["depth"] = depth
-    # ② wage 非劣肢:线 = −WAGE_NI_FRACTION×锚池 wage 均值(逐池随锚现场
-    #    推导,含端点过);exact_sign 撤出闸门(sign 信息照记不裁)。
+    # (2) wage non-inferiority limb: line = −WAGE_NI_FRACTION×anchor-pool wage mean (derived per pool from the anchor on the spot,
+    #    the endpoint passes); exact_sign leaves the gate (sign information recorded, not ruled on).
     anchor_wage_mean = math.fsum(
         float(row[WAGE_KEY]) for row in b_rows) / n_pairs
     wage_minimum_effect = -WAGE_NI_FRACTION * anchor_wage_mean
@@ -619,7 +619,7 @@ def paired_judgment(baseline: dict, candidate: dict, *,
         "kind": "noninferiority",
         "noninferiority": {
             "formula": "minimum_effect = -WAGE_NI_FRACTION × anchor_wage_mean"
-                       "(逐池随锚现场推导;LCB ≥ 线 即过,含端点)",
+                       " (derived per pool from the anchor on the spot; passes if LCB ≥ line, endpoint included)",
             "margin_fraction": WAGE_NI_FRACTION,
             "anchor_wage_mean": anchor_wage_mean,
             "minimum_effect": wage_minimum_effect,
@@ -629,13 +629,13 @@ def paired_judgment(baseline: dict, candidate: dict, *,
         "passed": wage_ni_passed,
     })
     metrics[WAGE_KEY] = wage
-    # ③ record-only 诊断肢:照算入档,不进 checks/failed_checks(回炉令 ④)。
+    # (3) record-only diagnostic limbs: computed and archived, not in checks/failed_checks (re-education decision item 4).
     record_only_metrics: dict = {}
     for rule in RECORD_ONLY_RULES:
         stats = limb_stats(rule.key, float(rule.minimum_effect))
         stats.update({
             "record_only": True,
-            "note": "0-优越口径照算(与旧闸读数可比);不占 α,不进判决",
+            "note": "computed on the 0-superiority definition (comparable with the old gate readings); uses no α, not part of the verdict",
             "mean_lcb_indicative": (stats["lower_confidence_bound"]
                                     > float(rule.minimum_effect)),
             "sign_test": {**stats["sign_test"], "required": False,
@@ -659,7 +659,7 @@ def paired_judgment(baseline: dict, candidate: dict, *,
         theta_upper = 0.0
         risk_upper = 0.0
     death_bound_passed = risk_upper <= DEATH_MARGIN
-    # v31-D3-10 落点:死亡观测线由新锚现场推导(禁 6/32 绝对线)。
+    # where v31-D3-10 lands: the observed death line is derived on the spot from the new anchor (the absolute 6/32 line is forbidden).
     derived_line = baseline_deaths + DEATH_MARGIN * n_pairs
     observed_within_line = candidate_deaths <= derived_line
     checks["deaths.noninferiority_upper_bound"] = death_bound_passed
@@ -683,7 +683,7 @@ def paired_judgment(baseline: dict, candidate: dict, *,
         "candidate_minus_baseline_risk_upper_bound": risk_upper,
         "derived_observed_line": {
             "formula": "line_deaths = anchor_deaths + margin*n_pairs"
-                       "(v31-D3-10:随锚现场推导,禁承继 6/32 绝对线)",
+                       " (v31-D3-10: derived from the anchor on the spot; inheriting the absolute 6/32 line is forbidden)",
             "anchor_deaths": baseline_deaths,
             "margin": DEATH_MARGIN,
             "n_pairs": n_pairs,
@@ -697,17 +697,17 @@ def paired_judgment(baseline: dict, candidate: dict, *,
     near_line_notes = []
     if abs(candidate_deaths - derived_line) <= NEAR_LINE_DEATH_GAP:
         near_line_notes.append(
-            f"死亡观测距推导线 ≤{NEAR_LINE_DEATH_GAP} 命"
+            f"observed deaths within {NEAR_LINE_DEATH_GAP} of the derived line"
             f"(candidate={candidate_deaths},line={derived_line:.1f})")
     if abs(DEATH_MARGIN - risk_upper) <= NEAR_LINE_UCB_BAND:
         near_line_notes.append(
-            f"McNemar UCB 距边距 ≤{NEAR_LINE_UCB_BAND}(UCB={risk_upper:.4f})")
+            f"McNemar UCB within {NEAR_LINE_UCB_BAND} of the margin (UCB={risk_upper:.4f})")
     depth_lcb = metrics["depth"]["lower_confidence_bound"]
     if 0.0 <= depth_lcb < NEAR_LINE_LCB_BAND:
-        near_line_notes.append(f"depth.LCB 临线({depth_lcb:.3f})")
+        near_line_notes.append(f"depth.LCB borderline ({depth_lcb:.3f})")
     wage_gap = metrics[WAGE_KEY]["lower_confidence_bound"] - wage_minimum_effect
     if 0.0 <= wage_gap < NEAR_LINE_LCB_BAND:
-        near_line_notes.append(f"wage 非劣 LCB 距线临线(gap={wage_gap:.3f})")
+        near_line_notes.append(f"wage non-inferiority LCB borderline to the line (gap={wage_gap:.3f})")
     result = {
         "schema_version": R9_STATISTICS_SCHEMA,
         "method_revision": R9_METHOD_REVISION,
@@ -725,7 +725,7 @@ def paired_judgment(baseline: dict, candidate: dict, *,
             "baseline_manager_sha256": b_mgr_sha,
             "candidate_manager_sha256": c_mgr_sha,
             "shared_worker_sha256": W_ZIP_SHA,
-            "role_geometry": "r9-dual(共享=认证工人 zip,变量=经理 npz)",
+            "role_geometry": "r9-dual (shared = certified worker zip, variable = manager npz)",
         },
         "seeds_sha256": r8_statistics._canonical_sha256(seeds),
         "paired_data_sha256": r8_statistics._canonical_sha256(paired_hash_rows),
@@ -763,14 +763,14 @@ def paired_judgment(baseline: dict, candidate: dict, *,
 
 
 def select_winner(quals: dict, eligible: list) -> str:
-    """胜者拣选(末令):过门臂比 depth 配对均差(主指标)。
+    """Winner selection (final design decision): passing arms are compared by paired depth mean difference (primary metric).
 
-    带宽 ``WINNER_DEPTH_TIE_BAND`` 内视为并列;并列破格:①合并池逐种子
-    died 总数更低者;②仍平取 r9-mfresh(奥卡姆:课程臂须以可见深度优势
-    自证)。ret 带已撤出拣选(照记入 quals,仅存档不裁)。
+    Within the band ``WINNER_DEPTH_TIE_BAND`` they count as tied; tie-break: (1) lower total per-seed
+    died over the combined pools; (2) still tied, take r9-mfresh (Occam: the curriculum arm must prove itself with a visible
+    depth advantage). The ret band has left the selection (recorded in quals, archived but not ruled on).
     """
-    require(bool(eligible), "胜者拣选需要至少一个过门臂")
-    require(all(name in quals for name in eligible), "过门臂缺 quals 读数")
+    require(bool(eligible), "winner selection needs at least one passing arm")
+    require(all(name in quals for name in eligible), "passing arm lacks quals readings")
     ms = {name: quals[name]["depth_paired_mean_ab"] for name in eligible}
     band = [name for name in eligible
             if max(ms.values()) - ms[name] <= WINNER_DEPTH_TIE_BAND]
@@ -782,7 +782,7 @@ def select_winner(quals: dict, eligible: list) -> str:
 
 
 def analysis_digest(analysis: dict) -> dict:
-    """ledger 判决摘要:主判决行首列 depth 读数(回炉令 3)。"""
+    """Ledger verdict summary: the main verdict line leads with the depth reading (re-education decision item 3)."""
     depth_m = analysis["metrics"]["depth"]
     wage_m = analysis["metrics"][WAGE_KEY]
     death = analysis["death_noninferiority"]
@@ -819,7 +819,7 @@ def analysis_digest(analysis: dict) -> dict:
     }
 
 
-# ---- G0-6 遗留义务:旧端点全表重放(E-fix REF_BITEQ) ----
+# ---- G0-6 leftover obligation: full-table replay at the old endpoints (E-fix REF_BITEQ) ----
 
 def probe_mode_seq(windows) -> str:
     return "".join("FDR"[int(w["opt"])] + ("†" if w["reason"] == "death" else "")
@@ -833,9 +833,9 @@ def g0_6_replay():
         archive_path = EVAL / f"{name}.json"
         actual_archive_sha = sha256(archive_path)
         require(actual_archive_sha == spec["archive_sha256"],
-                f"R8 终考档案字节漂移:{name}:{actual_archive_sha}")
-        # 旧档案系 E-fix 前协议束产物,禁绑当前运行时身份;按钉死字节 sha +
-        # tag/seeds/worker 期望读取(内部 agg↔rows 复核照走)。
+                f"R8 final-exam archive byte drift: {name}:{actual_archive_sha}")
+        # the old archives are products of the pre-E-fix protocol bundle and may not be bound to the current runtime identity; read them with the pinned byte sha +
+        # the expected tag/seeds/worker (the internal agg<->rows check still runs).
         doc = read_eval_archive(
             archive_path, expected_tag=name, expected_seeds=seeds,
             expected_worker_sha256=spec["worker_sha256"],
@@ -843,7 +843,7 @@ def g0_6_replay():
         ref = by_seed(doc["rows"], R8_FINAL_SEEDS)
         worker_zip = spec["worker_zip"]
         require(sha256(worker_zip) == spec["worker_sha256"],
-                f"G0-6 重放工人 sha 漂移:{worker_zip}")
+                f"G0-6 replay worker sha drift: {worker_zip}")
         out = R9 / "g0" / f"g0-{name}.{time.time_ns()}.json"
         out.parent.mkdir(parents=True, exist_ok=True)
         cmd = [PY, str(G0_PROBE), str(out),
@@ -852,16 +852,16 @@ def g0_6_replay():
         rc = run(cmd, f"g0-{name}.{time.time_ns()}.log", timeout=5_400)
         if rc != 0 or not out.exists():
             log({"event": "g0_6_crash", "archive": name, "rc": rc,
-                 "note": "重放进程失败,按崩溃条款重试一次"})
+                 "note": "replay process failed; retry once under the crash clause"})
             rc = run(cmd, f"g0-{name}.{time.time_ns()}.log", timeout=5_400)
             if rc != 0 or not out.exists():
-                why = f"G0-6 重放进程连败:{name}(rc={rc})"
+                why = f"G0-6 replay process failed repeatedly: {name} (rc={rc})"
                 log({"event": "STOP", "why": why})
                 attention(why)
                 raise OperationalFailure(why)
         records = json.loads(out.read_text())
         require(sorted(r["seed"] for r in records) == seeds,
-                f"G0-6 重放种子集不完整:{name}")
+                f"G0-6 replay seed set incomplete: {name}")
         bad = []
         for rec in records:
             row = ref[rec["seed"]]
@@ -877,27 +877,27 @@ def g0_6_replay():
              "records_sha16": sha16(out),
              "verdict": "REF_BITEQ" if not bad else "FAIL"})
         if bad:
-            why = (f"G0-6 位级对账失配:{name} 计 {len(bad)} 种子——"
-                   "旧端点重放未复现 R8 终考,按 E-fix 回退条款人工审理")
+            why = (f"G0-6 bit-level reconciliation mismatch: {name}, {len(bad)} seeds -- "
+                   "the old-endpoint replay did not reproduce the R8 final exam; manual review under the E-fix fallback clause")
             log({"event": "STOP", "why": why})
             attention(why)
             raise OperationalFailure(why)
     log({"event": "g0_6_verdict", "status": "REF_BITEQ",
-         "note": "R8 终考 512 局旧端点全表位级复现;E-fix G0-6 遗留义务清偿"})
+         "note": "full-table bit-level reproduction of the 512 R8 final-exam games at the old endpoints; E-fix G0-6 leftover obligation settled"})
 
 
 # ---- preflight ----
 
 def preflight():
     require_calibrated_protocol()
-    require(G0_PROBE.is_file(), f"G0-6 探针缺失:{G0_PROBE}")
+    require(G0_PROBE.is_file(), f"G0-6 probe missing: {G0_PROBE}")
     require(W_ZIP_SRC.is_file() and sha256(W_ZIP_SRC) == W_ZIP_SHA,
-            "认证工人发布件缺失或 sha 漂移")
+            "certified worker release missing or sha drift")
     require(M29_NPZ.is_file() and sha256(M29_NPZ) == M29_SHA,
-            "M29 经理 npz 缺失或 sha 漂移")
+            "M29 manager npz missing or sha drift")
     for name, spec in R8_FINAL.items():
-        require((EVAL / f"{name}.json").is_file(), f"R8 终考档案缺失:{name}")
-        require(spec["worker_zip"].is_file(), f"G0-6 重放工人缺失:{spec['worker_zip']}")
+        require((EVAL / f"{name}.json").is_file(), f"R8 final-exam archive missing: {name}")
+        require(spec["worker_zip"].is_file(), f"G0-6 replay worker missing: {spec['worker_zip']}")
     staged_sha = _stage_eval_file(W_ZIP_SRC, STAGED_WORKER,
                                   expected_sha256=W_ZIP_SHA)
     tags = list(TAG_ANCHOR.values())
@@ -905,9 +905,9 @@ def preflight():
     tags += [f"r9-final-{arm}-{POOL_FINAL[0]}" for arm in ARMS]
     for t in tags:
         require(not (EVAL / f"{t}.json").exists(),
-                f"目标档案已存在:{t}(重启协议:先 .void)")
+                f"target archive already exists: {t} (restart protocol: .void it first)")
     for arm in ARMS:
-        require(not (RUNS / arm).exists(), f"运行目录残留:{arm}(重启协议:先归档)")
+        require(not (RUNS / arm).exists(), f"run directory left over: {arm} (restart protocol: archive it first)")
     log({"event": "preflight_ok", "prereg": "docs/prereg/PREREG-R9-manager-reeducation.md",
          "protocol_version": PROTOCOL_VERSION,
          "worker_zip_sha16": W_ZIP_SHA[:16], "staged_sha16": staged_sha[:16],
@@ -917,20 +917,20 @@ def preflight():
          "target_tags": tags})
 
 
-# ---- 主序列 ----
+# ---- main sequence ----
 
 def main():
     try:
         R9.mkdir(parents=True, exist_ok=True)
-        with exclusive_lock(R9 / ".driver.lock", "R9 驱动"):
+        with exclusive_lock(R9 / ".driver.lock", "R9 driver"):
             _main()
     except (OperationalFailure, OutputReservationError) as e:
         log({"event": "OPERATIONAL_FAILURE", "why": str(e)})
-        attention("运维失败:\n" + str(e))
+        attention("operational failure:\n" + str(e))
         raise SystemExit(2) from e
-    except Exception as e:   # 条款兜底:任何未预期异常必须入册,不许无声死亡
+    except Exception as e:   # catch-all clause: any unexpected exception must be recorded, never a silent death
         log({"event": "DRIVER_EXCEPTION", "why": repr(e)})
-        attention("驱动异常死亡:\n" + traceback.format_exc())
+        attention("driver died abnormally:\n" + traceback.format_exc())
         raise
 
 
@@ -941,19 +941,19 @@ def _main():
          "pools": {"a": seeds_arg(POOL_A), "b": seeds_arg(POOL_B),
                    "final": seeds_arg(POOL_FINAL)},
          "death_margin": DEATH_MARGIN, "familywise_alpha": FAMILYWISE_ALPHA,
-         "note": "金池 9000/留出池零接触;--board 不用;本案不烧金牌"})
+         "note": "gold pool 9000 / held-out pools untouched; --board not used; this case burns no gold run"})
 
-    # ---- G0-6:E-fix 遗留义务(先于一切新池消费) ----
+    # ---- G0-6: E-fix leftover obligation (before any new-pool consumption) ----
     g0_6_replay()
 
-    # ---- 新锚烧制(唯一新池消费;候选此刻不存在,零接触锚池) ----
+    # ---- new anchor burn (the only new-pool consumption; candidates do not exist yet, so zero contact with the anchor pools) ----
     anchors: dict[str, tuple[dict, str]] = {}
     for pool in ("a", "b", "final"):
         tag = TAG_ANCHOR[pool]
         timeout = 3_600 if pool == "final" else 1_800
         result = exam_retry(tag, POOLS[pool], M29_NPZ, "legacy-v3", timeout)
         if result is None:
-            why = f"锚烧制连败:{tag}"
+            why = f"anchor burn failed repeatedly: {tag}"
             log({"event": "STOP", "why": why})
             attention(why)
             raise OperationalFailure(why)
@@ -962,7 +962,7 @@ def _main():
         log({"event": "anchor", "tag": tag, "mean": doc["agg"]["ret_mean"],
              "sha16": doc_sha[:16], **depth_dashboard(doc["rows"])})
 
-    # ---- 裁决线现场推导(推导式+数值入册;v31-D3-10 死亡线随各池锚在判决核内推导) ----
+    # ---- on-the-spot derivation of the decision lines (formula + values recorded; the v31-D3-10 death line is derived per pool from the anchor inside the verdict core) ----
     ab_rows = anchors["a"][0]["rows"] + anchors["b"][0]["rows"]
     anchor_ab_mean = sum(r["ret"] for r in ab_rows) / len(ab_rows)
     abandon = round(anchor_ab_mean * ABANDON_FACTOR, 1)
@@ -977,19 +977,19 @@ def _main():
          "abandon": abandon,
          "floor_formula": f"FLOOR_REPRO = anchor_ab_mean × {FLOOR_NUM}/{FLOOR_DEN}",
          "floor_repro": floor_repro,
-         "death_line_formula": "逐池:line_deaths = anchor_deaths + "
-                               f"{DEATH_MARGIN}×n_pairs(判决核内随锚推导)",
+         "death_line_formula": "per pool: line_deaths = anchor_deaths + "
+                               f"{DEATH_MARGIN}×n_pairs (derived from the anchor inside the verdict core)",
          "anchor_deaths": {pool: sum(1 for r in anchors[pool][0]["rows"] if r["died"])
                            for pool in anchors},
-         "wage_ni_formula": f"逐池:wage 非劣线 = −{WAGE_NI_FRACTION}×锚池 "
-                            f"{WAGE_KEY} 均值(判决核内随锚推导,LCB≥线 含端点过)",
+         "wage_ni_formula": f"per pool: wage non-inferiority line = −{WAGE_NI_FRACTION}×anchor-pool "
+                            f"{WAGE_KEY} mean (derived from the anchor inside the verdict core; LCB≥line passes, endpoint included)",
          "anchor_wage_means": anchor_wage_means,
          "wage_ni_lines": {pool: round(-WAGE_NI_FRACTION * mean, 3)
                            for pool, mean in anchor_wage_means.items()},
-         "gate_note": "闸门肢 = depth 优越(主指标)+ wage 非劣 + 死亡;"
-                      "ret/kills/worker_kills 系 record-only(回炉令)"})
+         "gate_note": "gate limbs = depth superiority (primary metric) + wage non-inferiority + death;"
+                      " ret/kills/worker_kills are record-only (re-education design decision)"})
 
-    # ---- 双臂串行训练 ----
+    # ---- two arms trained in series ----
     npz: dict[str, pathlib.Path] = {}
     for name, extra in ARMS.items():
         cmd = [PY, "train/train_ppo.py", "--options", "--algo", "mppo",
@@ -1001,18 +1001,18 @@ def _main():
                "--run-name", name] + extra
         log({"event": "arm_start", "arm": name, "cmd_extra": extra})
         t0 = time.time()
-        rc = run(cmd, f"train-{name}.log", timeout=216_000)   # 60h 防挂死底线(2026-08-24 主席令「直接启动 这次没有时间限制」;实测需求~30h/臂,此丝仅拦真死锁)
+        rc = run(cmd, f"train-{name}.log", timeout=216_000)   # 60h hang backstop (design decision of 2026-08-24: launch directly, no time limit this time; measured need ~30h per arm, this wire only catches real deadlocks)
         sp = RUNS / name / "status.json"
         try:
             steps = json.loads(sp.read_text())["total_steps"] if sp.exists() else 0
         except Exception:
             steps = 0
-        nt = zip_steps(RUNS / name / "model_final.zip")   # 达标闸唯一计步源(SB3 真链)
+        nt = zip_steps(RUNS / name / "model_final.zip")   # the only step source for the completion gate (SB3 real chain)
         log({"event": "arm_done", "arm": name, "rc": rc, "nt_zip": nt,
              "steps_status": steps, "dt_min": round((time.time() - t0) / 60, 1)})
         if rc != 0 or nt != STEPS:
-            why = (f"{name} 训练未达标(rc={rc}, nt_zip={nt}, status={steps})"
-                   "——命题未考,本版不追加重训(v25 条款承继)")
+            why = (f"{name} training fell short (rc={rc}, nt_zip={nt}, status={steps})"
+                   " -- proposition not examined; this version does not add retraining (v25 clause inherited)")
             log({"event": "STOP", "why": why})
             attention(why)
             raise OperationalFailure(why)
@@ -1020,21 +1020,21 @@ def _main():
         if run([PY, "train/export_manager_npz.py",
                 str(RUNS / name / "model_final.zip"), str(out)],
                f"export-{name}.log", timeout=600) != 0 or not out.exists():
-            why = f"{name} npz 导出/parity 失败"
+            why = f"{name} npz export/parity failed"
             log({"event": "STOP", "why": why})
             attention(why)
             raise OperationalFailure(why)
         npz[name] = out
         log({"event": "g_parity", "arm": name, "npz_sha16": sha16(out)})
 
-    # ---- 臂考(每臂 2_123/2_124 各 128;候选经理视图 raw-v4) ----
+    # ---- arm exams (128 each on 2_123/2_124 per arm; candidate manager view raw-v4) ----
     arm_docs: dict[tuple[str, str], tuple[dict, str]] = {}
     for name in ARMS:
         for pool in ("a", "b"):
             tag = f"{name}-{pool}-{POOLS[pool][0]}"
             result = exam_retry(tag, POOLS[pool], npz[name], "raw-v4", 1_800)
             if result is None:
-                why = f"{name} 臂考连败:{tag}"
+                why = f"{name} arm exam failed repeatedly: {tag}"
                 log({"event": "STOP", "why": why})
                 attention(why)
                 raise OperationalFailure(why)
@@ -1049,7 +1049,7 @@ def _main():
                  "paired_mean_vs_anchor": round(paired_mean, 3),
                  "sha16": doc_sha[:16], **depth_dashboard(doc["rows"])})
 
-    # ---- 提前放弃闸(推导线 ABANDON;四读数全线以下 → 训练失败,免统计) ----
+    # ---- early abandon gate (derived line ABANDON; all four readings below the line → training failed, no statistics) ----
     exam_means = {f"{name}:{pool}": arm_docs[(name, pool)][0]["agg"]["ret_mean"]
                   for name in ARMS for pool in ("a", "b")}
     tripped = all(v < abandon for v in exam_means.values())
@@ -1057,12 +1057,12 @@ def _main():
          "tripped": tripped})
     if tripped:
         log({"event": "VERDICT_PATH", "golden_authorized": False,
-             "why": f"双臂双池均 <{abandon}(= 锚×{ABANDON_FACTOR})——训练失败,"
-                    "再教育命题未考(免终考)"})
-        attention("判决:训练失败,命题未考(ABANDON 推导线)")
+             "why": f"both arms on both pools <{abandon} (= anchor×{ABANDON_FACTOR}) -- training failed,"
+                    " re-education proposition not examined (no final exam)"})
+        attention("verdict: training failed, proposition not examined (ABANDON derived line)")
         return
 
-    # ---- 配对判决(r8 同械同式;development 语义,每臂两池) ----
+    # ---- paired verdict (same machinery and formulas as r8; development semantics, two pools per arm) ----
     analyses: dict[tuple[str, str], dict] = {}
     for name in ARMS:
         for pool in ("a", "b"):
@@ -1076,7 +1076,7 @@ def _main():
                  "status": analysis["verdict"]["status"],
                  **analysis_digest(analysis)})
 
-    # ---- 复现门/资格与胜者(过门臂中取配对均差最大;带内低死,再并列取 mfresh) ----
+    # ---- replication gate / eligibility and winner (largest paired mean difference among passing arms; within the band fewer deaths, then mfresh) ----
     quals = {}
     for name in ARMS:
         both_pass = all(analyses[(name, pool)]["verdict"]["status"] == "PASS"
@@ -1094,7 +1094,7 @@ def _main():
                        for s in sorted(anchor_ab)]
         quals[name] = {
             "both_pools_pass": both_pass,
-            # 主指标读数行首列(回炉令 3);亦为胜者拣选量(末令)。
+            # the primary-metric reading leads the line (re-education decision item 3); also the winner-selection quantity (final design decision).
             "depth_paired_mean_ab": round(
                 sum(depth_diffs) / len(depth_diffs), 3),
             "depth_paired_wins_ab": sum(d > 0 for d in depth_diffs),
@@ -1109,43 +1109,43 @@ def _main():
     pool_pass = [n for n in ARMS if quals[n]["both_pools_pass"]]
     if not pool_pass:
         log({"event": "VERDICT_PATH", "golden_authorized": False,
-             "verdict": "双臂复现门失败(depth 优越/wage 非劣/死亡肢未同时过)"
-                        "——无胜者,再教育命题未答(功效外)",
+             "verdict": "both arms failed the replication gate (depth superiority / wage non-inferiority / death limbs did not all pass)"
+                        " -- no winner; the re-education proposition is unanswered (outside the power)",
              "arms": quals})
-        attention("判决:双臂复现门失败,无胜者(深度仪表已随 arm_exam 入册)")
+        attention("verdict: both arms failed the replication gate, no winner (depth instruments already recorded with arm_exam)")
         return
     prelim = max(ARMS, key=lambda n: quals[n]["depth_paired_mean_ab"])
     if prelim not in pool_pass:
         log({"event": "substitution", "blocked": prelim,
              "why": quals[prelim],
-             "note": "depth 配对均差胜者复现门拦截,由过门臂递补(v29 D3-2 同款)"})
+             "note": "the depth paired-mean-difference winner was blocked by the replication gate; the next passing arm takes its place (same as v29 D3-2)"})
     winner = select_winner(quals, pool_pass)
     log({"event": "winner", "arm": winner, **quals[winner],
-         "selection_rule": f"depth 配对均差最大;带 {WINNER_DEPTH_TIE_BAND} 内"
-                           "并列→①低死②mfresh(末令;ret 带已撤出拣选,"
-                           "照记 quals 不裁)",
+         "selection_rule": f"largest paired depth mean difference; within the {WINNER_DEPTH_TIE_BAND} band"
+                           " ties → (1) fewer deaths (2) mfresh (final design decision; the ret band has left the selection,"
+                           " recorded in quals, not ruled on)",
          "substituted": winner != prelim})
 
-    # ---- 复现地板(推导线 FLOOR;胜者 A+B 合并均值) ----
-    floor_note = ("(临线:距 FLOOR ≤1.0)"
+    # ---- reproduction floor (derived line FLOOR; winner's combined A+B mean) ----
+    floor_note = (" (borderline: within 1.0 of FLOOR)"
                   if abs(quals[winner]["pooled_mean"] - floor_repro)
                   <= NEAR_LINE_FLOOR_GAP else "")
     if not quals[winner]["floor_pass"]:
         log({"event": "VERDICT_PATH", "golden_authorized": False,
-             "why": f"胜者 {quals[winner]['pooled_mean']} < {floor_repro}"
-                    f"(= 锚×{FLOOR_NUM}/{FLOOR_DEN}){floor_note}——重训未复现"
-                    "参考水平,再教育命题未考"})
-        attention("判决:未复现参考水平(FLOOR 推导线)")
+             "why": f"winner {quals[winner]['pooled_mean']} < {floor_repro}"
+                    f" (= anchor×{FLOOR_NUM}/{FLOOR_DEN}){floor_note} -- retraining did not reproduce"
+                    " the reference level; re-education proposition not examined"})
+        attention("verdict: reference level not reproduced (FLOOR derived line)")
         return
     log({"event": "floor_check", "winner": winner,
          "pooled_mean": quals[winner]["pooled_mean"],
          "floor": floor_repro, "passed": True, "near_line": bool(floor_note)})
 
-    # ---- 胜者终考(2_125 一次性 256 对)+ 终判(final 语义) ----
+    # ---- winner's final exam (2_125, one-off 256 pairs) + final verdict (final semantics) ----
     final_tag = f"r9-final-{winner}-{POOL_FINAL[0]}"
     result = exam_retry(final_tag, POOL_FINAL, npz[winner], "raw-v4", 3_600)
     if result is None:
-        why = f"终考连败:{final_tag}"
+        why = f"final exam failed repeatedly: {final_tag}"
         log({"event": "STOP", "why": why})
         attention(why)
         raise OperationalFailure(why)
@@ -1161,7 +1161,7 @@ def _main():
          "status": final_analysis["verdict"]["status"],
          **analysis_digest(final_analysis)})
 
-    # ---- 深度副判(科学结论;判「深度解锁」须三防呆仪表同时移动) ----
+    # ---- depth side verdict (scientific conclusion; "depth unlocked" requires all three fool-proofing instruments to move) ----
     anchor_rows = anchor_final_doc["rows"]
     final_rows = final_doc["rows"]
     gauges = gauge_report(anchor_rows, final_rows, TAG_ANCHOR["final"])
@@ -1172,20 +1172,20 @@ def _main():
     rate_moved = (anchor_rate is not None and cand_rate is not None
                   and cand_rate > anchor_rate)
     if cand_l3 > anchor_l3 and rate_moved:
-        depth_verdict = ("深度经济已动(L3+ 上移且潜成率上移;判『深度解锁』须"
-                         "防呆仪表 1/3(交权中位/停留比)probe 复核同向后方可定谳)")
+        depth_verdict = ("the depth economy moved (L3+ up and success rate up); 'depth unlocked' may only be concluded"
+                         " after fool-proofing instruments 1/3 (median hand-over / residence ratio) are re-checked by probe in the same direction")
     elif cand_l3 <= anchor_l3:
-        depth_verdict = f"再教育未解锁深度(L3+ {cand_l3} ≤ 锚 {anchor_l3})"
+        depth_verdict = f"re-education did not unlock depth (L3+ {cand_l3} ≤ anchor {anchor_l3})"
     else:
-        depth_verdict = (f"带外(L3+ {anchor_l3}→{cand_l3},潜成率 "
-                         f"{anchor_rate}→{cand_rate}),入册不叙事")
+        depth_verdict = (f"out of band (L3+ {anchor_l3}→{cand_l3}, success rate "
+                         f"{anchor_rate}→{cand_rate}), recorded without narrative")
     log({"event": "depth_verdict", "anchor_l3": anchor_l3, "candidate_l3": cand_l3,
          "anchor_depth_hist": depth_hist(anchor_rows),
          "candidate_depth_hist": depth_hist(final_rows),
          "gauges": gauges, "verdict": depth_verdict,
-         "note": "副判;王座/发布认定不在本案(防过度叙事,B8:不烧金牌)"})
+         "note": "side verdict; throne/release decisions are not part of this case (against over-narration, B8: no gold run burned)"})
 
-    # ---- 终判入册(主判决行首列 depth 读数;回炉令 3) ----
+    # ---- final verdict recorded (the main verdict line leads with the depth reading; re-education decision item 3) ----
     final_status = final_analysis["verdict"]["status"]
     near = final_analysis["near_line_notes"]
     digest = analysis_digest(final_analysis)
@@ -1193,20 +1193,20 @@ def _main():
     wage_r = digest["wage_ni"]
     death_r = digest["death"]
     verdict_text = (
-        f"R9 终判 {final_status}:depth 配对均差 {depth_r['paired_mean']:+.3f}"
-        f"(LCB {depth_r['lcb']:+.3f},sign {depth_r['wins']}/"
-        f"{depth_r['non_ties']},p={depth_r['sign_p']:.3g};"
+        f"R9 final verdict {final_status}: depth paired mean difference {depth_r['paired_mean']:+.3f}"
+        f" (LCB {depth_r['lcb']:+.3f}, sign {depth_r['wins']}/"
+        f"{depth_r['non_ties']}, p={depth_r['sign_p']:.3g}; "
         f"L3+ {anchor_l3}→{cand_l3})"
-        f";wage 非劣{'过' if wage_r['passed'] else '未过'}"
-        f"(LCB {wage_r['lcb']:+.3f} vs 线 {wage_r['line']:+.3f})"
-        f";死亡{'过' if death_r['passed'] else '未过'}"
-        f"(候选 {death_r['candidate_deaths']} vs 锚 "
-        f"{death_r['baseline_deaths']},推导线 {death_r['derived_line']:.1f},"
-        f"UCB {death_r['mcnemar_ucb']})"
+        f"; wage non-inferiority {'passed' if wage_r['passed'] else 'failed'}"
+        f" (LCB {wage_r['lcb']:+.3f} vs line {wage_r['line']:+.3f})"
+        f"; death {'passed' if death_r['passed'] else 'failed'}"
+        f" (candidate {death_r['candidate_deaths']} vs anchor "
+        f"{death_r['baseline_deaths']}, derived line {death_r['derived_line']:.1f},"
+        f" UCB {death_r['mcnemar_ucb']})"
         + ("" if final_status == "PASS"
-           else f";未过肢:{final_analysis['verdict']['failed_checks']}")
-        + f";深度副判:{depth_verdict}"
-        + (f";临线注记:{near}" if near else ""))
+           else f"; failed limbs: {final_analysis['verdict']['failed_checks']}")
+        + f"; depth side verdict: {depth_verdict}"
+        + (f"; borderline notes: {near}" if near else ""))
     log({"event": "VERDICT_FINAL", "status": final_status, "arm": winner,
          **digest,
          "verdict": verdict_text,
@@ -1215,18 +1215,18 @@ def _main():
          "candidate_died_seeds": died_seeds(final_rows),
          "anchor_died_seeds": died_seeds(anchor_rows),
          "gauges": gauges,
-         "note": "发布/王座另案由主席裁;败臂/未考臂永不见 2_125 之外新池;"
-                 "金池 9000 全程零接触"})
-    attention(f"R9 终判 {final_status}({winner});{verdict_text}")
+         "note": "release/throne are decided in a separate case; losing/unexamined arms never see a new pool beyond 2_125;"
+                 " gold pool 9000 untouched throughout"})
+    attention(f"R9 final verdict {final_status} ({winner}); {verdict_text}")
 
 
 if __name__ == "__main__":
     import sys
-    # 发车护栏(2026-07-31 运维事故:--help 被无视直接开跑,及时掐停,
-    # 池零消耗):本驱动无 CLI 参数,任何 argv 一律拒绝退出——发车必须
-    # 是裸调用的明确意图,不给口误留门。
+    # launch guard (2026-07-31 operational incident: --help was ignored and a run started; it was stopped in time,
+    # zero pool consumption): this driver takes no CLI arguments and refuses any argv -- a launch must be
+    # the explicit intent of a bare call, leaving no door open for a slip.
     if len(sys.argv) > 1:
-        print("run_r9_reeducation 不接受任何参数;裸调用即发车(发车在主席)。",
+        print("run_r9_reeducation takes no arguments; a bare call launches (launch requires recorded approval).",
               file=sys.stderr)
         raise SystemExit(2)
     main()

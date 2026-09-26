@@ -1,4 +1,4 @@
-"""寻路助手:接力 hop 走位(单次寻路上限约 25 步)+ 卡住扰动 + 脚本化下地牢。"""
+"""Pathing helpers: relayed hop walking (one path search reaches about 25 steps) + stuck perturbation + scripted dungeon entry."""
 
 from __future__ import annotations
 
@@ -13,11 +13,11 @@ def _scene_identity(obs):
 
 def walk_to(bridge, tx, ty, max_ticks=6000, hop=8, ticks_per_hop=16, jitter_seed=7,
             *, raw_validator=None):
-    """分段走向目标格;中途换层立即返回。返回 (最终观测, 用掉 tick 数)。"""
+    """Walk toward the target tile in segments; return immediately on a level change. Returns (final observation, ticks used)."""
     for name, value in (("max_ticks", max_ticks), ("hop", hop),
                         ("ticks_per_hop", ticks_per_hop)):
         if isinstance(value, bool) or not isinstance(value, (int, np.integer)) or value <= 0:
-            raise ValueError(f"{name} 必须是正整数，收到 {value!r}")
+            raise ValueError(f"{name} must be a positive integer, got {value!r}")
     tx, ty = int(tx), int(ty)
     max_ticks, hop, ticks_per_hop = int(max_ticks), int(hop), int(ticks_per_hop)
     rng = np.random.default_rng(jitter_seed)
@@ -35,7 +35,7 @@ def walk_to(bridge, tx, ty, max_ticks=6000, hop=8, ticks_per_hop=16, jitter_seed
         dx, dy = tx - px, ty - py
         dist = max(abs(dx), abs(dy))
         if dist == 0:
-            # 站上目标格:触发器要等 PM_STAND,关卡切换还要一轮事件泵
+            # Standing on the target tile: triggers wait for PM_STAND, and a level change needs one more event-pump round
             for _ in range(30):
                 if used >= max_ticks:
                     break
@@ -84,25 +84,25 @@ def walk_to(bridge, tx, ty, max_ticks=6000, hop=8, ticks_per_hop=16, jitter_seed
 
 
 def descend_to_dungeon(bridge, *, raw_validator=None):
-    """从城镇出生点走到教堂楼梯并进入地牢 1 层。返回 L1 首帧观测。
+    """Walk from the town spawn point to the cathedral stairs and enter dungeon level 1. Returns the first L1 observation.
 
-    城镇布局固定(楼梯恒在 (25,29)),对任意种子都适用。
+    The town layout is fixed (the stairs are always at (25,29)), so this works for any seed.
     """
     obs = bridge.observe()
     if raw_validator is not None:
         raw_validator(obs)
     if obs["dungeon_level"] != 0:
-        raise ValueError("descend_to_dungeon 需要从城镇出发")
+        raise ValueError("descend_to_dungeon must start from town")
     stairs = [t for t in obs["triggers"] if t["msg"] == bridge.WM_DIABNEXTLVL]
     if not stairs:
-        raise RuntimeError(f"城镇观测里没有下行楼梯: {obs['triggers']}")
+        raise RuntimeError(f"no down stairs in the town observation: {obs['triggers']}")
     if raw_validator is None:
         obs, used = walk_to(bridge, stairs[0]["x"], stairs[0]["y"])
     else:
         obs, used = walk_to(bridge, stairs[0]["x"], stairs[0]["y"], raw_validator=raw_validator)
     if obs["dungeon_level"] != 1:
         raise RuntimeError(
-            f"脚本化下地牢失败:{used} tick 后仍在层 {obs['dungeon_level']},"
-            f"位置 ({obs['player_x']},{obs['player_y']})"
+            f"scripted dungeon entry failed: still on level {obs['dungeon_level']} after {used} ticks, "
+            f"position ({obs['player_x']},{obs['player_y']})"
         )
     return obs

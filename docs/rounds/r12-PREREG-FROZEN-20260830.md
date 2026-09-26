@@ -1,146 +1,174 @@
-# R12 预注册草案 v0.1:工人在位再教育(路线甲)
-状态:DRAFT,待总设计师审阅。起草:Claude,2026-08-30。
+# R12 pre-registration draft v0.1: in-place worker re-education (route A)
+Status: DRAFT, under review (2026-08-30).
 
-## 一、案由与立论(证据链)
-1. R9:经理侧手段(重训/课程)穷尽,双臂塌缩恒FARM——深度不是经理问题;
-2. R10:经济 v2 立法,经理立刻潜至 L6,但以 97% 死亡率为代价(裸奔速通);
-3. R11 双试:任何没收型奖金锁(K=1/3)使经理退回恒FARM——两吸引子间无稳定中间态;
-4. 试跑三:训练翻倍,恒DIVE 吸引子逐位不动(没教够假说死亡);
-5. 结构性机理:三动作经理在本结构下一律塌缩为最优常数指令,因为
-   冻结工人不会深层生存,状态依赖切换相对最优常数只有 +5.6 薄边,
-   PPO 无动机学习切换。
-结论:约束在工人。教学顺序必须是:先教工人深层生存,切换才有价值,
-经理才有东西可学(经理再训 = R13+)。
+## 1. Rationale and argument (chain of evidence)
+1. R9: the manager-side tools (retraining / curriculum) are exhausted, and both arms collapsed to constant
+   FARM: depth is not a manager problem;
+2. R10: economy v2 was legislated, and the manager dived to L6 at once, at the price of a 97% death rate
+   (an unequipped speed run);
+3. R11, two trials: any forfeiting bonus lock (K=1/3) sends the manager back to constant FARM; there is no
+   stable intermediate state between the two attractors;
+4. Trial 3: doubling training did not move the constant-DIVE attractor by a single bit (the "not taught
+   enough" hypothesis is dead);
+5. Structural mechanism: under this structure a three-action manager always collapses to the best constant
+   command, because the frozen worker cannot survive at depth, state-dependent switching beats the best
+   constant only by a thin +5.6 margin, and PPO has no incentive to learn switching.
+Conclusion: the constraint is in the worker. The teaching order must be: first teach the worker to survive
+at depth; only then does switching have value and the manager has something to learn (manager retraining
+= R13+).
 
-## 二、命题
-在经济 v2 工资下对认证工人做在位再教育(PPO 微调),使其获得深层
-生存能力,且不遗忘浅层战斗力。
+## 2. Proposition
+Re-educate the certified worker in place (PPO fine-tuning) under the economy v2 wage so that it gains the
+ability to survive at depth without forgetting its shallow combat strength.
 
-## 三、设计
-### 3.1 训练本体
-- 机制:WorkerWindowEnv 在位训练(既有机制,R8 认证工人的出生地),
-  冻结经理驱动窗口选择,工人在窗口内逐拍学习;
-- 起点:认证工人 zip(sha 2837288d)微调——保留 20 代战斗遗产,
-  以反遗忘门兜底(见 4.3)。不选全新工人(丢弃全部既有能力,浪费);
-- 观测/动作契约零变更:dual-v4-asymmetric-v3 视图、15 动作、
-  drink_sovereignty=False(反射兜底照旧)——爆炸半径最小化;
-  喝药主权(④乙两件套)明确排除,列 R13;
-- 经济:v2 全套对工人工资生效——B 深度乘数(深层战斗多挣)、
-  C 主席版递减死亡罚金(深层死亡减恐)、E1 装备重定价(a14 首次
-  值得学)、D 反躺平。工人工资剥薪条款(下楼奖金剥除)照旧——
-  下楼决策权与奖金归经理,工人只挣生存与战斗的钱。
+## 3. Design
+### 3.1 The training itself
+- Mechanism: in-place training in WorkerWindowEnv (an existing mechanism, the birthplace of the R8
+  certified worker); a frozen manager drives window selection, and the worker learns step by step inside
+  its windows;
+- Starting point: fine-tune the certified worker zip (sha 2837288d), keeping 20 generations of combat
+  heritage, with an anti-forgetting gate as the backstop (see 4.3). A brand-new worker is not chosen (it
+  would throw away all existing capability);
+- No change to the observation/action contract: the dual-v4-asymmetric-v3 view, 15 actions,
+  drink_sovereignty=False (the reflex backstop as before), to minimise the blast radius; potion autonomy
+  (the 4B pair) is explicitly excluded and listed for R13;
+- Economy: the full v2 set applies to the worker's wage: B depth multiplier (more money for fighting
+  deep), C the revised decreasing death penalty (less fear of dying deep), E1 gear repricing (a14 is worth
+  learning for the first time), D anti-idling. The worker wage-stripping clause (the descent bonus is
+  stripped) stays: the descent decision and its bonus belong to the manager, and the worker earns only
+  from survival and combat.
 
-### 3.2 双臂设计(教练学)
-- 臂一「常规教练」:经理 = M29(产线冻结件)。窗口构成成熟稳定,
-  深层暴露少——保守对照;
-- 臂二「魔鬼教练」:经理 = r10-econ-mgr(恒DIVE 裸奔哥)。工人被
-  持续拖入深层——最大深层暴露,风险是浅层技能饥饿与学习崩溃;
-- 两臂同起点、同经济、同步数、同种子纪律。R9 双臂遗产机制复用。
+### 3.2 Two-arm design (coaching)
+- Arm 1 "regular coach": manager = M29 (the frozen production artefact). Window composition is mature and
+  stable, with little deep exposure: the conservative control;
+- Arm 2 "devil coach": manager = r10-econ-mgr (the constant-DIVE speed runner). The worker is dragged
+  deep continuously: maximum deep exposure, with the risks of shallow-skill starvation and learning
+  collapse;
+- Both arms share the starting point, economy, step count and seed discipline. The R9 two-arm machinery
+  is reused.
 
-### 3.3 训练参数(★=G0 定标项)
-- num-envs 32;n-steps 64;seed 22;lr 3e-4;ent 0.02(沿用产线配方);
-- total-steps ★(工人步=微拍级,吞吐与经理训练不同;G0 烟测 30 分钟
-  定标后冻结;草案锚点 262,144);
-- 熔断:训练臂 24h 防僵尸底线(R9/试跑三判例);评测单场 2h。
+### 3.3 Training parameters (★ = calibrated in G0)
+- num-envs 32; n-steps 64; seed 22; lr 3e-4; ent 0.02 (the production recipe);
+- total-steps ★ (worker steps are micro-steps, with different throughput from manager training; frozen
+  after a 30-minute G0 smoke-test calibration; draft anchor 262,144);
+- Fuses: a 24 h anti-zombie floor per training arm (R9 / trial-3 precedent); 2 h per evaluation.
 
-## 四、考试与判据
-### 4.1 池籍
-- 配对基线(已存在,零新消耗):2_114/2_115 上的四份 v2 考卷——
-  M29×旧工人(锚)、裸奔×旧工人(R10 候选卷);
-- 候选考试:同池同种子,四份新卷——M29×新工人、裸奔×新工人(每臂);
-- 确认池 2_116:全门通过后凭主席令消耗。处女池 2_117-119/2_126-129
-  零接触。
+## 4. Exams and criteria
+### 4.1 Pools
+- Paired baselines (already exist, no new consumption): four v2 exam sheets on 2_114/2_115, M29 × old
+  worker (the anchor) and speed-runner × old worker (the R10 candidate sheets);
+- Candidate exams: same pools and seeds, four new sheets per arm, M29 × new worker and speed-runner × new
+  worker;
+- Confirmation pool 2_116: spent only after all gates pass, on a manual command. The fresh pools
+  2_117-119/2_126-129 are not touched.
 
-### 4.2 主门(每臂独立判,任一臂全过即有胜者)
-- 门A 深层生存优越:裸奔×新工人 vs 裸奔×旧工人,死亡数配对下降
-  (McNemar UCB < 0;绝对目标:died ≤ 110/128);
-- 门B 深度保持:裸奔×新工人 vs 裸奔×旧工人,深度配对 LCB > -0.10
-  (活下来不能以不潜为代价;若深度反升,记超额战功);
-- 门C 反遗忘(浅层非劣):M29×新工人 vs M29×旧工人,ret_mean ≥ 0.95×,
-  kills_mean ≥ 0.95×;
-- 门D 行为同一性前检:新旧工人 argmax 一致率 < 99%(R9 新法,考前执行)。
+### 4.2 Main gates (decided independently per arm; any arm passing all of them is a winner)
+- Gate A, superior survival at depth: speed-runner × new worker vs speed-runner × old worker, paired
+  reduction in deaths (McNemar UCB < 0; absolute target: died ≤ 110/128);
+- Gate B, depth retention: speed-runner × new worker vs speed-runner × old worker, paired depth
+  LCB > -0.10 (surviving must not come at the price of not diving; if depth rises, it is recorded as extra
+  merit);
+- Gate C, anti-forgetting (shallow non-inferiority): M29 × new worker vs M29 × old worker, ret_mean ≥
+  0.95× and kills_mean ≥ 0.95×;
+- Gate D, behavioural identity pre-check: argmax agreement between the new and old workers < 99% (the new
+  R9 rule, run before the exam).
 
-### 4.3 记录项(非门)
-- a14 装备:机会/请求/成功三联读数(E1 生效性的直接证据);
-- 深层分层生存曲线(L3/L4/L5 逐层死亡率);
-- 反射喝药频次变化;单局微拍长度分布。
+### 4.3 Recorded items (not gates)
+- a14 gear: the opportunity / request / success triple (direct evidence of E1 taking effect);
+- Survival curves by depth stratum (per-level death rates on L3/L4/L5);
+- Change in reflex drinking frequency; distribution of micro-step length per episode.
 
-## 五、基建与法务
-- 32 环境沿用;异步采集仍列 R13+ 基建(本案不动);
-- 工人产物为新谱系(rev26 微调后代),本案内仅作实验件;任何发布
-  需另走认证流程(R8 全套门),本案不含发布;
-- NEW FILES ONLY;正式禁运种子段零接触;台账+发射令齐备后发车。
+## 5. Infrastructure and rules
+- 32 environments as before; asynchronous collection stays an R13+ infrastructure item (not touched here);
+- The worker product is a new lineage (a rev26 fine-tuned descendant) and is only an experimental artefact
+  within this case; any release goes through the certification process separately (the full R8 gate set),
+  and this case includes no release;
+- NEW FILES ONLY; the embargoed seed ranges are not touched; launch once the ledger and the launch order
+  are in place.
 
-## 六、风险与预案
-- 风险1 灾难性遗忘:门C 兜底;若两臂皆挂门C,降 lr 至 1e-4 重跑
-  (预注册允许的唯一参数救济,需台账补记);
-- 风险2 魔鬼臂学习崩溃(全是深窗,浅层技能饿死):臂一保底;
-- 风险3 工人吞吐未知:G0 定标后再冻结步数,防 R10 式日程误判;
-- 风险4 新工人使切换有价值后,经理仍是常数策略:属预期内——
-  那正是 R13(经理再训)的立案证据,非本案失败。
+## 6. Risks and contingencies
+- Risk 1, catastrophic forgetting: gate C is the backstop; if both arms fail gate C, rerun with lr lowered
+  to 1e-4 (the only parameter remedy the pre-registration allows, to be recorded in the ledger);
+- Risk 2, learning collapse in the devil arm (all deep windows, shallow skills starve): arm 1 is the
+  fallback;
+- Risk 3, unknown worker throughput: freeze the step count only after G0 calibration, to avoid an R10-style
+  schedule misjudgement;
+- Risk 4, once the new worker gives switching value, the manager is still a constant policy: expected, and
+  exactly the evidence for opening R13 (manager retraining), not a failure of this case.
 
-## 七、流程
-G0 吞吐定标(30 分钟)→ 本案参数落定 → 主席终审 → 冻结(sha)→
-发射令 → 臂一臂二顺序发车 → 八份考卷 → 对判 → 呈主席终裁。
+## 7. Process
+G0 throughput calibration (30 minutes) → this case's parameters settled → final review → freeze (sha) →
+launch order → arm 1 and arm 2 launched in sequence → eight exam sheets → paired verdict → final
+decision.
 
-## 八、待主席裁决的四个决策点
-1. 双臂教练设计(常规+魔鬼)是否照准?或砍为单臂省时?
-2. 喝药主权推迟 R13,同意?
-3. 微调起点(非全新工人)+ 反遗忘门兜底,同意?
-4. 池籍方案(复用 2_114/115 配对、2_116 留作确认),同意?
-
----
-## 修订 v0.2(2026-08-30,主席四点全批后的配方定稿)
-
-主席批文:「双臂对比一下吧 这样有对照组才能说明一点 234没问题 就按您说的办」。
-
-### 配方基准:R8 认证工人出生命令(发布收据原文)逐字继承,改动三类:
-1. 【替换】--resume-from → 认证工人 zip(sha 2837288d,在位微调);
-   --manager-npz → 臂一 M29 / 臂二 r10-econ-mgr(裸奔教练);
-   --reward-economy v2(全案唯一科学变量:工资制度);seed 22;
-2. 【删除】教师蒸馏全套(--teacher-override/--distill-beta/
-   --distill-anneal-actor-rollouts):king anchor 载荷的是旧浅层教义,
-   蒸馏向它会对抗深层学习目标——再教育非复刻,如实登记此偏离;
-3. 【归零】--worker-additional-terminal-death-cost 64.0 → 0.0:
-   v2 已内含主席版死亡定价(2+24×0.7^(d-1)),附加恒定罚金会淹没
-   深度梯度,与改革目的相抵。
-
-### 保留决策(及理由)
-- num-envs 4 × n-steps 512 × total-steps 266,240:R8 原始几何逐字保留
-  ——dry-curriculum(130 rollout 全程日程)、critic 暖机等一切 rollout
-  计量语义原义生效,零计量改革,爆炸半径最小(32 环境提速留 R13 基建);
-- --reset-optimizer --reset-worker-critic --critic-warmup-steps 16384:
-  新经济回报尺度突变,critic 重置+暖机正是为此而设;
-- --worker-action14-logit-bonus 2.5、观测视图、主权关闭:原样。
-
-### G0 定标(进行中)
-烟测 4,096 步测工人吞吐 → 定臂时长与熔断(24h 防僵尸底线,主席判例)。
-
-### G0 定标途中的合规交锋实录(2026-08-30)
-1. 暖机>总步数被拦(烟测专用调整,正式臂原值 16384);
-2. 跨环境续训需显式 --allow-environment-restart-resume(法条与本案
-   场景逐字对应,采用);
-3. 【配方偏离第三条】--dry-curriculum-schedule 移除:干窗示范集的
-   BC PASS 回执按设计绑死出生世界代码指纹,经济修法后旧证书
-   fail-closed(法条明文的预期行为)。出路二选一:重铸 BC 认证
-   (独立战役,不并入)或弃用脚手架。裁定弃用——再教育对象已内化
-   干窗技能,脚手架服务于从零学习阶段,非本案必需。
+## 8. Four decision points for the review
+1. Approve the two-arm coaching design (regular + devil), or cut to one arm to save time?
+2. Postpone potion autonomy to R13?
+3. Fine-tuning start (not a brand-new worker) with the anti-forgetting gate as backstop?
+4. Pool plan (reuse the 2_114/115 pairing, keep 2_116 for confirmation)?
 
 ---
-## 终章 v0.3(2026-08-30,G0 定标与冻结)
+## Revision v0.2 (2026-08-30, recipe finalised after all four points were approved)
 
-### G0 烟测收据(r12-g0-smoke,4,096 步全链路)
-- 吞吐 107 步/秒(工人微拍级步进,无窗口栅栏)→ 正式臂 266,240 步
-  实测需求约 42 分钟;训练熔断定 14,400s(4h 防僵尸,主席判例);
-- 哨兵终报确认:death_cost 附加 0.0 生效、蒸馏 beta 0.0、快进奖励
-  v2 尺度正常、model_candidate.zip 落盘;
-- 修法落地:_validate_resume_contract 新增 environment-restart 白名单
-  豁免(九字段,白名单外仍铁腕);训练契约新增 reward_economy 字段
-  (后人续训可见工资制度身份);两处 worker_env 死亡重构调用
-  economy-aware 化;测试契约同步修订一处(G0'.d3 委托签名)。
-- 环境验证:864 套件两轮(一轮 863+1 时序型偶发,隔离复跑过;
-  空载终审轮进行中,绿灯为发射前置条件)。
+Decision: both arms approved (a control arm is needed for the comparison to say anything); points 2-4
+approved as proposed.
 
-### 冻结声明
-本文件自本行以下不再修改;正本复制为 r12-PREREG-FROZEN-20260830.md,
-以该文件 sha256 为准。驱动:train/runs/r10-staging/run_r12_campaign.py。
+### Recipe base: the R8 certified worker's birth command (the release receipt text) inherited verbatim, with three kinds of change:
+1. [Replace] --resume-from → the certified worker zip (sha 2837288d, in-place fine-tuning);
+   --manager-npz → arm 1 M29 / arm 2 r10-econ-mgr (the speed-runner coach);
+   --reward-economy v2 (the only scientific variable in the whole case: the wage system); seed 22;
+2. [Remove] the whole teacher-distillation set (--teacher-override/--distill-beta/
+   --distill-anneal-actor-rollouts): the king anchor carries the old shallow doctrine, and distilling
+   toward it would fight the deep learning goal. This is re-education, not replication; the deviation is
+   registered as such;
+3. [Zero] --worker-additional-terminal-death-cost 64.0 → 0.0: v2 already contains the revised death
+   pricing (2+24×0.7^(d-1)); an additional constant penalty would drown the depth gradient and work
+   against the purpose of the reform.
+
+### Kept decisions (and reasons)
+- num-envs 4 × n-steps 512 × total-steps 266,240: the original R8 geometry kept verbatim, so that
+  dry-curriculum (a schedule over all 130 rollouts), critic warm-up and every other rollout-measured
+  semantics keep their original meaning; no unit reform, minimal blast radius (the 32-environment speed-up
+  is left to R13 infrastructure);
+- --reset-optimizer --reset-worker-critic --critic-warmup-steps 16384: the new economy abruptly changes
+  the return scale, which is exactly what critic reset + warm-up are for;
+- --worker-action14-logit-bonus 2.5, the observation view, autonomy off: unchanged.
+
+### G0 calibration (in progress)
+A 4,096-step smoke test measures worker throughput → sets the arm duration and fuse (24 h anti-zombie
+floor, following precedent).
+
+### Compliance record during G0 calibration (2026-08-30)
+1. Warm-up > total steps was blocked (an adjustment for the smoke test only; the official arms keep
+   16384);
+2. Resuming across environments needs an explicit --allow-environment-restart-resume (the rule matches
+   this case's scenario exactly; adopted);
+3. [Third recipe deviation] --dry-curriculum-schedule removed: the BC PASS receipt of the dry-window
+   demonstration set is bound by design to the code fingerprint of its birth world, so after the economy
+   change the old certificate fails closed (the behaviour the rule explicitly intends). Two ways out:
+   recast the BC certification (a separate campaign, not merged here) or drop the scaffold. Decision: drop
+   it. The worker being re-educated has already internalised dry-window skills; the scaffold serves the
+   learning-from-scratch stage and is not needed here.
+
+---
+## Final chapter v0.3 (2026-08-30, G0 calibration and freeze)
+
+### G0 smoke-test receipt (r12-g0-smoke, 4,096 steps, full chain)
+- Throughput 107 steps/s (worker micro-step stepping, no window barrier) → an official arm of 266,240
+  steps needs about 42 minutes; training fuse set at 14,400 s (4 h anti-zombie, following precedent);
+- Final sentinel report confirms: additional death_cost 0.0 in effect, distillation beta 0.0,
+  fast-forward rewards at the normal v2 scale, model_candidate.zip written;
+- Rule changes landed: _validate_resume_contract gains a whitelist exemption for environment-restart
+  (nine fields; everything outside the whitelist stays strict); the training contract gains a
+  reward_economy field (later resumes can see the identity of the wage system); two worker_env death
+  reconstruction calls become economy-aware; one test contract revised to match (the G0'.d3 delegate
+  signature).
+- Environment verification: two runs of the 864-test suite (one run 863 + 1 timing-related flake, passed
+  on an isolated rerun; the final run on an idle machine is in progress, and green is a precondition for
+  launch).
+
+### Freeze statement
+Nothing below this line changes; the master copy is r12-PREREG-FROZEN-20260830.md, and its sha256 is
+authoritative (a sha256 recorded for this file refers to the pre-translation text).
+Driver: `train/runs/r10-staging/run_r12_campaign.py` (not published). Launch record:
+[r12-LAUNCH-RECORD-20260830.md](r12-LAUNCH-RECORD-20260830.md).

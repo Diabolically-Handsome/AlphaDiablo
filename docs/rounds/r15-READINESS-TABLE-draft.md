@@ -1,119 +1,177 @@
-# AlphaDiablo R15《分层战备表》草案 v0.1
+# AlphaDiablo R15 readiness table by level, draft v0.1
 
-**口径声明**:全表基于 Diablo I 单人 Normal(怪物 HP=多人表值÷2,DevilutionX 默认复刻原版;报告 1/2/3 交叉)。本方角色为**固定战士、每局 1 级起步、v20 自动加点 3体:2力(魔/敏永不加)**(报告 4,diablogym.cpp:2069-2079)——这条环境事实使所有依赖法术(火墙/Holy Bolt/Mana Shield)与高敏(格挡/命中)的攻略打法**在本方不可用或打折**,表中已按此修正。
+**Scope**: the whole table assumes Diablo I single player on Normal (monster HP = the multiplayer table
+value ÷ 2; DevilutionX reproduces the original by default; reports 1/2/3 cross-checked). Our character is
+**a fixed warrior, starting at level 1 in every episode, with v20 automatic stat allocation 3 vitality : 2
+strength (magic and dexterity are never raised)** (report 4, diablogym.cpp:2069-2079). This environment
+fact makes every guide strategy that depends on spells (Fire Wall / Holy Bolt / Mana Shield) or high
+dexterity (block / to-hit) **unavailable or weaker for us**, and the table has been corrected for it.
 
-**置信度图例**:★★★=源码/Jarulf 逐条核验;★★=社区指南明确引文;★=机制推导值(无指南直接给数)。
+**Confidence legend**: ★★★ = verified item by item against source code / Jarulf; ★★ = explicit citation
+from a community guide; ★ = value derived from mechanics (no guide gives the number directly).
 
 ---
 
-## 一、分层战备表(进入该层前应达到)
+## 1. Readiness table by level (to be reached before entering the level)
 
-"单击伤害"列为**硬直线**:单击最大伤害 ≥ 该层最高常驻 mlvl+3 才能打出硬直(DevilutionX monster.cpp 证实,★★★)。HP 列为"扛住该层最大单击 5-8 下"推导(★)。
+The "damage per hit" column is the **hit-recovery line**: the maximum damage of a single hit must be ≥ the
+highest resident mlvl on the level + 3 to cause hit recovery (confirmed in DevilutionX monster.cpp,
+★★★). The HP column is derived as "survive 5-8 of the level's largest single hits" (★).
 
-| dlvl(区段) | clvl 门槛 | AC 门槛 | 单击伤害门槛 | HP 门槛 | 该层威胁基线(单人) | 置信度 |
+| dlvl (section) | clvl threshold | AC threshold | damage-per-hit threshold | HP threshold | Threat baseline on the level (single player) | Confidence |
 |---|---|---|---|---|---|---|
-| 1 教堂 | 1 | 12-17(裸装) | ≥5 | 70-90 | mlvl1-2,最大单击 7 | clvl/伤害★★★,AC★★ |
-| 2 教堂 | 3 | 15-25 | ≥8 | 90-110 | 最大单击 15;屠夫房(见硬门) | 同上 |
-| 3 教堂 | 5 | 30-40 | ≥10 | 100-130 | Black Death(单击22,永久扣HP);骷髅王侧洞 | 伤害★★★,AC ★★(FuriousPaul: AC≥35) |
-| 4 教堂 | 7 | 35-50 | ≥12 | 120-150 | Gloom ToHit70;首见羊头弓手 | ★★ |
-| 5 墓穴 | 8 | 40-55 | ≥14 | 140-170 | 区段跳变①:mlvl→8-10,隐形怪+弓手集群+开阔厅 | ★★ |
-| 6 墓穴 | 9 | 45-60 | ≥16 | 150-180 | 酸吐(魔法伤害)成体系 | ★★ |
-| 7 墓穴 | 10 | 50-65 | ≥17 | 160-200 | 角魔冲锋 5-32(ToHit500,必中,靠走位) | ★★★(冲锋机制) |
-| 8 墓穴 | 11 | 55-70 | ≥19 | 180-220 | Illusion Weaver 16-24/击;Toad HP67-80 | ★★ |
-| 9 洞穴 | **12** | 60-80 | **≥22** | 200-240 | **区段跳变②·公认最陡**:ToHit60-100、HP近翻倍、无走廊卡口 | 跳变★★★(数据),地形★★ |
-| 10 洞穴 | 13 | 65-85 | ≥26 | 210-250 | Slayer ToHit100;Obsidian 冲锋 20-50;界面 to-hit 应≥150%(GOG) | ★★ |
-| 11 洞穴 | 14 | 70-90 | ≥25 | 220-260 | Guardian ToHit110;蛇快速冲锋 | ★★ |
-| 12 洞穴 | 15 | 80-100 | ≥27 | 240-280 | 首见魅魔(血星=魔法伤)与黑骑士;魔抗开始重要 | ★★ |
-| 13 地狱 | **17** | 90-110(AC效用见注) | ≥29 | 260-300;火抗≥50 | 区段跳变③:Balrog 22-30/ToHit130;血骑士 25-35/AC85 | ★★ |
-| 14 地狱 | 18 | ≤120(边际递减) | ≥31 | 280-320 | **命中下限强制 20%**:AC 再高也吃两成命中 | 下限机制★★★ |
-| 15 地狱 | 20 | ≤130 | ≥33 | 300-350;火抗75+魔抗50 | 下限25%;Lazarus 巢穴(必打,见硬门) | ★★★/★★ |
-| 16 地狱 | **22**(社区自然节奏 24-26) | 110-130 封顶 | ≥33(硬直血骑士) | 350-400+;火抗75 | **命中下限30%**;Advocate 隔屏火球;Diablo | ★★★/★★ |
+| 1 Cathedral | 1 | 12-17 (unequipped) | ≥5 | 70-90 | mlvl 1-2, largest single hit 7 | clvl/damage ★★★, AC ★★ |
+| 2 Cathedral | 3 | 15-25 | ≥8 | 90-110 | largest single hit 15; the Butcher's room (see hard gates) | same |
+| 3 Cathedral | 5 | 30-40 | ≥10 | 100-130 | Black Death (single hit 22, permanent HP loss); the Skeleton King's side cave | damage ★★★, AC ★★ (FuriousPaul: AC≥35) |
+| 4 Cathedral | 7 | 35-50 | ≥12 | 120-150 | Gloom ToHit 70; first goat archers | ★★ |
+| 5 Catacombs | 8 | 40-55 | ≥14 | 140-170 | section jump 1: mlvl→8-10, invisible monsters + archer packs + open halls | ★★ |
+| 6 Catacombs | 9 | 45-60 | ≥16 | 150-180 | acid spitters (magic damage) in numbers | ★★ |
+| 7 Catacombs | 10 | 50-65 | ≥17 | 160-200 | horned demon charge 5-32 (ToHit 500, always hits; avoid by positioning) | ★★★ (charge mechanics) |
+| 8 Catacombs | 11 | 55-70 | ≥19 | 180-220 | Illusion Weaver 16-24 per hit; Toad HP 67-80 | ★★ |
+| 9 Caves | **12** | 60-80 | **≥22** | 200-240 | **section jump 2, widely held to be the steepest**: ToHit 60-100, HP nearly doubled, no corridor chokepoints | jump ★★★ (data), terrain ★★ |
+| 10 Caves | 13 | 65-85 | ≥26 | 210-250 | Slayer ToHit 100; Obsidian charge 20-50; character-panel to-hit should be ≥150% (GOG) | ★★ |
+| 11 Caves | 14 | 70-90 | ≥25 | 220-260 | Guardian ToHit 110; snakes with fast charges | ★★ |
+| 12 Caves | 15 | 80-100 | ≥27 | 240-280 | first succubi (blood star = magic damage) and black knights; magic resistance starts to matter | ★★ |
+| 13 Hell | **17** | 90-110 (see the AC note on its value) | ≥29 | 260-300; fire resistance ≥50 | section jump 3: Balrog 22-30 / ToHit 130; blood knight 25-35 / AC 85 | ★★ |
+| 14 Hell | 18 | ≤120 (diminishing returns) | ≥31 | 280-320 | **enforced to-hit floor of 20%**: however high the AC, 20% of hits land | floor mechanics ★★★ |
+| 15 Hell | 20 | ≤130 | ≥33 | 300-350; fire resistance 75 + magic resistance 50 | floor 25%; Lazarus's lair (must fight, see hard gates) | ★★★/★★ |
+| 16 Hell | **22** (natural community pace 24-26) | 110-130 cap | ≥33 (hit recovery on blood knights) | 350-400+; fire resistance 75 | **to-hit floor 30%**; Advocates casting fireballs from off screen; Diablo | ★★★/★★ |
 
-**AC 注**(★★★):怪物命中 = 30+ToHit+2(mlvl−clvl)−AC−Dex/5,下限 15%(d14/15/16 强制 20/25/30%)。故 AC 在 d13 后边际收益骤减;社区口径"地狱段 AC 不过百就当没有"。本方 Dex 恒为 20(不加点),Dex/5 项恒为 4,格挡在地狱段仅约 40-50%——**HP 与药水是本方地狱段唯一可靠防线,HP 门槛应取表中上界甚至上浮 15%**。
+**AC note** (★★★): monster to-hit = 30+ToHit+2(mlvl−clvl)−AC−Dex/5, with a floor of 15% (enforced
+20/25/30% on d14/15/16). So the marginal value of AC drops sharply after d13; the community rule of thumb is
+"in Hell, AC below 100 might as well be zero". Our Dex is always 20 (no points added), so the Dex/5 term is
+always 4, and block in Hell is only about 40-50%: **HP and potions are our only reliable defence in Hell,
+so the HP threshold should take the upper end of the table, or even 15% above it**.
 
 ---
 
-## 二、战斗力公式草案 power(raw)
+## 2. Draft power formula power(raw)
 
-### 2.1 可观测性映射(以报告 4 勘察为准)
+### 2.1 Observability mapping (based on the report 4 survey)
 
-| 攻略量 | raw 字段 | 备注/误差 |
+| Guide quantity | raw field | Notes / error |
 |---|---|---|
-| clvl | `char_level` | 直接可得 ★★★ |
-| HP | `max_hp` | 直接可得(经理现只见 hp 比,不见绝对值) |
-| AC | `armor_class` | GetArmor=装备AC+加成+Dex/5;比指南"装备AC"口径高恒定 4 点,可忽略 |
-| 单击最大伤害 | `item_max_damage + damage_mod`(+`item_bonus_damage` 若为加算词缀) | **damage_mod 语义(是否含 Str×clvl/100 角色加成)需 probe 一帧核实**,硬直判定用此和 |
-| 期望输出 | `((item_min+item_max)/2 + damage_mod) × melee_to_hit/100` | melee_to_hit 为面板值,未扣怪 AC |
-| 三抗 | `fire/lightning/magic_resist` | 直接可得 |
-| 格挡 | `block_chance`, `block_enabled` | 直接可得 |
-| 整套战力标量 | `gear_combat_utility` | 项目钦定的装备战力事实源(uint32),升级严格单调;**典型分布未采样,归一分母待定** |
+| clvl | `char_level` | directly available ★★★ |
+| HP | `max_hp` | directly available (the manager currently sees only the HP ratio, not the absolute value) |
+| AC | `armor_class` | GetArmor = gear AC + bonuses + Dex/5; a constant 4 points above the guides' "gear AC" definition, negligible |
+| Maximum damage per hit | `item_max_damage + damage_mod` (+ `item_bonus_damage` if it is an additive affix) | **the meaning of damage_mod (whether it includes the character bonus Str×clvl/100) needs a one-frame probe to verify**; the hit-recovery check uses this sum |
+| Expected output | `((item_min+item_max)/2 + damage_mod) × melee_to_hit/100` | melee_to_hit is the panel value, before monster AC |
+| Three resistances | `fire/lightning/magic_resist` | directly available |
+| Block | `block_chance`, `block_enabled` | directly available |
+| Overall combat scalar | `gear_combat_utility` | the project's designated source of truth for gear combat power (uint32), strictly monotone on upgrades; **its typical distribution has not been sampled, so the normalising denominator is open** |
 
-结论:四项门槛量**全部在 raw 中可得,无一需要代理**;唯一代理性风险是 damage_mod 语义,probe 一次即可钉死。
+Conclusion: all four threshold quantities are **available in raw, none needs a proxy**; the only proxy risk
+is the meaning of damage_mod, which one probe can pin down.
 
-### 2.2 公式
+### 2.2 Formula
 
 ```
 power_ratio(raw, d) = min(
     char_level                        / C(d),
     max_hp                            / H(d),
-    min(armor_class, AC_CAP(d))       / A(d),      # AC_CAP: d≤13 无上限, d≥14 取 A(d) 即封顶
+    min(armor_class, AC_CAP(d))       / A(d),      # AC_CAP: no cap for d≤13; for d≥14 capped at A(d)
     (item_max_damage + damage_mod)    / D(d),
 )
-# d≥13 追加抗性门:fire_resist ≥ FR(d)  (FR: 13层50, 15/16层75; 15层另要求 magic_resist≥50)
-放行判据:power_ratio ≥ 1 且抗性门通过
+# from d≥13 add resistance gates: fire_resist ≥ FR(d)  (FR: 50 on level 13, 75 on levels 15/16; level 15 also requires magic_resist≥50)
+release criterion: power_ratio ≥ 1 and the resistance gates pass
 ```
 
-C/H/A/D 即第一节表中各列**下界**。取 min 而非加权和:战备是短板逻辑(HP 够而伤害不够=打不动硬直=被围殴,伤害够而 HP 不够=一波带走),任何一项 <1 都应视为未达标。
+C/H/A/D are the **lower bounds** of the columns of the table in section 1. The minimum, not a weighted sum:
+readiness is weakest-link logic (enough HP but not enough damage = no hit recovery = mobbed; enough damage
+but not enough HP = one wave kills you), so any term <1 means not ready.
 
-**gear_combat_utility 的角色**:作为第五个软信号(它已含期望吞吐、AC×1024、三抗×512、格挡、maxHP 分量,是引擎侧的现成综合分),但因刻度未经验采样,**第一版只做单调性监控与停滞钟信号,不做硬门**;先用近期轨迹统计分布再定 G(d)。
+**Role of gear_combat_utility**: a fifth, soft signal (it already contains expected throughput, AC×1024,
+the three resistances ×512, block and a maxHP component, a ready-made composite score on the engine side),
+but since its scale has not been sampled empirically, **the first version uses it only for monotonicity
+monitoring and as a stall-clock signal, not as a hard gate**; first collect its distribution from recent
+trajectories, then set G(d).
 
-### 2.3 落地路径(纯 Python,不动引擎)
+### 2.3 Implementation path (pure Python, no engine change)
 
-在 `options_env.py _mgr_obs` 的 extras 从 `self.env._raw` 追加归一化标量:`max_hp/400`、`(item_max_damage+damage_mod)/40`、`fire_resist/100`、`magic_resist/100`、`gear_combat_utility` hi/lo(÷65536,同 controller wire 口径)、以及现成的 `power_ratio` 裁剪到 [0,2]/2。**约束**:legacy-v3 视图 M29 冻结(dim286 有逐位断言),新维只能追加在 295 之后或 raw-v4-only,不得改既有 295 维语义(报告 4)。
+In the extras of `options_env.py _mgr_obs`, append normalised scalars from `self.env._raw`: `max_hp/400`,
+`(item_max_damage+damage_mod)/40`, `fire_resist/100`, `magic_resist/100`, `gear_combat_utility` hi/lo
+(÷65536, the same definition as the controller wire), and the ready-made `power_ratio` clipped to [0,2]/2.
+**Constraint**: the legacy-v3 view of M29 is frozen (dim286 has a bit-level assertion), so new dimensions
+can only be appended after 295 or be raw-v4-only, and the meaning of the existing 295 dimensions must not
+change (report 4).
 
 ---
 
-## 三、硬门节点(四战判定)
+## 3. Hard-gate nodes (four fights)
 
-| 节点 | 位置 | 数值(单人 Normal) | 判定 | 本方特殊约束 |
+| Node | Location | Numbers (single player, Normal) | Decision | Constraints specific to us |
 |---|---|---|---|---|
-| **屠夫** | dlvl2(1/3 概率整局缺席) | HP 110、6-12/击、ToHit50、不会开门 | **绕行**。clvl<6 或 HP<110 一律跳过;达标(clvl6-8+满腰带红药)可打,掉落屠夫刀是 dlvl2 超模武器 | 战士无火墙可用,关门烧无解;硬拼或隔栅栏(本方无弓策略)→ 默认跳过,拿刀收益留给达标局 |
-| **骷髅王** | dlvl3 侧洞(单人仅 50% 出现) | HP 120、6-16/击、AC70、魔免、会开门、无限复活小骷髅 | **绕行**。社区门槛 AC≥35+单击≥20(FuriousPaul);标准解是 Holy Bolt | **本方魔力恒 10,永远学不了 Holy Bolt**;AC70 意味着命中极低、且他复活小怪——纯近战性价比极差,建议一律跳过(掉落皇冠非必需) |
-| **Lazarus** | dlvl15 巢穴 | HP 300、30-50/击、魔免+火抗+电抗、瞬移+火球;带 Red Vex/Blackjade(各 HP200,血星魔法伤)+Hell Spawn 群 | **必打**——不杀他 15→16 五芒星不开。门槛 clvl≈22-26(报告 2/3 口径 19-23 与 24-27,取交叉)、火抗75、魔抗≥50、HP≥320 | 任务链是多步宏观流程:拾杖→回城交 Cain→红门→读两书传送三段→杀。**当前动作/技能体系是否覆盖"拾特定任务物品+回城对话"需单独勘察**,这是通关流程上除数值外的最大工程风险 |
-| **Diablo** | dlvl16 | HP 833、AC90、ToHit220、近战 30-60+击退;远程为 Apocalypse:固定 40 点物理判定,**三抗全部无效**,可被格挡/miss(30% 保底命中) | **必打**。门槛 clvl≥26、HP 350-400+、火抗75(清层用)、满腰带红药 | 他命中≈250−AC:AC<235 全无意义,**放弃堆 AC,判据只看 HP+药+格挡**;先拉 4 拉杆、清光全层 Advocate 再单挑。本方无 Mana Shield/石化,只有硬拼一条路,HP 门槛应取 400+ |
+| **Butcher** | dlvl2 (absent from the whole game with probability 1/3) | HP 110, 6-12 per hit, ToHit 50, cannot open doors | **Go around.** Skip whenever clvl<6 or HP<110; once qualified (clvl 6-8 + a belt full of red potions) he can be fought, and the Butcher's Cleaver he drops is an overpowered weapon for dlvl2 | A warrior has no Fire Wall, so the close-the-door-and-burn trick is out; fighting head-on or across a fence (we have no bow strategy) → skip by default, and leave the cleaver for qualified episodes |
+| **Skeleton King** | dlvl3 side cave (appears only 50% of the time in single player) | HP 120, 6-16 per hit, AC 70, immune to magic, opens doors, endlessly revives small skeletons | **Go around.** Community threshold AC≥35 + damage per hit ≥20 (FuriousPaul); the standard solution is Holy Bolt | **Our mana is always 10, so we can never learn Holy Bolt**; AC 70 means a very low hit rate, and he revives minions: pure melee is very poor value, so skip him always (the crown he drops is not needed) |
+| **Lazarus** | dlvl15 lair | HP 300, 30-50 per hit, immune to magic + fire and lightning resistant, teleport + fireballs; with Red Vex/Blackjade (HP 200 each, blood star magic damage) + a pack of Hell Spawn | **Must fight**: without killing him the pentagram from 15 to 16 does not open. Threshold clvl≈22-26 (reports 2/3 say 19-23 and 24-27; take the overlap), fire resistance 75, magic resistance ≥50, HP ≥320 | The quest chain is a multi-step macro process: pick up the staff → return to town and give it to Cain → the red portal → read two books and teleport through three sections → kill. **Whether the current action/skill system covers "pick up a specific quest item + return to town and talk" needs its own survey**; besides the numbers, this is the biggest engineering risk on the road to completion |
+| **Diablo** | dlvl16 | HP 833, AC 90, ToHit 220, melee 30-60 + knockback; ranged Apocalypse: a fixed 40-point physical check, **all three resistances useless**, can be blocked / missed (30% minimum hit rate) | **Must fight.** Threshold clvl≥26, HP 350-400+, fire resistance 75 (for clearing the level), a belt full of red potions | His to-hit ≈250−AC: AC below 235 means nothing, so **give up stacking AC; the criterion looks only at HP + potions + block**; pull the 4 levers first, clear every Advocate on the level, then fight him alone. We have no Mana Shield / Stone Curse, so fighting head-on is the only way, and the HP threshold should be 400+ |
 
 ---
 
-## 四、与现行 SMART 教练(level-margin-1)对比
+## 4. Comparison with the current SMART coach (level-margin-1)
 
-现行放行规则:clvl ≥ dlvl+1。对照本表 C(d):
+Current release rule: clvl ≥ dlvl+1. Against C(d) of this table:
 
-| 层段 | 教练放行 clvl | 战备表要求 | 缺口 | 实测印证 |
+| Levels | clvl at coach release | Readiness table requirement | Gap | Measured evidence |
 |---|---|---|---|---|
-| d1 | 2 | 1 | 达标 | h(1)=0.16,尚可 |
-| d2 | 3 | 3(且 HP≥90、单击≥8) | **clvl 勉强、装备/HP 完全未查** | **h(2)=0.55**:过半死在 2 层——margin-1 名义达标却放进屠夫层裸装角色 |
-| d3-4 | 4-5 | 5-8 | **-1~-3 级** | **h(3)=0.67**:放行显著过早 |
-| d5-8 墓穴 | 6-9 | 8-13 | -2~-4 级 | (未有分层 h 数据,l3+ 最好臂仅 19-23/64) |
-| d9-12 洞穴 | 10-13 | 12-17 | -2~-4 级,且 9 层是最陡跳变 | — |
-| d13-16 地狱 | 14-17 | 17-26 | **-3~-9 级** | — |
+| d1 | 2 | 1 | meets it | h(1)=0.16, acceptable |
+| d2 | 3 | 3 (and HP≥90, damage per hit ≥8) | **clvl barely, gear/HP not checked at all** | **h(2)=0.55**: more than half die on level 2; margin-1 nominally qualifies but lets an unequipped character into the Butcher's level |
+| d3-4 | 4-5 | 5-8 | **-1 to -3 levels** | **h(3)=0.67**: released clearly too early |
+| d5-8 Catacombs | 6-9 | 8-13 | -2 to -4 levels | (no per-level h data yet; the best arm reached l3+ only 19-23/64) |
+| d9-12 Caves | 10-13 | 12-17 | -2 to -4 levels, and level 9 is the steepest jump | — |
+| d13-16 Hell | 14-17 | 17-26 | **-3 to -9 levels** | — |
 
-结论:(1) 社区从无 "clvl=2×dlvl" 公式,但实际节奏折算的**等级余量是 +3~+5 且随深度递增**,margin-1 从 d3 起系统性放行过早;(2) 更根本的缺陷是**单一维度**——h(2)=0.55 发生在 margin 名义达标处,说明死因是 HP/装备/伤害短板而非等级,纯 clvl 门无法拦截;(3) 建议教练升级为第二节的 `power_ratio ≥ 1` 多维门(clvl 分量本身已内含随深度增长的余量),margin-1 仅保留为下界兜底。另建议评估 v20 自动加点:3体:2力 使 Dex 恒 20,地狱段命中与格挡双缺口(界面 to-hit 社区标准 150-170% 只能全靠词缀),必要时改为体:力:敏混合——此为改 MDP,需走协议流程。
+Conclusions: (1) the community never had a "clvl=2×dlvl" formula, but the actual pace translates into a
+**level margin of +3 to +5 that grows with depth**, so margin-1 releases systematically too early from d3
+on; (2) the more fundamental defect is **a single dimension**: h(2)=0.55 happens where the margin is
+nominally met, which shows the deaths come from weak links in HP/gear/damage rather than level, and a pure
+clvl gate cannot block them; (3) suggestion: upgrade the coach to the multi-dimensional `power_ratio ≥ 1`
+gate of section 2 (its clvl term already contains a margin that grows with depth), keeping margin-1 only as
+a lower-bound backstop. Also suggested: evaluate the v20 automatic stat allocation. 3 vitality : 2 strength
+keeps Dex at 20, leaving gaps in both to-hit and block in Hell (the community standard for panel to-hit of
+150-170% can only come from affixes); if necessary change it to a mix of vitality:strength:dexterity. That
+changes the MDP and has to go through the protocol process.
 
 ---
 
-## 五、落地提醒:3000 微拍协议与通关的结构性矛盾
+## 5. Implementation note: the structural conflict between the 3000-micro-step protocol and completing the game
 
-- **现状**(报告 4):PROTOCOL_MAX_STEPS=3000 钉死在 train/eval_contract.py:39;近四份考卷 depth 中位仅 1-2 层,r14 两臂 micro_steps_mean 2650-2715(预算基本吃满)。16 层通关要求均摊 ~187 拍/层,而现行出生层 FARM 预算就是 1800 拍(FARM_SCENE_CAP,options_env.py:67-71)——**差一个数量级,技能墙与步数预算双重不可达**。
-- **本战备表的隐含步数需求**:按表列节奏(每层练到位再下),保守估计每层 1000-1800 拍 + 城镇往返 + Lazarus 任务链,全程约 **30000-50000 微拍**。
-- **改革建议**:不改现行 3000 拍考卷(它是历史可比性与已校准阈值的锚,eval_contract.py:33-38 明文 fail-closed)。**另立"战役协议"(Campaign track)**:新 PROTOCOL_VERSION、max_steps=50000 量级、独立归档命名空间。需同步的引用面(报告 4 已勘明约 20 处):eval_contract.py:39/640/790/797/947/1145、eval_assembled.py:34/629/1661-1672/1769、tests/test_eval_pipeline.py:273/2061-2106;隐性耦合:FARM_SCENE_CAP=1800 的"3000 拍局留 1200 给 DIVE"定标需按新预算重推、经理观测的 层步/1500 归一(options_env.py:1933)需复核(余时维已按 max_steps 自适应,无需改)。训练侧各 run_*.py/train_ppo.py 的独立 max_steps 另行同步。此为修宪级变更,建议单独立案预注册。
+- **Current state** (report 4): PROTOCOL_MAX_STEPS=3000 is pinned at train/eval_contract.py:39; the
+  depth median of the last four exam sheets is only 1-2 levels, and the two r14 arms have micro_steps_mean
+  2650-2715 (the budget is essentially used up). Completing 16 levels needs ~187 steps per level on
+  average, while the current FARM budget on the starting level alone is 1800 steps (FARM_SCENE_CAP,
+  options_env.py:67-71): **an order of magnitude apart; both the skill wall and the step budget make it
+  unreachable**.
+- **Implied step requirement of this readiness table**: at the table's pace (train each level fully before
+  going down), a conservative estimate is 1000-1800 steps per level + town round trips + the Lazarus quest
+  chain, about **30000-50000 micro-steps** in total.
+- **Suggested reform**: do not change the current 3000-step exam (it anchors historical comparability and
+  calibrated thresholds; eval_contract.py:33-38 says fail-closed explicitly). **Open a separate "campaign
+  protocol" (campaign track)**: a new PROTOCOL_VERSION, max_steps on the order of 50000, an independent
+  archive namespace. Reference points to update together (report 4 found about 20):
+  eval_contract.py:39/640/790/797/947/1145, eval_assembled.py:34/629/1661-1672/1769,
+  tests/test_eval_pipeline.py:273/2061-2106; hidden coupling: the calibration of FARM_SCENE_CAP=1800 as
+  "a 3000-step episode leaves 1200 for DIVE" must be redone for the new budget, and the manager
+  observation's level-steps/1500 normalisation (options_env.py:1933) needs review (the remaining-time
+  dimension already adapts to max_steps and needs no change). The independent max_steps of the various
+  run_*.py/train_ppo.py on the training side must be synchronised separately. This is a
+  constitution-level change; a separate pre-registered case is suggested.
 
 ---
 
-## 六、数据冲突与置信度附注
+## 6. Data conflicts and confidence notes
 
-1. **屠夫 HP**:报告 2 称 160(320/2),报告 1/3 依 monstdat 为 110(220/2)。**采 110**(源码口径),报告 2 该数字疑为笔误。
-2. **骷髅王 HP**:报告 2 称 70,报告 1/3 依 monstdat 为 120(240/2)。**采 120**。
-3. **Lazarus 前 clvl**:报告 2(15 层 19-23)与报告 3(24-27)有别,表中取交叉 22-26。
-4. **HP 门槛列全部为推导值**(几乎无指南给分层 HP 数字),且本方无法术自保,建议整体按上界执行。
-5. **待 probe 核实项**:战士首帧四维(30/10/20/25 出自引擎缺省,仓内未复述)、damage_mod 语义、gear_combat_utility 经验分布——三者均一帧/一批轨迹可定,建议在战备门上线前完成。
-6. dlvl16 为特殊生成(仅黑骑士/血骑士/Advocate+Diablo);各层随机黄名精英(HP 2.5-3 倍)未计入门槛,是门槛取区间上界的又一理由。
+1. **Butcher HP**: report 2 says 160 (320/2), reports 1/3 say 110 (220/2) per monstdat. **We use 110**
+   (the source-code definition); report 2's number looks like a typo.
+2. **Skeleton King HP**: report 2 says 70, reports 1/3 say 120 (240/2) per monstdat. **We use 120**.
+3. **clvl before Lazarus**: report 2 (19-23 on level 15) and report 3 (24-27) differ; the table takes the
+   overlap, 22-26.
+4. **Every value in the HP threshold column is derived** (almost no guide gives per-level HP numbers), and
+   we have no spells for self-protection, so the upper ends are suggested throughout.
+5. **Items to verify with a probe**: the warrior's first-frame four stats (30/10/20/25 from engine
+   defaults, not restated in the repository), the meaning of damage_mod, and the empirical distribution of
+   gear_combat_utility; each can be settled with one frame / one batch of trajectories, suggested before the
+   readiness gate goes live.
+6. dlvl16 is generated specially (only black knights / blood knights / Advocates + Diablo); random unique
+   elites on each level (2.5-3× HP) are not included in the thresholds, one more reason to take the upper
+   end of each range.

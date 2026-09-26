@@ -1,4 +1,4 @@
-"""训练入口的自包含快速回归（不启动引擎、不依赖 ignored 训练产物）。"""
+"""Self-contained fast regression for the training entry point (no engine started, no dependency on ignored training outputs)."""
 
 from __future__ import annotations
 
@@ -222,7 +222,7 @@ class LegacyBcMaskContractTests(unittest.TestCase):
                          [bc_manager.DIVE])
 
     def test_manager_mask_all_false_fails_loudly(self):
-        with self.assertRaisesRegex(ValueError, "动作掩码全假"):
+        with self.assertRaisesRegex(ValueError, "action mask is all False"):
             train_module._masked_action_or_first_legal(
                 0,
                 np.zeros(3, dtype=bool),
@@ -251,7 +251,7 @@ class LegacyBcMaskContractTests(unittest.TestCase):
         self.assertEqual(action, 0)
 
     def test_flat_replay_mask_all_false_fails_loudly(self):
-        with self.assertRaisesRegex(RuntimeError, "动作掩码全假"):
+        with self.assertRaisesRegex(RuntimeError, "action mask is all False"):
             bc_flat._masked_replay_action(
                 torch.nn.Identity(),
                 np.zeros(296, dtype=np.float32),
@@ -291,7 +291,7 @@ class TrainingCoreTests(unittest.TestCase):
             2_142_000, 2_143_000,  # current active registries (2_140 block)
         ):
             with self.subTest(scope="train", seed=reserved), \
-                    self.assertRaisesRegex(ValueError, "拒绝保留种子"):
+                    self.assertRaisesRegex(ValueError, "refuses reserved seed"):
                 shell._new_episode(seed=reserved)
 
         shell.seed_scope = "bc-v1"
@@ -303,7 +303,7 @@ class TrainingCoreTests(unittest.TestCase):
                           2_103_000, 2_140_000, 2_141_000,
                           2_143_000):
             with self.subTest(scope="bc-v1", seed=forbidden), \
-                    self.assertRaisesRegex(ValueError, "bc-v1 只允许登记池"):
+                    self.assertRaisesRegex(ValueError, "bc-v1 only allows the registered pool"):
                 shell._new_episode(seed=forbidden)
 
         shell.seed_scope = "bc-v2"
@@ -315,9 +315,9 @@ class TrainingCoreTests(unittest.TestCase):
                           2_103_000, 2_140_000, 2_141_000,
                           2_142_000):
             with self.subTest(scope="bc-v2", seed=forbidden), \
-                    self.assertRaisesRegex(ValueError, "bc-v2 只允许登记池"):
+                    self.assertRaisesRegex(ValueError, "bc-v2 only allows the registered pool"):
                 shell._new_episode(seed=forbidden)
-        with self.assertRaisesRegex(RuntimeError, "禁止自动滚入"):
+        with self.assertRaisesRegex(RuntimeError, "automatic rollover into an unregistered seed"):
             shell._new_episode()
 
     @staticmethod
@@ -385,9 +385,9 @@ class TrainingCoreTests(unittest.TestCase):
         self.assertIn("model_candidate.zip", train_module._RUN_ARTIFACTS)
 
     def test_run_retry_archives_appendonly_instrument_jsonls(self):
-        # 发射夜审计 A 修回归:三件追加写("a" 模式)仪表档须随第二发点火
-        # 整体离位归档入 _attempts——残留即追加堆积,课程腿第二发腿终
-        # dry_curriculum 全表复核必假判 CASE_HALT_G0(G0-2a 16:55:51 同因)。
+        # Regression for fix A of the launch-time regression audit: the three append-written ("a" mode) instrument files must be archived
+        # into _attempts as a whole when the second launch fires; any leftover keeps piling up, and the end-of-leg
+        # dry_curriculum full-table re-check of a curriculum leg's second launch would falsely declare CASE_HALT_G0 (the same cause as in G0-2a).
         instruments = ("dry_curriculum.jsonl", "distill_ce_probe.jsonl",
                        "drywin_metrics.jsonl")
         with tempfile.TemporaryDirectory() as directory:
@@ -400,7 +400,7 @@ class TrainingCoreTests(unittest.TestCase):
             archives = list((run_dir / "_attempts").iterdir())
             self.assertEqual(len(archives), 1)
             for name in instruments:
-                self.assertFalse((run_dir / name).exists(), name)  # 三件全离位
+                self.assertFalse((run_dir / name).exists(), name)  # all three moved away
                 self.assertEqual((archives[0] / name).read_text(),
                                  '{"stale": true}\n', name)
 
@@ -414,7 +414,7 @@ class TrainingCoreTests(unittest.TestCase):
             protected.write_bytes(b"active-input")
             stale.write_bytes(b"stale-checkpoint")
 
-            with self.assertRaisesRegex(ValueError, "训练输入不能位于"):
+            with self.assertRaisesRegex(ValueError, "training inputs cannot live inside"):
                 _prepare_run_dir(run_dir, None, [protected])
             self.assertTrue(protected.exists())
             self.assertTrue(stale.exists())
@@ -426,7 +426,7 @@ class TrainingCoreTests(unittest.TestCase):
             plain = pathlib.Path(directory) / "plain.zip"
             self._plain_model(env).save(plain)
             self.assertEqual(_validate_checkpoint_file(plain)["num_timesteps"], 0)
-            with self.assertRaisesRegex(ValueError, "不是 Leashed"):
+            with self.assertRaisesRegex(ValueError, "is not LeashedMaskablePPO"):
                 _validate_leashed_checkpoint(plain)
 
             leashed = pathlib.Path(directory) / "leashed.zip"
@@ -437,7 +437,7 @@ class TrainingCoreTests(unittest.TestCase):
 
             broken = pathlib.Path(directory) / "broken.zip"
             broken.write_bytes(leashed.read_bytes()[:128])
-            with self.assertRaisesRegex(ValueError, "不可读/不安全"):
+            with self.assertRaisesRegex(ValueError, "unreadable/unsafe"):
                 _validate_checkpoint_file(broken)
 
             with zipfile.ZipFile(leashed) as source:
@@ -452,7 +452,7 @@ class TrainingCoreTests(unittest.TestCase):
                             name,
                             json.dumps(invalid_data) if name == "data" else member)
                 with self.subTest(num_timesteps=invalid_steps), \
-                        self.assertRaisesRegex(ValueError, "非负普通整数"):
+                        self.assertRaisesRegex(ValueError, "non-negative plain integer"):
                     _validate_checkpoint_bytes(payload.getvalue(), "invalid-steps")
 
             duplicate = pathlib.Path(directory) / "duplicate.zip"
@@ -463,7 +463,7 @@ class TrainingCoreTests(unittest.TestCase):
                 warnings.simplefilter("ignore", UserWarning)
                 with zipfile.ZipFile(duplicate, "a") as archive:
                     archive.writestr("policy.pth", duplicate_policy)
-            with self.assertRaisesRegex(ValueError, "重复 ZIP 成员"):
+            with self.assertRaisesRegex(ValueError, "duplicate ZIP members"):
                 _validate_checkpoint_file(duplicate)
             env.close()
 
@@ -473,11 +473,11 @@ class TrainingCoreTests(unittest.TestCase):
         model.n_epochs = 10  # _plain_model keeps other tests fast with one epoch.
         _validate_model_recipe(model)
         model.n_epochs = 9
-        with self.assertRaisesRegex(ValueError, "隐含算法配方漂移"):
+        with self.assertRaisesRegex(ValueError, "implicit algorithm recipe drift"):
             _validate_model_recipe(model)
         model.n_epochs = 10
         model.clip_range = lambda progress: 0.2 if progress == 1.0 else 0.1
-        with self.assertRaisesRegex(ValueError, "隐含算法配方漂移"):
+        with self.assertRaisesRegex(ValueError, "implicit algorithm recipe drift"):
             _validate_model_recipe(model)
         env.close()
 
@@ -488,7 +488,7 @@ class TrainingCoreTests(unittest.TestCase):
             worker=False, options=False, flat_clock=False, arch="mlp",
             max_steps=8, num_envs=1, n_steps=8, gamma=0.99, lr=3e-4,
             ent_coef=0.02, skip_dry=False, no_drink_sovereignty=False,
-            # E4 rev5 改写(相应单测改写而非删除):契约新读两旗,补不在位默认
+            # E4 rev5 rewrite (the unit test was rewritten, not deleted): the contract now reads two flags; add their inactive defaults
             dry_curriculum_schedule=None, bc_aux_lambda=0.0, bc_aux_demos=None,
             bc_aux_liveness_preflight=False,
             distill_beta=0.0, calib_record_only=False,
@@ -538,9 +538,9 @@ class TrainingCoreTests(unittest.TestCase):
             model._ppo_optimizer_steps_completed = 1
 
             for completed, message in (
-                    (None, "optimizer 消费"),
-                    (0, "optimizer 消费"),
-                    (True, "optimizer 消费")):
+                    (None, "consumed by the optimizer"),
+                    (0, "consumed by the optimizer"),
+                    (True, "consumed by the optimizer")):
                 model._last_completed_ppo_rollout_steps = completed
                 model.save(path)
                 with self.subTest(completed=completed):
@@ -559,7 +559,7 @@ class TrainingCoreTests(unittest.TestCase):
             model.num_timesteps = 9
             model._last_completed_ppo_rollout_steps = 9
             model.save(path)
-            with self.assertRaisesRegex(ValueError, "rollout 量子"):
+            with self.assertRaisesRegex(ValueError, "rollout quantum"):
                 _capture_leashed_checkpoint(path)
 
             model.num_timesteps = 8
@@ -669,7 +669,7 @@ class TrainingCoreTests(unittest.TestCase):
             with mock.patch.object(
                     train_module, "_implementation_bundle_sha256",
                     return_value="b" * 64):
-                with self.assertRaisesRegex(ValueError, "游戏内容发生漂移"):
+                with self.assertRaisesRegex(ValueError, "game content drifted"):
                     callback._save_due()
 
     def test_gcal_rejected_rollout_cannot_publish_checkpoint_or_final(self):
@@ -695,8 +695,8 @@ class TrainingCoreTests(unittest.TestCase):
         callback.model._calib_tripped = False
         self.assertTrue(_is_publishable_rollout_boundary(callback.model))
 
-        # Leashed 的 full buffer 只证明采满；缺 optimizer 消费证明、证明陈旧
-        # 或伪装成 bool 都必须拒绝发布。
+        # Leashed's full buffer only proves that collection filled up; a missing, stale or bool-disguised proof of optimizer consumption
+        # must all refuse publication.
         for field, value in (
                 ("_last_completed_ppo_rollout_steps", None),
                 ("_last_completed_ppo_rollout_steps", 7),
@@ -711,7 +711,7 @@ class TrainingCoreTests(unittest.TestCase):
             setattr(callback.model, field, original)
         self.assertTrue(_is_publishable_rollout_boundary(callback.model))
 
-        # 非 Leashed legacy 模型尚无强回执字段，保留原兼容面。
+        # Non-Leashed legacy models have no strong receipt fields yet; the old compatibility surface is kept.
         legacy = types.SimpleNamespace(
             _calib_tripped=False,
             rollout_buffer=types.SimpleNamespace(full=True),
@@ -745,7 +745,7 @@ class TrainingCoreTests(unittest.TestCase):
             run_dir = pathlib.Path(directory)
             first = _RunLock(run_dir)
             try:
-                with self.assertRaisesRegex(RuntimeError, "正被另一训练进程占用"):
+                with self.assertRaisesRegex(RuntimeError, "is being used by another training process"):
                     _RunLock(run_dir)
             finally:
                 first.close()
@@ -764,7 +764,7 @@ class TrainingCoreTests(unittest.TestCase):
             manager.require_io_shape(303, 3, "test manager")
 
             path.write_bytes(payload + b"replaced")
-            with self.assertRaisesRegex(ValueError, "SHA256 不匹配"):
+            with self.assertRaisesRegex(ValueError, "SHA256 mismatch"):
                 NumpyManager(path, expected_sha256=expected)
 
     @staticmethod
@@ -815,11 +815,11 @@ class TrainingCoreTests(unittest.TestCase):
             obs = np.zeros(298, dtype=np.float32)
             raw_mask = np.ones(15, dtype=bool)
             original_mask = raw_mask.copy()
-            with self.assertRaisesRegex(ValueError, "通用 logits/choose"):
+            with self.assertRaisesRegex(ValueError, "generic logits/choose"):
                 net.logits(obs)
-            with self.assertRaisesRegex(ValueError, "通用 logits/choose"):
+            with self.assertRaisesRegex(ValueError, "generic logits/choose"):
                 net.choose(obs, raw_mask)
-            with self.assertRaisesRegex(ValueError, "observation_view 不匹配"):
+            with self.assertRaisesRegex(ValueError, "observation_view mismatch"):
                 net.worker_logits(
                     obs,
                     observation_view=WORKER_OBSERVATION_VIEW_RAW_V4)
@@ -887,7 +887,7 @@ class TrainingCoreTests(unittest.TestCase):
                 )
                 args.drink_sovereignty = not expected
                 with self.assertRaisesRegex(
-                        ValueError, "与 Worker NPZ action12 contract 冲突"):
+                        ValueError, "conflicts with the Worker NPZ action12 contract"):
                     train_module._resolve_training_drink_sovereignty(
                         args, worker_npz_sha256=digest)
 
@@ -919,14 +919,14 @@ class TrainingCoreTests(unittest.TestCase):
             self._write_worker_npz(path, include_metadata=False)
             net = NumpyManager(path)
             obs = np.zeros(298, dtype=np.float32)
-            with self.assertRaisesRegex(ValueError, "缺少严格.*metadata"):
+            with self.assertRaisesRegex(ValueError, "lacks strict.*metadata"):
                 net.require_worker_contract()
-            with self.assertRaisesRegex(ValueError, "通用 logits/choose"):
+            with self.assertRaisesRegex(ValueError, "generic logits/choose"):
                 net.logits(obs)
             self.assertEqual(int(net.forensic_worker_logits(obs).argmax()), 12)
 
             with mock.patch("diablogym.OptionsEnv") as options_env:
-                with self.assertRaisesRegex(ValueError, "缺少严格.*metadata"):
+                with self.assertRaisesRegex(ValueError, "lacks strict.*metadata"):
                     train_module.make_env(
                         options=True,
                         worker_npz=str(path),
@@ -963,7 +963,7 @@ class TrainingCoreTests(unittest.TestCase):
                 duplicate,
                 metadata_text=duplicate_text,
             )
-            with self.assertRaisesRegex(ValueError, "重复字段"):
+            with self.assertRaisesRegex(ValueError, "duplicate field"):
                 NumpyManager(duplicate)
 
             extra = base / "extra.npz"
@@ -971,7 +971,7 @@ class TrainingCoreTests(unittest.TestCase):
                 extra,
                 extra_members={"surprise": np.zeros(1, dtype=np.float32)},
             )
-            with self.assertRaisesRegex(ValueError, "未登记 NPZ 成员"):
+            with self.assertRaisesRegex(ValueError, "unregistered NPZ members"):
                 NumpyManager(extra)
 
     def test_export_worker_contract_derivation_is_fail_closed(self):
@@ -980,7 +980,7 @@ class TrainingCoreTests(unittest.TestCase):
             "contract_revision": 16,
             "legacy_policy_observation_view": True,
             "drink_sovereignty": False,
-            "goal": "地牢训练",
+            "goal": "dungeon training",
         })
         contract = export_worker_npz._worker_contract_from_checkpoint(
             current,
@@ -1001,14 +1001,14 @@ class TrainingCoreTests(unittest.TestCase):
                 current.diablogym_contract))
 
         historical = types.SimpleNamespace()
-        with self.assertRaisesRegex(ValueError, "必须显式传 --observation-view"):
+        with self.assertRaisesRegex(ValueError, "must pass --observation-view explicitly"):
             export_worker_npz._worker_contract_from_checkpoint(
                 historical,
                 observation_view=None,
                 action12_mode=WORKER_ACTION12_PERMANENTLY_MASKED,
                 source_checkpoint_sha256=source_sha,
             )
-        with self.assertRaisesRegex(ValueError, "与 checkpoint.*冲突"):
+        with self.assertRaisesRegex(ValueError, "conflicts with the checkpoint"):
             export_worker_npz._worker_contract_from_checkpoint(
                 current,
                 observation_view=WORKER_OBSERVATION_VIEW_RAW_V4,
@@ -1130,7 +1130,7 @@ class TrainingCoreTests(unittest.TestCase):
             duplicate = manifest_path.read_text().replace(
                 "{", '{"schema_version":999,', 1)
             manifest_path.write_text(duplicate)
-            with self.assertRaisesRegex(ValueError, "不可读"):
+            with self.assertRaisesRegex(ValueError, "unreadable"):
                 _validate_export_manifest(output)
             manifest_path.write_text(json.dumps(manifest))
 
@@ -1147,11 +1147,11 @@ class TrainingCoreTests(unittest.TestCase):
             output.write_bytes(output.read_bytes()[:-6])
             source_payload = source.read_bytes()
             source.unlink()
-            with self.assertRaisesRegex(ValueError, "源 checkpoint 不可读"):
+            with self.assertRaisesRegex(ValueError, "source checkpoint declared by the checkpoint export manifest unreadable"):
                 _validate_export_manifest(output)
             source.write_bytes(source_payload)
             source.write_bytes(source_payload + b"tamper")
-            with self.assertRaisesRegex(ValueError, "源 checkpoint SHA"):
+            with self.assertRaisesRegex(ValueError, "source checkpoint SHA"):
                 _validate_export_manifest(output)
             env.close()
 
@@ -1176,7 +1176,7 @@ class TrainingCoreTests(unittest.TestCase):
             }
             _export_manifest_path(artifact).write_text(json.dumps(manifest))
             with self.assertRaisesRegex(
-                    ValueError, "tensor_count|导出件字段.*源 checkpoint"):
+                    ValueError, "tensor_count|export fields.*source checkpoint"):
                 _load_bc_state_dict(
                     str(artifact), model.policy, "hypothesis", "checkpoint")
 
@@ -1197,7 +1197,7 @@ class TrainingCoreTests(unittest.TestCase):
                 artifact.read_bytes()).hexdigest()
             manifest["tensor_count"] = len(wrong_dtype)
             _export_manifest_path(artifact).write_text(json.dumps(manifest))
-            with self.assertRaisesRegex(ValueError, "导出件张量.*源 checkpoint"):
+            with self.assertRaisesRegex(ValueError, "export tensor.*source checkpoint"):
                 _load_bc_state_dict(
                     str(artifact), model.policy, "hypothesis", "checkpoint")
             env.close()
@@ -1215,13 +1215,13 @@ class TrainingCoreTests(unittest.TestCase):
                            ("device", "mps"),
                            ("implementation_sha256", "d" * 64)):
             changed = dict(base, **{key: value})
-            with self.assertRaisesRegex(ValueError, "契约漂移"):
+            with self.assertRaisesRegex(ValueError, "contract drift"):
                 _validate_resume_contract(base, changed)
         changed_manager = dict(base, manager_npz_sha256="b" * 64)
         with self.assertRaises(ValueError):
             _validate_resume_contract(base, changed_manager)
         _validate_resume_contract(base, changed_manager, allow_manager_change=True)
-        with self.assertRaisesRegex(ValueError, "无 training_contract"):
+        with self.assertRaisesRegex(ValueError, "has no training_contract"):
             _validate_resume_contract(None, base)
         _validate_resume_contract(None, base, allow_legacy_resume=True)
 
@@ -1254,7 +1254,7 @@ class TrainingCoreTests(unittest.TestCase):
                 policy.parent, 1, train_module._WORKER_BC_DEMO_SEEDS)
             marker.unlink()
             with self.assertRaisesRegex(
-                    ValueError, "one-shot marker 缺失/不可读"):
+                    ValueError, "one-shot marker missing/unreadable"):
                 _validate_bc_report(policy, "data_gate")
             valid_record = _valid_worker_bc_report(policy)
             report.write_text(json.dumps(valid_record))
@@ -1267,7 +1267,7 @@ class TrainingCoreTests(unittest.TestCase):
                 marker.read_bytes()).hexdigest()
             report.write_text(json.dumps(valid_record))
             with self.assertRaisesRegex(
-                    ValueError, "marker provenance 与 PASS report 不一致"):
+                    ValueError, "marker provenance disagrees with the PASS report"):
                 _validate_bc_report(policy, "data_gate")
             valid_record = _valid_worker_bc_report(policy)
             report.write_text(json.dumps(valid_record))
@@ -1276,7 +1276,7 @@ class TrainingCoreTests(unittest.TestCase):
             marker_hash_tamper["final_holdout_marker_sha256"] = "0" * 64
             report.write_text(json.dumps(marker_hash_tamper))
             with self.assertRaisesRegex(
-                    ValueError, "PASS report 未精确绑定 final pool/marker"):
+                    ValueError, "PASS report not exactly bound to the final pool/marker"):
                 _validate_bc_report(policy, "data_gate")
 
             valid_record = _valid_worker_bc_report(policy)
@@ -1289,14 +1289,14 @@ class TrainingCoreTests(unittest.TestCase):
                 marker.read_bytes()).hexdigest()
             report.write_text(json.dumps(valid_record))
             with self.assertRaisesRegex(
-                    ValueError, "marker 字段/schema 不精确"):
+                    ValueError, "marker fields/schema not exact"):
                 _validate_bc_report(policy, "data_gate")
 
             valid_record = _valid_worker_bc_report(policy)
             report.write_text(json.dumps(valid_record))
 
             for field, value, message in (
-                    ("pairs", 401, "X 形状/dtype"),
+                    ("pairs", 401, "X shape/dtype"),
                     ("held_out_pairs", valid_record["held_out_pairs"] + 1,
                      "held_out_pairs"),
                     ("held_out_episodes", [0, 1], "held_out_episodes")):
@@ -1321,7 +1321,7 @@ class TrainingCoreTests(unittest.TestCase):
                 episode_id=canonical_groups[keep])
             partial = _valid_worker_bc_report(policy)
             report.write_text(json.dumps(partial))
-            with self.assertRaisesRegex(ValueError, "固定示范种子"):
+            with self.assertRaisesRegex(ValueError, "fixed demo seeds"):
                 _validate_bc_report(policy, "data_gate")
 
             bad_y = canonical_y.copy()
@@ -1331,7 +1331,7 @@ class TrainingCoreTests(unittest.TestCase):
                 episode_id=canonical_groups)
             forbidden = _valid_worker_bc_report(policy)
             report.write_text(json.dumps(forbidden))
-            with self.assertRaisesRegex(ValueError, "禁采动作 11/12"):
+            with self.assertRaisesRegex(ValueError, "forbidden actions 11/12"):
                 _validate_bc_report(policy, "data_gate")
             demos.write_bytes(canonical_demos)
             report.write_text(json.dumps(valid_record))
@@ -1347,7 +1347,7 @@ class TrainingCoreTests(unittest.TestCase):
                 valid_record,
                 policy_sha256=hashlib.sha256(policy.read_bytes()).hexdigest())
             report.write_text(json.dumps(forged_metrics))
-            with self.assertRaisesRegex(ValueError, "held_out_top1.*重算"):
+            with self.assertRaisesRegex(ValueError, "held_out_top1.*recomputation"):
                 _validate_bc_report(policy, "data_gate")
             policy.write_bytes(valid_policy_payload)
             report.write_text(json.dumps(valid_record))
@@ -1358,19 +1358,19 @@ class TrainingCoreTests(unittest.TestCase):
                 _validate_bc_report(policy, "data_gate")
             demos.write_bytes(demos_payload)
             demos.unlink()
-            with self.assertRaisesRegex(ValueError, "示范集缺失"):
+            with self.assertRaisesRegex(ValueError, "demo set missing"):
                 _validate_bc_report(policy, "data_gate")
             demos.write_bytes(demos_payload)
 
             valid = json.dumps(_valid_worker_bc_report(policy))
             report.write_text(valid.replace("{", '{"data_gate":"FAIL",', 1))
-            with self.assertRaisesRegex(ValueError, "不可读"):
+            with self.assertRaisesRegex(ValueError, "unreadable"):
                 _validate_bc_report(policy, "data_gate")
 
             unknown = _valid_worker_bc_report(policy)
             unknown["unexpected"] = True
             report.write_text(json.dumps(unknown))
-            with self.assertRaisesRegex(ValueError, "字段/schema"):
+            with self.assertRaisesRegex(ValueError, "fields/schema"):
                 _validate_bc_report(policy, "data_gate")
 
             bool_schema = _valid_worker_bc_report(policy)
@@ -1382,12 +1382,12 @@ class TrainingCoreTests(unittest.TestCase):
             stale = _valid_worker_bc_report(policy)
             stale["protocol_version"] -= 1
             report.write_text(json.dumps(stale))
-            with self.assertRaisesRegex(ValueError, "协议过期"):
+            with self.assertRaisesRegex(ValueError, "protocol outdated"):
                 _validate_bc_report(policy, "data_gate")
             for field, message in (
-                    ("implementation_sha256", "运行时不一致"),
-                    ("generator_sha256", "生成器已漂移"),
-                    ("manager_npz_sha256", "冻结 manager")):
+                    ("implementation_sha256", "disagrees with the current runtime"),
+                    ("generator_sha256", "generator has drifted"),
+                    ("manager_npz_sha256", "frozen manager")):
                 stale = _valid_worker_bc_report(policy)
                 stale[field] = "0" * 64
                 _write_bc_final_marker(
@@ -1456,7 +1456,7 @@ class TrainingCoreTests(unittest.TestCase):
                     malformed = dict(valid, **{key: "not-a-number"})
                     report.write_text(json.dumps(malformed))
                     with self.subTest(gate=gate, case=f"nonfinite-{key}"), \
-                            self.assertRaisesRegex(ValueError, "必须是数值"):
+                            self.assertRaisesRegex(ValueError, "must be numeric"):
                         _validate_bc_report(
                             policy, gate,
                             expected_implementation_sha256=common[
@@ -1466,7 +1466,7 @@ class TrainingCoreTests(unittest.TestCase):
                 zero_teacher = dict(valid, **{teacher_key: 0.0})
                 report.write_text(json.dumps(zero_teacher))
                 with self.subTest(gate=gate, case="zero-teacher"), \
-                        self.assertRaisesRegex(ValueError, "必须为正"):
+                        self.assertRaisesRegex(ValueError, "must be positive"):
                     _validate_bc_report(
                         policy, gate,
                         expected_implementation_sha256=common[
@@ -1476,7 +1476,7 @@ class TrainingCoreTests(unittest.TestCase):
                 inconsistent = dict(valid, ratio=0.95)
                 report.write_text(json.dumps(inconsistent))
                 with self.subTest(gate=gate, case="inconsistent-ratio"), \
-                        self.assertRaisesRegex(ValueError, "指标不一致"):
+                        self.assertRaisesRegex(ValueError, "disagrees with the BC/teacher metrics"):
                     _validate_bc_report(
                         policy, gate,
                         expected_implementation_sha256=common[
@@ -1517,7 +1517,7 @@ class TrainingCoreTests(unittest.TestCase):
             with mock.patch.object(
                     train_module, "_recompute_replay_bc_evidence",
                     return_value=recomputed) as replay:
-                with self.assertRaisesRegex(ValueError, "冻结 policy.*重算不一致"):
+                with self.assertRaisesRegex(ValueError, "disagrees with the frozen policy.*recomputation"):
                     _validate_bc_report(
                         policy, "hypothesis",
                         expected_implementation_sha256=implementation)
@@ -1573,7 +1573,7 @@ class TrainingCoreTests(unittest.TestCase):
             state["action_net.bias"][0] = 1.0
             torch.save(state, path)
             env = DummyVecEnv([TinyMaskedEnv])
-            with self.assertRaisesRegex(ValueError, "教师 SHA 不匹配"):
+            with self.assertRaisesRegex(ValueError, "teacher SHA mismatch"):
                 LeashedMaskablePPO(
                     "MlpPolicy", env, n_steps=8, batch_size=8,
                     distill_beta=1.0, teacher_path=str(path),
@@ -1650,7 +1650,7 @@ class TrainingCoreTests(unittest.TestCase):
             with mock.patch.object(
                     train_module, "_validate_bc_report",
                     side_effect=replace_after_gate):
-                with self.assertRaisesRegex(ValueError, "闸门校验后发生漂移"):
+                with self.assertRaisesRegex(ValueError, "drifted after the gate check"):
                     _load_bc_state_dict(str(path), Policy(), "data_gate")
 
     def test_worker_holdout_is_split_by_episode(self):
@@ -1750,12 +1750,12 @@ class TrainingCoreTests(unittest.TestCase):
             self.assertTrue(development["model_development_only"])
             self.assertEqual(development["model_sha256"], digest)
 
-            with self.assertRaisesRegex(ValueError, "必须绑定"):
+            with self.assertRaisesRegex(ValueError, "must bind"):
                 _record_run_publication_status(run_dir, "PUBLISHED")
-            with self.assertRaisesRegex(ValueError, "必须绑定"):
+            with self.assertRaisesRegex(ValueError, "must bind"):
                 _record_run_publication_status(
                     run_dir, "DEVELOPMENT_ONLY")
-            with self.assertRaisesRegex(ValueError, "必须绑定"):
+            with self.assertRaisesRegex(ValueError, "must bind"):
                 _record_run_publication_status(
                     run_dir, "PRODUCTION_CANDIDATE")
 
@@ -1764,7 +1764,7 @@ class TrainingCoreTests(unittest.TestCase):
             [sys.executable, str(ROOT / "train" / "train_ppo.py"), "--help"],
             text=True, capture_output=True, check=False)
         self.assertEqual(help_run.returncode, 0, help_run.stderr)
-        self.assertIn("41.5%,20%", help_run.stdout)
+        self.assertIn("41.5%", help_run.stdout)
         self.assertIn("development,candidate,production", help_run.stdout)
 
         candidate_parse = subprocess.run(
@@ -1772,7 +1772,7 @@ class TrainingCoreTests(unittest.TestCase):
              "--artifact-scope", "candidate", "--total-steps", "0"],
             text=True, capture_output=True, check=False)
         self.assertNotEqual(candidate_parse.returncode, 0)
-        self.assertIn("--total-steps 必须 > 0", candidate_parse.stderr)
+        self.assertIn("--total-steps must be > 0", candidate_parse.stderr)
 
         candidate_heldout = subprocess.run(
             [
@@ -1790,7 +1790,7 @@ class TrainingCoreTests(unittest.TestCase):
             text=True, capture_output=True, check=False)
         self.assertNotEqual(candidate_heldout.returncode, 0)
         self.assertIn(
-            "非 production 工件不得消费 bc_aux final-heldout",
+            "non-production artifacts must not consume the bc_aux final-heldout",
             candidate_heldout.stderr)
         self.assertNotIn("not/read", candidate_heldout.stderr)
 
@@ -1806,7 +1806,7 @@ class TrainingCoreTests(unittest.TestCase):
                  "--total-steps", "2048", "--seed", str(reserved_seed)],
                 text=True, capture_output=True, check=False)
             self.assertNotEqual(bad_seed.returncode, 0)
-            self.assertIn("种子纪律", bad_seed.stderr)
+            self.assertIn("seed discipline", bad_seed.stderr)
 
         rank_overlap = subprocess.run(
             [sys.executable, str(ROOT / "train" / "train_ppo.py"),
@@ -1814,14 +1814,14 @@ class TrainingCoreTests(unittest.TestCase):
              "--num-envs", "2", "--n-steps", "1024"],
             text=True, capture_output=True, check=False)
         self.assertNotEqual(rank_overlap.returncode, 0)
-        self.assertIn("种子纪律", rank_overlap.stderr)
+        self.assertIn("seed discipline", rank_overlap.stderr)
 
         non_quantized = subprocess.run(
             [sys.executable, str(ROOT / "train" / "train_ppo.py"),
              "--total-steps", "1", "--num-envs", "1", "--n-steps", "8"],
             text=True, capture_output=True, check=False)
         self.assertNotEqual(non_quantized.returncode, 0)
-        self.assertIn("整除", non_quantized.stderr)
+        self.assertIn("divisible", non_quantized.stderr)
 
     def test_zero_beta_update_matches_upstream_maskable_ppo(self):
         env = DummyVecEnv([TinyMaskedEnv])
@@ -1849,7 +1849,7 @@ class TrainingCoreTests(unittest.TestCase):
                       seed=7, device="cpu", verbose=0)
         try:
             for invalid in (-0.1, float("nan"), float("inf")):
-                with self.assertRaisesRegex(ValueError, "有限非负数"):
+                with self.assertRaisesRegex(ValueError, "finite non-negative number"):
                     LeashedMaskablePPO(
                         "MlpPolicy", env, distill_beta=invalid, **kwargs)
 
@@ -1857,7 +1857,7 @@ class TrainingCoreTests(unittest.TestCase):
                 "MlpPolicy", env, distill_beta=1.0, **kwargs)
             missing._setup_learn(total_timesteps=8)
             self._fill_masked_buffer(missing)
-            with self.assertRaisesRegex(RuntimeError, "教师未挂载"):
+            with self.assertRaisesRegex(RuntimeError, "teacher is not mounted"):
                 missing.train()
 
             with tempfile.TemporaryDirectory() as directory:
@@ -1874,7 +1874,7 @@ class TrainingCoreTests(unittest.TestCase):
                 self.assertEqual(float(probs[1, 1]), 0.0)
                 fake_logp = torch.full_like(probs, HUGE_NEG)
                 self.assertTrue(torch.isfinite(-(probs * fake_logp).sum(-1)).all())
-                with self.assertRaisesRegex(ValueError, "全 False"):
+                with self.assertRaisesRegex(ValueError, "all.False"):
                     guarded._teacher_probs(
                         obs, torch.zeros((2, 3), dtype=torch.bool))
         finally:
