@@ -202,7 +202,7 @@ diff --git a/python/diablogym/options_env.py b/python/diablogym/options_env.py
 +            self.gold_grab_service.bind_portal(getattr(self, "portal_service", None))
 +        else:
 +            self.gold_grab_service = None
-+        # R19-M2 (2026-09-09) chairman ruling 4: a fresh coach-v05 stall
++        # R19-M2 (2026-09-09) design rule 4: a fresh coach-v05 stall
 +        # bookkeeper per episode.  None under veto-v1 AND under coach-v03,
 +        # which is what makes coach-v03 byte-identical: every consultation
 +        # site below is guarded by `is not None`.
@@ -421,7 +421,7 @@ diff --git a/python/diablogym/options_env.py b/python/diablogym/options_env.py
 +            if grab is not None:
 +                # R19 gold-grab-v1.  Consulted LAST of the manager-side laws --
 +                # after the town trip's own maybe_start and after the portal and
-+                # retreat triggers -- because the chairman's ruling gives retreat
++                # retreat triggers -- because design rule 4 gives retreat
 +                # and portal priority and because a trip that wants to depart
 +                # must never be delayed by a grab window.  observe() is
 +                # unconditional (the per-floor lit-pile memory and any unsettled
@@ -475,7 +475,7 @@ diff --git a/python/diablogym/options_env.py b/python/diablogym/options_env.py
          if mask[DIVE] and (raw.get("is_set_level") or raw.get("progression_targets")
                             or law_ready(raw, getattr(self, "resource_readiness_law", "veto-v1"))):
 -            return DIVE
-+            # R19-M2 (2026-09-09) chairman ruling 4 (coach-v05 only; the
++            # R19-M2 (2026-09-09) design rule 4 (coach-v05 only; the
 +            # object is None under veto-v1 and coach-v03, so those two laws
 +            # never reach the call).  Quest mechanisms and set levels keep
 +            # their DIVE authority untouched -- the two refusals are about
@@ -553,7 +553,7 @@ diff --git a/python/diablogym/options_env.py b/python/diablogym/options_env.py
              if drain_ending is not None:
                  ending = drain_ending
 +            else:
-+                # R19-M2 stop-v1 (2026-09-09), chairman ruling 4.  Evaluated on
++                # R19-M2 stop-v1 (2026-09-09), design rule 4.  Evaluated on
 +                # EVERY worker beat -- that is the whole point of the law: the
 +                # retreat/portal laws are only consulted at a window BOUNDARY,
 +                # and seed 2133002 died inside one FARM window that lasted the
@@ -801,13 +801,13 @@ diff --git a/python/diablogym/options_env.py b/python/diablogym/options_env.py
 +        # widened to a depth where a DIFFERENT script owns the danger, breaks
 +        # that argument and needs its own fence.
 +        # R19 (2026-09-08) gold-grab-v1 adds a fifth rung, right after the
-+        # sweep and before the town service, where the chairman put it.  Its
++        # sweep and before the town service, as registered.  Its
 +        # rung carries no behaviour: the trigger guards in action_masks refuse
 +        # to open a grab window while ANY of the other four is active, and the
 +        # portal/retreat guards refuse to open on top of a grab window, so no
 +        # two rungs can ever be active on the same beat.  The rung is the
 +        # fail-closed statement of that invariant, not a tie-break that runs.
-+        # R19-M1 (2026-09-09) integration: the chairman's order is
++        # R19-M1 (2026-09-09) integration: the registered order is
 +        # sweep -> gold-grab -> portal -> retreat -> resource_service, which is
 +        # exactly what the two laws each documented; it is written once below.
 +        from .resource_protocol import is_coach_law

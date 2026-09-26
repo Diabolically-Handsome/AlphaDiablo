@@ -1,4 +1,4 @@
-"""R17.1 chairman ruling 3: the coach-v03 readiness law wired end to end.
+"""R17.1 readiness rule 3: the coach-v03 readiness law wired end to end.
 
 Deterministic raw-state doubles and constructor boundaries only. No engine
 reset, native step, optimizer update or model checkpoint is required.

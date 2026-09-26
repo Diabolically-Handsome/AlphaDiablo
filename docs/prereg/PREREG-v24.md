@@ -1,335 +1,388 @@
-# v24-KL「皮筋」预注册文档(固定退火 + 双绊线)
+# v24-KL "leash": pre-registration (fixed annealing + two trip lines)
 
-**文件:diablogym/docs/PREREG-v24.md。冻结时间:2026-07-10(合成即冻结,commit 时间戳即公证)。开训后任何偏离须援引预注册条款,否则按违规入册。**
+**Frozen: 2026-07-10 (frozen on synthesis; the commit timestamp is the notarization). Any deviation after training
+starts must cite a pre-registration clause; otherwise it is recorded as a violation.**
 
-> 来源:设计panel(2 设计先验 × 4 批评 × 1 SB3 源码审计 × 1 合成)。
-> 总设计师处方原话:"先给操作脑一个拐杖,再让它慢慢扔掉。"
-> 铁律五条:① **环境/工资/观测/掩码/经理零改动**(G0/G0'/G0'' 免重跑的前提,评测侧 eval_assembled.py 亦零改动);② **单处方**:只动 train 侧皮筋,干层配比干预是另一张处方,本版出现即违规;③ 金种子只在终审开牌一次(见闸门章"金牌纪律",全文唯一一处列出段号);④ 探针 7000-7031 只做闸门;⑤ 教训 14/15/16(EV 审计)/17 与功效纪律(n=32 SE≈4、n=16 判词不吃噪声)照旧。
+> Source: a design panel (2 design proposals x 4 critiques x 1 SB3 source audit x 1 synthesis).
+> Prescription in one line: give the operating brain a crutch first, then let it drop the crutch slowly.
+> Five hard rules: (1) **zero changes to environment/wage/observation/mask/manager** (the precondition for not
+> re-running G0/G0'/G0''; eval_assembled.py on the evaluation side is also unchanged); (2) **a single prescription**:
+> only the train-side leash moves; a dry-level mix intervention is a different prescription, and its appearance in this
+> version is a violation; (3) the gold seeds are opened only once, at the final review (see "gold-standard discipline"
+> in the gates chapter, the only place in the text that lists the range); (4) the probe seeds 7000-7031 serve only as
+> gates; (5) lessons 14/15/16 (EV audit)/17 and the power discipline (n=32 SE~4, an n=16 verdict does not feed on
+> noise) apply as before.
 
-## 〇、考题
+## 0. The question
 
-v23 已证"学得出"(1M 峰 105.7,前 16 探针种子,+12.6% 超同子集脚本,分歧率 29%)、
-未证"守得住"(1.5M=59.2,4M=42.6 击穿塌缩线;金牌 77.0=0.82×,P1 全档未达)。
-尸检:训练分布 95.8% 干层窗(工资≈0),报酬荒漠中熵即自由风,BC 锚免费漂散。
-**v24 唯一处方:给 PPO 损失加一根对教师的皮筋(蒸馏项),按固定日程退火,走稳了才撒手。**
-考的是一句可证伪的话:**β 退到 0 之后,成绩守得住峰。**
+v23 proved "it can be learned" (1M peak 105.7 on the first 16 probe seeds, +12.6% over the script on the same
+subset, divergence rate 29%), but not "it can hold" (1.5M=59.2, 4M=42.6 broke through the collapse line; gold 77.0 =
+0.82x, no P1 tier reached). Autopsy: 95.8% of the training distribution is dry-level windows (wage ~0); in a reward
+desert entropy is a free wind, and the BC anchor drifts away for free. **The single v24 prescription: add a leash to
+the teacher to the PPO loss (a distillation term), anneal it on a fixed schedule, and let go only once the gait is
+steady.** The exam is one falsifiable sentence: **after beta anneals to 0, the score holds the peak.**
 
-## 一、终裁(D1-D5)
+## 1. Final decisions (D1-D5)
 
-### D1 皮筋数学形态:前向蒸馏交叉熵 CE(π_T, π_θ),教师逐样本掩码重归一
+### D1 Mathematical form of the leash: forward distillation cross-entropy CE(pi_T, pi_theta), teacher renormalized per sample under the mask
 
-**裁决**:L_distill = E_s[ −Σ_a π_T(a|s,mask)·log π_θ(a|s,mask) ],
-总损失 = policy_loss + ent_coef·entropy_loss + vf_coef·value_loss + β·L_distill。
-温度 τ=1,不设温度旋钮。CE 与前向 KL(π_T‖π_θ) 相差常数 H(π_T),梯度逐点恒等——
-这不是岔路,取 CE 免算教师熵,tb 记 train/distill_ce。
+**Decision**: L_distill = E_s[ -sum_a pi_T(a|s,mask) * log pi_theta(a|s,mask) ],
+total loss = policy_loss + ent_coef * entropy_loss + vf_coef * value_loss + beta * L_distill.
+Temperature tau=1, no temperature knob. CE and the forward KL(pi_T || pi_theta) differ by the constant H(pi_T), so the
+gradients are identical point by point: this is not a fork in the road; CE avoids computing the teacher entropy, and tb
+logs train/distill_ce.
 
-**审计事实优先于设计师假设(两处修正,结论不变、理由换成实测的)**:
+**Audit facts take precedence over designer assumptions (two corrections; the conclusion stands, with measured
+reasons)**:
 
-1. **反向 KL 判死,但不是因为"爆炸"。** 两份设计都主张教师近零概率动作的
-   log 比值(Δ≈10-40 nats / 16.1 nats)使反向 KL 爆炸——审计实测证伪:教师
-   (policy_sd.pt,1000 obs × demos.npz)top-1 概率中位 0.99971、熵中位 0.0034 nats,
-   但 logits 有限(−3.9..+7.6),非 top-1 log-prob **有下界 ≈ −11.5**(中位 −10.89)
-   ——反向 KL 数值有限,不爆炸。真正的死刑理由:每单位离锚概率质量背 ~10-11.5 nats
-   罚,且反向 KL 的最优点强迫学生熵压到教师的 ≈0.0034 nats,与 ent_coef=0.005 的
-   熵奖励正面互殴——任何有效 β 下等效重新焊死,封死 v23 峰值赖以出现的 29% 分歧
-   空间。判死成立,罪名更正。
-2. **CE 初值 ≈ 教师熵 ≈ 0.0034 nats**(不是设计 A 猜的 0.05-0.15)——学生从教师
-   权重热启动,损失值对损失值的 β 标定**零信息量**,必须按梯度/行为标定(见 D2)。
+1. **Reverse KL is ruled out, but not because it "explodes".** Both designs claimed that the log ratios on actions
+   where the teacher has near-zero probability (delta ~10-40 nats / 16.1 nats) make reverse KL explode; the audit
+   falsified this by measurement: the teacher (policy_sd.pt, 1000 obs x demos.npz) has a median top-1 probability of
+   0.99971 and a median entropy of 0.0034 nats, but its logits are finite (-3.9..+7.6) and the non-top-1 log-probs
+   **have a lower bound ~ -11.5** (median -10.89): reverse KL is numerically finite and does not explode. The real
+   reason for ruling it out: every unit of probability mass off the anchor carries a ~10-11.5 nats penalty, and the
+   optimum of reverse KL forces the student's entropy down to the teacher's ~0.0034 nats, fighting head-on with the
+   entropy bonus of ent_coef=0.005: at any effective beta it is equivalent to welding the policy back in place, sealing
+   off the 29% divergence room the v23 peak depended on. The ruling stands; the charge is corrected.
+2. **The initial CE ~ the teacher entropy ~ 0.0034 nats** (not the 0.05-0.15 design A guessed): the student is
+   warm-started from the teacher weights, so calibrating beta loss value against loss value carries **zero
+   information**; it must be calibrated by gradient/behavior (see D2).
 
-**皮筋而非焊枪(经源码+实测双核实)**:∂CE/∂z = π_θ − π_T,逐分量 ∈[−1,1]、
-L1≤2,与教师尖锐度无关,回复力与漂移量成正比——弹簧,不是焊点。学生完全漂离时
-CE 只随 logit 距离线性增长,梯度不爆。
+**A leash, not a welding torch (verified by source and by measurement)**: dCE/dz = pi_theta - pi_T, each component in
+[-1,1], L1<=2, independent of the teacher's sharpness; the restoring force is proportional to the drift: a spring, not
+a weld. When the student drifts away completely, CE only grows linearly with the logit distance, and the gradient does
+not explode.
 
-**掩码数值安全(审计 BLOCKER 1,必修)**:教师在恒掩键 11/12 上有实测质量
-(中位 3.8e-5,P99 4.8e-4);学生掩位 log-prob ≈ HUGE_NEG=−1e8(sb3_contrib
-distributions.py,有限值非 −inf)。**裸 CE 会含 ~3.8e3..4.8e4 的垃圾项,在任何 β 下
-淹没整个 PPO 损失。** 教师 logits 必须先按**逐样本** rollout 掩码置
-`th.where(mask.bool(), t_logits, th.full_like(t_logits, -1e8))`(full_like 保 device/dtype,
-批评者修正)再 softmax——float32 下掩位精确下溢为 0.0,0×(−1e8)=0,无 NaN。
-G-KL-A 以断言钉死此性质(若上游日后把 HUGE_NEG 改 −inf,0×(−inf)=NaN 在闸上现形)。
+**Numerical safety of the mask (audit BLOCKER 1, mandatory)**: the teacher has measured mass on the always-masked
+keys 11/12 (median 3.8e-5, P99 4.8e-4); the student's masked log-probs are ~HUGE_NEG=-1e8 (sb3_contrib
+distributions.py, a finite value, not -inf). **A bare CE would contain garbage terms of ~3.8e3..4.8e4 and drown the
+whole PPO loss at any beta.** The teacher logits must first be set per **sample** by the rollout mask with
+`th.where(mask.bool(), t_logits, th.full_like(t_logits, -1e8))` (full_like keeps device/dtype, a critic's correction)
+and then softmaxed: in float32 the masked positions underflow exactly to 0.0, 0 x (-1e8) = 0, no NaN. G-KL-A pins this
+property with an assertion (if upstream ever changes HUGE_NEG to -inf, 0 x (-inf) = NaN shows up at the gate).
 
-**教师载体**:冻结 BC 网 train/runs/bc-worker/policy_sd.pt(PiHead 298→64→64→15)。
-dispatch 原函数吃 raw 大字典,train() 里只有 buffer 的 298 维 obs,不可达;BC 网
-G1 已证与脚本 42,048 次调用零分歧。**G1 判词限定原文携带**:教师只在自己的轨迹
-分布上考过试,learner 漂出的新态上标签未经验证——皮筋按日程退火衰减,正是对此
-的止损。教师保真由 G-KL-C 把守(torch ≡ numpy)。
+**Teacher carrier**: the frozen BC net train/runs/bc-worker/policy_sd.pt (a training artifact, not published; PiHead 298->64->64->15). The original
+dispatch function eats the raw big dict, while train() only has the 298-dim obs of the buffer, so it is unreachable;
+G1 already proved the BC net has zero divergence from the script over 42,048 calls. **The G1 verdict qualification is
+carried verbatim**: the teacher was only examined on its own trajectory distribution, and its labels on the new states
+the learner drifts into are unverified; the leash decaying on the annealing schedule is exactly the stop-loss for this.
+Teacher fidelity is guarded by G-KL-C (torch == numpy).
 
-### D2 β₀ 标定:解析定标 β₀=0.5;经验走廊全部废除,重铸为 β-单调行为闸
+### D2 beta0 calibration: analytic beta0=0.5; all empirical corridors abolished, recast as a beta-monotonic behavior gate
 
-**裁决**:β₀ = 0.5,解析三约束联立(设计 B 的框架,保留):
-(a) **荒漠约束**:干层窗(95.8% 训练分布)里唯一持续力是熵风 ent_coef=0.005;
-β₀=0.5 给皮筋:风 ≈ 100:1,封死"免费漂";(b) **不焊死约束**:漂移 d=10% 时皮筋
-logit 梯度 ≈ 2βd = 0.1 ≪ 归一化优势下 PG 的 O(1)——鲜层窗里有真优势的分歧买得起
-(1M 峰的 +12.6% 靠的就是这扇门);(c) **混合尺度**:两项梯度同 O(1) 上界
-(normalize_advantage 实况,ppo_mask.py:348-349),β 是无量纲混合比,跨工资尺度可迁移。
+**Decision**: beta0 = 0.5, from three simultaneous analytic constraints (design B's framework, kept):
+(a) **desert constraint**: in dry-level windows (95.8% of the training distribution) the only persistent force is the
+entropy wind ent_coef=0.005; beta0=0.5 gives leash:wind ~ 100:1, sealing off "free drift"; (b) **no-weld
+constraint**: at a drift of d=10% the leash's logit gradient ~ 2 beta d = 0.1 << the O(1) of PG under normalized
+advantages, so divergences with a real advantage in fresh-level windows remain affordable (the +12.6% of the 1M peak
+came through exactly this door); (c) **mixing scale**: both gradient terms share an O(1) upper bound
+(normalize_advantage as implemented, ppo_mask.py:348-349), so beta is a dimensionless mixing ratio, transferable
+across wage scales.
 
-**两设计的经验梯度走廊一律废除**(四位批评者两条独立致命伤,全部采纳):
-设计 A 的 50k/100k 探针落在 200k **策略头**冻结窗内(train_ppo.py:283-304 实况:冻的
-是 mlp_extractor.policy_net + action_net,价值头在训——设计 B 的"价值头冻结"表述
-为笔误,以源码为准)——CE 梯度路径全经冻结参数,测得 0/0 或 autograd 直接报错,
-唯一修正额度被退化测量烧掉;设计 B 的 ρ=‖β∇CE‖/‖∇PG‖∈[0.3,3] 走廊建立在错误
-尺度分析上(贴锚初期两项皆小量,健康区可能 ρ≈0.05-0.1;ρ 在平衡点附近对 β 近似
-不变,×4 处方拧的是不响应的旋钮),首测出走廊即高概率二测再出→"二次出走廊判死"
-= 实验没跑就自杀。**教训:对 β 不单调、或在可达状态下退化的统计量,不许当闸。**
+**The empirical gradient corridors of both designs are abolished** (two independent fatal flaws raised by four
+critics, all adopted): design A's 50k/100k probes fall inside the 200k **policy-head** freeze window (as implemented
+in train_ppo.py:283-304: what is frozen is mlp_extractor.policy_net + action_net, while the value head trains; design
+B's "value head frozen" wording was a slip, the source is authoritative), so the CE gradient path runs entirely through
+frozen parameters, measuring 0/0 or making autograd raise directly, and the only correction quota would be burned by a
+degenerate measurement; design B's corridor rho=||beta grad CE||/||grad PG|| in [0.3,3] rests on a wrong scale
+analysis (both terms are small early on while close to the anchor, so a healthy region may have rho~0.05-0.1; near
+equilibrium rho is approximately invariant to beta, so the x4 prescription turns a knob that does not respond); a
+first measurement outside the corridor would very likely be followed by a second -> "out of the corridor twice means
+dead" = the experiment kills itself before it runs. **Lesson: a statistic that is not monotonic in beta, or that
+degenerates in reachable states, must not serve as a gate.**
 
-**重铸 G-CAL(见闸门章)**:探针移到解冻后(腿 1 全局步 300k/600k),梯度范数
-只记账不设闸;裁决统计量换成 **teacher_diverge(rollout 态上学生-教师 argmax 失配率)**
-——对 β 单调递减,可辩护。锚定事实:v23 无皮筋时 500k 分歧才 1.8%,故带活皮筋
-β=0.5 下 diverge>20% 只能是尺度或接线坏了。一次有界重标定:β₀←2.0(×4),
-从 BC init 重启腿 1,烧掉步数从腿 8 扣;全程仅此一次,二次触发=设计判死,写判决不改码。
+**Recast G-CAL (see the gates chapter)**: the probes move after the unfreeze (global steps 300k/600k of leg 1); the
+gradient norms are only booked, not gated; the verdict statistic becomes **teacher_diverge (the student-teacher argmax
+mismatch rate on rollout states)**, which decreases monotonically in beta and is defensible. Anchoring fact: without a
+leash, v23 had only 1.8% divergence at 500k, so with a live leash at beta=0.5 a diverge >20% can only mean the scale or
+the wiring is broken. One bounded recalibration: beta0 <- 2.0 (x4), restart leg 1 from the BC init, and the burned
+steps are deducted from leg 8; only once in the whole run; a second trigger = the design is judged dead, write the
+verdict, do not change the code.
 
-**记账不设闸**:CE 轨迹预期从 ≈0.003 nats 随分歧升到 ~0.1-1 nats(10-30% 分歧);
-CE 持续 >3 nats = 皮筋被优势流拉断的预警,只记不裁,由腿考显形。腿 1 的 0-200k
-冻结窗内 distill_ce"有值无梯度",ledger 注明,验尸不许拿它当皮筋张力读。
+**Booked, not gated**: the CE trajectory is expected to rise from ~0.003 nats with divergence to ~0.1-1 nats (10-30%
+divergence); CE persistently >3 nats = an early warning that the leash was snapped by the advantage flow, recorded only
+and not judged, made visible by the leg exams. Inside leg 1's 0-200k freeze window distill_ce "has values but no
+gradient"; the ledger notes this, and an autopsy must not read it as leash tension.
 
-### D3 门控规则:固定日程退火 + 双绊线(考试当保险丝,不当方向盘)
+### D3 Gating rule: fixed-schedule annealing + two trip lines (the exam is a fuse, not a steering wheel)
 
-**裁决:采设计 B 的骨架,弃设计 A 的绩效门控减半+回卷。** 三个理由(批评者双确认):
-① **噪声经济学**:全门控把每次"β 降不降"押在 0.97× 门槛的 ~3 分边际上,而腿间训练
-随机性(v23 轨迹摆幅 >40 分)远超它——β 轨迹退化为噪声驱动的随机游走;固定日程的
-主路径 β 决策吃零次噪声比较,考试只承担单边安全判决(62.8 距期望带 3-5 SE,打不穿)。
-② **可证伪性保证**:A 的回卷算术使 β=0 在腿 3 之后的任何一次跌落下 8 腿内不可达
-(批评者算清了这笔账)——预算花完、命题没考;固定减半在 6M 处**构造性到 0**,
-留 2M 无拐杖路面,那 2M 就是实验本身。③ **机制经济学**:峰定义/回卷语义/β 回升/
-重训额度每条都是漏洞面(A 的 leg-0 回卷在可达路径上不可执行,批评者双确认致命伤);
-本设计压缩为六条闭式条款。
+**Decision: adopt design B's skeleton; drop design A's performance-gated halving + rollback.** Three reasons (each
+confirmed by two critics): (1) **noise economics**: full gating bets every "lower beta or not" on a ~3-point margin at
+the 0.97x threshold, while inter-leg training randomness (v23 trajectory swings >40 points) far exceeds it, so the beta
+trajectory degenerates into a noise-driven random walk; the main-path beta decisions of a fixed schedule make zero
+noisy comparisons, and the exam only carries a one-sided safety verdict (62.8 is 3-5 SE from the expected band, it
+cannot be broken through by noise). (2) **Falsifiability guarantee**: A's rollback arithmetic makes beta=0 unreachable
+within 8 legs after any single drop past leg 3 (a critic worked out the arithmetic): budget spent, proposition
+unexamined; fixed halving reaches 0 **by construction** at 6M, leaving 2M of crutch-free road, and those 2M are the
+experiment itself. (3) **Mechanism economics**: peak definition/rollback semantics/beta rising again/retraining quota
+are each an attack surface (A's leg-0 rollback cannot be executed on a reachable path, a fatal flaw confirmed by two
+critics); this design compresses everything into six closed-form clauses.
 
-**修正三处(批评者致命伤/违规,全部采纳)**:
-- **删除"连续 3 腿软绊 → 视同硬绊"**:自增强环(软绊冻 β → 策略拉向教师水平 ≈93.9
-  → 更容易再软绊)以设计自己的预测算出 ~0.8 概率处决健康 run。软绊永不停机、
-  永不回卷,只冻结 β。
-- **峰 P\* 定义去噪**:P\* := 多重集 {93.9} ∪ {已完成各腿考分} 的**第二大值**
-  (93.9 = 脚本/BC 在 7000-7015 的已知闭式常数;单元素时第二大=该元素与 93.9 的较大者
-  即 93.9)。单次子集运气(v23 教训:同 ckpt 前 16=105.7 对满 32=76.0)不能棘轮抬线,
-  真实高峰须两腿复现才抬线。峰只能由**腿末 ckpt 的正式考试**建立,腿中 500k 检查点
-  无峰值资格。
-- **步数量子化如实注册**:SB3 按整 rollout(512×4=2048)推进,"1M 步/腿"实为
-  489×2048 = **1,001,472 步/腿**,8 腿 = 8,011,776 步;预算硬上限按此实数记账,
-  ledger 记实际 num_timesteps,终审对账不算字面违约。
+**Three corrections (critics' fatal flaws/violations, all adopted)**:
+- **Removed "3 consecutive soft trips count as a hard trip"**: a self-reinforcing loop (a soft trip freezes beta ->
+  the policy is pulled toward the teacher's level ~93.9 -> soft trips become easier) that, by the design's own
+  predictions, would execute a healthy run with ~0.8 probability. A soft trip never stops and never rolls back; it only
+  freezes beta.
+- **De-noised peak definition P\***: P\* := the **second largest value** of the multiset {93.9} union {completed leg
+  exam scores} (93.9 = the known closed-form constant of the script/BC on 7000-7015; with a single element the second
+  largest = the larger of that element and 93.9, i.e. 93.9). A single stroke of subset luck (v23 lesson: the same ckpt
+  scored 105.7 on the first 16 vs 76.0 on the full 32) cannot ratchet the line up; a real peak must be reproduced by two
+  legs to raise the line. A peak can only be established by the **official exam of an end-of-leg ckpt**; mid-leg 500k
+  checkpoints have no peak eligibility.
+- **Step quantization registered as is**: SB3 advances by whole rollouts (512x4=2048), so "1M steps/leg" is really
+  489x2048 = **1,001,472 steps/leg**, 8 legs = 8,011,776 steps; the hard budget cap is booked on this real number, the
+  ledger records the actual num_timesteps, and the final reconciliation does not count it as a literal breach.
 
-**条款原文(驱动脚本 run_v24_legs.py 唯一执行者,凌晨无人肉裁量,gate_ledger.jsonl 逐条留痕)**:
+**Clause text (the driver script run_v24_legs.py is the sole executor, with no human discretion; gate_ledger.jsonl
+keeps a trace of every clause)**:
 
-- **【腿-1】** 总预算 8M(名义)= 8 腿 × 1,001,472 步,num_envs=4,腿内 β 恒定。
-  腿 k 名义 β_k = β₀·2^{−(k−1)},k=1..6(0.5, 0.25, 0.125, 0.0625, 0.03125, 0.015625);
-  减半后 <0.01 一律钉 0 → 名义腿 7、腿 8 恒 β=0。β 全程单调不增,任何情况不回升。
-  每腿训练种子预注册公式:seed_k = 100000 + 1000×k(邻域拒撞 7000/9000 段断言照旧;
-  resume 后显式重播种)——封死"回卷/重跑=重抽奖"歧义(批评者违规项,采纳)。
-- **【考-2】** 每腿收官后、下一腿发车前,必考
-  `eval_assembled.py --worker <腿末 model_final.zip> --seeds 7000-7015 --tag v24-leg{k}`
-  (argmax 组装重放,对给定 ckpt 确定性,腿间比较零评测噪声;--tag 强制唯一,
-  否则八腿互相覆盖同一 JSON——批评者违规项,采纳)。驱动无上一腿考卷 JSON
-  即拒绝发车(机械互锁);且必须校验上腿 subprocess 退出码 == 0 **且**
-  status.json 的全局步数 ≥ 腿目标(finally 块会把半腿也落成 model_final.zip,
-  批评者技术风险,采纳)。考卷 sha256 入 ledger。
-- **【硬-3】塌缩绊线**:任一腿考 < **62.8** → **本 run 训练永久终止**。禁止 resume、
-  禁止改 β 重训、禁止"再训一会儿"——**回卷-重训次数上限 = 0**,无限回卷从定义上
-  不存在;"回卷"仅指评测对象(终审候选按 D5 规则从已有腿末 ckpt 里选)。
-  口径明示(批评者要求,不许读者自行发现):62.8 = 0.8×G1 系满 32 池衍生数
-  (该池脚本 78.5),套在 16 种子考试(同子集脚本 93.9)上实际是 ~0.67× 的更松线
-  ——与 v23 附录 B/C 的 2M/4M 检查完全同一把尺,"沿用不放松"字面成立。
-- **【软-4】守峰绊线**:腿 k 考 < 0.97×P\* → 腿 k+1 的 β 不降(β_{k+1}=β_k),
-  日程整体右移、总步数仍 8M、腿数不追加——软绊吃掉的是尾部 β=0 路面;
-  若 β=0 腿被吃光,该事实本身触发 P-拐杖-否,**不停机、不处决**。
-  比较用考分原样 1 位小数,恰等于阈值算守住。
-- **【封-5】旋钮封条**:除 G-CAL 预注册的一次 β₀×4 重标定外,β₀、腿长、绊线数字、
-  考试种子、ent_coef=0.005、gamma=1.0、freeze 200k、n_steps=512 全程不可动;
-  resume 腿加载后**断言** ent_coef/gamma/n_steps 与冻结配方一致(load 的
-  `__dict__.update(data)` 会把全部超参从 ckpt 驮回,config 只记 CLI 值——批评者
-  违规项:超参静默续命面不止 β 一个,以断言封死)。干层配比干预出现即违规。
-- **【终-6】** 预算耗尽或触发【硬-3】即收官,无任何延长条款。腿失败/机器崩溃 →
-  按本腿原配置(含 seed_k)重跑,已烧步数计入预算——崩溃不是重抽奖的借口。
+- **[leg-1]** Total budget 8M (nominal) = 8 legs x 1,001,472 steps, num_envs=4, beta constant within a leg. The
+  nominal beta of leg k is beta_k = beta0 * 2^{-(k-1)}, k=1..6 (0.5, 0.25, 0.125, 0.0625, 0.03125, 0.015625); anything
+  below 0.01 after halving is pinned to 0 -> nominal legs 7 and 8 have beta=0 throughout. beta is monotonically
+  non-increasing over the whole run and never rises under any circumstances. Pre-registered training seed formula per
+  leg: seed_k = 100000 + 1000 x k (the assertion rejecting neighbourhoods of the 7000/9000 ranges stays; explicit
+  reseeding after resume), sealing off the "rollback/re-run = redraw the lottery" ambiguity (a critic's violation item,
+  adopted).
+- **[exam-2]** After each leg closes and before the next leg launches, the exam is mandatory:
+  `eval_assembled.py --worker <end-of-leg model_final.zip> --seeds 7000-7015 --tag v24-leg{k}` (argmax assembled
+  replay, deterministic for a given ckpt, zero evaluation noise across legs; --tag is forced unique, otherwise the eight
+  legs overwrite the same JSON, a critic's violation item, adopted). Without the previous leg's exam JSON the driver
+  refuses to launch (mechanical interlock); it must also check that the previous leg's subprocess exit code == 0
+  **and** that the global step count in status.json >= the leg target (the finally block would also write a half leg
+  as model_final.zip, a critic's technical risk, adopted). The exam sha256 goes into the ledger.
+- **[hard-3] Collapse trip line**: any leg exam < **62.8** -> **training of this run stops permanently**. No resume,
+  no retraining with a changed beta, no "train a bit longer": **the rollback-retrain limit = 0**, so infinite rollback
+  does not exist by definition; "rollback" only refers to the evaluation target (final-review candidates are chosen
+  from existing end-of-leg ckpts by the D5 rule). The definition made explicit (critics' demand, not left for readers
+  to discover): 62.8 = 0.8 x G1 is derived from the full-32 pool (script 78.5 on that pool); applied to the 16-seed exam
+  (script 93.9 on the same subset) it is effectively a looser ~0.67x line, exactly the same ruler as the 2M/4M checks
+  of v23 appendices B/C, so "kept unrelaxed" holds literally.
+- **[soft-4] Peak-holding trip line**: leg k exam < 0.97 x P\* -> the beta of leg k+1 is not lowered
+  (beta_{k+1}=beta_k), the schedule shifts right as a whole, the total stays 8M and no legs are added: a soft trip eats
+  the beta=0 road at the tail; if the beta=0 legs are eaten entirely, that fact itself triggers P-crutch-no, **without
+  stopping or executing the run**. The comparison uses the exam score as is, to 1 decimal; exactly equal to the threshold
+  counts as held.
+- **[seal-5] Knob seal**: apart from the one beta0 x4 recalibration pre-registered in G-CAL, beta0, leg length, trip
+  line numbers, exam seeds, ent_coef=0.005, gamma=1.0, freeze 200k and n_steps=512 cannot move for the whole run; after
+  loading, a resumed leg **asserts** that ent_coef/gamma/n_steps match the frozen recipe (load's
+  `__dict__.update(data)` carries all hyperparameters back from the ckpt while config only records CLI values; a
+  critic's violation item: beta is not the only hyperparameter that can silently live on, so this is sealed by
+  assertion). A dry-level mix intervention is a violation on sight.
+- **[final-6]** Close when the budget is exhausted or [hard-3] triggers; there is no extension clause of any kind. Leg
+  failure/machine crash -> re-run with the leg's original config (including seed_k); burned steps count toward the
+  budget: a crash is not an excuse to redraw the lottery.
 
-### D4 集成机械(全部行号经审计核对为实况)
+### D4 Integration mechanics (every line number verified against the source by the audit)
 
-采两设计交集,按审计 BLOCKER 1-5 修正。关键裁决:
+Take the intersection of the two designs, corrected per audit BLOCKERs 1-5. Key decisions:
 
-- **子类整体复写 train()**(sb3_contrib 2.9.0 无损失 hook,诚实复制 ppo_mask.py:309-426,
-  monkeypatch 与 fork 均更差——审计判词)。插入点:entropy_loss(384 行)之后、
-  `loss = ...`(386 行)处改一行。
-- **学生分布必须二次前向取得**(审计 BLOCKER 3):evaluate_actions 只返回
-  (values, log_prob, entropy),不暴露 15 维分布;用
-  `self.policy.get_distribution(obs, action_masks=rollout_data.action_masks)`
-  (policies.py:355-368),`dist.distribution.logits` 即归一化 log-probs。
-  64 维 MLP 二次前向,开销可忽略(审计实测教师前向 182µs/批,全程 <2%,
-  不许在缓存/AMP 上花预算)。
-- **load() 构造契约**(审计 BLOCKER 4):子类自定义参数
-  (distill_beta=0.0, teacher_path=None)必须带默认值(load 只用
-  policy/env/device/_init_setup_model 四参构造);教师模块入
-  `_excluded_save_params()`,在 `_setup_model()` 里按 self.teacher_path 重建
-  (fresh 与 load 两条路径顺序皆成立)——否则教师被 cloudpickle 进每个 500k ckpt。
-- **腿式 resume**(审计 BLOCKER 2/5):train_ppo.py 今日**没有** resume 路径,必须新增;
-  `reset_num_timesteps=False`(默认 True 会清零计数器 → ckpt 文件名重启相互覆盖、
-  β 日程与预算记账全断),`learn(total_timesteps=腿增量)`(False 语义是**再训 N 步**,
-  传累计值会多训);全局步连续 → CheckpointCallback 文件名全局唯一、tb 横轴连续。
-  resume 时禁 --bc-init(会用原始 BC 权重覆盖已训策略)与 --freeze-policy-steps。
-  **β 注入 = load 后显式 `model.distill_beta = args.distill_beta` + assert hasattr**
-  (load 的 kwargs 直写 __dict__ 无校验,拼错即静默吞掉;显式覆盖封死"上腿 β 静默续命")。
-  Adam 动量随 load 延续(审计证实),腿间无 lr 冲击;**入册警示**:日后任何人给 lr/clip
-  加 schedule、或设 target_kl(现为 None,早停不激活;激活后 β 会静默改变有效 epoch 数)、
-  或把 worker 换 --arch attn(共享可训 extractor 会让 CE 在"冻结期"偷训 extractor),
-  都会静默破坏本节语义。
-- **tb 路径修正**(批评者违规项):load 会从 ckpt 驮回旧 tensorboard_log 路径,
-  腿 2-8 的曲线会全写进腿 1 目录——resume 后显式 `model.tensorboard_log = 本腿 run 目录`。
-- **sps 仪表修正**(批评者违规项):EpisodeJsonlCallback 的 sps = num_timesteps/elapsed
-  在 resume 腿虚高几十倍(计数器从 kM 起跳),<1.8M/h 降档闸门永不触发——
-  改为 (num_timesteps − 腿起点)/elapsed,且驱动脚本自己掐表复核。
-- **哨兵修正**(审计+批评者):WorkerSentinelCallback.next_at 硬编码 500k,resume 腿
-  起步连喷空统计行——`_on_training_start` 里 next_at = ((num_timesteps//every)+1)×every;
-  line dict 追加 beta 与 distill_ce 字段(读 model 属性),sentinel.jsonl 每 500k 自带
-  皮筋读数,与 gate_ledger 逐腿对账(双簿审计)。
-- **fail-loud 升格为规格条款**(批评者违规项):train() 内 β>0 而 teacher is None
-  必须 assert 炸裂——教师漏挂不许静默退化。
+- **The subclass overrides train() as a whole** (sb3_contrib 2.9.0 has no loss hook; honestly copy
+  ppo_mask.py:309-426; monkeypatching and forking are both worse, per the audit). Insertion point: after entropy_loss
+  (line 384), changing one line at `loss = ...` (line 386).
+- **The student distribution must come from a second forward pass** (audit BLOCKER 3): evaluate_actions only returns
+  (values, log_prob, entropy) and does not expose the 15-dim distribution; use
+  `self.policy.get_distribution(obs, action_masks=rollout_data.action_masks)` (policies.py:355-368), where
+  `dist.distribution.logits` are the normalized log-probs. A second forward pass through a 64-dim MLP costs next to
+  nothing (the audit measured the teacher forward at 182us/batch, <2% overall; no budget may go to caching/AMP).
+- **load() construction contract** (audit BLOCKER 4): the subclass's own parameters (distill_beta=0.0,
+  teacher_path=None) must have defaults (load constructs with only the four parameters policy/env/device/
+  _init_setup_model); the teacher module goes into `_excluded_save_params()` and is rebuilt in `_setup_model()` from
+  self.teacher_path (the order holds on both the fresh and the load path); otherwise the teacher is cloudpickled into
+  every 500k ckpt.
+- **Leg-style resume** (audit BLOCKERs 2/5): train_ppo.py has **no** resume path today, so one must be added;
+  `reset_num_timesteps=False` (the default True resets the counter -> ckpt file names restart and overwrite each other,
+  and the beta schedule and budget bookkeeping all break), `learn(total_timesteps=leg increment)` (False means **train
+  N more steps**; passing the cumulative value would over-train); global steps are continuous -> CheckpointCallback file
+  names are globally unique and the tb x-axis is continuous. On resume, --bc-init (it would overwrite the trained policy
+  with the raw BC weights) and --freeze-policy-steps are forbidden. **beta injection = an explicit
+  `model.distill_beta = args.distill_beta` + assert hasattr after load** (load's kwargs write __dict__ directly without
+  validation, so a typo is silently swallowed; the explicit override seals off "the previous leg's beta silently living
+  on"). Adam momentum carries over with load (confirmed by the audit), so there is no lr shock between legs.
+  **Recorded warning**: anyone later adding a schedule to lr/clip, or setting target_kl (currently None, early stopping
+  inactive; once active, beta would silently change the effective number of epochs), or switching the worker to --arch
+  attn (a shared trainable extractor would let CE secretly train the extractor during the "freeze period") would
+  silently break the semantics of this section.
+- **tb path fix** (a critic's violation item): load carries the old tensorboard_log path back from the ckpt, so the
+  curves of legs 2-8 would all be written into leg 1's directory; after resume, set `model.tensorboard_log = this leg's
+  run directory` explicitly.
+- **sps instrument fix** (a critic's violation item): EpisodeJsonlCallback's sps = num_timesteps/elapsed is inflated
+  dozens of times on a resumed leg (the counter starts at kM), so the <1.8M/h downgrade gate would never fire; change it
+  to (num_timesteps - leg start)/elapsed, and the driver script times it independently to cross-check.
+- **Sentinel fix** (audit + critics): WorkerSentinelCallback.next_at is hard-coded to 500k, so a resumed leg would
+  spray empty stats lines at the start; in `_on_training_start` set next_at = ((num_timesteps//every)+1) x every; the
+  line dict adds beta and distill_ce fields (read from model attributes), so sentinel.jsonl carries leash readings every
+  500k and is reconciled leg by leg against gate_ledger (two-book audit).
+- **Fail-loud promoted to a specification clause** (a critic's violation item): inside train(), beta>0 with teacher is
+  None must assert and crash: a missing teacher must not degrade silently.
 
-**代码改动清单(文件级;环境侧零文件)**:
+**Code change list (file level; zero files on the environment side)**:
 
-| 文件 | 改动 |
+| File | Change |
 |---|---|
-| `train/leashed_ppo.py`(新) | `LeashedMaskablePPO(MaskablePPO)`:__init__ 加 distill_beta=0.0/teacher_path=None;_setup_model 重建教师(按 bc_worker.py:112-121 的 SB3 键名组装 298→64→64→15,.eval().requires_grad_(False).to(device));_excluded_save_params()+["teacher"];train() 复写(β>0 时:assert 教师在;get_distribution 二次前向;教师 no_grad 前向 → 逐样本掩码 full_like(−1e8) → softmax;ce=−(t_probs·logp).sum(−1).mean();loss += β·ce;记 train/distill_ce(跨 minibatch 均值,不许只记末批)/train/distill_beta/train/teacher_diverge/train/teacher_top1_conf(离分布预警,只观测);β=0 整段被 if 跳过);内嵌标定探针(--calib-probes 全局步列表:到点用 th.autograd.grad(retain_graph,不污染 .grad)测 g_ce/g_pg/diverge 写 calib.jsonl;diverge>20% 置 _calib_tripped 旗) |
-| `train/train_ppo.py` | argparse 加 --distill-beta(0.0)/--teacher-sd(默认 runs/bc-worker/policy_sd.pt)/--resume-from/--calib-probes;断言:resume 禁 bc-init/freeze,resume 后断言 ent_coef/gamma/n_steps 契约;config 记新字段;mppo 分支 resume 路:LeashedMaskablePPO.load(env=…) → 显式 β 覆盖 + tensorboard_log 覆盖 + set_random_seed(seed_k);learn(腿增量, reset_num_timesteps=False);sps 改按腿起点差分;WorkerSentinelCallback:next_at 初始化修正 + beta/distill_ce 字段;哨兵回调读 _calib_tripped 即 return False 终止本腿 |
-| `train/run_v24_legs.py`(新驱动) | 串行 训→考→裁→ledger;β 日程与软/硬绊逻辑**只活在此文件**;机械互锁(无考卷拒发车、退出码+步数校验、--tag 强制、sha256 入账);G-CAL 裁决按 calib.jsonl 执行 |
-| `train/eval_assembled.py` | **零改动**(审计证实:MaskablePPO.load 以调用类构造读子类 zip,教师被排除故无自定义类引用,distill_beta 为惰性属性) |
-| 环境/工资/观测/掩码/经理 | **一行不动**(G0/G0'/G0'' 免重跑成立) |
+| `train/leashed_ppo.py` (new) | `LeashedMaskablePPO(MaskablePPO)`: __init__ adds distill_beta=0.0/teacher_path=None; _setup_model rebuilds the teacher (assembles 298->64->64->15 by the SB3 key names of bc_worker.py:112-121, .eval().requires_grad_(False).to(device)); _excluded_save_params()+["teacher"]; train() overridden (when beta>0: assert the teacher exists; get_distribution second forward pass; teacher no_grad forward -> per-sample mask full_like(-1e8) -> softmax; ce=-(t_probs*logp).sum(-1).mean(); loss += beta*ce; log train/distill_ce (mean across minibatches, not just the last batch)/train/distill_beta/train/teacher_diverge/train/teacher_top1_conf (off-distribution early warning, observation only); with beta=0 the whole block is skipped by an if); an embedded calibration probe (--calib-probes list of global steps: at each point measure g_ce/g_pg/diverge with th.autograd.grad (retain_graph, does not pollute .grad) and write calib.jsonl; diverge>20% sets the _calib_tripped flag) |
+| `train/train_ppo.py` | argparse adds --distill-beta (0.0)/--teacher-sd (default runs/bc-worker/policy_sd.pt)/--resume-from/--calib-probes; assertions: resume forbids bc-init/freeze, after resume assert the ent_coef/gamma/n_steps contract; config records the new fields; the resume path of the mppo branch: LeashedMaskablePPO.load(env=...) -> explicit beta override + tensorboard_log override + set_random_seed(seed_k); learn(leg increment, reset_num_timesteps=False); sps computed as a difference from the leg start; WorkerSentinelCallback: next_at initialization fix + beta/distill_ce fields; the sentinel callback returns False on _calib_tripped to end the leg |
+| `train/run_v24_legs.py` (new driver) | serial train->exam->verdict->ledger; the beta schedule and the soft/hard trip logic **live only in this file**; mechanical interlocks (no exam, no launch; exit code + step count checks; --tag forced; sha256 booked); the G-CAL verdict is executed from calib.jsonl |
+| `train/eval_assembled.py` | **no change** (the audit confirmed: MaskablePPO.load constructs with the calling class and reads the subclass zip; the teacher is excluded, so there is no reference to a custom class; distill_beta is an inert attribute) |
+| environment/wage/observation/mask/manager | **not a single line changes** (not re-running G0/G0'/G0'' holds) |
 
-### D5 闸门、R 线、P 线 —— 见下两章(裁决要点:G-KL-A 必须随机初始化起跑,批评者致命伤;G3 候选集写死为腿末 ckpt top-2,封"再筛一个"后门)
+### D5 Gates, R lines, P lines: see the next two chapters (key decisions: G-KL-A must start from a random initialization, a critic's fatal flaw; the G3 candidate set is fixed as the top-2 end-of-leg ckpts, sealing the "screen one more" back door)
 
-## 二、闸门
+## 2. Gates
 
-- **G-KL-A(焊死端,发车前)**:**从随机初始化起跑**(批评者致命伤修正:BC init 起跑时
-  无皮筋 50k 也分歧 <2%,死皮筋照样全绿,闸门功效为零),β=100,~50k 步:
-  CE 须从 ~2.71(均匀,log 15)降到 <0.05,2000 个 rollout 态上学生-教师 argmax
-  一致 ≥99%。附带断言:全程 distill_ce 有限、被掩键对 CE 贡献恰为 0(钉死
-  HUGE_NEG=−1e8 语义)、β>0 无教师时 assert 正确炸裂。不过=不发车。
-- **G-KL-B(零化端,发车前)**:β=0、固定注入 buffer + 受控 RNG(np/torch 双复位;
-  报错须能区分"梯度路径真变了"与"RNG 相位差"——批评者技术风险),单次 train()
-  更新与原版 MaskablePPO 的 policy/value/entropy 损失差 <1e-6,且 distill 段被
-  if 守卫整段跳过(代码走查签名入册)——腿 7-8 恰是昨夜配方由构造保证。
-- **G-KL-C(教师保真,发车前)**:torch 教师与 eval_assembled 的 np_policy_from_sd:
-  键名重映射后 6 个张量逐一 allclose(atol 1e-6)**且** 1000 obs 前向 logits
-  最大绝对差 <1e-4 **且** argmax 一致率 100%(批评者:只比 argmax 对权重错位不敏感)。
-- **G-CAL(标定闸,腿 1 @300k 与 @600k,均在 200k 解冻后)**:
-  (a) distill_ce 有限且 >0;(b) 两探针点 g_ce>0(皮筋活着);
-  (c) 任一探针点 teacher_diverge >20% 即触发处置。
-  (a)/(b) 失败 = 接线 bug → 修码、按【终-6】崩溃条款重跑腿 1(烧步计预算)。
-  (c) 触发且 (a)(b) 绿且 G-KL-A 已过 = 尺度失败 → **唯一一次** β₀←2.0,从 BC init
-  重启腿 1,烧掉步数从腿 8 扣除(腿 8 = 1,001,472 − 烧步;若腿 8 被扣至 <500k,
-  P-拐杖-真 自动降格为半档);二次触发 = 设计判死,停机写判决,不改码。
-  梯度范数比 g_ce/g_pg 全程只记账(calib.jsonl + tb),不设走廊——废除理由见 D2。
-- **G-LEG(腿闸)**:即 D3 条款【考-2】【硬-3】【软-4】,数字与口径如上,不复述。
-- **G3(金牌唯一触发器)**:候选集**写死**= 全部腿末 ckpt 按腿考分取 top-2
-  (腿中 500k ckpt 只做验尸,永无候选资格——封死 v23"换 ckpt 旋钮"式的现场再筛)。
-  两候选各跑满 32(7000-7031):胜者 = 满 32 均分高者(±0.05 内平分取 β 更低的腿);
-  金评资格线:满 32 均值 ≥ **74.6**(=0.95×H7=78.5)且 战死 ≤6/32 且 R4 四哨全过
-  (FARM 换层率 >2.04% 失金评资格,>6% 且死 >6/32 run 作废;override 哨兵 <3%、
-  ≥8% 数据作废;cap <5%;farm τ̄ ∈ 脚本±25%——数字沿用 v23 附录 B 解释版原文)。
-  资格线不达 → 不烧金种子,判决如实(P2 精神)。
-- **金牌纪律**:金种子 **9000-9031** 全案只在此开牌一次,仅 G3 胜者,单臂,不回炉,
-  无重试旋钮。金牌判词必须携带该候选的与脚本分歧率注记(防空洞胜利修辞,
-  批评者条款,采纳)。
+- **G-KL-A (weld end, before launch)**: **start from a random initialization** (a critic's fatal-flaw fix: starting from
+  the BC init, divergence stays <2% at 50k even without a leash, so a dead leash would still be all green and the gate
+  would have zero power), beta=100, ~50k steps: CE must fall from ~2.71 (uniform, log 15) to <0.05, and the student and
+  teacher argmax must agree on >=99% of 2000 rollout states. Side assertions: distill_ce finite throughout, the
+  contribution of masked keys to CE exactly 0 (pinning the HUGE_NEG=-1e8 semantics), and beta>0 without a teacher
+  asserts and crashes correctly. Failure = no launch.
+- **G-KL-B (zero end, before launch)**: beta=0, a fixed injected buffer + controlled RNG (np/torch both reset; the
+  error must distinguish "the gradient path really changed" from "RNG phase difference", a critic's technical risk); the
+  policy/value/entropy losses of a single train() update differ from stock MaskablePPO by <1e-6, and the distill
+  block is skipped entirely by its if guard (the code walkthrough is recorded): legs 7-8 are exactly the
+  v23 recipe, guaranteed by construction.
+- **G-KL-C (teacher fidelity, before launch)**: the torch teacher vs eval_assembled's np_policy_from_sd: after key
+  remapping the 6 tensors are allclose one by one (atol 1e-6) **and** the maximum absolute logit difference over a
+  1000-obs forward pass is <1e-4 **and** the argmax agreement is 100% (critics: comparing only argmax is insensitive to
+  misplaced weights).
+- **G-CAL (calibration gate, leg 1 @300k and @600k, both after the 200k unfreeze)**: (a) distill_ce finite and >0;
+  (b) g_ce>0 at both probe points (the leash is alive); (c) teacher_diverge >20% at either probe point triggers the
+  action. A failure of (a)/(b) = a wiring bug -> fix the code and re-run leg 1 under the [final-6] crash clause (burned
+  steps count toward the budget). (c) triggered with (a)(b) green and G-KL-A passed = a scale failure -> **the one and
+  only** beta0 <- 2.0, restart leg 1 from the BC init, burned steps deducted from leg 8 (leg 8 = 1,001,472 - burned
+  steps; if leg 8 is cut below 500k, P-crutch-true is automatically downgraded to the half tier); a second trigger =
+  the design is judged dead: stop and write the verdict, no code change. The gradient-norm ratio g_ce/g_pg is only
+  booked throughout (calib.jsonl + tb), with no corridor; see D2 for why it was abolished.
+- **G-LEG (leg gate)**: the D3 clauses [exam-2] [hard-3] [soft-4], numbers and definitions as above, not repeated.
+- **G3 (the only trigger of the gold standard)**: the candidate set is **fixed** = the top-2 end-of-leg ckpts by leg
+  exam score (mid-leg 500k ckpts are for autopsy only and never have candidacy, sealing off an on-site rescreen in the
+  style of v23's "switch ckpt knob"). Each candidate runs the full 32 (7000-7031): winner = the higher full-32 mean
+  (within +/-0.05 a tie goes to the leg with the lower beta); gold-evaluation eligibility line: full-32 mean >= **74.6**
+  (=0.95 x H7=78.5) and deaths <=6/32 and all four R4 sentinels pass (FARM level-change rate >2.04% loses
+  gold-evaluation eligibility, >6% with deaths >6/32 voids the run; override sentinel <3%, >=8% voids the data; cap
+  <5%; farm tau-bar within script +/-25%: the numbers follow the interpreted text of v23 appendix B). Below the
+  eligibility line -> no gold seeds spent, the verdict stated as is (spirit of P2).
+- **Gold-standard discipline**: the gold seeds **9000-9031** are opened only once in the whole case, here, for the G3
+  winner only, single arm, no re-education, no retry knob. The gold verdict must carry that candidate's divergence rate
+  from the script (guarding against hollow-victory rhetoric; a critic's clause, adopted).
 
-## 三、R 线(可证伪预测,带数字)与 P 线(判决)
+## 3. R lines (falsifiable predictions, with numbers) and P lines (verdicts)
 
-| # | 预测 | 数字 |
+| # | Prediction | Number |
 |---|---|---|
-| R-v24.1 峰值 | 各腿考最大值(7000-7015 口径) | ∈[95,115],点预测 106;若 <93.9(同子集脚本值)则皮筋相对 v23 无增益,处方存疑入册 |
-| R-v24.2 防塌缩 | 每一腿考 ≥62.8 直到预算尽;**特别地腿 4(累计 ≈4M)≥62.8,直接对赌 v23 的 4M=42.6** | 点预测:min 腿考 ≥75;任一腿击穿即此线证伪(硬绊线同时执行止损) |
-| R-v24.3 拐杖可扔(最强可证伪形式) | 至少存在一条 β=0 整腿,且**最后一条 β=0 腿的腿考 ≥ 0.95×P\***(P\* 按 D3 第二大值定义,机器可判) | 成立 →"拐杖可真正扔掉";软绊吃光 β=0 路面或硬绊先触发 → 判负,判词**"8M 内撒不了手"**,不许改口"趋势向好";已注册偏置:终考单值对滚动峰比较有赢家诅咒不对称,P\* 第二大值定义即去噪手段,残余偏置入册 |
-| R-v24.4 创新守恒哨 | 最后一条 β=0 腿考的与脚本分歧率 | ∈[10%,45%];<2% 且考分高 = 教师复读机,判词只许写"贴锚续航",禁写"离锚自立" |
-| R-v24.5 哨兵 | R4 四哨全程绿;sentinel.jsonl 的 beta/distill_ce 与 gate_ledger 逐腿对账一致 | 对账不一致 = 机械违规入册 |
-| R-v24.6 金牌(若触发) | 金池均值 | ∈[85,110],点预测 92(锚:v23 金牌 77.0 为下界教训,1M 峰满 32 = 76.0 为半池折价教训) |
+| R-v24.1 peak | the maximum of the leg exams (7000-7015 definition) | in [95,115], point prediction 106; if <93.9 (the script value on the same subset), the leash brings no gain over v23 and the prescription is recorded as doubtful |
+| R-v24.2 anti-collapse | every leg exam >=62.8 until the budget is spent; **in particular leg 4 (cumulative ~4M) >=62.8, a direct bet against v23's 4M=42.6** | point prediction: min leg exam >=75; any leg breaking through falsifies this line (the hard trip line executes the stop-loss at the same time) |
+| R-v24.3 the crutch can be dropped (strongest falsifiable form) | at least one full beta=0 leg exists, and **the leg exam of the last beta=0 leg >= 0.95 x P\*** (P\* by the D3 second-largest definition, machine-decidable) | holds -> "the crutch can really be dropped"; soft trips eat all of the beta=0 road or the hard trip fires first -> judged negative, verdict **"cannot let go within 8M"**, no switching to "the trend looks good"; registered bias: comparing a single final exam against a rolling peak has an asymmetric winner's curse; the second-largest definition of P\* is the de-noising means, and the residual bias is recorded |
+| R-v24.4 innovation-conservation sentinel | the divergence rate from the script of the last beta=0 leg exam | in [10%,45%]; <2% with a high score = a teacher parrot, and the verdict may only say "cruising on the anchor", never "independent of the anchor" |
+| R-v24.5 sentinels | all four R4 sentinels green throughout; the beta/distill_ce of sentinel.jsonl reconcile leg by leg with gate_ledger | a mismatch = a mechanical violation, recorded |
+| R-v24.6 gold (if triggered) | gold-pool mean | in [85,110], point prediction 92 (anchors: v23 gold 77.0 as the lower-bound lesson, the 1M peak's full 32 = 76.0 as the half-pool discount lesson) |
 
-**P1 三档(数字沿用 v23 一字不动)**:强胜 金均 ≥93.9 且死 ≤4/32;主胜 ≥89.2 且
-死 ≤4/32;弱通过 [84.5,89.2) 且死 ≤4/32,判词不得写"达到 H 水平"。
-功效纪律:n=32、SE≈4;腿考 n=16 为确定性重放,零评测噪声,但外推到全池/金池的
-子集噪声由 G3 满 32 把守——两级分离写进判决书。
+**P1 three tiers (numbers carried over from v23 without a single change)**: strong win gold mean >=93.9 and deaths
+<=4/32; main win >=89.2 and deaths <=4/32; weak pass [84.5,89.2) and deaths <=4/32, where the verdict must not say
+"reaches H level". Power discipline: n=32, SE~4; the n=16 leg exams are deterministic replays with zero evaluation
+noise, but the subset noise of extrapolating to the full pool/gold pool is guarded by the G3 full 32: the two levels are
+kept separate in the verdict.
 
-**P-拐杖(新增专属判词档)**:
-- **真**:R-v24.3 成立 且 终 β=0 腿考 ≥0.97×P\* 且 其分歧率 ≥2% 且 金牌 ≥89.2 且
-  死 ≤4/32 →"皮筋教会了独走,操作脑离锚自立"(判词附分歧率数字)。
-- **半**:R-v24.3 成立但终腿考 ∈[0.95,0.97)×P\*,或 β=0 路面被 sps 降档/重标定扣步
-  砍至 <2 整腿 →"守峰存在性,带折价",不得升格。[0.95,0.97) 灰区由此档命名收编,
-  不再是两读法冲突(批评者致命伤修正:R 线 0.95 与软绊 0.97 在无回卷体制下无操作
-  冲突——β 已是 0,冻结 0 仍是 0——只剩判词分档问题,在此写死)。
-- **伪**:金牌过 P1 任一档但 G3 胜者出自 β>0 腿 → 判词必须写**"仍拄拐,自立主张
-  不成立"**,不得冒功。
-- **否**:R-v24.3 判负 →"扔不掉拐,或守不住峰",按 ledger **双归因**:软绊序列吃掉
-  时间表 = 对退火日程的证伪;β=0 后跌落 = 对能力的证伪——不得倒果为因,
-  日程判负不得写成能力判负(批评者条款,采纳)。
-- **P2/P3 沿用 v23**:塌缩线击穿停机不粉饰;资格线不达不烧金种子。
+**P-crutch (a new dedicated verdict tier)**:
+- **True**: R-v24.3 holds and the final beta=0 leg exam >=0.97 x P\* and its divergence rate >=2% and gold >=89.2 and
+  deaths <=4/32 -> "the leash taught it to walk alone; the operating brain is independent of the anchor" (the verdict
+  carries the divergence number).
+- **Half**: R-v24.3 holds but the final leg exam is in [0.95,0.97) x P\*, or the beta=0 road is cut to <2 full legs by
+  the sps downgrade/recalibration deduction -> "peak holding exists, at a discount"; no promotion. The [0.95,0.97) grey
+  zone is absorbed and named by this tier and is no longer a conflict between two readings (a critic's fatal-flaw fix:
+  the R-line 0.95 and the soft-trip 0.97 have no operational conflict in a regime without rollback, since beta is
+  already 0 and freezing 0 is still 0; only the verdict tiering remained, and it is fixed here).
+- **False**: gold passes some P1 tier but the G3 winner comes from a beta>0 leg -> the verdict must say **"still on
+  crutches; the independence claim does not hold"**; no borrowing credit.
+- **No**: R-v24.3 judged negative -> "cannot drop the crutch, or cannot hold the peak", with a **dual attribution** from
+  the ledger: a sequence of soft trips eating the schedule = falsification of the annealing schedule; a drop after beta=0
+  = falsification of the capability; cause and effect must not be reversed, and a negative schedule verdict must not be
+  written as a negative capability verdict (a critic's clause, adopted).
+- **P2/P3 carried over from v23**: breaking the collapse line stops without embellishment; below the eligibility line,
+  no gold seeds are spent.
 
-## 四、分腿时刻表(总预算 8M 名义 = 8×1,001,472 实步)
+## 4. Leg schedule (total budget 8M nominal = 8 x 1,001,472 real steps)
 
-4 env SubprocVecEnv @900-950 sps,1M 步 ≈18 分钟,16 种子考 ≈7 分钟:
+4-env SubprocVecEnv @900-950 sps, 1M steps ~18 minutes, a 16-seed exam ~7 minutes:
 
-| 腿 | 名义步区间 | β(名义,软绊右移) | 事件 |
+| Leg | Nominal step range | beta (nominal, shifted right by soft trips) | Events |
 |---|---|---|---|
-| 发车前 | — | — | G-KL-A/B/C ≈15 分钟,任一不过不发车 |
-| 1 | 0-1.0M | 0.5 | bc-init + freeze-policy-steps 200k(冻**策略头**,价值头热身,v23 配方原封);G-CAL @300k/600k;腿考 |
-| 2 | 1-2M | 0.25 | resume;腿考 |
-| 3 | 2-3M | 0.125 | 腿考 |
-| 4 | 3-4M | 0.0625 | 腿考 = **R-v24.2 主战场** |
-| 5 | 4-5M | 0.03125 | 腿考 |
-| 6 | 5-6M | 0.015625 | 腿考(下一档 0.0078<0.01 → 钉 0) |
-| 7 | 6-7M | **0** | 腿考(守峰证) |
-| 8 | 7-8M(重标定则 −烧步) | **0** | 终考 → R-v24.3(确认证) |
+| before launch | - | - | G-KL-A/B/C ~15 minutes; any failure = no launch |
+| 1 | 0-1.0M | 0.5 | bc-init + freeze-policy-steps 200k (freezes the **policy head**, value-head warm-up, the v23 recipe unchanged); G-CAL @300k/600k; leg exam |
+| 2 | 1-2M | 0.25 | resume; leg exam |
+| 3 | 2-3M | 0.125 | leg exam |
+| 4 | 3-4M | 0.0625 | leg exam = **the main battlefield of R-v24.2** |
+| 5 | 4-5M | 0.03125 | leg exam |
+| 6 | 5-6M | 0.015625 | leg exam (the next step 0.0078<0.01 -> pinned to 0) |
+| 7 | 6-7M | **0** | leg exam (peak-holding proof) |
+| 8 | 7-8M (minus burned steps if recalibrated) | **0** | final exam -> R-v24.3 (confirmation proof) |
 
-墙钟:发车前闸 ≈15 min;训练 8×18 ≈2.4 h;腿考 8×7 ≈56 min;G3 满 32 × 2 ≈28 min;
-金评一次 ≈14 min;合计 ≈4.5 h(教师前向开销 <2%,不动 sps 检查线)。
-**sps 降档条款**:驱动自掐表,累计 <1.8M/h → 腿 7-8 各砍至 500k(砍尾不砍头,
-高 β 腿是安全关键),后果预注册:P-拐杖-真 自动降格为半档(批评者违规项修正:
-降档必须同步降格判词,不许 1M 路面冒 2M 的功)。
+Wall clock: pre-launch gates ~15 min; training 8x18 ~2.4 h; leg exams 8x7 ~56 min; G3 full 32 x 2 ~28 min; one gold
+evaluation ~14 min; total ~4.5 h (the teacher forward overhead is <2% and does not move the sps check line).
+**sps downgrade clause**: the driver times itself; cumulative <1.8M/h -> legs 7-8 each cut to 500k (cut the tail, not
+the head: the high-beta legs are safety-critical); pre-registered consequence: P-crutch-true is automatically
+downgraded to the half tier (a critic's violation fix: a downgrade must downgrade the verdict at the same time; 1M of
+road must not claim the credit of 2M).
 
-## 五、拍板点(只列真岔路,带默认)
+## 5. Decision points (only real forks, with defaults)
 
-1. **β₀ = 0.5 vs 0.25**(默认 0.5)。0.5 派:荒漠 100:1 压熵风,防漂第一;0.25 派:
-   v23 峰靠 29% 分歧,怕压峰。R-v24.1 下界 95 是唯一检测器,压峰只能事后入册。
-2. **P\* 峰定义 = 第二大值 vs 简单 max**(默认 第二大值)。代价:真实高峰须两腿复现
-   才抬软绊线——用一腿延迟买"半池运气不得棘轮"。
-3. **G-CAL(c) 的一次 β₀×4 重标定:保留 vs 删除**(默认 保留)。删除派:v23 证明
-   0-1M 无皮筋也安全,重标定腿近乎白烧;保留派:有界一次、统计量对 β 单调、
-   烧步从腿 8 扣不加预算。
-4. **β=0 路面 2 腿 vs 1 腿(腿 7 改跑 0.0078 不钉零)**(默认 2 腿)。R-v24.3 需要
-   "守峰 + 确认"两证;1 腿派用第 7 腿多买一档缓退火,但终考变孤证。
-5. **G3 候选 top-2 vs top-1**(默认 top-2)。多一次满 32 ≈14 分钟,买的是 16 种子
-   海市蜃楼保险(105.7→76.0 的教训)。
+1. **beta0 = 0.5 vs 0.25** (default 0.5). For 0.5: 100:1 against the entropy wind in the desert, drift prevention
+   first; for 0.25: the v23 peak relied on 29% divergence, fear of suppressing the peak. The R-v24.1 lower bound 95 is
+   the only detector; peak suppression can only be recorded after the fact.
+2. **P\* peak definition = second largest vs simple max** (default second largest). Cost: a real peak must be
+   reproduced by two legs to raise the soft-trip line; one leg of delay buys "half-pool luck cannot ratchet".
+3. **The one beta0 x4 recalibration of G-CAL(c): keep vs delete** (default keep). For deleting: v23 showed 0-1M is safe
+   even without a leash, so a recalibration leg is almost wasted; for keeping: bounded to once, the statistic is
+   monotonic in beta, and burned steps come out of leg 8 without adding budget.
+4. **beta=0 road of 2 legs vs 1 leg (leg 7 runs 0.0078 instead of pinning to zero)** (default 2 legs). R-v24.3 needs
+   two proofs, "peak holding + confirmation"; the 1-leg option buys one more gentle annealing step with leg 7, but the
+   final exam becomes a lone proof.
+5. **G3 candidates top-2 vs top-1** (default top-2). One more full 32 ~14 minutes buys insurance against a 16-seed
+   mirage (the 105.7->76.0 lesson).
 
-## 六、残余不确定性(如实入册)
+## 6. Residual uncertainty (recorded as is)
 
-1. **16 种子半池外推**:峰、守峰、软绊全部建立在 7000-7015 半池上;G3 满 32 是唯一
-   防线。若峰 ckpt 满 32 掉档,整条退火轨迹的"守峰"都是对半池的守峰——判决书
-   须原文携带此限定。
-2. **教师离分布标签未验证**(G1 判词限定的直系后代):前 2M 高 β 期以 100:1 力度把
-   策略锚向从未考过试的标签;teacher_top1_conf 哨兵只观测不裁决,伤害集中且难归因。
-3. **皮筋压峰机会成本不可见**:β₀=0.5 可能压死产生 +12.6% 峰的那 29% 创造性分歧,
-   S\* 钉在教师线 ~94、退火一路"顺利"而成绩平庸——R-v24.1 低端脱靶 + R-v24.4
-   分歧率注记是仅有的两只眼睛。
-4. **报酬荒漠病根未治**(单处方纪律):皮筋只让漂移不再免费,95.8% 干层配比原封。
-   钝刀式失败(CE 低、考分缓跌、每腿刚好贴 0.97 线)只有 ledger 腿考序列能看见;
-   守峰失败的尸检须先查鲜层动作份额,再谈 β。
-5. **软绊噪声经济**:0.97×P\* 带宽 ~3 分,而腿间训练随机性(v23 摆幅 >40 分)大概率
-   超过它;假软绊吃 β=0 路面 →"时间表证伪"与"能力证伪"混读风险,
-   P-拐杖-否 的双归因条款是唯一防线。
+1. **Extrapolating from the 16-seed half pool**: the peak, peak holding and soft trips all rest on the 7000-7015 half
+   pool; the G3 full 32 is the only line of defence. If the peak ckpt drops a tier on the full 32, the "peak holding" of
+   the whole annealing trajectory is peak holding on the half pool; the verdict must carry this qualification verbatim.
+2. **The teacher's off-distribution labels are unverified** (a direct descendant of the G1 verdict qualification):
+   during the high-beta first 2M the policy is anchored with 100:1 force to labels that were never examined; the
+   teacher_top1_conf sentinel only observes and does not judge, and the damage is concentrated and hard to attribute.
+3. **The opportunity cost of the leash suppressing the peak is invisible**: beta0=0.5 may kill the 29% creative
+   divergence that produced the +12.6% peak, pinning S\* to the teacher line ~94 while the annealing goes "smoothly" and
+   the score is mediocre; a low-end miss of R-v24.1 + the R-v24.4 divergence note are the only two eyes.
+4. **The root cause of the reward desert is untreated** (single-prescription discipline): the leash only makes drift
+   no longer free; the 95.8% dry-level mix is untouched. A blunt-knife failure (low CE, slowly falling scores, every leg
+   just touching the 0.97 line) is only visible in the ledger's leg-exam sequence; an autopsy of a peak-holding failure
+   must first check the fresh-level action shares before talking about beta.
+5. **Soft-trip noise economics**: the 0.97 x P\* band is ~3 points wide, while inter-leg training randomness (v23
+   swings >40 points) will very likely exceed it; false soft trips eating the beta=0 road risk mixing up "schedule
+   falsified" and "capability falsified"; the dual-attribution clause of P-crutch-no is the only line of defence.
 
-*预注册人:合成者 Claude(Fable 5),依 v24 panel(2 设计 × 4 批评 × 1 审计)合成;
-审计员源码事实全程优先于设计师假设。*
+The audit's source facts took precedence over designer assumptions throughout.
 
-## 拍板记录(值夜者按总设计师授权,2026-07-10 上午,先于一切实现代码)
+## Decision record (2026-07-10, before any implementation code)
 
-五个拍板点全部采默认:① β₀=0.5(荒漠 100:1 压熵风优先;压峰风险由 R-v24.1 下界
-95 侦测,脱靶如实入册);② P\* = 第二大值(105.7→76.0 的半池海市蜃楼教训,一腿
-延迟买"运气不得棘轮");③ 保留一次有界 β₀×4 重标定(烧步从腿 8 扣,不加预算);
-④ β=0 路面 2 腿(守峰证+确认证,孤证不判"可扔");⑤ G3 候选 top-2(14 分钟买
-满 32 保险)。总设计师处方原话与授权("不惜一切算力")入册。
+All five decision points take the defaults: (1) beta0=0.5 (100:1 against the entropy wind in the desert first; the
+peak-suppression risk is detected by the R-v24.1 lower bound 95, and a miss is recorded as is); (2) P\* = second
+largest (the half-pool mirage lesson of 105.7->76.0; one leg of delay buys "luck cannot ratchet"); (3) keep one bounded
+beta0 x4 recalibration (burned steps deducted from leg 8, no added budget); (4) beta=0 road of 2 legs (peak-holding
+proof + confirmation proof; a lone proof does not decide "can be dropped"); (5) G3 candidates top-2 (14 minutes buy the
+full-32 insurance).
 
-**拍板补条(2026-07-10 上午,发车前;审查团 wf_976f0385 揭示预注册内部张力)**:
-G-CAL 重标定 β₀←2.0 的日程语义 = **整条 β>0 前缀按闭式 β_k=β₀·2^{−(k−1)} 重排**
-([2.0, 1.0, 0.5, 0.25, 0.125, 0.0625]),腿 7/8 钉 0 不动(拍板点④的两腿 β=0 路面
-不受重标定影响,仅受烧步扣减影响)。另:审查团 22 项确认全部落地(崩溃互锁先于
-G-CAL、P\* 排除受审腿、G3 override 哨兵线 3% + ±0.05 平分带、崩溃烧步入 8M 硬预算、
-per-attempt 尸检留档、双探针 wiring 判据、sps 分子分母同账);驱动的"连崩 4 次自护
-停机"为运维自护条款、非预注册闸门,触发即人工验尸,如实入册。
+**Decision addendum (2026-07-10, before launch; the review panel exposed a tension inside the pre-registration)**:
+the schedule semantics of the G-CAL recalibration beta0 <- 2.0 = **the whole beta>0 prefix is reordered by the closed
+form beta_k = beta0 * 2^{-(k-1)}** ([2.0, 1.0, 0.5, 0.25, 0.125, 0.0625]), with legs 7/8 pinned at 0 (the two-leg beta=0
+road of decision point 4 is unaffected by the recalibration and only affected by the burned-step deduction). Also: all
+22 items confirmed by the review panel are implemented (crash interlock before G-CAL, P\* excludes the leg under
+review, G3 override sentinel line 3% + a +/-0.05 tie band, crash-burned steps inside the 8M hard budget, per-attempt
+autopsy archived, dual-probe wiring criterion, sps numerator and denominator on the same ledger); the driver's "stop
+after 4 crashes in a row" is an operational self-protection clause, not a pre-registered gate; when it triggers, a
+manual autopsy follows, recorded as is.
 
-**拍板补条二(2026-07-10 09:10,先于腿 8 考分)**:腿 6 软绊(86.0<91.1)使 β=0
-路面由 2 腿缩为 1 腿(仅腿 8)。P-拐杖-半 的降格枚举("sps 降档/重标定扣步砍至
-<2 整腿")未列软绊成因——按拍板点④原意("孤证不判'可扔'")补解释:**无论何种
-成因,β=0 整腿 <2 时 P-拐杖-真 一律降格至半档**。腿 8 无论考多高,今日判词上限
-为"守峰存在性(带孤证限定)";完整"可扔"主张留给工作站复赛(两整腿 β=0 预算)。
+**Decision addendum 2 (2026-07-10, before the leg-8 exam score)**: the leg-6 soft trip (86.0<91.1) shrank the beta=0
+road from 2 legs to 1 (leg 8 only). The downgrade list of P-crutch-half ("cut to <2 full legs by the sps
+downgrade/recalibration deduction") did not list soft trips as a cause; following the original intent of decision
+point 4 ("a lone proof does not decide 'can be dropped'") the interpretation is added: **whatever the cause, with <2
+full beta=0 legs P-crutch-true is always downgraded to the half tier**. However high leg 8 scores, the verdict ceiling
+for this case is "peak holding exists (with the lone-proof qualification)"; the full "can be dropped" claim is left to
+a workstation rematch (a budget of two full beta=0 legs).

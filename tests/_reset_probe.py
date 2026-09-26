@@ -1,4 +1,4 @@
-"""二分定位:多次 reset 后走路命令是否还有效。"""
+"""Bisection: do walk commands still work after several resets?"""
 import pathlib
 import sys
 
@@ -13,13 +13,13 @@ def probe_walk(tag):
     obs = bridge.observe()
     sx, sy = obs["player_x"], obs["player_y"]
     bridge.act_walk(sx + 4, sy + 4)
-    obs = bridge.step(ticks=60)  # 4 格斜走绰绰有余
+    obs = bridge.step(ticks=60)  # more than enough for a 4-tile diagonal walk
     moved = max(abs(obs["player_x"] - sx), abs(obs["player_y"] - sy))
-    print(f"{tag}: 从 ({sx},{sy}) 走了 {moved} 格 → ({obs['player_x']},{obs['player_y']})  mode={obs['player_mode']}")
+    print(f"{tag}: walked {moved} tiles from ({sx},{sy}) → ({obs['player_x']},{obs['player_y']})  mode={obs['player_mode']}")
     return moved
 
 
-print("== 实验 A:纯城镇连续 reset ==")
+print("== Experiment A: repeated resets in town only ==")
 bridge.reset(seed=1001)
 a1 = probe_walk("A-reset#1")
 bridge.reset(seed=1001)
@@ -27,9 +27,9 @@ a2 = probe_walk("A-reset#2")
 bridge.reset(seed=1001)
 a3 = probe_walk("A-reset#3")
 
-print(f"\n结论 A: reset#1 走 {a1} 格, #2 走 {a2} 格, #3 走 {a3} 格")
+print(f"\nConclusion A: reset#1 walked {a1} tiles, #2 walked {a2} tiles, #3 walked {a3} tiles")
 if a2 >= 3 and a3 >= 3:
-    print("→ 纯城镇多次 reset 正常;继续由 _piece_probe 覆盖『下地牢后再 reset』路径")
+    print("→ repeated town-only resets work; _piece_probe covers the 'reset after entering the dungeon' path")
 else:
     raise AssertionError(
-        f"第二次 reset 本身就坏:NetInit/teardown 重入问题(moves={a1,a2,a3})")
+        f"the second reset itself is broken: NetInit/teardown re-entrancy problem (moves={a1,a2,a3})")

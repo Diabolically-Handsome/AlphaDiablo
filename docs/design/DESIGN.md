@@ -1,863 +1,965 @@
-# DiabloGym 设计笔记:二十轮迭代、十七课教训
+# DiabloGym design notes: twenty runs, seventeen lessons
 
-> AlphaDiablo 项目 · 2026-07 · 每一轮训练要么消灭一个被数据实锤的具体问题,
-> 要么干净地证伪一个假设。
+> AlphaDiablo project · 2026-07 · Every training run either eliminates one concrete problem that the data has
+> nailed down, or cleanly falsifies one hypothesis.
 >
-> **金标准** = 最终模型的确定性评估(argmax 策略、无采样加持)均击杀。
-> 评估制度 v2(2026-07-05 起唯一有效):32 个固定种子(9000-9031)、每局
-> 1500 步、空载机器、引擎钉死在 bootstrap.sh 的 `ENGINE_REF`。v1-v8 期间用的
-> 8 种子旧口径已退役,其数字仅供纵向趋势参考(见教训八:它曾双向骗人)。
+> **Gold standard** = mean kills of the final model under deterministic evaluation (argmax policy, no sampling
+> help). Evaluation regime v2 (the only valid one since 2026-07-05): 32 fixed seeds (9000-9031), 1500 steps per
+> episode, an idle machine, and the engine pinned at `ENGINE_REF` in bootstrap.sh. The old 8-seed criterion used
+> during v1-v8 is retired; its numbers only serve as longitudinal trend references (see lesson 8: it lied in both
+> directions).
 
-## 总览
+## Overview
 
-| Run | 改动 | 32 种子金标准 | 8 种子旧口径 | 一句话结论 |
+| Run | Change | 32-seed gold standard | 8-seed old criterion | One-line conclusion |
 |---|---|---|---|---|
-| v1 | 朴素 shaped reward | — | (0.0) | 掉血惩罚 + 零奖励避风港 → **面壁塌缩** |
-| v2 | 删税 + 接近塑形 | — | (0.2) | 攻击易被打断;塑形被"怪贴脸"白嫖 |
-| v3 | 交战宏(SMDP) | — | (2.8) | 首次自主进攻;隔墙目标空烧 10 拍 |
-| v4 | 逐刀伤害奖励 + 宏止损 | — | (3.0) | 奖励生态定型;**感知天花板**现形 |
-| v5 | 11×11 空间视觉 | 7.6* | (6.5) | 空间感知补齐;跨房导航仍缺 |
-| **v6** | **探索宏** | **8.8** 👑 | (15.6) | **v6-v10 时代冠军**(45,836 参数 MLP) |
-| v7-7d | 清层目标 + 足迹通道 + 宏修补×3 | 不可复评† | 6.4(当时自测) | **宏退化吸引子**;冻结宏工程 |
-| v8 | RecurrentPPO / LSTM-128(451,596 参数) | 8.4 | (13.2) | 追平(单局最高 43);下限没变 |
-| v9a-c | 实体注意力(701,980 参数,**6M 步双倍预算**) | 3.8 | — | 惨败:优化不稳 + 药不对症 |
-| v10 | v6 配方 + 训练局长 1500→3000 | 5.5 | — | **时间墙假设被单变量证伪** |
-| **v11** | **下楼 option(门/桶感知全图 BFS)** | **19.4** 👑 | — | **金标准翻倍;到达二层 0→27/32** |
-| v12 | 喝药键(UseBeltItem;观测仍 286 维) | 12.3 | — | 战死 17→10,但均杀回撤;瓶盲 + 藏身处(教训十一) |
-| **v13** | **药系统可学习化:belt+地面药入观测(286→290)+ 门感知捡药宏** | **35.2** 👑 | — | **金标准近翻倍;实喝纪律 0.5%→93.4%,战死 17→12** |
-| v14 | 装备章:AC+地面装备入观测(290→294)+ 自动穿戴 | 28.0 | — | 0/32 穿甲——护甲收益对奖励流不可见(教训十三) |
-| v15 | 奖励 v3:装备 AC 增益一次性有界塑形(+0.5/点) | 31.3 | — | 装备键 1 次/48k 步——塑形放大不了探索到不了的事件(教训十四);战死 9/32 史上新低 |
-| v16 | 掩码章:装备键无效动作掩码(MaskablePPO) | 34.5 | — | 按钮复活(258 按/16 穿)但收益未跟进;零杀 0/32、单局 80 双纪录;实喝崩至 3.7%——吸引子迁居 12/13 键(教训十五) |
-| v17 | 深水区开篇:层数递进下楼奖金(8×N)+ 3000 步 + 6M 步 | 深表:中位 L3,L4 11/32 | — | 一个旋钮换物种(农夫→潜水员),但造出**一级角色楼梯冲刺手**:0 农 0 甲、战死 22(16 干死)——付"摸到深度"的钱只买到"摸到深度"(教训十六) |
-| v18 | 教训十六的单旋钮:死亡定价与阶梯同步(死 N 层罚 8×N) | 深表:中位 L2,均杀 32.1 | — | 钟摆大幅回摆:护甲试镜终于开庭(15/32 穿甲)、干死 16/22→4/19,但 13/32 不再下楼、L4 剩 1;死者从"干死"变"满腰带暴毙"——瓶颈两代连跳:采样→资源→**角色成长曲线** |
-| v19 | 强弱仪表:char_level/dungeon_level 比值入观测(294→295) | 深表:中位 1.5,战死 15 | — | 零结果如实入册:下楼者死亡率未变(88%),死亡下降靠"不去"——可见性造不出不存在的折现价值 |
-| v20 | **修雷**(属性点黑洞:十九代升级点数从未被花,自动花点 3体:2力)+ γ 0.99→0.997 | 深表:中位 1.0,战死 **4** | — | **教训十七**:账本修平、目光放远后,策略用"31/32 不下楼 + 史上最安全"回答——L1 一级出生 3000 步近战下潜为负期望,拒单即测量;深水章带图收官,复活路径已预注册(出生注入课程/工作站视界) |
+| v1 | Naive shaped reward | — | (0.0) | HP-loss penalty + zero-reward sanctuary → **wall-hugging collapse** |
+| v2 | Tax removed + approach shaping | — | (0.2) | Attacks are easily interrupted; the shaping is farmed by "monster walks up to me" |
+| v3 | Engagement macro (SMDP) | — | (2.8) | First autonomous attacks; 10 ticks wasted on targets behind walls |
+| v4 | Per-hit damage reward + macro stop-loss | — | (3.0) | The reward ecology settles; the **perception ceiling** shows |
+| v5 | 11×11 spatial vision | 7.6* | (6.5) | Spatial perception filled in; cross-room navigation still missing |
+| **v6** | **Explore macro** | **8.8** 👑 | (15.6) | **Champion of the v6-v10 era** (45,836-parameter MLP) |
+| v7-7d | Level-clear objective + footprint channel + 3 macro patches | not re-evaluable† | 6.4 (self-test at the time) | **Macro degeneration attractor**; macro engineering frozen |
+| v8 | RecurrentPPO / LSTM-128 (451,596 parameters) | 8.4 | (13.2) | Ties (single-episode max 43); the floor did not move |
+| v9a-c | Entity attention (701,980 parameters, **6M steps, double budget**) | 3.8 | — | Heavy defeat: unstable optimisation + the wrong remedy |
+| v10 | v6 recipe + training episode length 1500→3000 | 5.5 | — | **Time-wall hypothesis falsified by a single variable** |
+| **v11** | **Descend option (door/barrel-aware full-map BFS)** | **19.4** 👑 | — | **Gold standard doubled; reached level 2: 0→27/32** |
+| v12 | Drink key (UseBeltItem; observation still 286 dims) | 12.3 | — | Combat deaths 17→10, but mean kills fell; bottle-blindness + hiding place (lesson 11) |
+| **v13** | **Potion system made learnable: belt + ground potions in the observation (286→290) + door-aware pickup macro** | **35.2** 👑 | — | **Gold standard nearly doubled; real-drink discipline 0.5%→93.4%, combat deaths 17→12** |
+| v14 | Gear chapter: AC + ground gear in the observation (290→294) + auto-equip | 28.0 | — | 0/32 equipped armour — armour's payoff is invisible to the reward stream (lesson 13) |
+| v15 | Reward v3: one-shot bounded shaping for equipment AC gain (+0.5 per point) | 31.3 | — | Gear key pressed once per 48k steps — shaping cannot amplify events that exploration never reaches (lesson 14); combat deaths 9/32, an all-time low |
+| v16 | Masking chapter: invalid-action mask on the gear key (MaskablePPO) | 34.5 | — | The button came back (258 presses, 16 equipped) but payoffs did not follow; zero-kill 0/32 and a single-episode 80 both set records; real drinking crashed to 3.7% — the attractor moved to keys 12/13 (lesson 15) |
+| v17 | Deep-water opener: depth-progressive descend bonus (8×N) + 3000-step episodes + 6M steps | deep board: median L3, L4 11/32 | — | One knob changed the species (farmer → diver), but produced a **level-1 stair sprinter**: 0 farming, 0 armour, 22 combat deaths (16 with a dry belt) — paying for "touching depth" only buys "touching depth" (lesson 16) |
+| v18 | Lesson 16's single knob: death priced in step with the ladder (dying on level N costs 8×N) | deep board: median L2, mean kills 32.1 | — | The pendulum swung hard back: the armour audition finally convened (15/32 equipped) and dry-belt deaths fell 16/22→4/19, but 13/32 no longer descend and only 1 reaches L4; the dead went from "dry belt" to "sudden death with a full belt" — the bottleneck jumped twice in two generations: sampling → resources → **character growth curve** |
+| v19 | Strength gauge: char_level/dungeon_level ratio in the observation (294→295) | deep board: median 1.5, 15 combat deaths | — | Null result recorded honestly: the death rate of those who descended was unchanged (88%), and fewer deaths came from "not going" — visibility cannot create a discounted value that does not exist |
+| v20 | **Bug fix** (stat-point black hole: for nineteen generations level-up points were never spent; auto-spend 3 vitality : 2 strength) + γ 0.99→0.997 | deep board: median 1.0, **4** combat deaths | — | **Lesson 17**: with the books fixed and the horizon extended, the policy answered "31/32 never descend + safest ever" — a melee dive from a level-1 start in 3000 steps is negative-EV, and the refusal is a measurement; the deep-water chapter closes with its figure, and revival paths are pre-registered (spawn-injection curriculum / workstation-scale horizons) |
 
-\* v5 为事后复评:观测同为 286 维,动作空间 Discrete(10),在现行环境下它永远
-不会选到探索宏,可直接对比。v1-v4 观测维度不同,无法复评。
-† v7 分支观测 407 维(足迹通道),随宏工程冻结一并退役。
+\* v5 was re-evaluated after the fact: its observation is also 286 dims and its action space is Discrete(10), so in
+the current environment it can never select the explore macro and is directly comparable. v1-v4 have different
+observation sizes and cannot be re-evaluated.
+† The v7 branch had a 407-dim observation (footprint channel) and was retired together with the frozen macro
+engineering.
 
-单局最高杀怪数在各代间波动:45(v5)、36(v6)、43(v8)、38(v9c)、49(v10)、
-70(v11)。32 局取最大值是离群值统计量,撑不起"记忆/长视野抬高上限"之类的归因
-(无记忆的 v5 已打出 45);下限的病根见教训九与教训十。
+The single-episode maximum kill count fluctuates between generations: 45 (v5), 36 (v6), 43 (v8), 38 (v9c), 49 (v10),
+70 (v11). The maximum over 32 episodes is an outlier statistic and cannot carry attributions such as "memory/long
+horizons raise the ceiling" (the memoryless v5 already scored 45); for the root cause of the floor see lessons 9
+and 10.
 
 ![learning curves](../assets/learning-curves.png)
 
-## 教训一:奖励税与避风港(v1 → v2)
+## Lesson 1: Reward tax and sanctuaries (v1 → v2)
 
-朴素设计给了掉血惩罚。账面上杀怪收益是挨打代价的 250 倍,但学习动力学不看账面:
-代价即时到账、收益延迟且要求行为连贯,价值函数对"身边有怪"的第一印象是负的;
-而"躲在角落"的奖励恰好为零。PPO 诚实地收敛到零——确定性策略 = 朝一个方向走 1500 步把自己钉在墙上。
+The naive design included an HP-loss penalty. On paper a kill paid 250 times the cost of taking hits, but learning
+dynamics do not read the books: the cost arrives immediately, while the payoff is delayed and requires coherent
+behaviour, so the value function's first impression of "a monster next to me" is negative — and "hiding in a
+corner" earns exactly zero. PPO honestly converged to zero: the deterministic policy walks in one direction for
+1500 steps and pins itself against a wall.
 
-**原则:不要惩罚学习目标行为的必经中间代价;不要在奖励地形里留零成本避风港。**
+**Principle: do not penalise the intermediate costs the target behaviour must pass through; do not leave
+zero-cost sanctuaries in the reward landscape.**
+
+## Lesson 2: Attributing shaping (v2 → v3/v4)
 
-## 教训二:塑形的归因(v2 → v3/v4)
+The approach shaping only looked at "distance got smaller", and Fallen actively chase the player, so "standing
+still and fishing" collected shaping points for free. The fix: only approach caused by **the agent's own
+movement** scores.
 
-接近塑形只看"距离变近",而堕落者会主动追人——"站桩钓鱼"白拿塑形分。
-修法:只有**自己移动**造成的接近才计分。
+**Principle: shaping rewards must be attributed to the agent's actions, not to spontaneous changes in the
+environment.**
+
+## Lesson 3: Action timing and SMDP macros (v2 → v3)
+
+In the engine any movement command clears the pursuit target (`OnWalk` → `ClrPlrPath`). Finishing one chase needs
+about 10 consecutive ticks of choosing attack, an exponentially small probability for an exploring policy. After
+"attack" was upgraded to an **engagement macro** (lock a target and keep pursuing until there is an outcome), the
+policy could observe the full causal chain "attack → return" for the first time.
 
-**原则:塑形奖励必须归因到 agent 的动作,而非环境的自发变化。**
-
-## 教训三:动作时序与 SMDP 宏(v2 → v3)
-
-引擎里任何走位命令都会清掉追击目标(`OnWalk` → `ClrPlrPath`)。完成一次追杀需要
-连续 ~10 拍选攻击,对探索期策略是指数小概率。把"攻击"升级为**交战宏**
-(锁定目标持续追击直到分出结果)后,策略第一次能观察到"进攻→回报"的完整因果。
-
-**原则:当原子动作的语义粒度低于任务的因果粒度时,用时间扩展的宏动作(option)对齐它们。**
-
-## 教训四:逐刀致密化与防磨刀(v3 → v4)
-
-把奖励从"击杀结算"细化到"每刀结算"(信用分配链从 ~10 步缩到 1 步)。
-两个陷阱:按"出刀次数"给奖会训出磨刀流(且一刀秒杀反而零奖励);
-挂在**伤害占比**上则总额恒定(≈血量势函数,policy-invariant);
-"残血系数"(1.0→1.5)在不引入漏洞的前提下实现补刀激励。
-
-**原则:致密化奖励要挂在任务进度的守恒量(伤害占比)上,而非可被刷的事件计数(出刀次数)上。**
-
-## 教训五:感知天花板(v4 → v5)
-
-奖励修到无病后,失败模式全部指向同一事实:agent 看不见墙——隔墙锁定目标、
-穿墙塑形、找不到房门。加 11×11 双通道局部地图(可走性 + 怪物占位)后,8 种子
-口径下金标准翻倍(3.0 → 6.5);事后 32 种子复评 v5 得 7.6,证实这是真实收益
-而非运气。
-
-**原则:奖励设计只能兑现观测中存在的信息;失败模式聚集在空间行为上时,先补感知再调奖励。**
-
-## 教训六:探索作为宏(v5 → v6)
-
-视觉解决了"看得见的怪打不打",没解决"看不见怪时去哪找"。反应式 MLP 无法规划
-跨房间迂回。**探索宏**(走向足迹之外最近的可走边疆点,发现猎物即交还控制权)
-把"探索"也变成一个可选择的 option,策略只需学"何时打、何时找"。
-
-8 种子时代的叙事是"翻倍 + 双峰失败清零"(6.5 → 15.6,零杀局 5/8 → 0/8);
-32 种子口径下的真实收益更小也更有意思:**中位数 0 → 3.5,零杀局 19/32 →
-15/32**;均值 7.6 → 8.8(+1.2,在"单次训练 + 32 种子评估"的噪声范围内,是
-方向性证据而非显著性结论),单局最高反而 45 → 36。探索宏抬的是下限和典型局
-(把"死局"救活),不是上限——这与教训九"困局是死的 0"互相印证。
-
-**原则:与其逼反应式策略学会规划,不如把规划封装成 option,把决策留给策略。**
-
-## 教训七:宏退化吸引子(v7 → v7d)
-
-v7 章想一鼓作气上"清层率目标 + 足迹通道"(观测扩到 407 维),行为一退化就开始
-给宏打补丁:先给交战宏加"失败目标拉黑"(v7.1),拉黑的判定又在贴脸目标上误报
-(v7.2 修),修完发现冷却本身被策略当成新漏洞刷,只好改成"连续两次失败才冷却"
-(v7.3)。三轮补丁,每一轮堵住一个退化吸引子、生出下一个;按当时通用的 8 种子
-口径自测,它(6.4)始终远落在冠军同口径的 15.6 之后(v7 分支观测不同,无法在
-现行协议下复评,故只能做这组同口径旧数字的对比)。最后的决定不是第四个补丁,
-而是**冻结宏工程**:回滚到 v6 的极简宏,把力气花到任务与训练侧。
-
-**原则:option 是接口,不是可以无限打补丁的策略本体。当你发现自己在宏的内部
-连环堵漏,说明抽象选错了层——冻结接口,去改任务、观测或训练,而不是继续修宏。**
-
-## 教训八:评估协议与运气税(制度 v2)
-
-8 种子的运气波动不只是"方差大",它**双向撒谎**:换成 32 固定种子后,冠军 v6
-从 15.6 跌到 8.8(高估 77%),v8 从 13.2 跌到 8.4(高估 57%),而 v5 反而从
-6.5 涨到 7.6(低估 15%)——v5 与 v6 的差距从"9.1 的碾压"缩成"1.2 的小胜",
-差点连排序都翻了。均值之外,**中位数 / 零杀数 / 单局最高**三件套才能暴露双峰
-分布(一半死局 + 一半大胜,均值看起来"还行")。
-
-协议本身也是结果的一部分,四样都要冻结:
-**种子集**(9000-9031,永不用于调参)、**确定性**(argmax,曲线好看≠模型能打)、
-**引擎版本**(bootstrap.sh 钉死 SHA,升引擎=重建排行榜)、**机器状态**(空载;
-引擎回合推进读墙钟,满载时轨迹会漂——同一模型的中位数曾从 3.5 漂到 4)。
-
-**原则:先冻结评估协议,再相信任何数字。协议 = 种子 + 步数 + 策略模式 + 引擎
-版本 + 机器状态,少钉一样,数字就多一分谎。**
-
-## 教训九:当前规模下,任务设计 > 架构(v8 / v9 / v10)
-
-三架构对决:45,836 参数的宏动作 MLP(3M 步,8.8)≥ 十倍参数的 LSTM-128
-(3M 步,8.4)≫ 十五倍参数的实体注意力(**6M 步——双倍预算——仍只有 3.8**,
-训练全程不稳定)。收益全部来自奖励归因、动作粒度、探索 option 这些**任务结构**
-改动;"更大的大脑"要么持平、要么帮倒忙——注意力模型还是药不对症:它升级的是
-感知,而 v5→v6 已经证明瓶颈在规划/探索。(另注:每个架构只有一次训练,当时
-未设训练种子——train_ppo.py 现已支持 `--seed`——此对决是方向性证据,不是
-显著性结论。)
-
-v10 补上最后一刀,单变量证伪"时间不够"假设:把评估局长 1500 翻倍到 3000,
-**v6 与 v10 的逐种子击杀数在两个口径下位级相同(各 32/32)**——多给一倍时间,
-零增量。零杀局是"死的 0":出生区无可达猎物时,agent 永远困住,不是没杀完,
-是根本没开张。
-
-AlphaZero 系(如 AlphaXiang)的对照很说明问题:搜索包裹的 RL 里,规划由搜索
-承担,架构升级直接兑换棋力;无搜索的 RL 里,策略必须自己规划——感知与记忆的
-升级都触不到规划瓶颈。
-
-**原则:给策略换更大的大脑之前,先证明瓶颈在大脑。这里的瓶颈是出生困局
-(任务结构),所以下一步是课程学习 / 跨房间边疆探索,而不是更大的网络。**
-
-## 教训十:能力住在动作空间里(v10 → v11)
-
-v10 证伪时间墙后,给死零上仪器,挖到了比"探索失败"更底层的真相:**关着的门
-在可走性通道里与墙完全相同**(`IsTileWalkable(pos, false)` 把关门算实心)。
-agent 不是"不会绕路",是**看不见世界的连通性**:15/32 的零杀局里,5 局出生在
-无门 BFS 意义下的纯密室(无可达猎物),其余 10 局是 argmax 的动力学性打转。
-
-v11 只加一个 option——下楼宏:每次按键做一次全图 4 向 BFS(**关着的门与完好
-的桶视为"可操作软墙"**),沿路径用 CMD_OPOBJXY 开门砸桶,站上下行楼梯等引擎
-触发;发现猎物不打断(这是主动撤离键)。观测、奖励、架构一字未动。
-
-金标准 8.8 → **19.4**,中位 3.5 → 14.5,零杀 15/32 → **2/32**,到达二层
-0 → **27/32**(此前五代全部为 0),最深单局到第 4 层。逐种子:密室组 4/5
-越狱;十个"猎手失灵"种子 **10/10 痊愈**——行为死循环被一个新的高产出动作
-破环。代价同样如实记录:四个原 L1 富矿种子因"贪深"减产,**17/32 局战死于
-深层**(裸装战士的宿命,下一章的立项书)。
-
-两个配套实验把结论钉死:
-
-1. **门盲预言机(架构不变性)**:静态判定"出生密室 ⇒ 零杀"对 v6(46k MLP)、
-   v8(452k LSTM)、v9c(702k 注意力)三架构 **15/15 全中、零误报**——感知层
-   销毁的信息,任何下游大脑都无法恢复;而密室之外的零杀种子三家各不相同
-   (动力学病各有各的疯法,也再次说明它不是地图的函数)。
-2. **涌现的重定用途**:最深的密室种子(9000)v11 杀 25 只但从未下楼——策略
-   把下楼宏当**开门钥匙**用:按键开门放怪,原地开饭。option 的副作用被策略
-   重新发明为主功能,这是把"规划"封装成接口(教训六)的意外红利。
-
-**原则:观测决定"能知道什么",动作空间决定"能做什么",架构只调节两者之间的
-效率。补能力时按这个顺序审计三层——最便宜的奇迹在动作空间里(一个新动作
-+120%,十五倍参数 −57%)。**
-
-## 教训十一:新动作也是新藏身处(v11 → v12)
-
-v11 最难看的一列是 **17/32 战死**,v12 为此加了第 13 个动作:喝腰带血瓶
-(UseBeltItem 手柄热键同路;战士出厂自带 IDI_HEAL ×2,仅此两瓶,本版无补给)。
-观测**刻意冻结在 286 维**(belt 数只进 raw 字典),为的是历代模型全部可复评
-——这个协议洁癖后来被证明是本轮最贵的决定。
-
-赛前注册的四项预测对账:战死 ≤10 **✓(整好 10/32)**;均杀 22+ ✗(12.3);
-到二层 ≥27 ✗(26);单局最高 80 ✗(46)。1/4——数字上压线,机制上认输:
-
-1. **正经药战士只有零星几个**:9024 边打边喝,43 杀存活(v11 同种子 36 杀
-   战死);全场最凶的一口是 8.6% 血量时的 argmax 清醒按键(0.086→0.343)。
-   设计意图真实出现过——在大约 2-4 个种子上。
-2. **主流用法是空瓶健身操**:4,740 次按键里 **4,715 次按在空腰带上**(9014
-   一局 1,467 次)。瓶盲:belt 数不在观测里,策略**原则上**学不会"什么时候
-   不该按"——教训五对动作前置条件同样成立。更妙的是引擎的走路指令跨步
-   持续,按 12 不打断在途移动,于是它实际是一枚"**等待/继续**"键:不清怪的
-   种子拿它当无风险的时间填充物。
-3. **死亡改善的因果不纯**:9 个 v11 死亡种子获救,其中仅 4 个有实喝,5 个
-   纯靠打法变怂(避战);同时新添 3 具尸体(9008 三十二杀后战死,9009 观光
-   流首次遇害)。战死 17→10 里,药理贡献估计不到一半,其余是和平主义。
-
-**原则:给策略一个新按钮前问三个问题——前置条件可观测吗(瓶盲)?它是不是
-无风险 no-op(藏身处)?它与既有指令如何交互(等待键)?门盲是引擎欠我们的,
-瓶盲是我们自己签字画押的。** v13 账单当夜即执行:belt 数与最近地面药方向
-入观测(286→290,教训五补作业),捡药宏上线(复用下楼宏的门感知 BFS——
-引擎原生拾取寻路同样门盲,9003 号种子的药就在关门后);动作掩码按兵不动
-(belt 可见后,按键纪律应当可自学,留作 v13 的检验项)。四镜头对抗审查另
-截获两雷:腰带满时拾取直落背包=对喝药键不可见的价值黑洞(桥侧已禁),
-拾取判定隐性依赖 pcurs==CURSOR_HAND(SyncLoad 已逐层重申钉死)。
-
-## 教训十二:纪律是观测的函数,藏身处是守恒的(v12 → v13)
-
-v13 开牌:金标准 12.3 → **35.2**(中位 10 → 29,零杀 9/32 → 1/32),战死
-17(v11)→ 12,**王座易主**。奖励函数依旧一字未动——变化只有观测 +4 维与
-一个新宏。两个机制性结论:
-
-1. **同一个按钮,一位观测之差,纪律天壤之别**:v12 喝药键 99.5% 按在空腰带
-   上;v13 93.4% 按在有药的腰带上(57 实喝 / 4 空按),57 次实喝里 25 次
-   发生在半血以下,最深一口在 **1% 血量**。喝药技能从来不缺,缺的是它的
-   前置条件在观测里——教训五(感知天花板)在动作前置条件上的受控复现,
-   对照组与实验组之间只差一位观测。
-2. **藏身处守恒定律**:v12 的挂机吸引子没有死,只是搬家——9001 号把新的
-   捡药键按了 1,448 次(全程零入袋)当避风港。堵掉一个零风险动作,风险
-   规避的概率质量就流向下一个;每加一个动作,都要预算"吸引子迁移"这笔税。
-
-代价照实入账:到二层 27→25(打得多了,下得少了);赛前注册预测 **2/4**
-(实喝占比 >50% ✓ 以 93.4% 超额、均杀 ≥16 ✓ 以 35.2 超额;战死 ≤10 差 2、
-到二层 ≥26 差 1)。涌现彩蛋:老密室钉子户 9007 首开杀戒(14 杀)——捡药宏
-的开门副作用把它从密室里放了出来,与 v11"下楼宏当钥匙"同款的接口红利;
-9009 号观光流转行猎手(0 → 24 杀)。
-
-**误差棒补录(seed 14 同配方重复,本项目首次)**:均杀 38.1(vs 35.2)——
-**结果层面复制成功**,v13 效应与种子无关;但**风格层面没有复制**:战死
-12 vs **21**,实喝纪律 93.4% vs **45.7%**(合并 65%),挂机种子 1 → **3** 个
-(9001 在 s14 里把整整 1500 步全部按在捡药键上)。冠军行保留赛前注册的
-seed-13(在两次重复里挑好的那次=选择效应,8 种子时代的旧罪)。新增子教训:
-**"赢多少"可复制,"怎么赢"是种子彩票**——关于行为构成的单次声明,必须
-过一次种子重复才算数。
-
-**原则:能力 = 动作 × 前置条件可观测性。而只要奖励地形里还存在零风险动作,
-就总有一撮概率质量搬进去住——审计新动作时,把"它能否被当成藏身处"写进
-验收单(教训一的避风港,以动作空间形态无限转世)。**
-
-## 教训十三:奖励流是最后一位观察者(v13 → v14)
-
-v14 把教训十一的验收单执行到满分:AC 与最近可穿装备入观测(290→294)、
-引擎 AutoEquip 打通(默认关闭的选项已强开)、PM_GOTHIT 时序窗已堵、贴门
-角落已修、探针全绿——**装备键的前置条件链条无懈可击**。赛前注册五项预测,
-开牌 **0/5 全灭**:装备率 0/32,整个 argmax 评估(48,000 步)里装备键只被
-按了 **6 次**,一件甲都没穿上。均杀 28.0、到二层 19/32,低于 v13 双 run
-区间,王座不动。
-
-根因不在管道,在**学习信号**:护甲的收益是"每次挨打少掉几点血",摊在几百
-步里,幅度被局间方差完全淹没——3M 步的信用分配视界里,价值函数**从未观测
-到"穿甲→回报变高"的统计证据**,于是这个按钮永远挣不到价值。对照 v12/v13:
-瓶盲是**前置条件对策略不可见**(观测层),装备键是**后果对学习信号不可见**
-(奖励视界层)。喝药能学会,是因为 8% 血量按下 12 号键、几十步内"没死"的
-反事实肉眼可辨;穿甲的反事实要几百步、几十局才显形。
-
-顺带三笔如实记账:①实喝纪律本 run 36.7%(三 run 证据链 93%/46%/37%——
-"风格是种子彩票"的结论加固);②捡药键空按占比 30%(2,801 次按键)——
-吸引子仍在;③验尸表的 AC=4 行是**死亡掉装的测量残影**(死亡时装备落地,
-终局 AC 读数≠生前),仪器口径已注明。
-
-**原则:感知定界"能知道什么"(教训五),动作定界"能做什么"(教训十),
-奖励视界定界"能学会什么"。能力链条的强度=最弱可观测环节:前置条件要照
-进观测,后果要照进学习信号——照不进,按钮就永远是装饰。v15 候选:有界
-AC 增益塑形(AutoEquip 只填空槽=不可刷)、装备富集课程、或大算力上 10-30×
-步数让价值从生存统计里自然渗出。**
-
-## 教训十四:塑形只放大,不召唤(v14 → v15)
-
-教训十三开出三张药方,v15 试了最便宜的一张:装备 AC 增益的一次性有界塑形
-(+0.5 × ΔAC;AutoEquip 只填空槽 = 不可刷,Goodhart 赛前预审通过;发车前
-探针实测手动按键 +0.998 = +1.0 − 怠速税,支付管道无懈可击)。赛前注册四项
-预测,开牌 **2/4**:均杀 ≥30 中(31.3)、战死 ≤11 中(**9/32,史上新低**,
-此前最好是 v12 的 10);装备率 ≥20/32 **再次归零**(0/32),首甲中位数
-不存在——整个 48,000 步 argmax 评估里,装备键只被按了 **1 次**(v14 还有
-6 次)。塑形上岗一代,按键次数不升反降。
-
-根因:塑形奖励要先**被采样到**,才轮得到弯曲价值函数。这枚奖励的触发链条
-是"装备恰好掉落 → 恰好进入观测 → 按下 14 → BFS 走到 → 捡起自动穿上"——
-探索期里这是一串小概率的乘积;而按键的**成本**(空按浪费拍数、路上挨打)
-每一次都当场结算。负项常发、正项罕至,这个键的价值估计只会单调走低——
-金额再大,采样不到就等于零。教训二说塑形必须归因于自身行动,这里再加一条:
-**塑形必须落在探索走得到的轨迹上**。事件先行,奖励殿后:演示/模仿学习、
-强制穿装的探索重置、或装备富集环境(rouming 在 16 层规模上验证的关卡加权
-课程正是此族)——先让事件常见,再谈塑形。
-
-附带记账:①其余指标像一次健康的 v14 族重抽——均杀 28.0→31.3(≈噪声带内)、
-到二层同为 19/32,种子彩票与塑形的贡献单 run 不可分解;②实喝占比 60%
-(42 实/28 空),风格彩票第四手(93/46/37/60%);③低血实喝占比 62%
-(26/42 发生在半血下)反而是四 run 里最高——但战死新低更可能来自交战风格
-而非药瓶(药量与 v13 相当:42 vs 57 口),单 run 不定因;④9001 的捡药键
-空按吸引子仍在(教训十二的守恒律第三次应验)。
-
-## 教训十五:掩码搬运概率,不搬运价值(v15 → v16)
-
-Diabolically-Handsome 亲自开出的药方:装备键做无效动作掩码——视野内没有可穿装备时,
-键不存在(MaskablePPO,env.action_masks() 只掩 14 号键;12/13 保持自由以
-保护风格彩票基线)。发车前探针如实记录了两个先验:强制按键的野外完成率只有
-6.7%,且傻按的代价是均杀 −7.1、战死 9→15——因此 v16 被预注册为**证伪实验**:
-公平采样 + 明码奖金之下,不按 = 定价正确;按了但收益不涨 = 经济学问题实锤。
-
-开牌(金标准 34.5/33.5/80,零杀 0/32,战死 14,L2 18;我方预测 3/4):
-
-**采样层面,掩码全胜。** 装备键从 v15 的每 48k 步 1 次复活到 **258 次**,
-16/32 局真穿上过甲(首甲中位 172 步)——教训十四的机制诊断被干预实验直接
-确认:此前不是不想按,是从来没机会学。零杀 0/32 与单局 80 杀双双破纪录,
-掩码版战士是史上最强的非冠军。
-
-**经济层面,探针 A 的判决维持原判。** 首甲/按键比 16/258 ≈ 6%,与探针的
-6.7% 野外完成率严丝合缝——按键的大头在"走不到"上白烧;16 个穿甲局里
-7 个战死掉装、3 个**耐久击碎**(L1 垃圾装耐久个位数,活着也返贫,新机制
-入库);战死 14、L2 18 均未因护甲改善。按钮活了,货还是不值得买——在
-1500 步的 L1 会计周期里,护甲无法摊销(且按键行为疑似被 +0.5×ΔAC 补贴
-维持,撤补贴持久性测试留给 v17 之后)。
-
-**守恒律第三击,最干净的一击。** 被掩码逐出 14 号键的废操作概率质量,
-整体迁居到了没掩码的 12/13 号键:实喝占比崩到 **3.7%**(2,212 次空喝、
-4,674 次捡药键 72% 空按,约 11% 的评估步数花在按死按钮上),风格彩票第
-五手 93/46/37/60/**4**。9030 成为新一代吸引子代言人:装备可见的 133 步
-里按了 133 次,一次都没走完。诚实记账:PPO→MaskablePPO 是整包算法更换,
-发车前已注册为异常首要嫌疑人,实喝崩盘无法在单 run 内与之解耦。
-
-**原则:掩码把按钮放回菜单,不能让货变得值得买——那是任务经济学的职责。
-结构卫生只能搬运垃圾流量,唯有真实价值能让它退休。** 装备章移师深水区:
-v17 = 3000 步 + 层数递进下楼奖金,让护甲在它真正的岗位(L2-L4 的省药器)
-上试镜。
-
-## 教训十六:你买到的是你标价的行为,不是你想要的行为(v16 → v17)
-
-深水区开篇:下楼奖金层数递进(N→N+1 付 8×N)、3000 步长局、6M 步预算
-(局数与旧章对齐)。发车前排雷探针 L2-L5 零崩(首次无头进入 L5 地穴图块)、
-阶梯 19/19 精确付款、傻潜机器人 7/8 死于 L3-L4——考题成立。
-
-开牌(深表首行:深度中位 **3.0**、L4 **11/32**、L2 28/32;注册预测 2/5):
-一个奖励旋钮换了整个物种——上一代还是 34.5 均杀的 L1 农夫,这一代是均杀
-9.6 的潜水员,旧章史上最深纪录(L4)如今 11/32 例行公事。**但它不是我们
-想要的"先农后潜"的潜水员,是楼梯冲刺手**:28/28 次首降全部发生在一级
-角色身上(中位第 138 步),0 农、0 甲(装备键整场零按键——不农就没掉落,
-没掉落就无甲可穿,护甲的深水试镜根本没开庭),战死 22/32。
-
-算一笔它替我们算过的账就明白了:L2→L3 付 16、L3→L4 付 24,杀一只怪约 1,
-战死才罚 2——以 30% 存活率冲 L4 的期望收益是 +24×0.3−2×0.7 ≈ **+5.8**,
-稳赚。冲刺不是失败,是**对我们标出的价格表的最优解**。我们想买"活着抵达
-深处",标价单上写的却是"摸到深处"——采购单写错,供应商无责。
-
-死因解剖与同行对表:16/22 的死亡发生在**空腰带**上(实喝 43 口/空按 757,
-9026 一局空按 554 次后干死在 L1)——rouming 在 16 层规模上描述的"药水
-跑道耗尽→人格切换→磨死"在我们引擎上逐字复现,只是他的 agent 死于怯懦,
-我们的死于莽撞:同一条跑道,两种耗尽姿势。
-
-**原则:奖励函数是价格表,策略是完美的套利者——它永远解你写下的字面,
-不解你心里的意图。"抵达"和"活着抵达"是两种商品,标价必须写清楚。**
-v18 单旋钮候选:死亡成本与阶梯同步定价(如 −8×当前层),让"死在深处"
-的账面亏损压过"摸到深处"的账面收益——届时农怪、捡药、穿甲都会重新
-进入拍卖行。
-
-**v18 钟摆数据点(当夜加班车,单旋钮如上,预测 2/5)**:重定价立竿见影但
-过弯——均杀 9.6→32.1、首降推迟三倍(中位 460 步)、**护甲试镜终于开庭**
-(15/32 曾穿甲,228 次按键;恢复农怪→有掉落→有甲可穿,整条供应链复活)、
-干死 16/22→4/19;代价是 13/32 一整局不下楼、L4 从 11 剩 1。**死亡解剖倒转**:
-v17 的死者腰带全空,v18 的死者满腰带暴毙(15/19 死时药还在)——一二级角色
-在 L2/L3 被爆发击杀,任何腰带都来不及救。瓶颈两代连跳:采样(v16 修)→
-资源(v17 暴露)→ **角色成长曲线**(v18 暴露)。胚胎证据:5 个等级 ≥2 才
-首降的局是全表最佳(9026:79 杀、L3)。深水区的真实货币疑似是 XP/等级,
-药水与护甲都只是利息——下一步在"细调拍卖价"与"加大预算等螺旋自然涌现
-(工作站线)"之间选,或验证 XP 经济假设(v19 候选)。
-
-## 教训十七:先审计世界,再调试策略——账本诚实时,拒单即测量(v19 → v20)
-
-三个旋钮同构失败后(v19 强弱仪表零结果收尾),我们停止调试策略,转而审计
-世界,挖出**属性点黑洞**:引擎每级发 5 属性点(NextPlrLevel 只累积
-_pStatPts),花点历来是人类 UI 动作,本桥十九代从未实现——约 83% 的成长
-货币被静默丢弃,"等级→生存力"的兑换链根本不存在。忠实模型显示 3000 步
-可达等级(≤clvl3)裸身打 L3 中位怪包为负期望,唯一翻盘线需要花点+穿甲。
-**三代策略不是没学会先农后潜,是一直在给残缺经济做正确定价**(v17 冲刺是
-闭式最优:8×0.99¹³⁸ ≈ 两只怪)。次因:γ=0.99 半衰期 69 步,把递延奖金与
-死亡罚一同指数湮灭(farm-dive 折现 0.14 对 dive-now 5.35)。两因互锁,
-单修任一都无效(定量预注册在案)。
-
-v20 = 修雷(Step 尾部自动花点 3体:2力,野外验证零泄漏)+ γ 0.997(半衰期
-231 步)。四镜头对抗审查零雷;站桩探针:争夺种子上裸 1 级 23 步暴毙零杀 →
-花点 clvl3 撑 108 步杀 9(4.7 倍)。开牌:**深度中位 1.0,31/32 整局不
-下楼,战死 4/32(史上最安全),喝药键灭绝(0 按;风格彩票第七手:
-93/46/37/60/4/77/0),农怪只农到"够用"(21 杀,三分之二种子懒得升 2 级)。**
-P3 宅家哨兵按预注册字面触发;P5 证伪线成立。
-
-**判读:这不是第四次失败,是本章的诚实结论。** 账本修平、目光放远之后,
-策略看清了深水的真实价格,然后拒绝了整单生意——一级出生、3000 步、近战
-条款下,下潜在力学健全的世界里依然是负期望。原版暗黑同意这个判决:没有
-人类战士在 1-4 级硬打深层,升级螺旋的时间尺度是小时,不是 3000 步。**有的
-任务是策略不行,这个任务是任务不行——而策略是第一个看出来的。** 原则:
-奖励调不动时先审计世界(缺的可能是机制,不是信号);世界修好后仍拒单,
-把拒单当测量结果尊重。深水章至此带图收官:五种配置、两条互锁根因、一次
-世界修复、一份"何时该信策略的不"的判例。复活路径已预注册:出生状态注入
-课程(rouming 式,按层配强度)或工作站尺度的长视界。
-
-**次日勘误(神谕证伪,教训十八的坯子)**:8 策略 × 32 探针种子 × 3 视界的
-脚本神谕网格推翻了本课的经济学断言——"战斗下潜"脚本(每层能打就打、
-打不动就下、接受 L3-L4 阵亡)在 **3000 步**就以 39.9 对 15.9(配对胜
-26/32)碾过退休,尽管死亡率 94%。学习器的拒单只是**梯度可达的两座局部
-山头(冲刺/退休)之间的正确取舍**,主峰在两者之间的死亡谷对岸——v17→v20
-的钟摆从未路过它。修正后的原则:**策略的"不"是关于优化地形的证据,永远
-不是关于任务天花板的证据;天花板用神谕量,不从沉默里推。** 死亡谷假说
-就此从推论升格为实证——分层架构(模式级决策)的立项条件正式达成。
-
-1. `RegisterCustomEvents()` 必须手动调用(上游只在创建窗口时注册),否则关卡切换事件全废;
-2. 事件泵必须用 `devilution::FetchMessage`,`demo::FetchMessage` 在非 demo 模式吞掉一切;
-3. 必须安装一个非 DisableInput 的事件处理器,否则事件泵拒绝出货;
-4. `ControlMode = KeyboardAndMouse`,否则手柄模块把"无输入"当松摇杆,每 tick 给寻路发刹车。
-
-另见 `patches/`:上游 HeadlessMode 下资产打开失败返回"成功+空指针",城镇的
-Hellfire 探测回落链因此失效(cel/til/sol/min 四处,patch 0001),已修并可
-回馈上游;深层扫雷记(patch 0002/0003)见下一节。
-
-## 确定性守则(工程侧,2026-07-05 审计)
-
-无头引擎里藏着三处墙钟依赖,逐一处置:
-
-1. **`CreatePlayer` 用 `SDL_GetTicks()` 重播全局 RNG**(player.cpp)——每次
-   reset 建新英雄都会触发。地牢种子被桥覆写所以布局没事;任务抽选也没事
-   (钉死版引擎里 `InitQuests` 走 `InitialiseQuestPools(DungeonSeeds[15])`,
-   用局部 RNG,种子已被桥接管)。但"进入首次关卡加载之前"这段窗口里任何读
-   全局流的代码,吃的都是墙钟流。**修法:桥在 `reset()` 里用 episode 种子
-   防御性接管全局 RNG**(diablogym.cpp)——修复前后 32 种子指纹位级一致,
-   即当前指标下它是纯卫生措施;真正的价值是把"全局 RNG 归 episode 种子管"
-   变成不随上游演化而失效的不变量。
-2. **回合推进读真实时间**(`nthread_has_500ms_passed`)——空载机器上跨进程
-   位级可复现(实测 4 次 × 32 种子逐位一致,含不同 `PYTHONHASHSEED`);
-   满载时个别 tick 会少推一个逻辑回合,轨迹漂一格。**修法:评估协议要求空载
-   机器**;训练与金标准评估不得同机并行。
-3. **拾取去重记录用墙钟时间戳**(items.cpp,6 秒过期)——无头 1 秒跑完一局,
-   记录永不过期,对当前指标无害;留档备查。
-
-运维两条:长训练必须与终端会话脱钩(`nohup ... & disown`,v9 曾因宿主进程退出
-在 40% 处丢权重);每 500k 步存 checkpoint。
-
-## 无头扫雷记(v11 训练首夜的三颗雷)
-
-agent 每探索一片"引擎从未被无头模式测试过"的区域,就可能踩响一颗新雷——
-v11 是史上第一个成建制下二层的策略,一夜排雷两颗:
-
-5. **蝙蝠俯冲**(L2 首雷,patch 0002):`AddRhino → InitMissileAnimationFromMonster`
-   无条件解引用未加载的怪物精灵表(空 optional)。冲锋类弹道要镜像怪物自己的
-   动画帧,是唯一在"创建时"就读怪物图形的弹道——所以别的弹道都活着,它独崩。
-6. **屠夫的问候**(L2 次雷,patch 0003):`InitQTextMsg → GetSFXLength` 索引
-   从未加载的空 `sgSFX` 向量(音频系统无头下不初始化,而任务台词要用"语音
-   长度"计算字幕滚动速度)。**v1 补丁曾守错对象**(守了下游的 pSnd,真凶是
-   整张表)——探针四种子 L2 深扫"通过"其实是幸存者偏差,根本没踩进屠夫房。
-   教训:**回归探针必须复现触发条件,否则绿灯只是没踩到雷的运气。**
-7. **无声挂死**(帮凶):worker 段错误后 `SubprocVecEnv.close()` 在断管上永久
-   阻塞,把响亮的 EOFError 闷成"训练冻结之谜"(同一位置连挂三次才定位)。
-   train_ppo 的 finally 里给 close 加了 SIGALRM 保险丝——训练从此**响亮地死**。
-
-运维追加两条:查岗必须验 `status.json` 的**时间戳新鲜度**(冻结数据曾伪装成
-"健康推进中");进程判定不要依赖单条 pgrep(ERE 里 `\|` 不是"或",且 `-f`
-会匹配到父 shell 的完整命令行)——监控改用纯文件事实判定(榜单行/致命签名/
-新鲜度/worker 计数)。
-
-## 复现
+**Principle: when the semantic granularity of atomic actions is finer than the causal granularity of the task,
+align them with temporally extended macro-actions (options).**
+
+## Lesson 4: Per-hit densification without swing farming (v3 → v4)
+
+The reward was refined from "settle on the kill" to "settle on every hit" (the credit-assignment chain shrank from
+~10 steps to 1). Two traps: paying per swing trains a swing farmer (and a one-hit kill would then earn nothing);
+paying on the **damage fraction** keeps the total constant (≈ an HP potential function, policy-invariant). A
+"low-HP multiplier" (1.0→1.5) adds an incentive to finish targets without opening a loophole.
+
+**Principle: densified rewards should hang on a conserved quantity of task progress (damage fraction), not on
+farmable event counts (number of swings).**
+
+## Lesson 5: The perception ceiling (v4 → v5)
+
+Once the reward was sound, every failure mode pointed to the same fact: the agent could not see walls — it locked
+targets through walls, collected shaping through walls, and could not find doors. After adding an 11×11 two-channel
+local map (walkability + monster occupancy), the gold standard doubled under the 8-seed criterion (3.0 → 6.5); a
+later 32-seed re-evaluation gave v5 7.6, confirming a real gain rather than luck.
+
+**Principle: reward design can only cash in information that exists in the observation; when failures cluster
+in spatial behaviour, fix perception before tuning the reward.**
+
+## Lesson 6: Exploration as a macro (v5 → v6)
+
+Vision solved "should I fight the monster I can see", not "where do I look when I see none". A reactive MLP cannot
+plan detours across rooms. The **explore macro** (walk to the nearest walkable frontier outside the footprint,
+hand control back as soon as prey appears) turned exploration into a selectable option too, so the policy only had
+to learn when to fight and when to search.
+
+The 8-seed story was "doubled + the bimodal failure cleared" (6.5 → 15.6, zero-kill episodes 5/8 → 0/8); under the
+32-seed criterion the real gain is smaller and more interesting: **median 0 → 3.5, zero-kill episodes 19/32 →
+15/32**; the mean went 7.6 → 8.8 (+1.2, within the noise of "one training run + a 32-seed evaluation", so
+directional evidence rather than a significant result), and the single-episode max actually fell 45 → 36. The
+explore macro raises the floor and the typical episode (it rescues dead episodes), not the ceiling — consistent with
+lesson 9's "the stuck episodes are dead zeros".
+
+**Principle: rather than forcing a reactive policy to learn planning, wrap planning as an option and leave the
+decision to the policy.**
+
+## Lesson 7: Macro degeneration attractors (v7 → v7d)
+
+The v7 chapter tried to add a "level-clear objective + footprint channel" in one go (observation widened to 407
+dims), and as soon as behaviour degenerated it started patching the macros: first a "blacklist failed targets"
+rule for the engagement macro (v7.1); the blacklist test then misfired on targets standing right next to the
+player (fixed in v7.2); after that fix the cooldown itself was farmed by the policy as a new loophole, so it became
+"cool down only after two consecutive failures" (v7.3). Three patch rounds, each closing one degeneration attractor
+and breeding the next; under the 8-seed criterion used at the time, it (6.4) always stayed far behind the champion's
+15.6 on the same criterion (the v7 branch had a different observation and cannot be re-evaluated under the current
+protocol, so only these old same-criterion numbers can be compared). The final decision was not a fourth patch but
+**freezing macro engineering**: roll back to v6's minimal macros and spend the effort on the task and the training
+side.
+
+**Principle: an option is an interface, not a policy body that can be patched forever. When you find yourself
+plugging leak after leak inside a macro, the abstraction sits at the wrong layer — freeze the interface and change
+the task, the observation or the training instead of repairing the macro.**
+
+## Lesson 8: Evaluation protocol and the luck tax (regime v2)
+
+The luck in 8 seeds is not just "high variance"; it **lies in both directions**: with 32 fixed seeds, champion v6
+fell from 15.6 to 8.8 (overestimated by 77%), v8 fell from 13.2 to 8.4 (overestimated by 57%), while v5 rose from
+6.5 to 7.6 (underestimated by 15%) — the v5-v6 gap shrank from a "crushing 9.1" to a "narrow 1.2", nearly reversing
+the ranking. Beyond the mean, only the trio **median / zero-kill count / single-episode max** exposes a bimodal
+distribution (half dead episodes + half big wins, with a mean that looks "fine").
+
+The protocol itself is part of the result, and four things must be frozen: the **seed set** (9000-9031, never used
+for tuning), **determinism** (argmax; a nice curve ≠ a model that can fight), the **engine version** (bootstrap.sh
+pins the SHA; upgrading the engine means rebuilding the leaderboard) and the **machine state** (idle; engine turn
+advancement reads the wall clock, so trajectories drift under full load — the median of the same model once drifted
+from 3.5 to 4).
+
+**Principle: freeze the evaluation protocol before believing any number. Protocol = seeds + steps + policy mode +
+engine version + machine state; every item left unpinned adds one more lie to the numbers.**
+
+## Lesson 9: At the current scale, task design > architecture (v8 / v9 / v10)
+
+A three-architecture contest: the 45,836-parameter macro-action MLP (3M steps, 8.8) ≥ an LSTM-128 with ten times
+the parameters (3M steps, 8.4) ≫ entity attention with fifteen times the parameters (**6M steps — double the budget
+— and still only 3.8**, unstable throughout training). All the gains came from **task-structure** changes such as
+reward attribution, action granularity and the exploration option; a "bigger brain" either tied or hurt — and the
+attention model was also the wrong remedy: it upgraded perception, while v5→v6 had already shown that the bottleneck
+was planning/exploration. (Note: each architecture had a single training run, and no training seed was set at the
+time — train_ppo.py now supports `--seed` — so this contest is directional evidence, not a significant result.)
+
+v10 delivered the final cut, falsifying the "not enough time" hypothesis with a single variable: doubling the
+evaluation episode length from 1500 to 3000 left **the per-seed kill counts of v6 and v10 bit-identical under both
+criteria (32/32 each)** — twice the time, zero increment. A zero-kill episode is a "dead zero": when the spawn area
+has no reachable prey the agent is stuck forever; it did not run out of time, it never got started.
+
+The comparison with AlphaZero-family systems (e.g. for xiangqi) is telling: in search-wrapped RL, planning is done
+by the search and architecture upgrades convert directly into playing strength; in search-free RL the policy must
+plan by itself — and upgrades to perception and memory never touch the planning bottleneck.
+
+**Principle: before giving a policy a bigger brain, prove that the bottleneck is the brain. Here the bottleneck is
+the spawn deadlock (task structure), so the next step is curriculum learning / cross-room frontier exploration, not
+a bigger network.**
+
+## Lesson 10: Capability lives in the action space (v10 → v11)
+
+After v10 falsified the time wall, instrumenting the dead zeros dug up a truth more basic than "exploration
+failure": **a closed door is identical to a wall in the walkability channel** (`IsTileWalkable(pos, false)` treats
+closed doors as solid). The agent did not "fail to take detours"; it **could not see the connectivity of the
+world**: of the 15/32 zero-kill episodes, 5 spawned in rooms that are fully sealed under door-free BFS (no reachable
+prey) and the other 10 were argmax dynamics spinning in place.
+
+v11 added just one option — the descend macro: each press runs a full-map 4-direction BFS (**closed doors and
+intact barrels count as "operable soft walls"**), opens doors and smashes barrels along the path with CMD_OPOBJXY,
+and stands on the down stairs until the engine triggers the transition; spotting prey does not interrupt it (it is
+the deliberate evacuation key). Observation, reward and architecture were untouched.
+
+Gold standard 8.8 → **19.4**, median 3.5 → 14.5, zero-kill 15/32 → **2/32**, reached level 2 0 → **27/32** (0 for
+all five previous generations), deepest episode reached level 4. Per seed: 4/5 of the sealed group broke out; the
+ten "hunter malfunction" seeds were **10/10 cured** — the behavioural dead loop was broken by a new high-yield
+action. The cost is recorded just as honestly: four seeds that used to be rich L1 farms produced less because of
+"greed for depth", and **17/32 episodes died in combat on deeper levels** (the fate of an unarmoured warrior, and
+the proposal for the next chapter).
+
+Two companion experiments nailed the conclusion down:
+
+1. **Door-blindness oracle (architecture invariance)**: the static rule "sealed spawn ⇒ zero kills" scores
+   **15/15 hits with zero false positives** on all three architectures, v6 (46k MLP), v8 (452k LSTM) and v9c (702k
+   attention) — information destroyed at the perception layer cannot be recovered by any downstream brain; the
+   zero-kill seeds outside the sealed rooms differ between the three (each dynamical disease has its own madness,
+   again showing it is not a function of the map).
+2. **Emergent repurposing**: on the deepest sealed seed (9000) v11 killed 25 monsters but never descended — the
+   policy used the descend macro as a **door-opening key**: press it to open the door, let the monsters in and eat
+   on the spot. A side effect of the option was reinvented by the policy as its main function, an unexpected dividend
+   of wrapping planning as an interface (lesson 6).
+
+**Principle: the observation decides what can be known, the action space decides what can be done, and the
+architecture only tunes the efficiency in between. When adding capability, audit the three layers in that order —
+the cheapest miracles live in the action space (one new action +120%, fifteen times the parameters −57%).**
+
+## Lesson 11: A new action is also a new hiding place (v11 → v12)
+
+The ugliest column of v11 was **17/32 combat deaths**, so v12 added a 13th action: drink a belt healing potion (the
+same path as the UseBeltItem gamepad hotkey; the warrior starts with IDI_HEAL ×2, only those two potions, no
+resupply in this version). The observation was **deliberately frozen at 286 dims** (the belt count only went into the
+raw dict) so that every past model could still be re-evaluated — that protocol purism later proved to be the most
+expensive decision of the round.
+
+Reconciling the four pre-registered predictions: combat deaths ≤10 **✓ (exactly 10/32)**; mean kills 22+ ✗ (12.3);
+reached level 2 ≥27 ✗ (26); single-episode max 80 ✗ (46). 1/4 — borderline on the numbers, a concession on the
+mechanism:
+
+1. **Only a handful of real potion warriors**: 9024 drank while fighting and survived with 43 kills (the same seed
+   under v11 died with 36); the fiercest sip of the whole evaluation was a clear-headed argmax press at 8.6% HP
+   (0.086→0.343). The design intent really did appear — on roughly 2-4 seeds.
+2. **The mainstream use was empty-bottle calisthenics**: **4,715 of 4,740 presses hit an empty belt** (1,467 in a
+   single 9014 episode). Bottle-blindness: the belt count is not in the observation, so the policy **in principle**
+   cannot learn when *not* to press — lesson 5 holds for action preconditions too. Better still, the engine's walk
+   command persists across steps and pressing 12 does not interrupt an ongoing move, so it effectively became a
+   "**wait/continue**" key: seeds that do not clear monsters used it as risk-free time filler.
+3. **The causality of the death improvement is impure**: 9 seeds that died under v11 were saved, but only 4 of
+   them actually drank; 5 were saved purely by fighting more timidly (avoiding combat); meanwhile 3 new bodies
+   appeared (9008 died after 32 kills; the 9009 sightseer was killed for the first time). Of the combat-death drop
+   17→10, the potions probably account for less than half; the rest is pacifism.
+
+**Principle: before giving a policy a new button, ask three questions — is its precondition observable
+(bottle-blindness)? Is it a risk-free no-op (hiding place)? How does it interact with existing commands (the wait
+key)? Door-blindness was the engine's debt to us; bottle-blindness we signed for ourselves.** The v13 bill was paid
+right away: the belt count and the direction of the nearest ground potion entered the observation (286→290, lesson 5
+homework), and a pickup macro went live (reusing the descend macro's door-aware BFS — the engine's native pickup
+pathfinding is door-blind too, and seed 9003's potion lies behind a closed door); action masking stayed on hold
+(with the belt visible, key discipline should be learnable by itself, left as a v13 test item). A four-lens
+adversarial review caught two more bugs: with a full belt, pickups fall straight into the backpack = a value black
+hole invisible to the drink key (now forbidden on the bridge side), and the pickup check implicitly depended on
+pcurs==CURSOR_HAND (now re-pinned on every level load by SyncLoad).
+
+## Lesson 12: Discipline is a function of observation, and hiding places are conserved (v12 → v13)
+
+v13 results: gold standard 12.3 → **35.2** (median 10 → 29, zero-kill 9/32 → 1/32), combat deaths 17 (v11) → 12,
+**a new champion**. The reward function was still untouched — the only changes were +4 observation dims and one
+new macro. Two mechanistic conclusions:
+
+1. **The same button, one observation bit apart, a world of difference in discipline**: v12 pressed the drink key
+   on an empty belt 99.5% of the time; v13 pressed it on a stocked belt 93.4% of the time (57 real drinks / 4 empty
+   presses), 25 of the 57 real drinks happened below half HP, and the deepest sip was at **1% HP**. The drinking
+   skill was never missing; what was missing was its precondition in the observation — a controlled replication of
+   lesson 5 (the perception ceiling) on action preconditions, with only one observation bit between control and
+   treatment.
+2. **The law of conservation of hiding places**: v12's idling attractor did not die, it moved — seed 9001 pressed
+   the new pickup key 1,448 times (with zero items bagged) as its sanctuary. Block one zero-risk action and the
+   risk-averse probability mass flows to the next; every new action must budget for the "attractor migration" tax.
+
+The costs are booked as they are: reached level 2 27→25 (more fighting, less descending); pre-registered
+predictions **2/4** (real-drink share >50% ✓ with 93.4%, mean kills ≥16 ✓ with 35.2; combat deaths ≤10 missed by 2,
+reached level 2 ≥26 missed by 1). Emergent bonus: 9007, a long-time sealed-room resident, killed for the first time
+(14 kills) — the door-opening side effect of the pickup macro let it out, the same interface dividend as v11's
+"descend macro as a key"; the 9009 sightseer turned hunter (0 → 24 kills).
+
+**Error bars added (seed-14 same-recipe repeat, a first for this project)**: mean kills 38.1 (vs 35.2) — **the
+result replicated**, so the v13 effect does not depend on the seed; but **the style did not replicate**: combat
+deaths 12 vs **21**, real-drink discipline 93.4% vs **45.7%** (pooled 65%), idling seeds 1 → **3** (in s14, 9001
+spent all 1500 steps pressing the pickup key). The champion row keeps the pre-registered seed-13 run (choosing the
+better of two repeats would be selection bias, the old sin of the 8-seed era). A new sub-lesson: **how much it wins
+is reproducible; how it wins is a seed lottery** — any single claim about behavioural composition must survive a
+seed repeat before it counts.
+
+**Principle: capability = action × observability of its precondition. And as long as the reward landscape contains
+a zero-risk action, some probability mass will move in — when auditing a new action, write "can it be used as a
+hiding place" into the acceptance checklist (lesson 1's sanctuary, reincarnated endlessly in the action space).**
+
+## Lesson 13: The reward stream is the last observer (v13 → v14)
+
+v14 executed lesson 11's checklist to the full: AC and the nearest wearable item entered the observation (290→294),
+the engine's AutoEquip was wired through (its default-off option forced on), the PM_GOTHIT timing window was closed,
+the door-corner case was fixed, and every probe was green — **the gear key's precondition chain was flawless**.
+Five pre-registered predictions went **0/5**: equip rate 0/32; in the whole argmax evaluation (48,000 steps) the
+gear key was pressed only **6 times** and not a single piece of armour was worn. Mean kills 28.0 and reached level 2
+19/32, below the range of the two v13 runs; the champion stays.
+
+The root cause is not the plumbing but the **learning signal**: armour pays off as "a few HP less per hit", spread
+over hundreds of steps, and that amplitude is completely drowned by the variance between episodes — within a 3M-step
+credit-assignment horizon the value function **never observed statistical evidence that "wearing armour → higher
+return"**, so the button never earned value. Compare v12/v13: bottle-blindness was **a precondition invisible to the
+policy** (observation layer); the gear key is **a consequence invisible to the learning signal** (reward-horizon
+layer). Drinking can be learned because the counterfactual of pressing key 12 at 8% HP and "not dying" within a few
+dozen steps is plain to see; the counterfactual of armour takes hundreds of steps and dozens of episodes to show.
+
+Three more entries booked honestly: (1) real-drink discipline in this run was 36.7% (a three-run evidence chain of
+93%/46%/37%, reinforcing "style is a seed lottery"); (2) 30% of pickup-key presses were empty (2,801 presses) — the
+attractor is still there; (3) the AC=4 row in the post-mortem table is a **measurement ghost of gear dropped at death**
+(gear falls on the ground at death, so the terminal AC reading ≠ the AC while alive); the instrument definition now
+notes this.
+
+**Principle: perception bounds what can be known (lesson 5), the action set bounds what can be done (lesson 10),
+and the reward horizon bounds what can be learned. A capability chain is only as strong as its least observable
+link: the precondition must reach the observation, and the consequence must reach the learning signal — otherwise
+the button is forever decoration. v15 candidates: bounded AC-gain shaping (AutoEquip only fills empty slots =
+unfarmable), a gear-rich curriculum, or 10-30× more steps on bigger compute so that value seeps out of survival
+statistics naturally.**
+
+## Lesson 14: Shaping amplifies; it does not summon (v14 → v15)
+
+Lesson 13 wrote three prescriptions and v15 tried the cheapest: one-shot bounded shaping on equipment AC gain
+(+0.5 × ΔAC; AutoEquip only fills empty slots = unfarmable; passed a pre-launch Goodhart review; the pre-launch
+probe measured a manual press at +0.998 = +1.0 − idle tax, so the payment pipeline was flawless). Four
+pre-registered predictions went **2/4**: mean kills ≥30 hit (31.3), combat deaths ≤11 hit (**9/32, an all-time
+low**, the previous best being v12's 10); equip rate ≥20/32 **went to zero again** (0/32), and a median time to first
+armour does not exist — in the whole 48,000-step argmax evaluation the gear key was pressed **once** (v14 still had
+6). With shaping on duty for a generation, the press count fell instead of rising.
+
+Root cause: a shaping reward has to **be sampled** before it can bend the value function. This reward's trigger chain
+is "gear happens to drop → happens to enter the observation → 14 is pressed → BFS walks there → it is picked up and
+auto-equipped" — during exploration a product of small probabilities; while the key's **cost** (wasted ticks on
+empty presses, hits taken on the way) settles on the spot every time. With frequent negatives and rare positives the
+key's value estimate can only fall — however large the amount, a reward that is never sampled equals zero. Lesson 2
+said shaping must be attributed to the agent's own actions; add one more rule here: **shaping must lie on
+trajectories that exploration actually reaches**. Events first, rewards second: demonstrations/imitation learning,
+exploration resets that force equipping, or a gear-rich environment (the level-weighted curriculum that rouming's
+[DevilutionX-AI](https://github.com/rouming/DevilutionX-AI) validated at 16-level scale belongs to this family) —
+make the event common first, then talk about shaping.
+
+Side entries: (1) the other metrics look like a healthy redraw of the v14 family — mean kills 28.0→31.3 (≈ within the
+noise band), reached level 2 also 19/32; the contributions of the seed lottery and the shaping cannot be separated
+in a single run; (2) real-drink share 60% (42 real / 28 empty), the fourth hand of the style lottery
+(93/46/37/60%); (3) the share of real drinks at low HP, 62% (26/42 below half HP), is actually the highest of the four
+runs — but the record-low deaths more likely come from the fighting style than from the potions (potion use is
+similar to v13: 42 vs 57 sips); a single run cannot settle the cause; (4) 9001's empty-press attractor on the pickup
+key is still there (lesson 12's conservation law, confirmed for the third time).
+
+## Lesson 15: Masking moves probability, not value (v15 → v16)
+
+The prescription: an invalid-action mask on the gear key — when no wearable gear is in view, the key does not exist
+(MaskablePPO; env.action_masks() only masks key 14, and 12/13 stay free to protect the style-lottery baseline). The
+pre-launch probes recorded two priors honestly: the wild completion rate of a forced press is only 6.7%, and blind
+pressing costs −7.1 mean kills and raises combat deaths 9→15 — so v16 was pre-registered as a **falsification
+experiment**: with fair sampling and an explicit bonus, not pressing = correct pricing; pressing without higher
+payoffs = the economics problem confirmed.
+
+Results (gold standard 34.5/33.5/80, zero-kill 0/32, combat deaths 14, L2 18; our predictions 3/4):
+
+**On sampling, the mask won outright.** The gear key came back from one press per 48k steps in v15 to **258
+presses**, and 16/32 episodes actually wore armour (median time to first armour 172 steps) — the mechanism diagnosis
+of lesson 14 was confirmed directly by intervention: it was never unwilling to press, it simply never had the chance
+to learn. Zero-kill 0/32 and an 80-kill single episode both set records; the masked warrior is the strongest
+non-champion ever.
+
+**On economics, probe A's verdict stands.** First-armour/press ratio 16/258 ≈ 6%, matching the probe's 6.7% wild
+completion rate exactly — most presses burn out on "cannot get there"; of the 16 armoured episodes, 7 died and
+dropped the gear and 3 had it **broken by durability loss** (L1 junk gear has single-digit durability, so even
+survivors fall back into poverty; a new mechanism added to the record); combat deaths 14 and L2 18 did not improve
+with armour. The button is alive, but the goods are still not worth buying — within the 1500-step L1 accounting
+period armour cannot be amortised (and the pressing behaviour is suspected to be kept alive by the +0.5×ΔAC subsidy;
+a persistence test with the subsidy removed is left until after v17).
+
+**The conservation law's third strike, and the cleanest.** The no-op probability mass evicted from key 14 by the mask
+moved wholesale to the unmasked keys 12/13: real-drink share crashed to **3.7%** (2,212 empty drinks; 72% of 4,674
+pickup-key presses were empty; about 11% of evaluation steps were spent pressing dead buttons), the fifth hand of the
+style lottery 93/46/37/60/**4**. 9030 became the new attractor's spokesman: in the 133 steps where gear was visible
+it pressed 133 times and never completed a single walk. Honest accounting: PPO→MaskablePPO swapped the whole
+algorithm package and was registered before launch as the prime suspect for anomalies; the crash in real drinking
+cannot be decoupled from it within a single run.
+
+**Principle: a mask puts a button back on the menu; it cannot make the goods worth buying — that is the job of the
+task economics. Structural hygiene can only relocate junk traffic; only real value can retire it.** The gear chapter
+moved to deep water: v17 = 3000 steps + a depth-progressive descend bonus, letting armour audition for its real job
+(a potion saver on L2-L4).
+
+## Lesson 16: You buy the behaviour you price, not the behaviour you mean (v16 → v17)
+
+Deep-water opener: depth-progressive descend bonus (N→N+1 pays 8×N), 3000-step episodes, a 6M-step budget (episode
+count aligned with the old chapter). Pre-launch mine-sweeping probes: zero crashes on L2-L5 (the first headless entry
+into the L5 catacomb tiles), 19/19 exact ladder payments, and a naive diving bot died on L3-L4 in 7/8 runs — the exam
+was valid.
+
+Results (first row of the deep board: median depth **3.0**, L4 **11/32**, L2 28/32; registered predictions 2/5): one
+reward knob changed the whole species — the previous generation was an L1 farmer with 34.5 mean kills, this one is a
+diver with 9.6 mean kills, and the old chapter's all-time depth record (L4) is now routine at 11/32. **But it is not
+the "farm first, then dive" diver we wanted; it is a stair sprinter**: all 28/28 first descents happened on a
+level-1 character (median step 138), 0 farming, 0 armour (the gear key was never pressed in the whole evaluation —
+no farming means no drops, no drops means no armour to wear, so armour's deep-water audition never convened), 22/32
+combat deaths.
+
+Do the arithmetic it did for us and it is clear: L2→L3 pays 16, L3→L4 pays 24, a kill is worth about 1, and death
+costs only 2 — sprinting for L4 at a 30% survival rate has an expected payoff of +24×0.3−2×0.7 ≈ **+5.8**, a sure
+profit. Sprinting is not a failure; it is **the optimal solution to the price list we wrote**. We wanted to buy
+"arrive at depth alive", but the price list said "touch depth" — the purchase order was wrong, and the supplier is
+not to blame.
+
+Death anatomy and a comparison with related work: 16/22 deaths happened on an **empty belt** (43 real drinks / 757
+empty presses; one 9026 episode made 554 empty presses and died dry on L1) — the "potion runway runs out →
+personality switch → ground down" pattern that DevilutionX-AI described at 16-level scale reproduced word for word on
+our engine, except its agent died of timidity and ours of recklessness: the same runway, two ways of running out.
+
+**Principle: the reward function is a price list and the policy is a perfect arbitrageur — it always solves the
+letter of what you wrote, never the intent in your head. "Arrive" and "arrive alive" are two different goods, and the
+prices must say which.** v18 single-knob candidate: price death in step with the ladder (e.g. −8×current level), so
+the book loss of "dying at depth" outweighs the book gain of "touching depth" — then farming, potion pickup and armour
+will all re-enter the auction.
+
+**v18 pendulum data point (an extra run, single knob as above, predictions 2/5)**: the repricing worked immediately
+but overshot — mean kills 9.6→32.1, the first descent three times later (median step 460), **the armour audition
+finally convened** (15/32 wore armour, 228 presses; farming resumed → drops → armour to wear, the whole supply chain
+revived), dry-belt deaths 16/22→4/19; the cost was 13/32 episodes never descending and L4 falling from 11 to 1.
+**The death anatomy flipped**: v17's dead all had empty belts, v18's dead died suddenly with full belts (15/19 still
+had potions at death) — level-1/2 characters are burst down on L2/L3 faster than any belt can save them. The
+bottleneck jumped twice in two generations: sampling (fixed in v16) → resources (exposed by v17) → **the character
+growth curve** (exposed by v18). Embryonic evidence: the 5 episodes whose first descent happened at level ≥2 are the
+best on the board (9026: 79 kills, L3). The real currency of deep water appears to be XP/level, with potions and
+armour only the interest — the next step is a choice between fine-tuning the auction prices and a larger budget so the
+spiral emerges naturally (the workstation line), or testing the XP-economy hypothesis (v19 candidate).
+
+## Lesson 17: Audit the world before debugging the policy — when the books are honest, a refusal is a measurement (v19 → v20)
+
+After three knobs failed the same way (v19's strength gauge ended with a null result), we stopped debugging the
+policy and audited the world instead, and dug up a **stat-point black hole**: the engine grants 5 stat points per level
+(NextPlrLevel only accumulates _pStatPts), spending them has always been a human UI action, and for nineteen
+generations this bridge never implemented it — about 83% of the growth currency was silently discarded, and the
+"level → survivability" exchange chain simply did not exist. A faithful model shows that at the levels reachable in
+3000 steps (≤ clvl 3), fighting a median L3 monster pack unarmoured is negative-EV, and the only winning line needs
+spent stat points + armour. **Three generations of policies had not failed to learn "farm first, then dive"; they had
+been pricing a broken economy correctly all along** (v17's sprint was the closed-form optimum: 8×0.99¹³⁸ ≈ two
+kills). Secondary cause: γ=0.99 has a half-life of 69 steps, exponentially annihilating deferred bonuses and death
+penalties alike (farm-dive discounted 0.14 vs dive-now 5.35). The two causes interlock, and fixing either alone does
+nothing (quantitatively pre-registered).
+
+v20 = the bug fix (automatic stat spending at the end of Step, 3 vitality : 2 strength, verified in the field with zero
+leakage) + γ 0.997 (half-life 231 steps). A four-lens adversarial review found no bugs; a standing probe: on a
+contested seed a bare level-1 character dies in 23 steps with zero kills → with spent points at clvl 3 it lasts 108
+steps with 9 kills (4.7×). Results: **median depth 1.0, 31/32 episodes never descend, 4/32 combat deaths (the safest
+ever), the drink key went extinct (0 presses; seventh hand of the style lottery: 93/46/37/60/4/77/0), and farming only
+goes as far as "enough" (21 kills; two thirds of the seeds do not bother reaching level 2).** The P3 stay-at-home
+sentinel fired exactly as pre-registered; the P5 falsification line held.
+
+**Reading: this is not a fourth failure; it is the honest conclusion of this chapter.** With the books fixed and the
+horizon extended, the policy saw the real price of deep water and turned down the whole deal — under a level-1 start,
+3000 steps and melee terms, diving is still negative-EV in a mechanically sound world. The original Diablo agrees
+with the verdict: no human warrior forces the deep levels at character level 1-4; the levelling spiral takes hours,
+not 3000 steps. **Sometimes the policy is not good enough; this time the task was not good enough — and the policy
+was the first to see it.** Principle: when the reward will not move, audit the world first (what is missing may be a
+mechanism, not a signal); if the policy still refuses after the world is fixed, respect the refusal as a measurement.
+The deep-water chapter closes here with its figure: five configurations, two interlocking root causes, one world fix
+and one precedent for "when to trust the policy's no". Revival paths are pre-registered: a spawn-state injection
+curriculum (DevilutionX-AI style, strength scaled by level) or workstation-scale long horizons.
+
+**Correction the next day (an oracle falsification, the seed of lesson 18)**: a scripted oracle grid of 8 strategies
+× 32 probe seeds × 3 horizons overturned this lesson's economic claim — a "fight while descending" script (fight
+whatever can be fought on each level, go down when it cannot, accept death on L3-L4) already beats retirement at
+**3000 steps**, 39.9 vs 15.9 (26/32 paired wins), despite a 94% death rate. The learner's refusal was only **the
+correct choice between two gradient-reachable local peaks (sprint / retire)**; the main peak lies across the death
+valley between them, and the v17→v20 pendulum never passed it. The revised principle: **a policy's "no" is evidence
+about the optimisation landscape, never about the task ceiling; ceilings are measured with oracles, not inferred from
+silence.** The death-valley hypothesis thus moved from inference to evidence — the conditions for starting a
+hierarchical architecture (mode-level decisions) were formally met.
+
+Four headless-engine pitfalls fixed while building the bridge:
+
+1. `RegisterCustomEvents()` must be called by hand (upstream only registers it when creating a window); otherwise all
+   level-transition events are lost;
+2. the event pump must use `devilution::FetchMessage`; `demo::FetchMessage` swallows everything outside demo mode;
+3. an event handler other than DisableInput must be installed, or the event pump refuses to deliver;
+4. `ControlMode = KeyboardAndMouse`, or the gamepad module treats "no input" as a released stick and brakes the
+   pathfinder every tick.
+
+See also `patches/`: under upstream HeadlessMode a failed asset open returns "success + null pointer", which breaks
+the town's Hellfire detection fallback chain (four places, cel/til/sol/min, patch 0001); fixed and suitable for
+upstreaming. The deep-level mine clearing (patches 0002/0003) is described below under "Headless mine clearing".
+
+## Determinism rules (engineering side, audit of 2026-07-05)
+
+The headless engine hides three wall-clock dependencies, handled one by one:
+
+1. **`CreatePlayer` reseeds the global RNG with `SDL_GetTicks()`** (player.cpp) — triggered every time reset creates
+   a new hero. Dungeon seeds are overwritten by the bridge, so layouts are fine; quest selection is fine too (in the
+   pinned engine `InitQuests` goes through `InitialiseQuestPools(DungeonSeeds[15])`, a local RNG whose seed the bridge
+   already controls). But any code that reads the global stream in the window "before the first level load" eats the
+   wall-clock stream. **Fix: the bridge defensively takes over the global RNG with the episode seed in `reset()`**
+   (diablogym.cpp) — the 32-seed fingerprints are bit-identical before and after the fix, so under current metrics it
+   is pure hygiene; its real value is turning "the global RNG belongs to the episode seed" into an invariant that
+   upstream changes cannot break.
+2. **Turn advancement reads real time** (`nthread_has_500ms_passed`) — bit-reproducible across processes on an idle
+   machine (measured 4 runs × 32 seeds bit-identical, including different `PYTHONHASHSEED`s); under full load an
+   occasional tick advances one logical turn less and the trajectory drifts by one step. **Fix: the evaluation
+   protocol requires an idle machine**; training and gold-standard evaluation must not run in parallel on the same
+   machine.
+3. **Pickup deduplication records use wall-clock timestamps** (items.cpp, 6-second expiry) — headless runs finish an
+   episode in 1 second, so records never expire; harmless for current metrics; documented for reference.
+
+Two operations rules: long training runs must be detached from the terminal session (`nohup ... & disown`; v9 once
+lost its weights at 40% when the host process exited); save a checkpoint every 500k steps.
+
+## Headless mine clearing (three bugs hit in the first v11 training run)
+
+Every time the agent explores an area of the engine that headless mode has never been tested on, it may step on a
+new mine — v11 was the first policy to reach level 2 in numbers, and two mines were cleared in one go:
+
+5. **The bat's dive** (first L2 mine, patch 0002): `AddRhino → InitMissileAnimationFromMonster` unconditionally
+   dereferences the unloaded monster sprite sheet (an empty optional). Charge missiles must mirror the monster's own
+   animation frames and are the only missiles that read monster graphics "at creation time" — so every other missile
+   survived and this one alone crashed.
+6. **The Butcher's greeting** (second L2 mine, patch 0003): `InitQTextMsg → GetSFXLength` indexes the empty, never
+   loaded `sgSFX` vector (the audio system is not initialised in headless mode, while quest dialogue uses the "voice
+   length" to compute subtitle scroll speed). **The v1 patch guarded the wrong object** (it guarded the downstream
+   pSnd; the real culprit was the whole table) — the probe's four-seed deep L2 sweep "passed" only through survivor
+   bias; it never entered the Butcher's room. Lesson: **a regression probe must reproduce the trigger condition,
+   otherwise a green light is just the luck of not stepping on the mine.**
+7. **The silent hang** (accomplice): after a worker segfault, `SubprocVecEnv.close()` blocks forever on a broken pipe,
+   muffling a loud EOFError into a "training freeze mystery" (it hung three times in the same place before it was
+   located). train_ppo's finally block now gives close a SIGALRM fuse — training now **dies loudly**.
+
+Two more operations rules: monitoring must check the **timestamp freshness** of `status.json` (frozen data once passed
+itself off as "healthy progress"); do not rely on a single pgrep to judge processes (in ERE `\|` is not "or", and `-f`
+matches the parent shell's full command line) — monitoring now judges purely from file facts (leaderboard rows /
+fatal signatures / freshness / worker count).
+
+## Reproduction
 
 ```bash
-# 仓库根目录;venv 依 README Quickstart 建在仓库内(python3 -m venv .venv)
-./bootstrap.sh && ./build.sh                 # 钉死版引擎 + 桥
+# From the repo root; the venv lives inside the repo per the README Quickstart (python3 -m venv .venv)
+./bootstrap.sh && ./build.sh                 # pinned engine + bridge
 .venv/bin/python tests/smoke_random_agent.py
-.venv/bin/python train/evaluate.py train/runs/<run>/model_final   # 空载机器!
-.venv/bin/python train/plot_figures.py   # 作者侧:需本地 train/runs/ 训练日志
-                                          # (不随仓库分发;图已提供于 docs/assets/)
+.venv/bin/python train/evaluate.py train/runs/<run>/model_final   # idle machine!
+.venv/bin/python train/plot_figures.py   # author side: needs local train/runs/ training logs
+                                          # (not distributed with the repo; the figure is provided in docs/assets/)
 ```
 
-## v22 章:策略脑/操作脑(分层 SMDP,评审团设计,Diabolically-Handsome 批准)
+## v22 chapter: policy brain / operator brain (hierarchical SMDP)
 
-**单处方声明**:本代唯一处方 = 决策层从平面换分层;奖励/观测底座/六宏/世界
-规则全部冻结于 v20。**立项理由(评审团修正版)**:不是"模式序列不在梯度可达
-域"(恶魔代言人已证伪该表述——spiral2 可被 296 维无记忆平面策略表达),而是
-**分层是唯一让被优化的量逐字等于神谕账本(γ_mgr=1 的不折现回报)、且把信用
-只分给每局 10-60 个决策的结构**。
+**Single-prescription statement**: the only prescription of this generation = the decision layer goes from flat to
+hierarchical; reward / observation base / six macros / world rules are all frozen at v20. **Rationale (as revised in
+review)**: not "the mode sequence is outside the gradient-reachable domain" (a devil's-advocate critique falsified
+that framing — spiral2 can be expressed by a 296-dim memoryless flat policy), but **hierarchy is the only structure in
+which the optimised quantity equals the oracle ledger verbatim (undiscounted return with γ_mgr=1) and credit goes only
+to the 10-60 decisions per episode**.
 
-设计要点:词表 FARM/DIVE/RESUPPLY(Discrete(3),内环=神谕逐字冻结,喝药为
-脑干反射不设选项);"榨干→下潜"从脚本升格为策略脑决策(本章考题);
-**换层必归还控制权 = 显式不变量**(Diabolically-Handsome 拍板,G0.2 实测,16 层扩展性的
-地基:事件驱动决策数随战役深度自动生长,远期 300+ 决策时的方差旋钮为
-γ_mgr→0.999,图纸不动)。恶魔臂 F(平面 296 维+BC 热启动)为强制预注册第四
-臂,投降条款 P7 预先写死。已知偏离:G1a 位级证书以 G1b(机械保真)+G2(词表
-充分性)+G0 单元测试覆盖替代,如实入册。
+Design points: vocabulary FARM/DIVE/RESUPPLY (Discrete(3); the inner loop is the oracle frozen verbatim; drinking is
+a brainstem reflex with no option of its own); "drain → dive" is promoted from script to a policy-brain decision (the
+exam of this chapter); **a level change always returns control = an explicit invariant** (design decision, measured
+in G0.2; the foundation for 16-level scalability: the event-driven decision count grows automatically with campaign
+depth, and for a distant 300+ decisions the variance knob is γ_mgr→0.999 with the design unchanged). Devil arm F
+(flat 296 dims + BC warm start) is a mandatory pre-registered fourth arm, with surrender clause P7 written down in
+advance. Known deviation: the G1a bit-level certificate is replaced by G1b (mechanical fidelity) + G2 (vocabulary
+sufficiency) + G0 unit-test coverage, recorded as is.
 
-**注册预测(先写后跑)**:R2 教师在 7000 段落 [36,46];R3 主预测:分层臂 H 过
-主指标(≥0.6×教师评估段参考 + 配对胜 wrapper-retire ≥22/32)概率 ~55%;
-R4 H 若成,DIVE 份额落 [10%,50%]、CAP 命中 <5%、无选项级藏身处(份额>30% ∧
-回报≤0);R5 恶魔臂:BC 重放 ≥0.85×教师(无记忆假设),微调后回报侵蚀且
-H≥F;R6 wrapper-retire 评估段均值落 [10,20];R7 对 wrapper-rush 永不设配对
-闸门(spiral2 本尊仅 15/32,肥尾彩票);R8 τ̄ 落 [80,200]、40k 管理器步 ≈
-[3.2M,8M] 微步。**P6 证伪线**:DIVE<2% ∧ 深度中位=1 → 选项级退休,发保险臂
-H-BC。**P7 架构终审**:F 双指标 ≥ H → 正式结论"IL+平面已足够",分层降级为
-对照组,绝不粉饰;H > F → 分层窄主张获证;双输 retire → 携课程升级工作站。
+**Registered predictions (written before running)**: R2 teacher on the 7000 block in [36,46]; R3 main prediction:
+hierarchical arm H passes the main metric (≥0.6× the teacher's evaluation-block reference + paired wins against
+wrapper-retire ≥22/32) with probability ~55%; R4 if H succeeds, DIVE share in [10%,50%], CAP hits <5%, no option-level
+hiding place (share >30% and return ≤0); R5 devil arm: BC replay ≥0.85× teacher (memoryless hypothesis), return
+erodes after fine-tuning and H≥F; R6 wrapper-retire evaluation-block mean in [10,20]; R7 never set a paired gate
+against wrapper-rush (spiral2 itself only 15/32, a fat-tailed lottery); R8 τ̄ in [80,200], 40k manager steps ≈
+[3.2M,8M] micro-steps. **P6 falsification line**: DIVE <2% and median depth = 1 → option-level retirement, launch
+insurance arm H-BC. **P7 final architecture review**: F ≥ H on both metrics → formal conclusion "IL + flat is
+enough", hierarchy demoted to a control, never dressed up; H > F → the narrow hierarchy claim holds; both lose to
+retire → move to the workstation with a curriculum.
 
-**G2 裁定记录(发车前,夜班签字)**:均值分量 77.5 对线 36(2.2×,碾过);
-配对分量 22/32 对线 24(差 2)。根因非词表缺陷:审查修复(见怪即战/潜期补给)
-同步强化了教师与基线(wrapper-retire 29.2 对神谕退休 15.9),山的实测高度翻倍
-(教师评估段 101.5),配对短差为 R7 已注册的肥尾伪影同族。裁定:诊断目的达成,
-放行;教师本尊 22/32 成为 P3 ≥22 线的实证锚点(H ≥22 = 教师级配对表现);
-P3 均值线按预注册公式落数:0.6 × 101.5 = 60.9。
+**G2 ruling record (before launch)**: mean component 77.5 vs line 36 (2.2×, crushed); paired component 22/32 vs line
+24 (2 short). The root cause is not a vocabulary defect: the review fixes (fight on sight / resupply during dives)
+strengthened the teacher and the baseline alike (wrapper-retire 29.2 vs the oracle's retirement 15.9), the measured
+height of the mountain doubled (teacher evaluation block 101.5), and the paired shortfall belongs to the same family
+as the fat-tail artefact already registered in R7. Ruling: the diagnostic purpose was met, launch approved; the
+teacher's own 22/32 becomes the empirical anchor of the P3 ≥22 line (H ≥22 = teacher-level paired performance); the P3
+mean line is set by the pre-registered formula: 0.6 × 101.5 = 60.9.
 
-**v22 开牌与 P7 终审(当夜,预注册条款逐字执行)**:
-| 臂 | 金标准 | 战死 | 配对胜 retire |
+**v22 results and P7 final review (pre-registered clauses executed verbatim)**:
+
+| Arm | Gold standard | Combat deaths | Paired wins vs retire |
 |---|---|---|---|
-| **H 分层(策略脑)** | **93.9**(中位 103.5) | 2/32 | **24/32** |
-| F 平面+BC(恶魔) | 80.2(训练期 125,缩水 −36%,教训八再验) | 0/32 | 22/32 |
-| H-BC 保险臂 | 38.5(塌缩为纯 FARM 3247:1) | 0/32 | 1/32 |
-| 教师脚本(天花板) | 101.5 | 25/32 | — |
+| **H hierarchical (policy brain)** | **93.9** (median 103.5) | 2/32 | **24/32** |
+| F flat+BC (devil) | 80.2 (125 in training, −36% shrinkage, lesson 8 confirmed again) | 0/32 | 22/32 |
+| H-BC insurance arm | 38.5 (collapsed into pure FARM, 3247:1) | 0/32 | 1/32 |
+| Teacher script (ceiling) | 101.5 | 25/32 | — |
 
-**P3 主指标:过**(93.9 ≥ 60.9,配对 24 ≥ 22)。**P7:H 双指标压 F → 分层的
-窄主张(γ=1 精确账本下的信用分配)获得实证**,恶魔臂虽败犹荣(投降条款未触
-发,但 80.2 证明平面+BC 是强对照)。P6 后续:保险臂 H-BC 反而大幅劣于纯 RL
-的 H(38.5 对 93.9)——"策略脑发现不了下潜"假设**被杀死**:被喂过下潜示范
-的克隆体退化回不潜且更弱,而自学的 H 是"试过、定价、拒绝"——选项级的知情
-拒绝,教训十七修正案在分层层面复现,且这次天花板已测(教师 101.5):H 用
-7.5% 的回报差换了 92% 的死亡率降幅。注册预测对账:R3 ✓(主预测中)、R7 ✓、
-R8 ✓;R4 ✗(DIVE 份额 0.27%)、R5 半错(BC 重放双双未达 0.85——无记忆假设
-在两个层级都翻车,根因含榨干旗不可从停滞钟完全恢复的观测缺陷,如实入册,
-v23 候选修正)、R6 ✗(retire 评估段 36.9 超出 [10,20] 预测带)。
+**P3 main metric: passed** (93.9 ≥ 60.9, paired 24 ≥ 22). **P7: H beats F on both metrics → the narrow claim of
+hierarchy (credit assignment under an exact γ=1 ledger) is supported by evidence**; the devil arm lost with honour
+(the surrender clause did not trigger, but 80.2 shows flat+BC is a strong control). P6 follow-up: the insurance arm
+H-BC turned out far worse than the pure-RL H (38.5 vs 93.9) — the hypothesis "the policy brain cannot discover diving"
+**was killed**: the clone fed dive demonstrations degenerated back into not diving and got weaker, while the
+self-taught H "tried, priced and refused" — an informed option-level refusal, lesson 17's correction reproduced at
+the hierarchical level, and this time with the ceiling measured (teacher 101.5): H traded a 7.5% return gap for a 92%
+cut in the death rate. Prediction check: R3 ✓ (main prediction hit), R7 ✓, R8 ✓; R4 ✗ (DIVE share 0.27%), R5 half
+wrong (BC replay missed 0.85 on both — the memoryless hypothesis failed at both levels; the root cause includes an
+observation defect, the drained flag cannot be fully recovered from the stall clock, recorded as is as a v23
+correction candidate), R6 ✗ (retire evaluation block 36.9, outside the predicted band [10,20]).
 
-## v23 章:操作脑可以被学出来吗(单缝在位,预注册 docs/prereg/PREREG-v23.md)
+## v23 chapter: can the operator brain be learned? (one seam, on-policy; pre-registered in [PREREG-v23](../prereg/PREREG-v23.md))
 
-**考题**:冻结 v22-H 经理之下,把 FARM 脚本内环换成可学习工人——可替换性主张,
-平手即胜利(P1 线 0.95×)。设计出自 11-agent panel(3 先验 × 6 批评 × 审计 × 合成),
-四个拍板点由值夜者按总设计师全权授权定案(00:15 冻结,commit 即公证)。
+**The exam**: under the frozen v22-H manager, replace the scripted FARM inner loop with a learnable worker — the
+replaceability claim, where a tie counts as a win (P1 line 0.95×). The design came out of a structured review
+(3 priors × 6 critiques × audit × synthesis), and its four decision points were settled before launch (frozen at a
+commit that serves as notarisation).
 
-**建造(一夜)**:共享窗口核重构(OptionsEnv 与 WorkerWindowEnv 跑同一段簿记,
-消灭第三份实现);工人 298 维(295+τ钟+停滞钟+榨干旗)、Discrete(15) 恒掩 11/12;
-反射所有权上提(工人永不观测反射待发态,logged≡executed);**剥薪修复下潜套利**
-(工资 w=r−换层奖金,账本恒等式 Σw≡R−8×ΣΔdlvl⁺ 入 G0' 逐窗断言)——全 panel
-唯一双确认 fatal flaw 的闭式修复。发车前审查团(23 agent)确认 15 项,
-哨兵接线(blocker)致首次发车作废重启:没有仪表的车不上路。
+**Build**: a shared window-core refactor (OptionsEnv and WorkerWindowEnv run the same bookkeeping code, eliminating a
+third implementation); the worker sees 298 dims (295 + τ clock + stall clock + drained flag), Discrete(15) with 11/12
+always masked; reflex ownership moved up (the worker never observes a pending-reflex state, logged ≡ executed);
+**wage stripping fixes the dive arbitrage** (wage w = r − level-change bonus, with the ledger identity
+Σw ≡ R − 8×ΣΔdlvl⁺ asserted per window in G0') — the closed-form fix of the only fatal flaw confirmed twice in review.
+The pre-launch review confirmed 15 items; missing sentinel wiring (a blocker) voided the first launch and forced a
+restart: no car goes on the road without gauges.
 
-**闸门链事件史(全部按预注册条款,零现场发明)**:
-G0 六项绿 → G0' 五项绿(606 窗逐位)→ G0''(新增,严于 panel:对重构前探针
-32/32 逐种子回归)→ H7=78.5(R1 [85,105] 脱靶,附录 A 预警成真)→ G1:BC 组装
-78.5=1.00×H7,**与脚本逐字节一致**——总设计师半夜法证会审证实为真结果并留下
-判词限定:"BC 只在教师分布上考过试,真考题在 PPO"(附录 C 原文携带)→
-2M 报警检查 65.3(过线 62.8,险)→ **G2@4M=42.6,击穿塌缩线,停机走 P2,
-"不许再训一会儿"逐字执行** → 重试旋钮①换 ckpt:初筛 500k/1M/1.5M →
-**1M=105.7(前 16 种子,超同子集脚本 93.9 达 +12.6%,分歧率 29%)** →
-G3 满 32:76.0=0.968×H7,死 5/32,R4 四哨全绿 → 金牌资格成立。
+**Gate-chain event history (all by pre-registered clauses, zero improvisation)**:
+G0 six items green → G0' five items green (606 windows bit for bit) → G0'' (new, stricter than the design review:
+32/32 per-seed regression against the pre-refactor probe) → H7=78.5 (R1 [85,105] missed; the appendix A warning came
+true) → G1: the assembled BC scored 78.5 = 1.00×H7, **byte-identical to the script** — a forensic review confirmed it
+was a genuine result, with the caveat that BC had only been tested on the teacher's distribution and the real exam
+was PPO (carried in PREREG-v23 appendix C) → 2M warning check 65.3 (above the 62.8 line, narrowly) → **G2@4M = 42.6,
+through the collapse line; stopped and took P2; "no training a little longer" executed verbatim** → retry knob (1),
+change the checkpoint: screening 500k/1M/1.5M → **1M = 105.7 (first 16 seeds, +12.6% over the script's 93.9 on the
+same subset, 29% divergence)** → G3 full 32: 76.0 = 0.968×H7, 5/32 deaths, all four R4 sentinels green → gold
+eligibility established.
 
-**塌缩尸检(哨兵数据齐全)**:训练分布 95.8% 是干层窗(工资≈0)——在报酬荒漠
-里,熵就是风:乱走零代价,漂移免费,鲜层能力随之侵蚀。轨迹:500k=94.0(贴锚,
-分歧 1.8%)→ **1M=105.7(峰)** → 1.5M=59.2 → 2M=65.3 → 4M=42.6。γ=1 价值头
-(残余不确定性 #3)没能拉住锚。每 500k 落盘检查点(v9 教训)救下战役。
+**Collapse post-mortem (full sentinel data)**: 95.8% of the training distribution was dry-level windows (wage ≈ 0)
+— in a reward desert, entropy is the wind: wandering costs nothing, drift is free, and fresh-level skill erodes with
+it. Trajectory: 500k = 94.0 (close to the anchor, 1.8% divergence) → **1M = 105.7 (peak)** → 1.5M = 59.2 → 2M = 65.3
+→ 4M = 42.6. The γ=1 value head (residual uncertainty #3) could not hold the anchor. Saving a checkpoint every 500k
+(lesson from v9) saved the campaign.
 
-**金种子终审(9000-9031,一次开牌,单臂 1M ckpt)**:
+**Final gold-seed review (9000-9031, revealed once, single arm, 1M ckpt)**:
 
-| 指标 | v23 学习工人 | v22-H(脚本工人)对照 |
+| Metric | v23 learned worker | v22-H (scripted worker) control |
 |---|---|---|
-| 金均值 | **77.0**(中位 91.4) | 93.9(中位 103.5) |
-| 战死 | 3/32 | 2/32 |
-| 与脚本分歧率 | 39.5% | 0(定义) |
-| FARM 换层率(套利仪表) | **0.0** | 0.0004 |
+| Gold mean | **77.0** (median 91.4) | 93.9 (median 103.5) |
+| Combat deaths | 3/32 | 2/32 |
+| Divergence from the script | 39.5% | 0 (by definition) |
+| FARM level-change rate (arbitrage gauge) | **0.0** | 0.0004 |
 
-**判决:P1 三档全部未达标(0.82×)。可替换性主张不成立——如实入册。**
-成立的是三件更窄的事:① **离锚竞争力存在性**:1M 工人在前半探针池以 29% 分歧率
-超越教师 +12.6%,并自发使用教师从未按过的键(捡药/穿装)——学习工人不是
-复读机,这是 v22 词表之外的第一次真实创新;② **教训十六工程学的完胜**:剥薪
-修复让下潜套利在 8.3M 步 × 数十万窗口中出现次数为零;③ 死亡纪律保持(3/32)。
-败因不是"学不出",是"守不住"——报酬荒漠中的锚侵蚀,峰值出现在 1M 而验收
-预算写的是 8M。R 线记分卡:R1 ✗、R2 ✓、R3 ✗(以注册口径 8M 计;1M ckpt 0.968×
-落带内,如实注明)、R4 ✓(全哨全程绿)、R5 ✗(77.0 对 [85,105])。
-功效声明:n=32、SE≈4,0.82× 距 0.95× 线约 2.5 SE——这不是噪声,是真差距。
+**Verdict: P1 missed all three tiers (0.82×). The replaceability claim does not hold — recorded as is.** Three
+narrower things do hold: (1) **off-anchor competitiveness exists**: the 1M worker beat the teacher by +12.6% on the
+first half of the probe pool with 29% divergence, and spontaneously used keys the teacher never pressed (potion
+pickup / equip) — the learned worker is not a parrot, and this is the first real innovation beyond the v22
+vocabulary; (2) **lesson 16's engineering won completely**: wage stripping kept the dive arbitrage at zero occurrences
+over 8.3M steps and hundreds of thousands of windows; (3) death discipline held (3/32). The cause of defeat is not
+"cannot be learned" but "cannot be held" — anchor erosion in the reward desert, with the peak at 1M while the
+acceptance budget said 8M. R-line scorecard: R1 ✗, R2 ✓, R3 ✗ (under the registered 8M definition; the 1M ckpt at
+0.968× falls inside the band, noted as is), R4 ✓ (all sentinels green throughout), R5 ✗ (77.0 vs [85,105]). Power
+statement: n=32, SE≈4, and 0.82× sits about 2.5 SE from the 0.95× line — not noise, a real gap.
 
-**教训十八(草案,待总设计师核准)**:锚在报酬荒漠中必然漂移——BC 锚的侵蚀
-速度由零工资状态的占比决定,不由熵系数单独决定;峰值检查点是常态而非幸运,
-验收协议必须把"选峰"写成预注册条款(本夜:写了,活了)。
+**Lesson 18 (draft)**: the anchor inevitably drifts in a reward desert — the erosion speed of a BC anchor is set by
+the share of zero-wage states, not by the entropy coefficient alone; peak checkpoints are the norm, not luck, and the
+acceptance protocol must write "select the peak" into the pre-registered clauses (this time it was written, and it
+saved the run).
 
-**v24 处方(按单处方纪律排队)**:① 干层窗训练配比干预(跳过/降采样干层窗,
-或干层窗独立小额工资——需闭式 EV 审计);② 峰值保持:ent 调度/KL 正则对锚;
-③ DIVE 工人(神谕 stall 率 44% 的肥肉,工作站预算);④ 经理-工人交替冻结
-(完全体,八月工作站开篇)。
+**v24 prescriptions (queued under the single-prescription rule)**: (1) intervene in the dry-level window mix during
+training (skip/downsample dry-level windows, or a small separate wage for dry-level windows — needs a closed-form EV
+audit); (2) peak retention: an entropy schedule / KL regularisation toward the anchor; (3) a DIVE worker (the fat of
+the oracle's 44% stall rate, workstation budget); (4) alternating manager-worker freezes (the full architecture,
+opening the workstation phase in August).
 
-## v24 章:皮筋(总设计师处方:"给操作脑一根拐杖,再让它慢慢扔掉")
+## v24 chapter: the leash (a crutch for the operator brain, to be dropped gradually)
 
-**处方与预注册**(docs/prereg/PREREG-v24.md,panel wf_5067b781 合成,发车前审查团 22 项
-确认全部落地):PPO 损失加 β·CE(冻结 BC 教师,掩码重归一),固定退火
-0.5→0.015625→0(8 腿 × 1M 步,腿间考试),双绊线(硬 62.8 停机 / 软 0.97×P\* 冻 β),
-条款由驱动机器执行,gate_ledger.jsonl 全程留痕,零人肉裁量。
+**Design and pre-registration** ([PREREG-v24](../prereg/PREREG-v24.md), synthesised in a design review; all 22 items
+confirmed in the pre-launch review were implemented): add β·CE to the PPO loss (frozen BC teacher, mask renormalised),
+fixed annealing 0.5→0.015625→0 (8 legs × 1M steps, an exam between legs), two tripwires (hard 62.8 stops training /
+soft 0.97×P\* freezes β); the clauses are executed by the driver, gate_ledger.jsonl records everything, and there is
+zero human discretion.
 
-**八腿实录**:腿 1-3(β≥0.125)= 位级复读机(93.9,分歧 0);腿 4(β=0.0625)
-= 99.5,分歧的门开了 1.4% 分数即越顶;腿 5 = 91.6 险过;**腿 6(β=0.0156)分歧
-暴涨 29% → 86.0 软绊,条款按设计逮住漂移**,β 冻结;**腿 7(β 冻结 0.0156)= 110.1,
-全战役峰值**;**腿 8(β=0)= 55.6,分歧 79%,撒手即崩,硬绊停机**——即使带着
-7M 步喂熟的价值头,报酬荒漠的风在 β=0 时依然获胜。
+**The eight legs**: legs 1-3 (β≥0.125) = bit-level parrots (93.9, divergence 0); leg 4 (β=0.0625) = 99.5 — the door
+of divergence opened 1.4% and the score went over the top; leg 5 = 91.6, a narrow pass; **leg 6 (β=0.0156) divergence
+jumped to 29% → 86.0, soft trip; the clause caught the drift as designed**, β frozen; **leg 7 (β frozen at 0.0156) =
+110.1, the peak of the campaign**; **leg 8 (β=0) = 55.6, 79% divergence, collapsed as soon as it let go, hard trip,
+stopped** — even with a value head fed for 7M steps, the wind of the reward desert still wins at β=0.
 
-**G3 满 32**:腿 7 = 92.0(**1.17×H7**,v23 裸奔最好 0.97×)死 2,腿 4 = 90.8 死 3,
-双候选全过资格线(非孤峰)。**金牌(腿 7,单臂一次)**:
+**G3 full 32**: leg 7 = 92.0 (**1.17×H7**; v23's best without a leash was 0.97×), 2 deaths; leg 4 = 90.8, 3 deaths;
+both candidates cleared the eligibility line (not a lone peak). **Gold (leg 7, single arm, once)**:
 
-| 指标 | v24 皮筋工人 | v22-H(脚本工人) | v23 裸奔工人 |
+| Metric | v24 leashed worker | v22-H (scripted worker) | v23 unleashed worker |
 |---|---|---|---|
-| 金均值 | **97.2**(中位 93.8) | 93.9(中位 103.5) | 77.0 |
-| 战死 | 2/32 | 2/32 | 3/32 |
-| 金池分歧率 | 0.66% | 0(定义) | 39.5% |
+| Gold mean | **97.2** (median 93.8) | 93.9 (median 103.5) | 77.0 |
+| Combat deaths | 2/32 | 2/32 | 3/32 |
+| Gold-pool divergence | 0.66% | 0 (by definition) | 39.5% |
 
-**双判决(预注册条款逐字)**:
-- **P1-强胜**:97.2 ≥ 93.9 且死 2 ≤ 4——"学习工人达到并超越 H 水平",
-  可替换性主张获证,v23 的败诉被皮筋翻案。
-- **P-拐杖-伪**:胜者出自 β>0 腿——**"仍拄拐,自立主张不成立"**;
-  R-v24.3(β 退 0 后守峰)被腿 8 干净证伪,双归因判**能力证伪**非日程证伪。
-  判词纪律:金牌分歧率 0.66% <2%,按 R-v24.4 只许写**"贴锚续航"**,禁写"离锚自立"。
+**Two verdicts (pre-registered clauses verbatim)**:
+- **P1 strong win**: 97.2 ≥ 93.9 and deaths 2 ≤ 4 — "the learned worker reaches and exceeds the H level"; the
+  replaceability claim is confirmed, and v23's loss is overturned by the leash.
+- **P-crutch-false**: the winner comes from a β>0 leg — **"still on the crutch; the independence claim does not
+  hold"**; R-v24.3 (keep the peak after β goes to 0) was cleanly falsified by leg 8, and the dual attribution rules it a
+  **capability falsification**, not a schedule falsification. Verdict discipline: gold divergence 0.66% <2%, so under
+  R-v24.4 the only permitted wording is **"continuing close to the anchor"**, never "independent of the anchor".
 
-**R 线记分卡**:R-v24.1 ✓(峰 110.1 ∈[95,115]);R-v24.2 裂判(4M 主战场对赌完胜
-99.5 对 v23 的 42.6,但"每腿 ≥62.8"被腿 8 击穿);R-v24.3 ✗(判负,能力路径);
-R-v24.4 ✗(终腿分歧 79% 超 [10,45] 带);R-v24.5 ✓(双簿对账一致);
-R-v24.6 ✓(97.2 ∈[85,110],点 92)。六线四中两脱,全部在开牌前挂账。
+**R-line scorecard**: R-v24.1 ✓ (peak 110.1 ∈ [95,115]); R-v24.2 split (won the 4M head-to-head outright, 99.5 vs
+v23's 42.6, but "every leg ≥62.8" was broken by leg 8); R-v24.3 ✗ (lost, capability path); R-v24.4 ✗ (final-leg
+divergence 79%, outside the [10,45] band); R-v24.5 ✓ (double-ledger reconciliation consistent); R-v24.6 ✓ (97.2 ∈
+[85,110], point 92). Six lines, four hits and two misses, all filed before the reveal.
 
-**教训十九(草案,待总设计师核准)**:**退火的终点不是零,是一羽之重**——
-在报酬荒漠里,轻锚(β≈ε)是永久装备而非临时拐杖:β=0.0156 的皮筋足以让工人
-超越教师 +17%(探针)/+3.5%(金牌),而 β=0 在 1M 步内必然坠崖。"扔拐"的正确
-形式化不是 β→0,而是找到 β 的下确界;工程上,软绊线冻结 β 的那只手,比任何
-退火日程都聪明。
+**Lesson 19 (draft)**: **the end point of annealing is not zero but a feather's weight** — in a reward desert a light
+anchor (β≈ε) is permanent equipment, not a temporary crutch: a β=0.0156 leash is enough for the worker to beat the
+teacher by +17% (probe) / +3.5% (gold), while β=0 falls off the cliff within 1M steps. The correct formalisation of
+"dropping the crutch" is not β→0 but finding the infimum of β; in engineering terms, the hand of the soft tripwire that
+froze β is smarter than any annealing schedule.
 
-**v25 处方队列**:① β 下确界的二分搜索(工作站);② 干层配比干预(报酬荒漠
-病根,与皮筋合方前各自单测);③ DIVE 工人(neveroracle stall 率 44% 的肥肉);
-④ 经理-工人交替冻结完全体(八月开篇)。
+**v25 prescription queue**: (1) a bisection search for the infimum of β (workstation); (2) the dry-level mix
+intervention (root cause of the reward desert; each tested alone before combining with the leash); (3) a DIVE worker
+(the fat of the oracle's 44% stall rate); (4) the full architecture with alternating manager-worker freezes (opening
+in August).
 
-## v25 章:换届选举(经理重训于皮筋工人之上,预注册 docs/prereg/PREREG-v25.md v2)
+## v25 chapter: the re-election (manager retrained on top of the leashed worker; pre-registered in [PREREG-v25](../prereg/PREREG-v25.md) v2)
 
-**考题**:v22-H 经理的价值观是对着脚本工人学的;班底升级后(leg7 皮筋工人),
-重训经理有无增益。批评者(3 镜头 27 项确认,含 n_steps=64 配方勘误、配对发射
-判据、两臂皆满 32)全落地后冻结;驱动机器执行,金牌发射线 = 对 v24-G3-leg7
-存档逐种子配对均差 ≥+4 且配对赢 ≥18/32。
+**The exam**: the v22-H manager learned its values against the scripted worker; after the crew was upgraded (the leg-7
+leashed worker), does retraining the manager help? The design was frozen after the review (27 confirmed items,
+including an n_steps=64 recipe correction, a paired launch criterion and full 32 seeds for both arms) was fully
+implemented; the driver executes it, and the gold launch line = a per-seed paired mean difference ≥ +4 against the
+v24-G3-leg7 archive and paired wins ≥18/32.
 
-**选举实录**:G-A0 仪器回归 32/32 零失配 → 两臂 v22-H 原配方各 ~40.2k 决策
-(24.4/22.4 分钟,吞吐与 v22-H 存档分秒吻合)→
-M-fresh 初筛 101.7 → **满 32 回落 88.9(半池海市蜃楼第三次现身,两臂皆满 32
-的批评者条款正是为此而设)**,死 5,DIVE 0.34/局(现任的 ~3 倍,R25.3 带内);
-M-warm(v22-H 全量权重热启动,lr 1e-4/ent 0.005)**70.6——微调把现任自己
-从 92.0 拖到 70.6**,配对 warm−fresh = −18.3。
+**The election**: G-A0 instrument regression 32/32 with zero mismatches → both arms with the original v22-H recipe,
+~40.2k decisions each (24.4/22.4 minutes, throughput matching the v22-H archive to the second) → M-fresh screening
+101.7 → **full 32 fell back to 88.9 (the third appearance of the half-pool mirage — exactly why the review clause
+required full 32 for both arms)**, 5 deaths, DIVE 0.34/episode (~3× the incumbent, inside the R25.3 band); M-warm
+(full v22-H weights as a warm start, lr 1e-4 / ent 0.005) **70.6 — fine-tuning dragged the incumbent itself from 92.0
+down to 70.6**, paired warm−fresh = −18.3.
 
-**发射判据**:胜者 M-fresh 对现任配对均差 **−3.07**,配对赢 **9/32** ——距 +4/18
-的发射线相去甚远。**金牌不烧,v24-golden(97.2)连任王座,leaderboard 不动。**
+**Launch criterion**: the winner M-fresh has a paired mean difference of **−3.07** against the incumbent and **9/32**
+paired wins — far from the +4/18 launch line. **No gold run; v24-golden (97.2) keeps the throne and the leaderboard
+does not change.**
 
-**判决(P25-不发射,连任档)**:"经理连任,本轮交替无增益(功效限定)"。
-R 线对账:R25.1 ✓(88.9∈[85,100]);R25.2 ✗✗(−18.3 对 [0,+4]——"旧价值观
-是包袱"假说反向立案:**动旧价值观才是包袱**,微调降级 −21 分,锚蚀家族再添
-一例,lr/ent 混杂已预注册不得归因);R25.3 ✓(0.34<0.5,趋势注记:新经理
-下潜 3×);R25.4 未触发。DIVE 金池口径因不发射未测,如实入册。
+**Verdict (P25 no-launch, incumbent retained)**: "the manager is retained; this alternation round brings no gain
+(within power)". R-line check: R25.1 ✓ (88.9 ∈ [85,100]); R25.2 ✗✗ (−18.3 vs [0,+4] — the "old values are baggage"
+hypothesis was opened in reverse: **touching the old values is the baggage**; fine-tuning cost −21 points, another case
+in the anchor-erosion family; the lr/ent confound was pre-registered as non-attributable); R25.3 ✓ (0.34 <0.5; trend
+note: the new manager dives 3×); R25.4 not triggered. The DIVE gold-pool definition was not measured because there was
+no launch, recorded as is.
 
-**科学注脚(本章真正的收获)**:总设计师架构的完全体(学习经理+学习工人)
-**在 v24 就已加冕**——v22-H 本就是学出来的策略脑。v25 证明的是它的**跨班底
-韧性**:对着脚本工人学的战略,在工人升级 +17% 后无需重训仍是最优解;两种
-重训(从零/微调)都没能追平它。经理的知识关于世界的结构(停滞钟、何时农怪),
-不关于工人的身份——这是分层架构"关注点分离"承诺的第一份实证。观察入册,
-是否升格教训待总设计师核准。
+**Scientific footnote (the real gain of this chapter)**: the full form of the architecture (learned manager + learned
+worker) **was already crowned in v24** — v22-H was itself a learned policy brain. What v25 shows is its **robustness
+across crews**: a strategy learned against the scripted worker stays optimal without retraining after the worker
+improved by +17%; neither retraining (from scratch / fine-tuning) caught up with it. The manager's knowledge is about
+the structure of the world (stall clock, when to farm), not about the identity of the worker — the first evidence for
+the "separation of concerns" promise of the hierarchical architecture. Recorded as an observation; whether it becomes
+a lesson is still open.
 
-**v26+ 队列不变**:β 下确界二分、干层病根、DIVE 工人、交替冻结完全体(更长
-预算下经理重训可能翻案——本章判词只覆盖 40k 决策预算)。
+**The v26+ queue is unchanged**: bisection on the infimum of β, the dry-level root cause, a DIVE worker, the full
+architecture with alternating freezes (with a longer budget a retrained manager might overturn this — this chapter's
+verdict only covers a 40k-decision budget).
 
-## v26 章:绿洲(skip-dry,预注册 docs/prereg/PREREG-v26.md)
+## v26 chapter: the oasis (skip-dry; pre-registered in [PREREG-v26](../prereg/PREREG-v26.md))
 
-**八腿实录(夜航班)**:腿 1-3 焊点(93.9×3)→ 腿 4 = 98.6(分歧 8.3%,同 β 下
-比 v24 宽六倍且更安全)→ **腿 5 = 112.2 死 0(R26.1 点预测 112,几乎钉靶心)**
-→ **腿 6 = 114.5 @ 分歧 28.6%——v24 坠崖原址(86.0 @ 29%)上的登顶,项目史
-最高腿考**。→ 腿 7(β=0)= 83.8(分歧 62%)软绊 → 腿 8(β=0)= 46.9(分歧
-92%)硬绊停机。**教训十九经复审存活:退火终点不是零,绿洲亦然**——荒漠放大
-漂移但不是漂移的唯一来源;β=0 下熵风在鲜层照样吹散锚,绿洲只把坠崖从"当腿即崩"
-延缓为"一腿之后"(83.8 对 v24 的 55.6)。
+**The eight legs**: legs 1-3 welded (93.9×3) → leg 4 = 98.6 (8.3% divergence; six times wider than v24 at the same β
+and safer) → **leg 5 = 112.2 with 0 deaths (R26.1 point prediction 112, nearly dead centre)** → **leg 6 = 114.5 at
+28.6% divergence — reaching the summit exactly where v24 fell off the cliff (86.0 at 29%), the project's highest leg
+exam** → leg 7 (β=0) = 83.8 (62% divergence), soft trip → leg 8 (β=0) = 46.9 (92% divergence), hard trip, stopped.
+**Lesson 19 survived review: the end point of annealing is not zero, in the oasis too** — the desert amplifies drift
+but is not its only source; at β=0 the entropy wind still scatters the anchor on fresh levels, and the oasis only
+delays the fall from "collapse within the leg" to "one leg later" (83.8 vs v24's 55.6).
 
-**G3 满 32**:腿 6 = **108.2,死 3,R4 全绿,分歧 41.5%**——项目史最高探针分
-(工人档案 92.0 的 1.18 倍);腿 5 = 99.5 死 1。**配对发射判据:均差 +16.2 达标,
-配对赢仅 11/32 < 18 → 金牌正确扣发。** 机制注记:41.5% 分歧的高方差战略——
-在 11 颗种子上大胜、21 颗上小负,均值涨中位跌;"配对赢 ≥18"条款要求的是普遍
-优势而非期望值优势,金池被它护住了。驱动判词文案 bug(误印 [+2,+4) 档)已在
-PREREG-v26 附录二更正,发射决定本身合规。
+**G3 full 32**: leg 6 = **108.2, 3 deaths, all R4 green, 41.5% divergence** — the project's highest probe score (1.18×
+the worker archive's 92.0); leg 5 = 99.5, 1 death. **Paired launch criterion: mean difference +16.2 met, but only 11/32
+paired wins < 18 → gold correctly withheld.** Mechanism note: a high-variance strategy with 41.5% divergence — big wins
+on 11 seeds, small losses on 21; the mean rises and the median falls. The "paired wins ≥18" clause demands a broad
+advantage, not an expected-value advantage, and it protected the gold pool. A driver verdict-text bug (it printed the
+[+2,+4) tier by mistake) was corrected in PREREG-v26 appendix 2; the launch decision itself was compliant.
 
-**R 线对账**:R26.1 ✓(114.5∈[100,125]);R26.2 ✗(腿 8 击穿;软绊恰 1 次);
-R26.3 ✓(学习窗全程零干层);R26.4 未触发;R26.5 已答:**仍崩**;R26.6 ✗
-(干层锚失配 32% > 15%,只记不裁——干层行为漂移未伤及回报,佐证"干层低风险"
-但推翻"≤15%"预期)。判决:**v26 未达全方位胜,王座 v24-golden 97.2 连任**;
-v26-leg6(108.2)入工作站复赛队列(考题:把 11/32 的碾压变成 18/32 的普遍优势
-——"宽度训练")。
+**R-line check**: R26.1 ✓ (114.5 ∈ [100,125]); R26.2 ✗ (leg 8 broke through; exactly 1 soft trip); R26.3 ✓ (zero
+dry levels in learning windows throughout); R26.4 not triggered; R26.5 answered: **it still collapses**; R26.6 ✗
+(dry-anchor mismatch 32% > 15%, record-only, no verdict — the dry-level behaviour drift did not hurt the return,
+supporting "dry levels are low risk" but overturning the "≤15%" expectation). Verdict: **v26 is not an all-round win;
+the throne stays with v24-golden 97.2**; v26-leg6 (108.2) joins the workstation rematch queue (the exam: turn an 11/32
+rout into a broad 18/32 advantage — "width training").
 
-**v27 分支(总设计师睡前条款执行)**:Otherwise → v24 配方 ×7M(8 腿 ×874,496),
-07:56 发车,发射判据升级为配对标准。值守空窗(01:32-07:54 闹钟因会话中断未触发,
-v27 迟发 5.8h)如实入册。
+**v27 branch (pre-registered branch clause executed)**: Otherwise → the v24 recipe ×7M (8 legs × 874,496), with the
+launch criterion upgraded to the paired standard. The launch was delayed by 5.8 h, recorded as is.
 
-## v27 章:荒漠对照臂(v24 配方重跑,预注册 = PREREG-v26 附录二/三)
+## v27 chapter: the desert control arm (v24 recipe rerun; pre-registered = PREREG-v26 appendices 2/3)
 
-**考题**:总设计师睡前分岔条款的 Otherwise 臂。名义"v24 配方 ×7M",实测账目:
-LEG=874,496(v24 单腿的 0.875×),8 腿共 ≈7M,与 v24 原战役(8×1,001,472≈8M)
-**近等预算重抽签**——所以它真正回答两个问题:① v24 配方的王座成绩可复现吗;
-② v26 的 +16.2 是绿洲配方所致,还是荒漠算力不足所致(受控对照)。
+**The exam**: the Otherwise arm of the pre-registered branch clause. Nominally "the v24 recipe ×7M"; the measured
+accounts: LEG = 874,496 (0.875× a v24 leg), about 7M over 8 legs, against the original v24 campaign
+(8×1,001,472 ≈ 8M) — **a near-equal-budget redraw**, so it really answers two questions: (1) is the v24 recipe's
+throne result reproducible; (2) is v26's +16.2 due to the oasis recipe or to insufficient compute in the desert (a
+controlled comparison).
 
-**八腿实录**:腿 1-4 焊死(93.9×4,分歧 0)→ 腿 5 = 96.0(β=0.03125,分歧 0.1%)
-→ 腿 6 = 94.0 死 0(β=0.015625,**分歧仅 9.1%**——同 β 档 v24 已解焊 29%(86.0
-软绊)、v26 已 28.6%(114.5 登顶):同配方重抽,解焊时机方差巨大,单跑不可归因)
-→ **腿 7(β=0,tail-cut 500k)= 106.9 死 0(分歧 40.9%)——全案首条撒手不崩反峰
-的腿** → 腿 8(β=0)= 58.4 死 3(分歧 86.6%)硬绊停机(实训 6.25M)。
+**The eight legs**: legs 1-4 welded (93.9×4, divergence 0) → leg 5 = 96.0 (β=0.03125, 0.1% divergence) → leg 6 = 94.0
+with 0 deaths (β=0.015625, **only 9.1% divergence** — at the same β tier v24 had already unwelded to 29% (86.0, soft
+trip) and v26 to 28.6% (114.5, summit): the same recipe redrawn shows huge variance in when it unwelds, so a single run
+cannot be attributed) → **leg 7 (β=0, tail-cut 500k) = 106.9 with 0 deaths (40.9% divergence) — the first leg in the
+whole case that let go without collapsing and peaked instead** → leg 8 (β=0) = 58.4 with 3 deaths (86.6% divergence),
+hard trip, stopped (6.25M actually trained).
 
-**收割-侵蚀两点采样(事后假说,预注册未预测;腿 8 为其首次预测检验)**:
-贴锚撒手(9.1%)= 收割 +12.9;离锚续跑(40.9%)= 坠崖 −48.5、分歧爆至 86.6%。
-**致命的不是撒手,是离锚已远时撒手;撒手可收割,不可定居**(教训十九修正案
-素材,待总设计师核准)。另:v24 β=0 尸体 55.6、v27 尸体 58.4——荒漠侵蚀
-引力井 ~55-58 二度复现,进尸检簿。
+**Two-point sampling of harvest vs erosion (a post-hoc hypothesis, not pre-registered; leg 8 was its first predictive
+test)**: letting go close to the anchor (9.1%) = a harvest of +12.9; continuing far from the anchor (40.9%) = a fall of
+−48.5 with divergence exploding to 86.6%. **What kills is not letting go but letting go when already far from the
+anchor; letting go can harvest, but cannot settle** (material for an amendment to lesson 19). Also: the v24 β=0 body at
+55.6 and the v27 body at 58.4 — a desert-erosion gravity well at ~55-58 reproduced a second time, added to the
+post-mortem book.
 
-**G3 满 32**:腿 7 = **93.5 死 1**(R4 全绿:override 1.8%/换层 0.05%/τ̄ 38.7;
-分歧 46.2%)——**半池幻影第四案:−13.4**(前 16 池 106.9,后 16 池推算 ≈80.1),
-断面与 v25(−12.8)同族,v26(−6.3)独善;腿 5 = 92.6 死 3(分歧 0.4%,基本是
-教师本人——荒漠 4.4M 步在广池上只值 +0.6)。**配对发射判据:腿 7 +1.51/赢 12、
-腿 5 +0.62/赢 16——距 +4/18 线甚远,金牌不烧,王座 v24-golden 97.2 三度连任**
-(tail-cut 降格注记随判词:腿 7-8 系 sps 条款砍半短腿)。
+**G3 full 32**: leg 7 = **93.5 with 1 death** (all R4 green: override 1.8% / level change 0.05% / τ̄ 38.7; 46.2%
+divergence) — **the fourth half-pool illusion case: −13.4** (first-16 pool 106.9, last-16 pool inferred ≈80.1), the
+same family of cross-section as v25 (−12.8), with v26 (−6.3) the only one spared; leg 5 = 92.6 with 3 deaths (0.4%
+divergence, essentially the teacher itself — 4.4M desert steps are worth only +0.6 on the wide pool). **Paired launch
+criterion: leg 7 +1.51 / 12 wins, leg 5 +0.62 / 16 wins — far from the +4/18 line; no gold run; the throne stays with
+v24-golden 97.2 for the third time** (the tail-cut demotion note travels with the verdict: legs 7-8 are short legs cut
+in half by the sps clause).
 
-**判决(连任档)与路线结论**:
-① **复现性**:近等预算重抽,v24 当年 110.1→金 97.2 的王座路径未复现——那条
-路径依赖腿 6 软绊冻 β 的意外;本次抽中"迟解焊 + β=0 窄收割"轨迹,广度增益
-仅 +1.5。**荒漠配方是运气依赖型配方**。
-② **对照(本章主答案)**:绿洲 4M(108.2,+16.2)对 荒漠 6.25M(93.5,+1.51)
-——**1.56× 算力买不回配方差距,v26 的优势是配方性的**(入窗分布混杂照
-PREREG-v26 入册偏差②携带)。工作站主线确认:**v26 谱系 + 宽度训练**
-(11/32→18/32);β_min≈0.016 维持;荒漠支线只保留一个研究钩:贴锚收割冲刺
-(β=0 短跑 + 立即截停 + 满池秤)。
+**Verdict (incumbent retained) and route conclusions**:
+(1) **Reproducibility**: under a near-equal-budget redraw, v24's throne path (110.1 → gold 97.2) did not reproduce —
+that path depended on the accident of leg 6's soft trip freezing β; this time the draw was a "late unwelding + narrow
+β=0 harvest" trajectory, with a breadth gain of only +1.5. **The desert recipe is luck-dependent.**
+(2) **Control (the main answer of this chapter)**: oasis 4M (108.2, +16.2) vs desert 6.25M (93.5, +1.51) — **1.56×
+the compute cannot buy back the recipe gap; v26's advantage comes from the recipe** (the window-entry distribution
+confound is carried as recorded bias (2) of PREREG-v26). Workstation main line confirmed: **the v26 lineage + width
+training** (11/32 → 18/32); β_min ≈ 0.016 kept; the desert branch keeps only one research hook: a near-anchor harvest
+sprint (a short β=0 run + an immediate stop + a full-pool evaluation).
 
-**预注册对账**(v27 无独立 R 表,对附录二 + 继承条款):分岔判定 ✓ 先于结果
-注册并如实执行;配对发射判据 ✓ 如实执行(未过);β=0 崩塌预期 ✓(腿 8)/
-**意外**(腿 7 反峰,未注册,以事后假说入册);sps 降档条款 ✓(腿 2 后触发,
-腿 7-8 砍至 500k);墙钟异常 ×2(腿 2 ~1.6h、腿 6 ~4.4h 爬行,机因未明)、
-判决迟到 5h+ 如实入册。
+**Pre-registration check** (v27 has no R table of its own; checked against appendix 2 + inherited clauses): the branch
+decision ✓ registered before the results and executed as is; the paired launch criterion ✓ executed as is (not
+passed); the β=0 collapse expectation ✓ (leg 8) / **surprise** (leg 7's counter-peak, not registered, recorded as a
+post-hoc hypothesis); the sps downgrade clause ✓ (triggered after leg 2, legs 7-8 cut to 500k); wall-clock anomalies
+×2 (leg 2 ~1.6 h and leg 6 ~4.4 h of crawling, machine cause unknown) and a verdict more than 5 h late, recorded as is.
 
-## v28 章:绿洲续航(预注册 docs/prereg/PREREG-v28.md;当日尸检→双面板→夜航 3h13m 收官)
+## v28 chapter: oasis continuation (pre-registered in [PREREG-v28](../prereg/PREREG-v28.md); same-day post-mortem → two review rounds → early finish in 3h13m)
 
-**考题**:v26 宽度病(赢 11/32)= 欠训还是内禀?唯一处方 = v26-leg6 检查点 +
-β 恒 0.015625(永不撒手)+ skip-dry × 8 腿。当日全链:尸检(病灶 = 6 张读图
-误判占亏损 87% + 15 张 −4 分探图摩擦)→ 预注册 → 一审 24 项 → 建驱 → 冒烟
-(两处口径修正:训练分布教师分歧仅 3-6%、干层锚起点 63%)→ 二审 13 项 →
-公证 dea9919 → 18:03 发车。
+**The exam**: is v26's width problem (11/32 wins) under-training or intrinsic? The single prescription = the v26-leg6
+checkpoint + a constant β=0.015625 (never let go) + skip-dry × 8 legs. The same-day chain: post-mortem (lesion = 6
+misread maps accounting for 87% of the losses + 15 maps with −4-point exploration friction) → pre-registration →
+first review, 24 items → driver built → smoke test (two definition fixes: teacher divergence on the training
+distribution only 3-6%, dry-anchor starting point 63%) → second review, 13 items → frozen at a commit → launch.
 
-**三腿实录**:105.5(死0,分歧54.8%,宽度6/16)→ 85.4(29.3%,4/16)→
-90.4(死3,16.1%,5/16)→ **提前收官条款首战首开**(连续两腿 <103.1),
-省 5 腿预算,零崩溃零人工。
+**The three legs**: 105.5 (0 deaths, 54.8% divergence, width 6/16) → 85.4 (29.3%, 4/16) → 90.4 (3 deaths, 16.1%,
+5/16) → **the early-finish clause fired for the first time** (two consecutive legs <103.1), saving the budget of 5
+legs, with zero crashes and zero manual intervention.
 
-**G3 满 32**:腿 1 = **112.4 死 0(项目史高;起点 108.2 + 4.2)**,配对 +20.42,
-**赢 16/32——距发射线 2 票,全项目距金池最近的一次**;后 16 赢 10/16;
-**半池幻影四案(−29.7/−12.8/−6.3/−13.4)之后史上首次反向**:前 16 = 105.5,
-后 16 = 119.3——它在存档最弱的后半池上大杀四方。腿 3 = 72.5 死 4(资格失败)。
-金牌不烧,**王座 v24-golden 97.2 四度连任**。
+**G3 full 32**: leg 1 = **112.4 with 0 deaths (a project high; starting point 108.2 + 4.2)**, paired +20.42, **16/32
+wins — 2 short of the launch line, the closest the whole project has come to the gold pool**; won 10/16 on the last 16;
+**after four half-pool illusion cases (−29.7/−12.8/−6.3/−13.4), the first reversal ever**: first 16 = 105.5, last 16 =
+119.3 — it dominated the weakest half of the archive pool. Leg 3 = 72.5 with 4 deaths (eligibility failed). No gold
+run; **the throne stays with v24-golden 97.2 for the fourth time**.
 
-**判决与划分学费**:驱动按冻结 P 线落 ④ 档("宽度病确认内禀,欠训假说否定")
-——机器正确,叙事折减:④ 档未区分"未达线"与"未动",实况 11→16(+5)系
-真实移动。划分学费入册,下版 P 线补"宽度点估改进"档。
+**Verdict and the cost of the tiers**: the driver landed on tier 4 of the frozen P lines ("the width problem is
+confirmed intrinsic; the under-training hypothesis is rejected") — the machine was right, but the narrative is
+discounted: tier 4 does not distinguish "missed the line" from "did not move", and the actual 11→16 (+5) is a real
+move. The cost of the tier design is recorded, and the next version of the P lines adds a "point-estimate width
+improvement" tier.
 
-**机制发现(事后标签,与 v27 连读成对)**:v27 教"β=0 撒手可收割、不可定居";
-v28 教"β=0.0156 远锚续航可收割、不可久系"——腿 1 收割 +4.2 满 32,腿 2-3
-分歧 54.8→16.1 单调回锚、分数随之坍向教师水平。**教师锚对已远锚的强者是
-慢性毒:整夜积分下 0.0156 的微小拉力足以拆掉驻窗深耕战略。** 锚随王走升格
-工作站首选。
+**Mechanism finding (post-hoc label, read together with v27)**: v27 taught "letting go at β=0 can harvest but cannot
+settle"; v28 teaches "continuing far from the anchor at β=0.0156 can harvest but cannot stay tethered long" — leg 1
+harvested +4.2 on full 32, and in legs 2-3 divergence fell monotonically 54.8→16.1 back toward the anchor, with the
+score collapsing toward the teacher's level. **For a strong model already far from its anchor, the teacher anchor is a
+slow poison: integrated over a full leg, the tiny 0.0156 pull is enough to dismantle the stay-in-window deep-farming
+strategy.** "The anchor follows the throne" is promoted to the first workstation choice.
 
-**R 对账**:R28.1 ✓ 贴带下缘;R28.2 带 ✓ 点 ✗;R28.3 ✗(中位 5,样本折半);
-**R28.4 ✓✓(实 16 对点 17)**;R28.5 未触发;R28.6 动了入册不叙事
-(2 层种子 4→7——总设计师"打穿 4 层"愿望的 record 侧注脚)。
+**R check**: R28.1 ✓ at the lower edge of the band; R28.2 band ✓, point ✗; R28.3 ✗ (median 5, half the sample);
+**R28.4 ✓✓ (actual 16 vs point 17)**; R28.5 not triggered; R28.6 moved, recorded without narrative (level-2 seeds
+4→7 — a record-side footnote to the goal of breaking through to level 4).
 
-**工作站队列重排**:① 锚随王走(教师 = v28-leg1 自身,β_min 二分)——首选;
-② 宽度冲线复赛(16→18 差 2 票,从 v28-leg1 起);③ 课程采样(摩擦图定向);
-④ 下潜目标变体(总设计师亲批后立项)。首战开火的新机件全部按设计工作:
-提前收官绊线、G-绿洲实弹、G-CAL 只记不裁、宽度探针、档案不可变性闸、
-NEEDS_ATTENTION、评测尸检留档。
+**Workstation queue reordered**: (1) the anchor follows the throne (teacher = v28-leg1 itself, bisection on β_min) —
+first choice; (2) a width rematch (16→18, 2 short, starting from v28-leg1); (3) curriculum sampling (targeted at
+friction maps); (4) dive-target variants (to be started once approved). Every new mechanism firing for the first time
+worked as designed: the early-finish tripwire, the live G-oasis gate, G-CAL record-only, the width probe, the
+archive-immutability gate, NEEDS_ATTENTION, and evaluation post-mortem archiving.
 
-## v28 章:绿洲续航(预注册 docs/prereg/PREREG-v28.md;提前收官)
+## v28 chapter: oasis continuation, detailed record (pre-registered in [PREREG-v28](../prereg/PREREG-v28.md); early finish)
 
-**考题**:宽度病(v26 配对赢 11/32)是欠训还是内禀。**处方**:v26-leg6 检查点
-续航 8 腿,β 恒 0.015625 永不撒手,腿考加装宽度探针(对锚前 16,基线 5/16)。
+**The exam**: is the width problem (v26 paired wins 11/32) under-training or intrinsic? **Prescription**: continue
+the v26-leg6 checkpoint for 8 legs with β constant at 0.015625, never letting go, and add a width probe to the leg exams
+(against the first 16 of the anchor, baseline 5/16).
 
-**实录**:腿 1 = 105.5 死 0(分歧 54.8%,宽度 6/16)→ 腿 2 = 85.4(分歧缩回
-29.3%,宽度 4)→ 腿 3 = 90.4 死 3(16.1%,宽度 5)——连续两腿 <103.1,
-提前收官条款首次实弹,进 G3(8 腿预算只用 3 腿,预算保护按设计工作)。
-**腿 2-3 的死法是本章第一新知:教师皮筋长期曝露把冠军拖回脚本(分歧
-55→29→16%),神之一手(战中囤药)被锚逐步没收——撒手即崩(v27),
-久系则缚(v28),锚必须随王走。**
+**Record**: leg 1 = 105.5 with 0 deaths (54.8% divergence, width 6/16) → leg 2 = 85.4 (divergence shrank back to
+29.3%, width 4) → leg 3 = 90.4 with 3 deaths (16.1%, width 5) — two consecutive legs <103.1, the early-finish clause
+fired live for the first time and went to G3 (only 3 of the 8-leg budget used; budget protection worked as designed).
+**How legs 2-3 died is the first new knowledge of this chapter: long exposure to the teacher leash dragged the
+champion back toward the script (divergence 55→29→16%), and the winning move (stockpiling potions mid-fight) was
+confiscated step by step by the anchor — letting go collapses (v27), a long tether binds (v28); the anchor must follow
+the throne.**
 
-**G3 满 32**:腿 1 = **112.4 死 0——项目史高探针分**(对工人存档 92.0 配对
-+20.4;宽度 16/32,后 16 = 10/16;全 35 档唯一 s16<full32 的反向档案,
-真招签名);腿 3 = 72.5 死 4(资格拦截,分歧成分系八向步法——招在腿不在代)。
-**发射:16/32 < 18,差两颗种子,金牌不烧,王座 v24-golden 97.2 四连任。**
-判词按预注册第④档原文落章:**宽度病确认内禀(功效内)——均值超越起点
-108.2 而宽度未达,欠训假说否定,机制处方(锚随王走/课程采样)升格工作站。**
+**G3 full 32**: leg 1 = **112.4 with 0 deaths — the project's highest probe score** (paired +20.4 against the worker
+archive's 92.0; width 16/32, last 16 = 10/16; the only reversed archive among all 35 with s16 < full32, the signature
+of a real skill); leg 3 = 72.5 with 4 deaths (stopped by eligibility; its divergence consists of eight-direction
+footwork — the skill lives in the leg, not the generation). **Launch: 16/32 < 18, two seeds short; no gold run; the
+throne stays with v24-golden 97.2 for the fourth consecutive time.** The verdict is stamped with the original text of
+pre-registered tier 4: **the width problem is confirmed intrinsic (within power) — the mean exceeds the starting point
+of 108.2 but width falls short, the under-training hypothesis is rejected, and the mechanism prescriptions (anchor
+follows the throne / curriculum sampling) are promoted to the workstation.**
 
-**R 对账**:R28.1 ✓(峰 105.5 ∈[105,130],贴下缘,点 118 未中);R28.2 半中
-(全腿 ≥62.8 ✓;<103.1 腿数 =2 带缘 ✓;点预测"收官不触发"✗);R28.3 ✗
-(三腿宽度中位 5 <[6,12]——前 16 宽度纹丝不动);R28.4 ✓(16 ∈[12,22],
-点 17 近);R28.5 未触发;R28.6 **动了,入册不叙事**:满 32 深度分布
-{0:2,1:23,2:7} 对基线 {0:2,1:26,2:4}——2 层图 4→7(后经神之一手考古归因:
-工人新行为使冻结经理的 DIVE 更值,详 docs/forensics/FORENSICS-神之一手.md)。
-**注记**:前 16 宽度探针平(5-6)而满 32 赢数 11→16、后 16 反向碾压
-(119.3 对 73.8)——宽度的增量藏在难半池,半池仪表再次误导,幻影家族添
-"反向案"一例。
+**R check**: R28.1 ✓ (peak 105.5 ∈ [105,130], at the lower edge; point 118 missed); R28.2 half hit (all legs ≥62.8 ✓;
+number of legs <103.1 = 2 at the edge of the band ✓; the point prediction "no early finish" ✗); R28.3 ✗ (median width
+over three legs 5 < [6,12] — first-16 width did not move); R28.4 ✓ (16 ∈ [12,22], close to point 17); R28.5 not
+triggered; R28.6 **moved, recorded without narrative**: full-32 depth distribution {0:2,1:23,2:7} vs baseline
+{0:2,1:26,2:4} — level-2 maps 4→7 (later attributed by the winning-move archaeology: the worker's new behaviour makes
+the frozen manager's DIVE more valuable; details in
+[docs/forensics/FORENSICS-winning-moves.md](../forensics/FORENSICS-winning-moves.md)).
+**Note**: the first-16 width probe stayed flat (5-6) while full-32 wins went 11→16 and the last 16 were won by a wide
+margin (119.3 vs 73.8) — the width increment hides in the hard half-pool; the half-pool gauge misled again, adding a
+"reversed case" to the illusion family.
 
-**教训候选(待总设计师核准)**:教训十九下联——**"皮筋既不能松到零,
-也不能拴一辈子:锚随王走"**(三案合流:v25 裸微调即溃 / v27 撒手即崩 /
-v28 久系则缚)。冠军 v28-leg1 已封档 train/models/v28-worker-leg1
-(sha 2f7bc9dd810956c3),即 v29 经理再教育之班底。
+**Lesson candidate**: the second half of lesson 19 — **"the leash can neither be slackened to zero nor kept on for
+life: the anchor follows the throne"** (three cases converging: v25 bare fine-tuning fell apart / v27 letting go
+collapsed / v28 a long tether binds). Champion v28-leg1 is archived at train/models/v28-worker-leg1 (sha
+2f7bc9dd810956c3, the SHA-256 prefix before the 2026-09-23 re-save), the crew for the v29 manager re-education.
 
-## v29 章:经理再教育(预注册 docs/prereg/PREREG-v29.md;深度经济首考)
+## v29 chapter: manager re-education (pre-registered in [PREREG-v29](../prereg/PREREG-v29.md); first test of the depth economy)
 
-**考题**:深度经济可学吗(神之一手报告:8×N 下楼奖金全谱系兑现率≈0)。
-**处方**:对 v28-leg1 冠军工人重训经理,双臂各 160k 决策(4× v22-H 自身预算),
-锚 = v28-G3-leg1(112.4,现任组装体)。
+**The exam**: can the depth economy be learned (the winning-move report: the 8×N descend bonus is cashed at a rate of
+≈0 across the whole lineage)? **Prescription**: retrain the manager against the v28-leg1 champion worker, 160k
+decisions per arm for two arms (4× v22-H's own budget), anchor = v28-G3-leg1 (112.4, the incumbent assembled agent).
 
-**实录**:G-A0 位级回归 32/32;M-fresh 88.7 分钟出臂——nt_zip 恰好 160,000
-而 status 计 159,988,**面板步数闸 blocker 的实战开火第一例**(不修则夜航死于
-假判);M-explore 105 分钟。满 32:**fresh 140.3 死 3**(depth2 15/32,
-DIVE 0.69/局,奖金兑现 4.25/局)、**explore 149.0 死 8**(depth2 21/32,
-DIVE 1.44,**depth_median 2.0——中位图到 2 层**,兑现 5.75)→ 预注册残余#2
-"高熵莽下楼"原文兑现,**作废线(DIVE>1 ∧ 死>6)毙 explore;递补条款(面板
-blocker②)首夜实弹,fresh 依 D3-2 加冕**;r29_2(explore−fresh)= +8.7。
+**Record**: G-A0 bit-level regression 32/32; M-fresh finished its arm in 88.7 minutes — nt_zip exactly 160,000 while
+status counted 159,988, **the first live firing of the review panel's step-count gate blocker** (unfixed, the
+unattended run would have died on a false verdict); M-explore took 105 minutes. Full 32: **fresh 140.3 with 3 deaths**
+(depth2 15/32, DIVE 0.69/episode, bonus cashed 4.25/episode), **explore 149.0 with 8 deaths** (depth2 21/32, DIVE 1.44,
+**depth_median 2.0 — the median map reaches level 2**, cashed 5.75) → pre-registered residual #2, "high-entropy
+reckless descending", came true word for word; **the void line (DIVE>1 and deaths>6) eliminated explore; the
+substitution clause (review-panel blocker 2) fired live for the first time, and fresh takes the win under D3-2**;
+r29_2 (explore−fresh) = +8.7.
 
-**判决**:配对 +27.86 / 赢 **17/32**(线 18,差一颗种子;宽度线四连拦:
-11→16→17)→ **点估增益档,不烧牌,王座 v24-golden 97.2 五度连任**。
-**深度副判(考题主指标):"深度经济已学"**——半年沉睡的 8×N 条款首次被
-成批认领;Mark-I 按认定线(已学 ∧ 登基)未达,今夜战果 = 机制解锁。
+**Verdict**: paired +27.86 / **17/32** wins (line 18, one seed short; the width line blocked for the fourth time in a
+row: 11→16→17) → **point-estimate gain tier; no gold run; the throne stays with v24-golden 97.2 for the fifth time**.
+**Depth secondary verdict (the exam's main metric): "the depth economy has been learned"** — the 8×N clause, dormant
+for half a year, was claimed in bulk for the first time; Mark-I is not reached under its recognition line (learned and
+taking the throne); this round's result = mechanism unlocked.
 
-**R 对账**:R29.1 ✗ **向上击穿**(140.3 > 带顶 125——预测过怯,如实认领);
-R29.2 ✓(+8.7 ∈[−10,+15]);R29.3 ✓(15,点 12);R29.4 ✓(0.69,点 1.0);
-R29.5 未触发;R29.6 几乎钉靶(4.25 对点 4)。τ̄ 46.6 只记注记(新经理配合
-驻窗工人把窗养得更长,超 R4 带 0.2,记不裁)。
+**R check**: R29.1 ✗ **broke through upward** (140.3 > band top 125 — the prediction was too timid, owned as is);
+R29.2 ✓ (+8.7 ∈ [−10,+15]); R29.3 ✓ (15, point 12); R29.4 ✓ (0.69, point 1.0); R29.5 not triggered; R29.6 nearly dead
+centre (4.25 vs point 4). τ̄ 46.6 recorded as a note only (the new manager, working with the stay-in-window worker,
+keeps windows longer, 0.2 above the R4 band; record-only, no verdict).
 
-**下一颗种子的处方候选(工作站复赛)**:熵配平(0.02 与 0.08 之间寻找
-深度×安全的帕累托点)、深度-安全课程(先学不死再学下楼)、锚随王走工人线
-(课程表②前置)。explore 的 149/死 8 证明天花板还在上面——买它的货币是安全。
+**Prescription candidates for the next seed (workstation rematch)**: entropy balancing (search between 0.02 and 0.08
+for the depth × safety Pareto point), a depth-safety curriculum (learn not to die first, then learn to descend), the
+anchor-follows-the-throne worker line (item 2 of the [course plan](ROADMAP-course-plan.md) first). Explore's 149 with
+8 deaths shows the ceiling is still higher — the currency to buy it with is safety.
 
-## v30 章:工人接力(预注册 docs/prereg/PREREG-v30.md;锚随王走首实弹)
+## v30 chapter: worker relay (pre-registered in [PREREG-v30](../prereg/PREREG-v30.md); first live use of "anchor follows the throne")
 
-**考题**:冠军工人的深层短板可修吗。**处方**:M29-fresh 治下重训 v28-leg1,
-双臂唯一变量 = 皮筋教师(king 静态自锚 / bc 老教师)。总设计师裁量 B 先行
-(法庭档案 docs/archive/COURT-wf_5fa772de.md)。
+**The exam**: can the champion worker's deep-level weakness be fixed? **Prescription**: retrain v28-leg1 under
+M29-fresh; the only variable between the two arms = the leash teacher (king: static self-anchor / bc: the old
+teacher). By design decision, route B went first (the direction review (not published); the decision and its
+anchor-compliance rule are written out in [PREREG-v30](../prereg/PREREG-v30.md) D3).
 
-**实录**:G-KL-W 0/1000、G-A0W 32/32;king:129.8(死6)→135.3(死4),
-训练分布上离自锚仅 ~9% 而离脚本 62%——**皮筋拴住王的身份、放行新学习,
-机制照设计书运转**;bc:138.6 → **73.2 绊线止训**(分歧 54%→21%,
-"久系则缚"第三次独立复现)。驱动 06:32 死于 metrics 字典键 bug(顶层兜底
-如实入册),按重启协议以判决续跑器复用全部干净资产收官(restart 事件在账)。
+**Record**: G-KL-W 0/1000, G-A0W 32/32; king: 129.8 (6 deaths) → 135.3 (4 deaths), only ~9% from its self-anchor on
+the training distribution but 62% from the script — **the leash holds the throne's identity while letting new learning
+through; the mechanism worked as designed**; bc: 138.6 → **73.2, stopped by the tripwire** (divergence 54% → 21%, the
+third independent replication of "a long tether binds"). The driver died on a metrics dict-key bug (the top-level
+fallback recorded it as is), and per the restart protocol a verdict resumer reused all clean assets to finish (the
+restart event is in the ledger).
 
-**满 32 双臂仪表(本章真正的收获)**:
-king = 132.1/死7/dive 0.81/depth2 16/**d2死 7**/a13 **49.2%**/depth中位 1.5;
-bc = 65.9/死1/dive 0.22/depth2 4/a13 **4.7%**。
-**R30.6:king−bc = +66.2,赢 22/32——锚随王走对老锚的首次对照,压倒性。**
-BC 锚两腿内把神之一手(囤药)从 39.7% 抹到 4.7%;自锚不但保住还养大到 49.2%。
+**Full-32 gauges for both arms (the real gain of this chapter)**:
+king = 132.1 / 7 deaths / dive 0.81 / depth2 16 / **d2 deaths 7** / a13 **49.2%** / depth median 1.5;
+bc = 65.9 / 1 death / dive 0.22 / depth2 4 / a13 **4.7%**.
+**R30.6: king−bc = +66.2, 22/32 wins — the first head-to-head of "anchor follows the throne" against the old anchor,
+and an overwhelming one.** Within two legs the BC anchor erased the winning move (stockpiling potions) from 39.7% to
+4.7%; the self-anchor not only kept it but grew it to 49.2%.
 
-**判决**:king 资格拦截(死 7>6,非作废);bc 递补胜者 → 65.9 < 地板 129.1
-→ **"重训未复现起点水平",不发射,王座 97.2 六度连任**;科学主判(按条款
-判于胜者 bc)= 带外/曝露塌缩,**判词携带双臂仪表以正叙事:治疗臂(king)的
-真实读数是 d2死 3→7 恶化**。
+**Verdict**: king stopped by eligibility (7 deaths > 6, not voided); bc is the substitute winner → 65.9 < the floor of
+129.1 → **"retraining did not reproduce the starting level"; no launch; the throne (97.2) stays for the sixth time**;
+the scientific main verdict (judged on the winner, bc, per the clauses) = out of band / exposure collapse, **and the
+verdict carries the gauges of both arms to keep the narrative straight: the treatment arm's (king) real reading is a
+worsening of d2 deaths from 3 to 7**.
 
-**两个答案**:① **锚随王走成立**(工作站起,续训远锚强者一律自锚——教训十九
-下联由观察升格为干预证据);② **FARM 窗重训修不了深层死伤,反而放大**
-(king 保住后勤、潜得更深、死得更多:L1 生存习惯不迁移到 L2 伤害谱,
-0.5 阈脑干 + 零装备罩不住)——**课③装备/④喝药主权/②剥薪重谈从"排队"
-升格为深层生存的关键路径**,C 路线验尸(11/11 死于深层落地后农耕窗)由
-干预复核。R 线对账:R30.6 向上击穿(+66.2 对带顶 +15,点 +5)——锚效应
-连续第三次超出我们的想象力;R30.5 双臂分别击穿带的上下缘(0.492/0.047),
-带以单臂想象注册,双臂现实撕裂之,如实认领。**下一步铁序(法庭+本案证据)**:
-白天 = 课②剥薪规格 + G0 方案设计稿(供总设计师案头审);A 复赛权一次性保留;
-工作站 = 自锚全案 + 环境课程携批文开工。
+**Two answers**: (1) **the anchor follows the throne holds** (from the workstation onward, every continuation of a
+strong model far from its anchor self-anchors — the second half of lesson 19 is promoted from observation to
+interventional evidence); (2) **retraining in FARM windows cannot fix deep-level deaths; it amplifies them** (king kept
+its logistics, dived deeper and died more: L1 survival habits do not transfer to the L2 damage spectrum, and the 0.5
+brainstem threshold plus zero gear cannot cover it) — **course 3 (gear) / course 4 (potion autonomy) / course 2
+(renegotiating wage stripping) are promoted from "queued" to the critical path of deep survival**, and the route-C
+post-mortem (11/11 died in farming windows after landing on a deeper level) is re-checked by intervention. R-line
+check: R30.6 broke through upward (+66.2 vs band top +15, point +5) — the anchor effect exceeded our imagination for
+the third time in a row; R30.5 had the two arms break through the upper and lower edges of the band respectively
+(0.492/0.047) — the band was registered by imagining a single arm, the two-arm reality tore it apart, owned as is.
+**Fixed next steps (from the direction review, not published, plus this case's evidence)**: next = the course 2
+wage-stripping specification + the G0 design draft (for design review); route A keeps a one-time rematch right (the
+clause is in the [course plan](ROADMAP-course-plan.md)); workstation = the full self-anchor case + an environment curriculum, started
+once approved.

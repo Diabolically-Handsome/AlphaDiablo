@@ -1,12 +1,12 @@
-# R20：完成更新但未通过发布验收时的诊断保留
+# R20: keeping a diagnostic when an update completes but fails release acceptance
 
-适用于资源暖启动的 `candidate` 训练。此变更保留原候选验收条件，不改变奖励、战备门、模型输入、学习步骤或普通续训规则。
+Applies to `candidate` training with a resource warm start. This change keeps the original candidate acceptance conditions and does not change the reward, the readiness gate, the model input, the learning steps or the ordinary resumed-training rules.
 
-`train_ppo.py` 现在一次性记录五项原验收结果：完整更新边界、精确目标步数、迁移/继承证据、原 on-policy PG 发布条件、模型结构与行为证据。错误信息会区分“更新没有完整完成”和“更新已完成但未通过发布验收”。
+`train_ppo.py` now records the five original acceptance results in one go: the complete update boundary, the exact target step count, the migration/inheritance evidence, the original on-policy PG release condition, and the model structure and behaviour evidence. Error messages distinguish "the update did not complete" from "the update completed but failed release acceptance".
 
-只有 `learn()` 正常返回、目标精确、更新已消费且继承证据有效时，才可能保留诊断。诊断保存逻辑还核对原逐批回执、连续步数、实际更新计数、空待消费回执、保存前后的对象/元数据一致性，以及内层 checkpoint 的 CRC、有限参数和优化器数据。正在采样、半批更新、身份漂移或坏回执不会因此获得诊断模型。
+A diagnostic can be kept only when `learn()` returns normally, the target is exact, the update has been consumed and the inheritance evidence is valid. The diagnostic saving logic also checks the original per-batch receipts, consecutive step counts, the actual update count, an empty pending-receipt queue, object/metadata consistency before and after saving, and the inner checkpoint's CRC, finite parameters and optimizer data. Sampling in progress, a half-batch update, identity drift or bad receipts never yield a diagnostic model.
 
-符合上述完整性要求、但 PG 或模型结构验收未通过的状态，可保存为独占的 `training_diagnostic.zip`。外层成员仅为：
+A state that meets these integrity requirements but fails the PG or model-structure acceptance can be saved as an exclusive `training_diagnostic.zip`. Its only outer members are:
 
 ```text
 manifest.json
@@ -15,12 +15,12 @@ receipts.json
 checkpoint/model.sb3.zip
 ```
 
-外层没有普通 SB3 checkpoint 所需的顶层 `data` 与 `.pth`，因此当前普通续训及评测读取器会拒绝整个诊断包。包内明确标记 `DIAGNOSTIC_ONLY_NOT_PUBLISHABLE`，绑定实现、计数、失败报告和内层模型哈希。它不是认证模型，也不表示可以精确续训；显式解包后的内层仍是模型数据，后续分析应使用单独登记的诊断流程。
+The outer archive lacks the top-level `data` and `.pth` an ordinary SB3 checkpoint needs, so the current ordinary resume and evaluation readers reject the whole diagnostic package. The package is explicitly marked `DIAGNOSTIC_ONLY_NOT_PUBLISHABLE` and binds the implementation, counters, failure report and inner model hash. It is not a certified model and does not mean exact resumed training is possible; the inner part, once explicitly unpacked, is still model data, and later analysis should use a separately registered diagnostic process.
 
-序列化只在内存中形成内层模型，磁盘临时文件也使用外层格式。最终文件采用无覆盖发布；已有同名文件不被替换。保存失败单独写入 `status.json` 的 `training_diagnostic`，原始验收异常与非零退出保留，callback、环境及运行锁继续清理。正常候选仍走原保存路径，`model_sha256` 不会被诊断哈希冒充。
+Serialization forms the inner model only in memory, and the temporary file on disk also uses the outer format. The final file is published without overwriting; an existing file of the same name is not replaced. A saving failure is written separately to `training_diagnostic` in `status.json`; the original acceptance exception and the non-zero exit are kept, and the callback, environments and run lock are still cleaned up. Normal candidates still take the original saving path, and `model_sha256` is never impersonated by the diagnostic hash.
 
-72 项针对性检查通过，覆盖新旧验收布尔结果一致性、主流程成功/拒收/异常清理、真实 SB3 序列化路径、普通读取器拒收、非有限数据、元数据不一致、独占文件及失败回撤。测试使用合成对象或数据，没有新增 Diablo 训练、游戏运行或正式初始化。
+72 targeted checks passed, covering consistency of the old and new acceptance booleans, main-flow success/rejection/exception cleanup, the real SB3 serialization path, rejection by ordinary readers, non-finite data, metadata mismatches, exclusive files and failure rollback. The tests use synthetic objects or data; no new Diablo training, game run or formal initialization was added.
 
-本次修复无法恢复此前进程退出时已丢失的 8192 步权重。上一轮第一组学习预算已用完，第二组未启动；本文件不授权重跑或增加预算。该诊断格式在未来符合条件的拒收运行中保留终点权重、优化器状态和回执，不包含完整 rollout、每次 minibatch 顺序或每一步的梯度轨迹，因此不能据此逐步分解 entropy、裁剪和 Adam 对更新方向的贡献。
+This fix cannot recover the 8,192-step weights already lost when the earlier process exited. The previous round's first learning budget has been used up and the second group was not started; this file does not authorize a rerun or a larger budget. In future qualifying rejected runs, the diagnostic format keeps the end-point weights, optimizer state and receipts; it does not contain the complete rollout, the order of each minibatch or the per-step gradient trajectory, so it cannot be used to decompose the contributions of entropy, clipping and Adam to the update direction step by step.
 
-PG 参考方向是局部审计量，不等同长期游戏收益方向；验收失败不能证明游戏表现下降。
+The PG reference direction is a local audit quantity, not the direction of long-term game return; failing acceptance does not prove that game performance got worse.

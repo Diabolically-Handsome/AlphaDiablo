@@ -1,25 +1,25 @@
-"""v24-KL「皮筋」:LeashedMaskablePPO(docs/prereg/PREREG-v24.md D1/D4)。
+"""v24-KL "leash": LeashedMaskablePPO (docs/prereg/PREREG-v24.md D1/D4).
 
-总损失 = PPO 原三项 + β · CE(π_T, π_θ),其中:
-  - 教师 π_T = 冻结 BC 网(train/runs/bc-worker/policy_sd.pt,G1 证与脚本零分歧);
-  - 教师 logits 先按逐样本 rollout 掩码置 -1e8 再 softmax(掩位精确下溢为 0,
-    0×(-1e8)=0,无 NaN——G-KL-A 断言钉死此性质);
-  - ∂CE/∂z = π_θ − π_T,逐分量有界 [−1,1]:弹簧,不是焊点(审计实测教师
-    top-1 中位 0.99971 但 logits 有界,反向 KL 因与熵奖励互殴被判死,见预注册)。
-  - β=0 时整段被 if 跳过,train() 与原版逐位等价(G-KL-B 受控对照钉死)。
+Total loss = the three original PPO terms + β · CE(π_T, π_θ), where:
+  - teacher π_T = frozen BC net (train/runs/bc-worker/policy_sd.pt, G1 shows zero disagreement with the script);
+  - teacher logits are first set to -1e8 by the per-sample rollout mask, then softmaxed (masked entries underflow exactly to 0,
+    0×(-1e8)=0, no NaN -- the G-KL-A assertion pins this property);
+  - ∂CE/∂z = π_θ − π_T, bounded per component in [−1,1]: a spring, not a weld (the audit measured teacher
+    top-1 median 0.99971 but bounded logits; reverse KL was ruled out because it fights the entropy bonus, see the pre-registration).
+  - with β=0 the whole block is skipped by an if, and train() is bit-for-bit equivalent to the original (pinned by the G-KL-B controlled comparison).
 
-train() 系 sb3_contrib 2.x ppo_mask.py 的诚实复写(上游无损失 hook),
-插入点仅一处;上游若升版须重新比对(预注册 D4 入册警示)。
-E3(内容案 ④乙,PREREG-内容案-课⑤x④乙):第二插入段——辅助示范 CE
-λ_bc·(−log π_θ(y_demo|s_demo)),正样本注入之字面实现(无教师全分布项,
-不与 KING 锚在其余动作上对拉);锚教师/β=0.015625/锚公式(上段皮筋)零触碰
-(圈 3/圈 5 双引)。λ_bc=0 或示范池未挂载时整段不进图(不加载不采样,
-G0-2a 张量级恒等先决);demo minibatch 用专用 rng 流(播种同 E1③ 形制)。
-标定探针(G-CAL):到达 --calib-probes 指定全局步时,对首个 minibatch 用
-autograd.grad 测 g_ce/g_pg 与 teacher_diverge,写 calib.jsonl;
-diverge>20% 置 _calib_tripped,由哨兵回调终止本腿(驱动裁决重标定)。
-v28:calib_record_only=True 时探针只记不裁(tripped 位照记入 jsonl,旗不武装
-——续航起点分歧 41.5%,20% 阈值对定居点失义;面板 blocker 修正)。
+train() is an honest rewrite of sb3_contrib 2.x ppo_mask.py (upstream has no loss hook),
+with a single insertion point; if upstream bumps its version it must be re-compared (warning filed in pre-registration D4).
+E3 (content case 4B, docs/prereg/PREREG-v33-content-case.md): second insertion block -- auxiliary demo CE
+λ_bc·(−log π_θ(y_demo|s_demo)), a literal implementation of positive-sample injection (no full teacher distribution term,
+so it does not pull against the KING anchor on the other actions); the anchor teacher/β=0.015625/anchor formula (the leash above) are untouched
+(cited by both review rounds 3 and 5). With λ_bc=0 or no demo pool mounted, the whole block stays out of the graph (no loading, no sampling,
+the G0-2a tensor-level identity prerequisite); demo minibatches use a dedicated rng stream (seeded like E1-3).
+Calibration probe (G-CAL): on reaching a global step given by --calib-probes, uses autograd.grad on the first minibatch
+to measure g_ce/g_pg and teacher_diverge and writes calib.jsonl;
+diverge>20% sets _calib_tripped, and the sentinel callback ends the leg (the driver decides on recalibration).
+v28: with calib_record_only=True the probe is record-only, no verdict (the tripped bit is still written to jsonl, the flag is not armed
+-- the continuation starts at 41.5% divergence, where the 20% threshold is meaningless; review-panel blocker fix).
 """
 from __future__ import annotations
 
@@ -87,9 +87,9 @@ _WORKER_COMBAT_EFFECT_REASONS = frozenset({
     "target_removed",
     "kill",
 })
-# R17.0 修正案一(合议庭更正二.2):WorkerWindowEnv 终局 policy_reward 的
-# 三个新法分量回执键(缺省 0.0;求和顺序 = worker_env 组装点顺序:
-# wage + timeout + shaping + vest + hp_econ)。
+# R17.0 amendment 1 (panel correction 2.2): receipt keys of the three new-rule components of the WorkerWindowEnv
+# terminal policy_reward (default 0.0; summation order = worker_env assembly order:
+# wage + timeout + shaping + vest + hp_econ).
 _WORKER_POLICY_REWARD_COMPONENT_FIELDS = (
     "worker_depth_shaping_reward",
     "worker_descend_escrow_vest",
@@ -206,10 +206,10 @@ ASYMMETRIC_WORKER_CONTEXT_INITIALIZER = (
 
 def _unique_module_parameters(module: th.nn.Module, label: str) -> tuple:
     if not isinstance(module, th.nn.Module):
-        raise RuntimeError(f"actor/critic partition 缺少 {label} module")
+        raise RuntimeError(f"actor/critic partition is missing the {label} module")
     parameters = tuple(module.parameters())
     if len({id(parameter) for parameter in parameters}) != len(parameters):
-        raise RuntimeError(f"actor/critic partition 的 {label} 含重复参数")
+        raise RuntimeError(f"actor/critic partition {label} contains duplicate parameters")
     return parameters
 
 
@@ -225,10 +225,10 @@ def strict_actor_critic_parameter_partition(policy, optimizer=None) -> dict:
     missing = [name for name in required if not hasattr(policy, name)]
     if missing:
         raise RuntimeError(
-            f"actor/critic partition 缺少 policy modules:{missing}")
+            f"actor/critic partition is missing policy modules: {missing}")
     mlp = policy.mlp_extractor
     if not hasattr(mlp, "policy_net") or not hasattr(mlp, "value_net"):
-        raise RuntimeError("actor/critic partition 要求独立 policy/value MLP")
+        raise RuntimeError("actor/critic partition requires separate policy/value MLPs")
 
     actor_modules = [mlp.policy_net, policy.action_net]
     context_adapter = getattr(mlp, "context_adapter", None)
@@ -241,7 +241,7 @@ def strict_actor_critic_parameter_partition(policy, optimizer=None) -> dict:
             extractor, "shared features_extractor")
         if shared:
             raise RuntimeError(
-                "separate actor/critic clip 禁止 trainable shared "
+                "separate actor/critic clip forbids a trainable shared "
                 "features_extractor")
     else:
         actor_modules.append(getattr(policy, "pi_features_extractor", None))
@@ -259,7 +259,7 @@ def strict_actor_critic_parameter_partition(policy, optimizer=None) -> dict:
                 seen.add(identity)
                 ordered.append(parameter)
         if not ordered:
-            raise RuntimeError(f"actor/critic partition 的 {role} 为空")
+            raise RuntimeError(f"actor/critic partition {role} is empty")
         return tuple(ordered), seen
 
     actor, actor_ids = collect(actor_modules, "actor")
@@ -267,12 +267,12 @@ def strict_actor_critic_parameter_partition(policy, optimizer=None) -> dict:
     overlap = actor_ids.intersection(critic_ids)
     if overlap:
         raise RuntimeError(
-            "actor/critic partition 存在跨分支共享参数")
+            "actor/critic partition has parameters shared across branches")
 
     policy_parameters = tuple(policy.parameters())
     policy_ids = [id(parameter) for parameter in policy_parameters]
     if len(set(policy_ids)) != len(policy_ids):
-        raise RuntimeError("policy.parameters() 含重复参数")
+        raise RuntimeError("policy.parameters() contains duplicate parameters")
     classified = actor_ids.union(critic_ids)
     if classified != set(policy_ids):
         named = {
@@ -287,7 +287,7 @@ def strict_actor_critic_parameter_partition(policy, optimizer=None) -> dict:
             identity for identity in classified.difference(policy_ids)
         )
         raise RuntimeError(
-            "actor/critic partition 未精确覆盖 policy 参数:"
+            "actor/critic partition does not exactly cover the policy parameters: "
             f"missing={missing_names},foreign={foreign}")
 
     if optimizer is not None:
@@ -298,10 +298,10 @@ def strict_actor_critic_parameter_partition(policy, optimizer=None) -> dict:
         ]
         optimized_ids = [id(parameter) for parameter in optimized]
         if len(set(optimized_ids)) != len(optimized_ids):
-            raise RuntimeError("policy optimizer 含重复参数")
+            raise RuntimeError("policy optimizer contains duplicate parameters")
         if set(optimized_ids) != set(policy_ids):
             raise RuntimeError(
-                "policy optimizer 参数集合与 policy.parameters() 不一致")
+                "policy optimizer parameter set disagrees with policy.parameters()")
     return {"actor": actor, "critic": critic}
 
 
@@ -313,7 +313,7 @@ def _parameter_group_sha256(policy, parameters) -> str:
         if id(parameter) in selected
     ]
     if {id(parameter) for _, parameter in named} != selected:
-        raise RuntimeError("参数摘要无法解析完整 named_parameters")
+        raise RuntimeError("parameter digest cannot resolve the full named_parameters")
     digest = hashlib.sha256()
     for name, parameter in sorted(named):
         tensor = parameter.detach().cpu().contiguous()
@@ -348,12 +348,12 @@ def _finite_gradient_norm(parameters) -> float:
         return 0.0
     if not all(bool(gradient.isfinite().all().item())
                for gradient in live):
-        raise RuntimeError("actor/critic gradient 含 NaN/Inf")
+        raise RuntimeError("actor/critic gradient contains NaN/Inf")
     norm = float(th.sqrt(th.stack([
         gradient.float().pow(2).sum() for gradient in live
     ]).sum()).detach().cpu())
     if not math.isfinite(norm):
-        raise RuntimeError("actor/critic gradient norm 非有限")
+        raise RuntimeError("actor/critic gradient norm is not finite")
     return norm
 
 
@@ -380,13 +380,13 @@ def _finite_autograd_gradient_norm(
         return 0.0
     if not all(bool(th.isfinite(gradient).all().item())
                for gradient in live):
-        raise RuntimeError("formal policy-gradient audit 含 NaN/Inf")
+        raise RuntimeError("formal policy-gradient audit contains NaN/Inf")
     norm = float(th.sqrt(th.stack([
         gradient.detach().double().pow(2).sum()
         for gradient in live
     ]).sum()).cpu())
     if not math.isfinite(norm):
-        raise RuntimeError("formal policy-gradient audit norm 非有限")
+        raise RuntimeError("formal policy-gradient audit norm is not finite")
     return norm
 
 
@@ -408,7 +408,7 @@ def _finite_autograd_gradients(
         or bool(th.isfinite(gradient).all().item())
         for gradient in gradients
     ):
-        raise RuntimeError("formal context-gradient audit 含 NaN/Inf")
+        raise RuntimeError("formal context-gradient audit contains NaN/Inf")
     return tuple(
         None if gradient is None else gradient.detach()
         for gradient in gradients
@@ -425,7 +425,7 @@ def _finite_gradient_tuple_norm(gradients) -> float:
         for gradient in live
     ]).sum()).cpu())
     if not math.isfinite(value):
-        raise RuntimeError("formal context-gradient norm 非有限")
+        raise RuntimeError("formal context-gradient norm is not finite")
     return value
 
 
@@ -433,17 +433,17 @@ def _finite_gradient_tuple_dot(left, right) -> float:
     left = tuple(left)
     right = tuple(right)
     if len(left) != len(right):
-        raise RuntimeError("formal context-gradient dot 形状不闭合")
+        raise RuntimeError("formal context-gradient dot shape does not close")
     value = 0.0
     for lhs, rhs in zip(left, right):
         if lhs is None or rhs is None:
             continue
         if lhs.shape != rhs.shape:
             raise RuntimeError(
-                "formal context-gradient dot 张量形状漂移")
+                "formal context-gradient dot tensor shape drifted")
         value += float((lhs.double() * rhs.double()).sum().cpu())
     if not math.isfinite(value):
-        raise RuntimeError("formal context-gradient dot 非有限")
+        raise RuntimeError("formal context-gradient dot is not finite")
     return value
 
 
@@ -454,7 +454,7 @@ def _select_parameter_gradients(
     gradients = tuple(gradients)
     selected_parameters = tuple(selected_parameters)
     if len(parameters) != len(gradients):
-        raise RuntimeError("formal context parameter/gradient 数量不闭合")
+        raise RuntimeError("formal context parameter/gradient counts do not close")
     by_id = {
         id(parameter): gradient
         for parameter, gradient in zip(parameters, gradients, strict=True)
@@ -464,7 +464,7 @@ def _select_parameter_gradients(
         or any(id(parameter) not in by_id
                for parameter in selected_parameters)
     ):
-        raise RuntimeError("formal context semantic group 未闭合")
+        raise RuntimeError("formal context semantic group not closed")
     return tuple(by_id[id(parameter)] for parameter in selected_parameters)
 
 
@@ -1132,9 +1132,9 @@ def validate_worker_onpolicy_pg_receipt(
             )
             if timeout_samples == 0
             else (
-                # R16 修宪(C8)零罚金法域:超时样本可携 (0,0,0) 分账,
-                # 汇总只要求非正;旧法逐行严格负性由 _update_info_buffer
-                # 的 death-equivalent 分支继续执法(法域随 info 下传)。
+                # R16 amendment (C8) zero-penalty regime: timeout samples may carry a (0,0,0) split,
+                # the sum only needs to be non-positive; the old rule's strict per-row negativity is still
+                # enforced by the death-equivalent branch of _update_info_buffer (the regime is passed down with info).
                 timeout_base_sum <= 0.0
                 and timeout_additional_sum <= 0.0
                 and timeout_total_sum <= 0.0
@@ -1172,8 +1172,8 @@ def validate_worker_onpolicy_pg_receipt(
         and encoder_measurements == optimizer_steps
         and interaction_measurements == optimizer_steps
         and distill_measurements == optimizer_steps
-        # A4 修正案(2026-07-27 批系):target_kl 早停的 rollout 以记录旗
-        # 豁免至 ≥1(活性);未早停仍要求满一 epoch(≥8)。
+        # Amendment A4 (approved 2026-07-27): rollouts that stopped early on target_kl are exempted by a record flag
+        # down to >=1 (liveness); without early stopping a full epoch (>=8) is still required.
         and receipt.get("kl_early_stopped") in (True, False)
         and optimizer_steps >= (
             1 if receipt["kl_early_stopped"] is True
@@ -1284,7 +1284,7 @@ def clip_actor_critic_gradients(
     if (not isinstance(max_grad_norm, (int, float))
             or not math.isfinite(float(max_grad_norm))
             or float(max_grad_norm) <= 0.0):
-        raise ValueError("max_grad_norm 必须是有限正数")
+        raise ValueError("max_grad_norm must be a finite positive number")
     partition = strict_actor_critic_parameter_partition(
         policy, optimizer=optimizer)
     actor = partition["actor"]
@@ -1309,12 +1309,12 @@ def clip_actor_critic_gradients(
         or len(root) + len(context) != len(actor)
     ):
         raise RuntimeError(
-            "actor root/context gradient 分组不闭合")
+            "actor root/context gradient groups do not close")
     root_counterfactual_norm = _finite_gradient_norm(root)
     context_counterfactual_norm = _finite_gradient_norm(context)
     if separate_root_context and not context:
         raise RuntimeError(
-            "root/context 分组裁剪要求 nonlinear context adapter")
+            "root/context group clipping requires a nonlinear context adapter")
     if actor_frozen:
         for parameter in actor:
             parameter.grad = None
@@ -1367,7 +1367,7 @@ def clip_actor_critic_gradients(
             context_counterfactual_norm, root_norm, context_norm,
             actor_norm, critic_norm, root_clip_scale,
             context_clip_scale)):
-        raise RuntimeError("actor/critic pre-clip norm 非有限")
+        raise RuntimeError("actor/critic pre-clip norm is not finite")
     actor_clip_scale = (
         min(root_clip_scale, context_clip_scale)
         if context else root_clip_scale
@@ -1458,12 +1458,12 @@ def _a12_mixture_logits(
     zero regardless of the learned gate.
     """
     if raw_logits.ndim != 2 or observations.ndim != 2:
-        raise ValueError("a12 mixture 只接受二维 batch logits/observations")
+        raise ValueError("a12 mixture only accepts 2-D batch logits/observations")
     if raw_logits.shape[0] != observations.shape[0] \
             or not 0 <= int(action) < raw_logits.shape[1]:
-        raise ValueError("a12 mixture batch/action 形状异常")
+        raise ValueError("a12 mixture batch/action shape invalid")
     if observations.shape[1] <= _LEGACY_EXHAUSTED_FEATURE:
-        raise ValueError("a12 mixture 要求 298 维 worker observation")
+        raise ValueError("a12 mixture requires the 298-dim worker observation")
     if action_masks is None:
         masks = th.ones_like(raw_logits, dtype=th.bool)
     else:
@@ -1472,7 +1472,7 @@ def _a12_mixture_logits(
     non12 = masks.clone()
     non12[:, int(action)] = False
     if not bool(non12.any(dim=-1).all().item()):
-        raise ValueError("a12 mixture 每行至少需要一个合法非12动作")
+        raise ValueError("a12 mixture needs at least one legal non-12 action per row")
 
     hp = observations[:, 0]
     latch = observations[:, _LEGACY_EXHAUSTED_FEATURE]
@@ -1489,7 +1489,7 @@ def _a12_mixture_logits(
         or not np.isfinite(float(probability_max))
         or not 0.0 < float(probability_min) < float(probability_max) < 1.0
     ):
-        raise ValueError("a12 mixture 概率上下界非法")
+        raise ValueError("a12 mixture probability bounds invalid")
     gate = gate_logits.to(
         device=raw_logits.device, dtype=raw_logits.dtype)
     if gate.ndim == 0:
@@ -1498,7 +1498,7 @@ def _a12_mixture_logits(
         gate = gate.reshape(-1)
     if gate.shape != (raw_logits.shape[0],) \
             or not bool(th.isfinite(gate).all().item()):
-        raise ValueError("a12 mixture gate logits 形状/有限性异常")
+        raise ValueError("a12 mixture gate logits shape/finiteness invalid")
     probability = (
         float(probability_min)
         + (float(probability_max) - float(probability_min))
@@ -1569,7 +1569,7 @@ class _ExactMixtureCategoricalDistribution(
         else:
             exact = exact_log_probs.reshape(-1, self.action_dim)
             if exact.shape != self.distribution.logits.shape:
-                raise ValueError("exact mixture log-prob 形状异常")
+                raise ValueError("exact mixture log-prob shape invalid")
             self._original_exact_log_probs = exact
             self._refresh_exact_values(exact)
         return self
@@ -1596,7 +1596,7 @@ class _ExactMixtureCategoricalDistribution(
             return super().log_prob(actions)
         indices = actions.long().reshape(-1, 1)
         if indices.shape[0] != exact.shape[0]:
-            raise ValueError("exact mixture action batch 形状异常")
+            raise ValueError("exact mixture action batch shape invalid")
         return exact.gather(1, indices).reshape(-1)
 
     def entropy(self) -> th.Tensor:
@@ -1633,7 +1633,7 @@ def _wire_segment(name: str):
         return _DUAL_WORKER_SEGMENTS[name]
     except KeyError as exc:
         raise RuntimeError(
-            f"structured Worker encoder 缺 wire segment:{name}") from exc
+            f"structured Worker encoder is missing wire segment: {name}") from exc
 
 
 class _CenteredTanhLinear(th.nn.Module):
@@ -1694,7 +1694,7 @@ def _masked_row_summaries(
         or present.shape != encoded.shape[:2]
         or present.dtype != th.bool
     ):
-        raise ValueError("structured row summary 形状异常")
+        raise ValueError("structured row summary shape invalid")
     count = present.sum(dim=1, keepdim=True)
     weights = present.to(encoded.dtype).unsqueeze(-1)
     mean = (encoded * weights).sum(dim=1) / count.clamp_min(1).to(
@@ -1722,7 +1722,7 @@ class _StructuredWorkerContextEncoder(th.nn.Module):
                 "diablogym-dual-worker-layout/")
             or DUAL_WORKER_LAYOUT.banned_rng_tag_violations
         ):
-            raise RuntimeError("structured Worker encoder 未认证当前 wire layout")
+            raise RuntimeError("structured Worker encoder has not certified the current wire layout")
         self.include_p_skip = bool(include_p_skip)
         scalar_candidates = (
             "current_v4_base",
@@ -1746,7 +1746,7 @@ class _StructuredWorkerContextEncoder(th.nn.Module):
         ):
             scalar_dim -= 1
         if scalar_dim <= 0:
-            raise RuntimeError("structured scalar wire 无可用字段")
+            raise RuntimeError("structured scalar wire has no usable fields")
         self.scalar_encoder = _CenteredTanhLinear(
             scalar_dim, 32, device=device)
 
@@ -1793,7 +1793,7 @@ class _StructuredWorkerContextEncoder(th.nn.Module):
             * CONTROLLER_SNAPSHOT_EQUIPPED_FIELDS
             != _wire_segment("controller_combat").width
         ):
-            raise RuntimeError("structured combat wire 维度未闭合")
+            raise RuntimeError("structured combat wire dimensions do not close")
         self._combat_global_dim = combat_global_dim
         self.combat_projection = _CenteredTanhLinear(
             combat_global_dim, 16, device=device)
@@ -1816,12 +1816,12 @@ class _StructuredWorkerContextEncoder(th.nn.Module):
                 CONTROLLER_SNAPSHOT_EQUIPPED_ROW_FIELDS.index("present"))
         except ValueError as exc:
             raise RuntimeError(
-                "structured entity wire 缺 presence/blocked 字段") from exc
+                "structured entity wire is missing presence/blocked fields") from exc
         self._p_skip_index = int(
             DUAL_WORKER_LAYOUT.p_skip_semantic_index)
         wrapper = _wire_segment("wrapper_scalars")
         if not wrapper.start <= self._p_skip_index < wrapper.stop:
-            raise RuntimeError("p_skip 未位于 wrapper scalar segment")
+            raise RuntimeError("p_skip is not in the wrapper scalar segment")
         if not self.include_p_skip:
             for name in (
                 "controller_map",
@@ -1835,7 +1835,7 @@ class _StructuredWorkerContextEncoder(th.nn.Module):
             ):
                 if "actor" not in _wire_segment(name).semantic_tags:
                     raise RuntimeError(
-                        "structured actor encoder 误接 critic-only segment:"
+                        "structured actor encoder wrongly wired to a critic-only segment: "
                         f"{name}")
 
     @staticmethod
@@ -1867,7 +1867,7 @@ class _StructuredWorkerContextEncoder(th.nn.Module):
             or tuple(wire.shape[1:]) != (
                 len(CONTROLLER_SNAPSHOT_MAP_CHANNELS), 25, 25)
         ):
-            raise ValueError("structured map wire 形状异常")
+            raise ValueError("structured map wire shape invalid")
         softwall_index = CONTROLLER_SNAPSHOT_MAP_CHANNELS.index(
             "softwall_kind")
         # The wire keeps the exact 3-bit code in float32 as code/7 so every
@@ -1886,7 +1886,7 @@ class _StructuredWorkerContextEncoder(th.nn.Module):
             wire[:, softwall_index + 1:],
         ), dim=1)
         if decoded.shape[1:] != (9, 25, 25):
-            raise RuntimeError("structured map decode 形状漂移")
+            raise RuntimeError("structured map decode shape drifted")
         return decoded
 
     def _map_summary(self, features: th.Tensor) -> th.Tensor:
@@ -1913,7 +1913,7 @@ class _StructuredWorkerContextEncoder(th.nn.Module):
         )
         overflow = values[:, row_width:]
         if overflow.shape[1] != CONTROLLER_SNAPSHOT_MONSTER_OVERFLOW_DIM:
-            raise RuntimeError("structured monster overflow 形状漂移")
+            raise RuntimeError("structured monster overflow shape drifted")
         encoded = self.monster_projection_2(
             self.monster_projection_1(rows))
         present = rows[:, :, self._monster_present_index] > 0.5
@@ -1958,7 +1958,7 @@ class _StructuredWorkerContextEncoder(th.nn.Module):
         )
         overflow = values[:, row_width:]
         if overflow.shape[1] != CONTROLLER_SNAPSHOT_MISSILE_OVERFLOW_DIM:
-            raise RuntimeError("structured missile overflow 形状漂移")
+            raise RuntimeError("structured missile overflow shape drifted")
         encoded = self.missile_projection_2(
             self.missile_projection_1(rows))
         present = rows[:, :, self._missile_present_index] > 0.5
@@ -1993,7 +1993,7 @@ class _StructuredWorkerContextEncoder(th.nn.Module):
             features.ndim != 2
             or features.shape[1] != DUAL_WORKER_LAYOUT.observation_dim
         ):
-            raise ValueError("structured Worker encoder 输入形状异常")
+            raise ValueError("structured Worker encoder input shape invalid")
         blocks = (
             self.scalar_encoder(self._scalar_values(features)),
             self._map_summary(features),
@@ -2011,7 +2011,7 @@ class _StructuredWorkerContextEncoder(th.nn.Module):
         summary = th.cat(blocks, dim=1)
         if summary.shape[1] != _STRUCTURED_CONTEXT_SUMMARY_DIM:
             raise RuntimeError(
-                "structured Worker context summary 维度漂移:"
+                "structured Worker context summary dimension drifted: "
                 f"{summary.shape[1]}")
         return summary
 
@@ -2027,13 +2027,13 @@ class NonlinearFusedContextAdapter(th.nn.Module):
             observation_dim != DUAL_WORKER_LAYOUT.observation_dim
             or latent_dim <= 0
         ):
-            raise ValueError("structured context adapter 维度非法")
+            raise ValueError("structured context adapter dimensions invalid")
         excluded = tuple(
             int(index) for index in excluded_observation_features)
         if excluded != (
                 int(DUAL_WORKER_LAYOUT.p_skip_semantic_index),):
             raise ValueError(
-                "structured actor 只认证按 wire semantic 排除 p_skip")
+                "structured actor is only certified to exclude p_skip by wire semantics")
         self._excluded_observation_features = excluded
         self.encoder = _StructuredWorkerContextEncoder(
             include_p_skip=False, device=device)
@@ -2099,7 +2099,7 @@ class NonlinearFusedContextAdapter(th.nn.Module):
     def _validate_parameter_groups(self) -> None:
         groups = self.named_parameter_groups()
         if tuple(groups) != ("encoder", "interaction", "output"):
-            raise RuntimeError("structured context parameter group 顺序漂移")
+            raise RuntimeError("structured context parameter group order drifted")
         flattened = tuple(
             parameter
             for values in groups.values()
@@ -2114,7 +2114,7 @@ class NonlinearFusedContextAdapter(th.nn.Module):
             != {id(parameter) for parameter in parameters}
         ):
             raise RuntimeError(
-                "structured context parameter groups 未精确覆盖")
+                "structured context parameter groups do not cover exactly")
 
     def initialize_canonical(self) -> None:
         """Initialize hidden modules from a private RNG and output at zero."""
@@ -2156,7 +2156,7 @@ class NonlinearFusedContextAdapter(th.nn.Module):
             or features.shape[1] != DUAL_WORKER_LAYOUT.observation_dim
             or legacy_latent.shape[1] != self.legacy_gate.in_features
         ):
-            raise ValueError("structured nonlinear adapter 输入形状异常")
+            raise ValueError("structured nonlinear adapter input shape invalid")
         context = self.context_projection(self.encoder(features))
         context_gate = self.context_gate(context)
         legacy_gate = th.tanh(
@@ -2196,7 +2196,7 @@ class _StructuredWorkerCritic(th.nn.Module):
             features.ndim != 2
             or features.shape[1] != DUAL_WORKER_LAYOUT.observation_dim
         ):
-            raise ValueError("structured critic features 形状异常")
+            raise ValueError("structured critic features shape invalid")
         context = self.context_projection(self.encoder(features))
         legacy = self.legacy_projection(
             features[:, :ASYMMETRIC_WORKER_LEGACY_DIM])
@@ -2221,11 +2221,11 @@ class AsymmetricWorkerMlpExtractor(th.nn.Module):
         super().__init__()
         if int(feature_dim) != ASYMMETRIC_WORKER_OBSERVATION_DIM:
             raise ValueError(
-                "asymmetric Worker extractor 要求 "
-                f"{ASYMMETRIC_WORKER_OBSERVATION_DIM} 维观测")
+                "asymmetric Worker extractor requires a "
+                f"{ASYMMETRIC_WORKER_OBSERVATION_DIM}-dim observation")
         if activation_fn is not th.nn.Tanh:
             raise ValueError(
-                "asymmetric Worker actor migration 只认证 Tanh 激活")
+                "asymmetric Worker actor migration is only certified for Tanh activations")
         if isinstance(net_arch, dict):
             pi_arch = list(net_arch.get("pi", ()))
             vf_arch = list(net_arch.get("vf", ()))
@@ -2233,7 +2233,7 @@ class AsymmetricWorkerMlpExtractor(th.nn.Module):
             pi_arch = vf_arch = list(net_arch)
         if pi_arch != [64, 64] or vf_arch != [64, 64]:
             raise ValueError(
-                "asymmetric Worker 只认证 pi/vf=[64,64] 拓扑")
+                "asymmetric Worker is only certified for the pi/vf=[64,64] topology")
         legacy = MlpExtractor(
             ASYMMETRIC_WORKER_LEGACY_DIM,
             net_arch={"pi": pi_arch, "vf": []},
@@ -2279,7 +2279,7 @@ class AsymmetricWorkerMlpExtractor(th.nn.Module):
                 < ASYMMETRIC_WORKER_OBSERVATION_DIM
             ):
                 raise ValueError(
-                    "asymmetric actor excluded feature 越界:"
+                    "asymmetric actor excluded feature out of range: "
                     f"{absolute_index}")
             actor_context_mask[
                 absolute_index - ASYMMETRIC_WORKER_LEGACY_DIM] = 0.0
@@ -2304,7 +2304,7 @@ class AsymmetricWorkerMlpExtractor(th.nn.Module):
         if (features.ndim != 2
                 or features.shape[1]
                 != ASYMMETRIC_WORKER_OBSERVATION_DIM):
-            raise ValueError("asymmetric actor features 形状异常")
+            raise ValueError("asymmetric actor features shape invalid")
         legacy = self.policy_net(
             features[:, :ASYMMETRIC_WORKER_LEGACY_DIM])
         if not self.actor_context_enabled:
@@ -2319,7 +2319,7 @@ class AsymmetricWorkerMlpExtractor(th.nn.Module):
         if (features.ndim != 2
                 or features.shape[1]
                 != ASYMMETRIC_WORKER_OBSERVATION_DIM):
-            raise ValueError("asymmetric critic features 形状异常")
+            raise ValueError("asymmetric critic features shape invalid")
         return self.value_net(features)
 
     def forward(self, features: th.Tensor):
@@ -2341,12 +2341,12 @@ class AsymmetricWorkerMaskableActorCriticPolicy(
             or not 0.0 <= float(action14_logit_bonus) <= 10.0
         ):
             raise ValueError(
-                "action14_logit_bonus 必须是 [0,10] 内有限数")
+                "action14_logit_bonus must be a finite number in [0,10]")
         self.action14_logit_bonus = float(action14_logit_bonus)
-        # R13 主权移交冷启动引导:a11 在工人掩码下历史恒掩、logit 从未
-        # 受训;live DIVE 窗放开后按 a14 先例挂 on-policy prior(合法行
-        # 才加,梯度照流,rollout 与评测同分布)。a11 在 FARM/RESUPPLY 窗
-        # 恒被掩,先验在旧法域自动惰性,默认 0.0 逐位复现旧 forward。
+        # R13 autonomy-handover cold-start guide: under the worker mask a11 was historically always masked and its logit never
+        # trained; once live DIVE windows open it, attach an on-policy prior following the a14 precedent (added only on legal
+        # rows, gradients flow, rollout and evaluation share the distribution). a11 is always masked in FARM/RESUPPLY windows,
+        # so the prior is automatically inert under the old rules; the default 0.0 reproduces the old forward bit for bit.
         if (
             not isinstance(action11_logit_bonus, (int, float))
             or isinstance(action11_logit_bonus, bool)
@@ -2354,12 +2354,12 @@ class AsymmetricWorkerMaskableActorCriticPolicy(
             or not 0.0 <= float(action11_logit_bonus) <= 10.0
         ):
             raise ValueError(
-                "action11_logit_bonus 必须是 [0,10] 内有限数")
+                "action11_logit_bonus must be a finite number in [0,10]")
         self.action11_logit_bonus = float(action11_logit_bonus)
-        # R16 拾药冷启动引导:a13(拾药)按 a11/a14 先例挂 on-policy
-        # logit prior——仅在环境掩码判 a13 合法(腰带有空位 ∧ 地上有药)
-        # 的行上加,梯度照流,rollout 与评测同分布;掩码恒掩的旧法域
-        # 先验自动惰性,默认 0.0 逐位复现旧 forward。
+        # R16 potion-pickup cold-start guide: a13 (pick up potion) gets an on-policy logit prior following the a11/a14 precedent
+        # -- added only on rows where the environment mask marks a13 legal (belt has a free slot and a potion is on the ground);
+        # gradients flow, rollout and evaluation share the distribution; under the old always-masked rules
+        # the prior is automatically inert, and the default 0.0 reproduces the old forward bit for bit.
         if (
             not isinstance(action13_logit_bonus, (int, float))
             or isinstance(action13_logit_bonus, bool)
@@ -2367,12 +2367,12 @@ class AsymmetricWorkerMaskableActorCriticPolicy(
             or not 0.0 <= float(action13_logit_bonus) <= 10.0
         ):
             raise ValueError(
-                "action13_logit_bonus 必须是 [0,10] 内有限数")
+                "action13_logit_bonus must be a finite number in [0,10]")
         self.action13_logit_bonus = float(action13_logit_bonus)
         super().__init__(*args, **kwargs)
         if int(getattr(self.action_space, "n", 0)) != 15:
             raise ValueError(
-                "asymmetric Worker action14 prior 要求 15 动作离散空间")
+                "asymmetric Worker action14 prior requires a 15-action discrete space")
         # MaskableActorCriticPolicy orthogonally initializes every Linear in
         # the extractor.  Replace the context branch with its private,
         # run-seed-independent hidden initialization and exact-zero output.
@@ -2384,7 +2384,7 @@ class AsymmetricWorkerMaskableActorCriticPolicy(
             or not bool(self.share_features_extractor)
         ):
             raise ValueError(
-                "asymmetric Worker actor migration 只认证共享 FlattenExtractor")
+                "asymmetric Worker actor migration is only certified for a shared FlattenExtractor")
         self.mlp_extractor = AsymmetricWorkerMlpExtractor(
             self.features_dim,
             net_arch=self.net_arch,
@@ -2420,7 +2420,7 @@ class AsymmetricWorkerMaskableActorCriticPolicy(
                 )
         if (getattr(self, "action11_logit_bonus", 0.0) > 0.0
                 and action_masks is not None):
-            # R13:同 a14 先例。a11 仅在 live DIVE 窗合法,旧法域惰性。
+            # R13: same as the a14 precedent. a11 is legal only in live DIVE windows; inert under the old rules.
             masks11 = th.as_tensor(
                 action_masks, dtype=th.bool, device=raw_logits.device,
             ).reshape(raw_logits.shape)
@@ -2435,7 +2435,7 @@ class AsymmetricWorkerMaskableActorCriticPolicy(
                 )
         if (getattr(self, "action13_logit_bonus", 0.0) > 0.0
                 and action_masks is not None):
-            # R16:同 a11/a14 先例。a13 仅在掩码合法行加先验,恒掩域惰性。
+            # R16: same as the a11/a14 precedent. a13 gets the prior only on mask-legal rows; inert where always masked.
             masks13 = th.as_tensor(
                 action_masks, dtype=th.bool, device=raw_logits.device,
             ).reshape(raw_logits.shape)
@@ -2506,7 +2506,7 @@ def _asymmetric_worker_behavior_probe(
     try:
         reference = next(policy.parameters())
     except StopIteration as exc:
-        raise RuntimeError("asymmetric Worker policy 无参数") from exc
+        raise RuntimeError("asymmetric Worker policy has no parameters") from exc
     columns = th.arange(
         DUAL_WORKER_LAYOUT.observation_dim,
         dtype=reference.dtype,
@@ -2546,14 +2546,14 @@ def asymmetric_worker_runtime_evidence(policy) -> dict:
     if not isinstance(
             policy, AsymmetricWorkerMaskableActorCriticPolicy):
         raise TypeError(
-            "runtime evidence 要求 AsymmetricWorkerMaskableActorCriticPolicy")
+            "runtime evidence requires AsymmetricWorkerMaskableActorCriticPolicy")
     extractor = policy.mlp_extractor
     if not isinstance(extractor, AsymmetricWorkerMlpExtractor):
-        raise RuntimeError("runtime evidence 的 asymmetric extractor 缺失")
+        raise RuntimeError("runtime evidence: asymmetric extractor missing")
     adapter = extractor.context_adapter
     groups = adapter.named_parameter_groups()
     if tuple(groups) != ("encoder", "interaction", "output"):
-        raise RuntimeError("runtime evidence 的 context groups 漂移")
+        raise RuntimeError("runtime evidence: context groups drifted")
     partition = strict_actor_critic_parameter_partition(
         policy, optimizer=getattr(policy, "optimizer", None))
     policy_parameters = (
@@ -2562,12 +2562,12 @@ def asymmetric_worker_runtime_evidence(policy) -> dict:
     )
     if not all(bool(parameter.detach().isfinite().all().item())
                for parameter in policy_parameters):
-        raise RuntimeError("runtime evidence 检出 policy NaN/Inf")
+        raise RuntimeError("runtime evidence detected policy NaN/Inf")
     actor_ids = {id(parameter) for parameter in partition["actor"]}
     grouped = tuple(
         parameter for values in groups.values() for parameter in values)
     if not all(id(parameter) in actor_ids for parameter in grouped):
-        raise RuntimeError("runtime evidence context 参数不属于 actor")
+        raise RuntimeError("runtime evidence: context parameters do not belong to the actor")
 
     group_evidence = {}
     for name, parameters in groups.items():
@@ -2628,7 +2628,7 @@ def asymmetric_worker_runtime_evidence(policy) -> dict:
                     != DUAL_WORKER_LAYOUT.p_skip_semantic_index
                 ):
                     raise RuntimeError(
-                        "runtime evidence 无合法 actor scalar probe 字段")
+                        "runtime evidence has no legal actor scalar probe fields")
                 scalar_zero = probe.clone()
                 scalar_one = probe.clone()
                 scalar_zero[:, feature_index] = 0.0
@@ -2705,7 +2705,7 @@ def asymmetric_worker_runtime_evidence(policy) -> dict:
     )
     if not all(bool(value.isfinite().all().item())
                for value in probe_tensors):
-        raise RuntimeError("runtime evidence 行为探针产生 NaN/Inf")
+        raise RuntimeError("runtime evidence behaviour probe produced NaN/Inf")
     p_skip_invariant = bool(th.equal(
         p_skip_preoutput_zero, p_skip_preoutput_one))
     p_skip_action_invariant = bool(th.equal(
@@ -2825,7 +2825,7 @@ class A12MixtureMaskableActorCriticPolicy(MaskableActorCriticPolicy):
                 or max(feature_indices) >= raw_observations.shape[1]
                 or max(parameter_columns) >= self.action_net.weight.shape[1]
             ):
-                raise ValueError("a12 contextual gate feature/parameter 映射异常")
+                raise ValueError("a12 contextual gate feature/parameter mapping invalid")
             # The gate consumes four stable, directly observable combat
             # features.  Its coefficients live in otherwise-unused expanded
             # action-head columns, but do not consume the permanently-zero
@@ -2922,7 +2922,7 @@ def _legacy_distillation_masks(
     from on-policy reward without fabricated KING supervision.
     """
     if action_masks.ndim < 1 or action_masks.shape[-1] <= 0:
-        raise ValueError("legacy distillation masks 必须有非空动作维")
+        raise ValueError("legacy distillation masks must have a non-empty action dimension")
     if (
         not isinstance(excluded_actions, tuple)
         or any(
@@ -2933,7 +2933,7 @@ def _legacy_distillation_masks(
         )
         or len(set(excluded_actions)) != len(excluded_actions)
     ):
-        raise ValueError("legacy distillation excluded_actions 非法")
+        raise ValueError("legacy distillation excluded_actions invalid")
 
     mask = action_masks.bool()
     in_range = tuple(
@@ -2948,7 +2948,7 @@ def _legacy_distillation_masks(
     if not bool(mask.reshape(-1, mask.shape[-1]).any(dim=-1).all().item()):
         actions = ",".join(f"a{action}" for action in in_range)
         raise ValueError(
-            f"排除 {actions} 后存在全 False 行，无法定义 KING 条件分布")
+            f"after excluding {actions} some row is all False; the KING conditional distribution is undefined")
     return mask
 
 
@@ -2966,19 +2966,19 @@ def _masked_log_softmax_from_raw(
     """
     mask = support.reshape(raw_logits.shape).bool()
     if not bool(mask.any(dim=-1).all().item()):
-        raise ValueError("动作支持集存在全 False 行，无法归一化")
+        raise ValueError("action support set has an all-False row; cannot normalise")
     masked = th.where(
         mask, raw_logits, th.full_like(raw_logits, HUGE_NEG))
     return F.log_softmax(masked, dim=-1)
 
 
-# E3③ demo minibatch 专用 rng 流之固定偏移(播种规则同 E1③ 形制:自训练种子
-# 以固定偏移确定性派生,零染训练 RNG;承 worker_env._P_SKIP_SEED_OFFSET=2**33+26
-# 先例)。偏移值系施工裁量注记:取 2**34+26,与 p_skip 流族 (seed+rank)+2**33+26
-# (rank<num_envs,远小于 2**33)及 [0,2**32) 训练种子域构造性不相交。
+# Fixed offset of the dedicated E3-3 demo-minibatch rng stream (seeding rule shaped like E1-3: derived deterministically
+# from the training seed by a fixed offset, never touching the training RNG; follows the worker_env._P_SKIP_SEED_OFFSET=2**33+26
+# precedent). The offset is an implementation choice: 2**34+26, disjoint by construction from the p_skip stream family (seed+rank)+2**33+26
+# (rank<num_envs, far below 2**33) and from the [0,2**32) training seed domain.
 _BC_AUX_SEED_OFFSET = 2**34 + 26
-# 必须与 train_ppo rev11 契约载荷逐值一致。常量留在算法模块，避免训练热路
-# 反向 import CLI 模块；tests 以双边断言防漂移。
+# Must equal, value for value, the train_ppo rev11 contract payload. The constant lives in the algorithm module so the training hot path
+# never imports the CLI module in reverse; tests assert both sides to prevent drift.
 _BC_AUX_OBJECTIVE_REVISION = 11
 _BC_AUX_UPDATE_EVERY = 1
 _BC_AUX_POSITIVE_FRACTION = 0.25
@@ -2994,14 +2994,14 @@ _BC_AUX_POLICY_HEAD_KEYS = (
     "action_net.bias",
 )
 _BC_AUX_CIRCUIT_SCHEMA = "a12-onpolicy-contextual-mixture-adapter/1"
-# G-CAL 固定 bank 漂移只负责截断破坏性更新；最终 recall/precision 等完整
-# E5 行为门在原始 held-out 分布上裁决。
+# Drift on the fixed G-CAL bank only serves to cut off destructive updates; the full recall/precision
+# E5 behaviour gates rule on the original held-out distribution.
 _BC_AUX_CALIB_TV_MAX = 0.15
 _BC_AUX_CALIB_ARGMAX_DRIFT_MAX = 0.20
 _BC_AUX_CALIB_FPR_MAX = 0.05
 _BC_AUX_CALIB_PREDICTED_SHARE_MAX = 0.25
-# 每个 rollout 更新后的比例监控；只裁“过度饮药/动作挤出”上界，不要求
-# recall 下界（起点 recall 低正是辅助学习要解决的问题）。
+# Ratio monitoring after every rollout update; it only caps "over-drinking/action crowd-out", with no
+# recall lower bound (a low starting recall is exactly what auxiliary learning is meant to fix).
 _BC_AUX_ROLLOUT_FPR_MAX = 0.01
 _BC_AUX_ROLLOUT_PREDICTED_SHARE_MAX = 0.20
 _BC_AUX_ROLLOUT_HIGH_HP_FPR_MAX = 0.01
@@ -3019,16 +3019,16 @@ _BC_AUX_CIRCUIT_GATE_PARAMETER_ABS_MAX = 8.0
 _COPIED_SB3_CONTRIB_VERSION = "2.9.0"
 if version("sb3-contrib") != _COPIED_SB3_CONTRIB_VERSION:
     raise RuntimeError(
-        "leashed_ppo.py 只审计过 sb3-contrib "
-        f"{_COPIED_SB3_CONTRIB_VERSION}；当前为 {version('sb3-contrib')}，"
-        "请锁回该版本或重新完成 G-KL-B 上游等价审计")
+        "leashed_ppo.py has only been audited against sb3-contrib "
+        f"{_COPIED_SB3_CONTRIB_VERSION}; the installed version is {version('sb3-contrib')}; "
+        "pin that version again or redo the G-KL-B upstream equivalence audit")
 
 
 def derive_bc_aux_rng(seed: int | None) -> np.random.Generator:
-    """E3③:demo minibatch 专用 rng 流(固定偏移确定性派生,复现主张由此成立)。
+    """E3-3: dedicated rng stream for demo minibatches (derived deterministically by a fixed offset, which makes the reproduction claim hold).
 
-    seed=None 时取随机源——镜像 worker_env rng_seed=None 分支形制;
-    案腿一律显式 --seed,该分支仅覆盖非案手跑。
+    seed=None draws from a random source -- mirroring the worker_env rng_seed=None branch;
+    case legs always pass --seed explicitly, so this branch only covers manual runs outside a case.
     """
     if seed is None:
         return np.random.default_rng()
@@ -3036,7 +3036,7 @@ def derive_bc_aux_rng(seed: int | None) -> np.random.Generator:
 
 
 def build_teacher(sd_path: str | pathlib.Path | bytes) -> th.nn.Module:
-    """从 SB3 键名 state_dict 组装冻结教师(PiHead 298→64→64→15 同构)。"""
+    """Assemble the frozen teacher from an SB3-key-named state_dict (isomorphic PiHead 298->64->64->15)."""
     source = io.BytesIO(sd_path) if isinstance(sd_path, bytes) else sd_path
     sd = th.load(source, map_location="cpu", weights_only=True)
     required = (
@@ -3045,23 +3045,23 @@ def build_teacher(sd_path: str | pathlib.Path | bytes) -> th.nn.Module:
         "action_net.weight", "action_net.bias",
     )
     if not isinstance(sd, dict):
-        raise ValueError("教师文件必须是 policy state_dict")
+        raise ValueError("teacher file must be a policy state_dict")
     missing = [k for k in required if k not in sd]
     if missing:
-        raise ValueError(f"教师 state_dict 缺键: {missing}")
+        raise ValueError(f"teacher state_dict is missing keys: {missing}")
 
     w0, b0 = sd[required[0]], sd[required[1]]
     w1, b1 = sd[required[2]], sd[required[3]]
     wa, ba = sd[required[4]], sd[required[5]]
     if not all(isinstance(t, th.Tensor) for t in (w0, b0, w1, b1, wa, ba)):
-        raise ValueError("教师 state_dict 的策略头值必须都是 Tensor")
+        raise ValueError("teacher state_dict policy-head values must all be Tensors")
     if (w0.ndim != 2 or w1.ndim != 2 or wa.ndim != 2
             or b0.shape != (w0.shape[0],) or b1.shape != (w1.shape[0],)
             or ba.shape != (wa.shape[0],) or w1.shape[1] != w0.shape[0]
             or wa.shape[1] != w1.shape[0]):
-        raise ValueError("教师 state_dict 的 MLP 形状不自洽")
+        raise ValueError("teacher state_dict MLP shapes are inconsistent")
     if not all(th.isfinite(t).all().item() for t in (w0, b0, w1, b1, wa, ba)):
-        raise ValueError("教师 state_dict 含 NaN/Inf")
+        raise ValueError("teacher state_dict contains NaN/Inf")
     net = th.nn.Sequential(
         th.nn.Linear(w0.shape[1], w0.shape[0]), th.nn.Tanh(),
         th.nn.Linear(w1.shape[1], w1.shape[0]), th.nn.Tanh(),
@@ -3086,7 +3086,7 @@ class LeashedMaskablePPO(MaskablePPO):
                  distill_anneal_actor_rollouts: int = 0, **kwargs):
         self.distill_beta = float(distill_beta)
         if not np.isfinite(self.distill_beta) or self.distill_beta < 0:
-            raise ValueError(f"distill_beta 必须是有限非负数,实得 {distill_beta!r}")
+            raise ValueError(f"distill_beta must be a finite non-negative number, got {distill_beta!r}")
         if (
             not isinstance(distill_anneal_actor_rollouts, int)
             or isinstance(distill_anneal_actor_rollouts, bool)
@@ -3096,15 +3096,15 @@ class LeashedMaskablePPO(MaskablePPO):
             )
         ):
             raise ValueError(
-                "distill_anneal_actor_rollouts 必须为 0 或 >=2 的整数")
+                "distill_anneal_actor_rollouts must be 0 or an integer >= 2")
         self.distill_anneal_actor_rollouts = int(
             distill_anneal_actor_rollouts)
         self._distill_actor_rollouts_completed = 0
         self._last_effective_distill_beta = self.distill_beta
-        # E3 ④乙:辅助示范 CE 系数(镜像 β 形制;示范池经 mount_bc_aux_demos 挂载)
+        # E3 4B: auxiliary demo CE coefficient (mirrors β; the demo pool is mounted via mount_bc_aux_demos)
         self.bc_aux_lambda = float(bc_aux_lambda)
         if not np.isfinite(self.bc_aux_lambda) or self.bc_aux_lambda < 0:
-            raise ValueError(f"bc_aux_lambda 必须是有限非负数,实得 {bc_aux_lambda!r}")
+            raise ValueError(f"bc_aux_lambda must be a finite non-negative number, got {bc_aux_lambda!r}")
         self._bc_aux_obs = None
         self._bc_aux_actions = None
         self._bc_aux_masks = None
@@ -3161,8 +3161,8 @@ class LeashedMaskablePPO(MaskablePPO):
         self._worker_onpolicy_pg_qualifying_rollouts = 0
         self._worker_onpolicy_pg_rollout_receipts = []
         self._worker_onpolicy_pg_collection_actor_sha256 = None
-        # 不列入 _excluded_save_params：首次 aux 腿的策略头根锚必须随
-        # checkpoint 跨 continuation 持久化，防逐腿小漂移累积成大退化。
+        # Not listed in _excluded_save_params: the policy-head root anchor of the first aux leg must persist with the
+        # checkpoint across continuations, so small per-leg drift cannot accumulate into a large regression.
         self.bc_aux_root_anchor_sd = None
         self.teacher_path = teacher_path
         self.teacher_sha256 = teacher_sha256
@@ -3170,7 +3170,7 @@ class LeashedMaskablePPO(MaskablePPO):
             actual = hashlib.sha256(pathlib.Path(teacher_path).read_bytes()).hexdigest()
             if teacher_sha256 is not None and teacher_sha256 != actual:
                 raise ValueError(
-                    f"教师 SHA 不匹配: {actual} != {teacher_sha256}")
+                    f"teacher SHA mismatch: {actual} != {teacher_sha256}")
             self.teacher_sha256 = actual
         self.calib_probes = list(calib_probes or [])
         self.calib_out = calib_out
@@ -3180,8 +3180,8 @@ class LeashedMaskablePPO(MaskablePPO):
 
     def _setup_model(self) -> None:
         super()._setup_model()
-        # load() 流程:先 __dict__.update(data) 恢复 teacher_path,再调本方法——
-        # fresh 与 resume 两条路径此处都成立(预注册 D4,审计 BLOCKER 4)
+        # load() flow: first __dict__.update(data) restores teacher_path, then this method is called --
+        # both the fresh and the resume path hold here (pre-registration D4, audit BLOCKER 4)
         self.teacher = None
         if getattr(self, "teacher_path", None):
             teacher_path = pathlib.Path(self.teacher_path)
@@ -3189,13 +3189,13 @@ class LeashedMaskablePPO(MaskablePPO):
                 payload = teacher_path.read_bytes()
                 actual_sha = hashlib.sha256(payload).hexdigest()
             except OSError as exc:
-                raise ValueError(f"教师文件缺失/不可读: {teacher_path}") from exc
+                raise ValueError(f"teacher file missing/unreadable: {teacher_path}") from exc
             expected_sha = getattr(self, "teacher_sha256", None)
             if not isinstance(expected_sha, str) or len(expected_sha) != 64:
                 raise ValueError(
-                    "检查点缺少 teacher_sha256；旧检查点续训须由入口提供可信教师绑定")
+                    "checkpoint is missing teacher_sha256; resuming an old checkpoint needs a trusted teacher binding from the entry point")
             if actual_sha != expected_sha:
-                raise ValueError(f"教师 SHA 漂移: {actual_sha} != {expected_sha}")
+                raise ValueError(f"teacher SHA drift: {actual_sha} != {expected_sha}")
             # Hash and deserialize the exact same immutable payload.  Reopening
             # teacher_path here would permit an atomic replacement between the
             # integrity check and torch.load().
@@ -3215,12 +3215,12 @@ class LeashedMaskablePPO(MaskablePPO):
                  and not asymmetric_teacher)
                     or n_actions != self.teacher[-1].out_features):
                 raise ValueError(
-                    "教师与训练环境形状不匹配: "
+                    "teacher and training environment shapes do not match: "
                     f"teacher={self.teacher[0].in_features}→{self.teacher[-1].out_features}, "
                     f"env={obs_dim}→{n_actions}")
-        # _excluded_save_params 成员在 load 后不存在,兜底重建
-        # (E3:bc_aux_lambda 系持久化标量,旧 zip 无之亦兜底 0.0;示范池/专用流
-        #  不入 zip,resume 由 train_ppo 案内重挂,λ 由 CLI 显式覆盖承 β 先例)
+        # _excluded_save_params members do not exist after load; rebuild as a fallback
+        # (E3: bc_aux_lambda is a persisted scalar, old zips without it fall back to 0.0; the demo pool/dedicated stream
+        #  are not in the zip, on resume train_ppo remounts them inside the case, and λ is overridden explicitly by the CLI following the β precedent)
         for attr, dv in (("_calib_done", set()), ("_calib_tripped", False),
                          ("_last_distill_ce", None), ("_last_diverge", None),
                          ("_last_teacher_entropy", None),
@@ -3288,12 +3288,12 @@ class LeashedMaskablePPO(MaskablePPO):
             or horizon < 0
             or completed < 0
         ):
-            raise RuntimeError("distillation anneal 状态非法")
+            raise RuntimeError("distillation anneal state invalid")
         if beta == 0.0 or horizon == 0 or actor_frozen:
             return beta
         if horizon < 2:
             raise RuntimeError(
-                "distillation anneal horizon 必须 >=2")
+                "distillation anneal horizon must be >=2")
         progress = min(completed, horizon - 1) / float(horizon - 1)
         return beta * (1.0 - progress)
 
@@ -3312,25 +3312,25 @@ class LeashedMaskablePPO(MaskablePPO):
                 GRADIENT_CLIP_ROOT_CONTEXT_CRITIC_V2,
         }:
             raise ValueError(
-                "critic migration 必须使用分组梯度裁剪")
+                "critic migration must use grouped gradient clipping")
         if (not isinstance(critic_warmup_steps, int)
                 or isinstance(critic_warmup_steps, bool)
                 or critic_warmup_steps <= 0):
-            raise ValueError("critic_warmup_steps 必须是正整数")
+            raise ValueError("critic_warmup_steps must be a positive integer")
         quantum = int(self.n_steps) * int(self.n_envs)
         if quantum <= 0 or critic_warmup_steps % quantum != 0:
             raise ValueError(
-                "critic_warmup_steps 必须整除完整 rollout 量子 "
+                "critic_warmup_steps must divide the full rollout quantum "
                 f"{quantum}")
         if getattr(self, "_bc_aux_circuit_spec", None) is not None \
                 or float(getattr(self, "bc_aux_lambda", 0.0)) != 0.0:
             raise RuntimeError(
-                "critic-only warmup 禁止并行 actor bc_aux 更新")
+                "critic-only warmup forbids concurrent actor bc_aux updates")
         if self._critic_warmup_start_timesteps is not None:
-            raise RuntimeError("critic migration 已配置，禁止重置 warmup 边界")
+            raise RuntimeError("critic migration already configured; resetting the warmup boundary is forbidden")
         if self.policy.optimizer.state:
             raise RuntimeError(
-                "critic migration 配置前必须重建 optimizer 并清空全部 state")
+                "before configuring critic migration the optimizer must be rebuilt and all state cleared")
         if not isinstance(self.rollout_buffer, _AuditedMaskableRolloutBuffer):
             if (
                 not isinstance(self.rollout_buffer, MaskableRolloutBuffer)
@@ -3339,8 +3339,8 @@ class LeashedMaskablePPO(MaskablePPO):
                 or isinstance(self.observation_space, spaces.Dict)
             ):
                 raise RuntimeError(
-                    "formal PG audit 无法从非空/非扁平 Maskable buffer "
-                    "安全迁移")
+                    "formal PG audit cannot migrate from a non-empty/non-flat Maskable buffer "
+                    "safely")
             self.rollout_buffer_class = _AuditedMaskableRolloutBuffer
             self.rollout_buffer = _AuditedMaskableRolloutBuffer(
                 self.n_steps,
@@ -3360,7 +3360,7 @@ class LeashedMaskablePPO(MaskablePPO):
                 AsymmetricWorkerMaskableActorCriticPolicy)
                 and extractor.actor_context_enabled):
             raise RuntimeError(
-                "critic migration 配置前 asymmetric actor context 必须关闭")
+                "asymmetric actor context must be off before configuring critic migration")
         start = int(self.num_timesteps)
         self.gradient_clip_mode = gradient_clip_mode
         self._critic_warmup_start_timesteps = start
@@ -3400,7 +3400,7 @@ class LeashedMaskablePPO(MaskablePPO):
     def _assert_critic_migration_contract(self) -> dict:
         mode = getattr(self, "gradient_clip_mode", GRADIENT_CLIP_GLOBAL)
         if mode not in _GRADIENT_CLIP_MODES:
-            raise RuntimeError(f"未知 gradient_clip_mode:{mode!r}")
+            raise RuntimeError(f"unknown gradient_clip_mode: {mode!r}")
         partition = strict_actor_critic_parameter_partition(
             self.policy, optimizer=self.policy.optimizer)
         start = self._critic_warmup_start_timesteps
@@ -3428,7 +3428,7 @@ class LeashedMaskablePPO(MaskablePPO):
                 self._critic_warmup_actor_sha256,
             )
             if fields != (None, 0, 0, 0, False, None):
-                raise RuntimeError("未配置 critic migration 却携残留 warmup 状态")
+                raise RuntimeError("critic migration not configured but residual warmup state present")
             if (
                 self._worker_onpolicy_pg_audit_required is not False
                 or self._worker_onpolicy_pg_pending_receipts
@@ -3439,17 +3439,17 @@ class LeashedMaskablePPO(MaskablePPO):
                 is not None
             ):
                 raise RuntimeError(
-                    "未配置 critic migration 却携 formal PG audit 状态")
+                    "critic migration not configured but formal PG audit state present")
             return partition
         else:
             if mode not in {
                     GRADIENT_CLIP_SEPARATE_ACTOR_CRITIC_V1,
                     GRADIENT_CLIP_ROOT_CONTEXT_CRITIC_V2,
             }:
-                raise RuntimeError("critic migration 的分组裁剪模式漂移")
+                raise RuntimeError("critic migration grouped clipping mode drifted")
             if (not isinstance(start, int) or not isinstance(until, int)
                     or until <= start):
-                raise RuntimeError("critic warmup 绝对步边界非法")
+                raise RuntimeError("critic warmup absolute step boundary invalid")
             quantum = int(self.n_steps) * int(self.n_envs)
             expected = (until - start) // quantum
             integer_fields = (
@@ -3471,7 +3471,7 @@ class LeashedMaskablePPO(MaskablePPO):
                     or len(self._critic_warmup_actor_sha256) != 64
                     or any(character not in "0123456789abcdef"
                            for character in self._critic_warmup_actor_sha256)):
-                raise RuntimeError("critic warmup 持久状态非法")
+                raise RuntimeError("critic warmup persisted state invalid")
         receipts = self._worker_onpolicy_pg_rollout_receipts
         joint_rollouts = self._worker_onpolicy_pg_joint_rollouts
         qualifying_rollouts = self._worker_onpolicy_pg_qualifying_rollouts
@@ -3513,7 +3513,7 @@ class LeashedMaskablePPO(MaskablePPO):
                 )
             )
         ):
-            raise RuntimeError("formal Worker on-policy PG 持久状态非法")
+            raise RuntimeError("formal Worker on-policy PG persisted state invalid")
         return partition
 
     def _prepare_main_ppo_rollout(self) -> bool:
@@ -3532,25 +3532,25 @@ class LeashedMaskablePPO(MaskablePPO):
                     AsymmetricWorkerMaskableActorCriticPolicy)
                     and self.policy.mlp_extractor.actor_context_enabled):
                 raise RuntimeError(
-                    "critic warmup 期间 actor context 提前启用")
+                    "actor context enabled early during critic warmup")
             required_endpoint = start + (completed + 1) * quantum
             if completed >= expected or now != required_endpoint:
                 raise RuntimeError(
-                    "critic warmup rollout 端点跳跃/重复:"
+                    "critic warmup rollout endpoint jumped/repeated: "
                     f"now={now},expected={required_endpoint}")
             if self._critic_warmup_completed:
-                raise RuntimeError("critic warmup 提前标记 complete")
+                raise RuntimeError("critic warmup marked complete early")
             return True
         if (not self._critic_warmup_completed
                 or completed != expected
                 or self._critic_warmup_optimizer_steps_completed <= 0):
-            raise RuntimeError("actor 解冻前 critic warmup 未完整闭合")
+            raise RuntimeError("critic warmup not fully closed before actor unfreeze")
         if (isinstance(
                 self.policy,
                 AsymmetricWorkerMaskableActorCriticPolicy)
                 and not self.policy.mlp_extractor.actor_context_enabled):
             raise RuntimeError(
-                "critic warmup 完成后 actor context 未原子启用")
+                "actor context not enabled atomically after critic warmup completed")
         # Verify the frozen anchor exactly once at the warmup→joint-training
         # boundary.  After the first legitimate actor optimizer step the
         # current actor must differ, so comparing every later rollout to the
@@ -3559,7 +3559,7 @@ class LeashedMaskablePPO(MaskablePPO):
             current = _parameter_group_sha256(
                 self.policy, partition["actor"])
             if current != self._critic_warmup_actor_sha256:
-                raise RuntimeError("critic warmup 期间 actor 权重发生漂移")
+                raise RuntimeError("actor weights drifted during critic warmup")
         return False
 
     def _worker_pg_gae_closure(self) -> dict:
@@ -3571,7 +3571,7 @@ class LeashedMaskablePPO(MaskablePPO):
             or not isinstance(buffer._formal_gae_snapshot, dict)
         ):
             raise RuntimeError(
-                "formal PG GAE 校验要求未展开的 audited rollout buffer")
+                "formal PG GAE check requires an unflattened audited rollout buffer")
         snapshot = buffer._formal_gae_snapshot
         expected_keys = {
             "last_values",
@@ -3579,14 +3579,14 @@ class LeashedMaskablePPO(MaskablePPO):
             *_AuditedMaskableRolloutBuffer._AUDIT_ARRAY_NAMES,
         }
         if set(snapshot) != expected_keys:
-            raise RuntimeError("formal PG GAE 密封快照 schema 漂移")
+            raise RuntimeError("formal PG GAE sealed snapshot schema drifted")
         for name in _AuditedMaskableRolloutBuffer._AUDIT_ARRAY_NAMES:
             current = np.asarray(getattr(buffer, name))
             sealed = np.asarray(snapshot[name])
             if current.shape != sealed.shape or not np.array_equal(
                     current, sealed):
                 raise RuntimeError(
-                    f"formal PG rollout buffer.{name} 在 GAE 后被改写")
+                    f"formal PG rollout buffer.{name} was rewritten after GAE")
 
         rewards = np.asarray(snapshot["rewards"])
         values = np.asarray(snapshot["values"])
@@ -3613,7 +3613,7 @@ class LeashedMaskablePPO(MaskablePPO):
                 last_values,
             ))
         ):
-            raise RuntimeError("formal PG GAE 密封数组形状/有限性异常")
+            raise RuntimeError("formal PG GAE sealed array shape/finiteness invalid")
 
         recomputed = np.zeros_like(sealed_advantages)
         last_gae_lam: np.ndarray | int = 0
@@ -3653,7 +3653,7 @@ class LeashedMaskablePPO(MaskablePPO):
             or not np.array_equal(recomputed_returns, sealed_returns)
         ):
             raise RuntimeError(
-                "formal PG GAE/return 独立递推不闭合:"
+                "formal PG GAE/return independent recursion does not close: "
                 f"adv_max={advantage_max},return_max={return_max}")
         return {
             "advantage_max_abs_delta": advantage_max,
@@ -3681,7 +3681,7 @@ class LeashedMaskablePPO(MaskablePPO):
             or tuple(actions.shape) != (expected[0] * expected[1],)
         ):
             raise RuntimeError(
-                "formal PG collection log-prob 要求原始 time/env batch")
+                "formal PG collection log-prob requires the raw time/env batch")
         actions_by_time = actions.reshape(expected)
         with th.no_grad():
             batches = []
@@ -3691,7 +3691,7 @@ class LeashedMaskablePPO(MaskablePPO):
                 ).log_prob(actions_by_time[step])
                 if tuple(log_probs.shape) != (expected[1],):
                     raise RuntimeError(
-                        "formal PG collection log-prob 单时刻 batch 形状异常")
+                        "formal PG collection log-prob single-timestep batch shape invalid")
                 batches.append(log_probs)
             return (
                 th.stack(batches).reshape(-1).detach().cpu().numpy()
@@ -3704,7 +3704,7 @@ class LeashedMaskablePPO(MaskablePPO):
         if not self._worker_onpolicy_pg_audit_required:
             if self._worker_onpolicy_pg_pending_receipts:
                 raise RuntimeError(
-                    "formal PG audit 未启用却收到 reward receipts")
+                    "formal PG audit not enabled but received reward receipts")
             return None
         collection_actor_sha256 = (
             self._worker_onpolicy_pg_collection_actor_sha256)
@@ -3715,7 +3715,7 @@ class LeashedMaskablePPO(MaskablePPO):
             or current_actor_sha256 != collection_actor_sha256
         ):
             raise RuntimeError(
-                "formal PG train() actor 与 rollout collection actor 不同")
+                "formal PG train() actor differs from the rollout collection actor")
         gae_closure = self._worker_pg_gae_closure()
         self._worker_onpolicy_pg_collection_actor_sha256 = None
         actions = th.as_tensor(
@@ -3725,7 +3725,7 @@ class LeashedMaskablePPO(MaskablePPO):
         receipts = self._worker_onpolicy_pg_pending_receipts
         if not isinstance(receipts, list) or len(receipts) != len(actions):
             raise RuntimeError(
-                "formal PG rollout buffer 与 reward receipts 长度不闭合:"
+                "formal PG rollout buffer and reward receipts lengths do not close: "
                 f"buffer={len(actions)},receipts="
                 f"{len(receipts) if isinstance(receipts, list) else 'invalid'}")
         requested = th.as_tensor(
@@ -3737,7 +3737,7 @@ class LeashedMaskablePPO(MaskablePPO):
             mismatch = int(th.nonzero(
                 requested != actions, as_tuple=False)[0].item())
             raise RuntimeError(
-                "formal PG rollout action/reward receipt 错位:"
+                "formal PG rollout action/reward receipt misaligned: "
                 f"index={mismatch},buffer={int(actions[mismatch])},"
                 f"receipt={int(requested[mismatch])}")
         rewards_np = np.asarray(
@@ -3745,7 +3745,7 @@ class LeashedMaskablePPO(MaskablePPO):
             dtype=np.float64,
         )
         if rewards_np.ndim != 1 or not np.isfinite(rewards_np).all():
-            raise RuntimeError("formal PG transition_reward 序列非法")
+            raise RuntimeError("formal PG transition_reward sequence invalid")
         executed_np = np.asarray([
             -1 if row["executed_action"] is None
             else row["executed_action"]
@@ -3794,7 +3794,7 @@ class LeashedMaskablePPO(MaskablePPO):
             or np.any(combat_effect_np & (executed_np != 9))
         ):
             raise RuntimeError(
-                "formal PG executed/combat receipt 序列非法")
+                "formal PG executed/combat receipt sequence invalid")
         buffer_rewards = np.asarray(
             self.rollout_buffer.rewards, dtype=np.float32).reshape(-1)
         expected_buffer_rewards = np.asarray(
@@ -3807,13 +3807,13 @@ class LeashedMaskablePPO(MaskablePPO):
             or not np.isfinite(expected_buffer_rewards).all()
         ):
             raise RuntimeError(
-                "formal PG rollout buffer reward 形状/有限性异常")
+                "formal PG rollout buffer reward shape/finiteness invalid")
         if not np.array_equal(buffer_rewards, expected_buffer_rewards):
             mismatch = int(np.flatnonzero(
                 buffer_rewards != expected_buffer_rewards)[0])
             raise RuntimeError(
-                "formal PG rollout buffer reward 与 "
-                "transition_reward/TimeLimit bootstrap 不闭合:"
+                "formal PG rollout buffer reward and "
+                "transition_reward/TimeLimit bootstrap do not close: "
                 f"index={mismatch},buffer="
                 f"{float(buffer_rewards[mismatch])!r},expected="
                 f"{float(expected_buffer_rewards[mismatch])!r},raw="
@@ -3830,7 +3830,7 @@ class LeashedMaskablePPO(MaskablePPO):
             or not np.isfinite(sealed_log_probs).all()
         ):
             raise RuntimeError(
-                "formal PG collection log-prob 形状/有限性异常")
+                "formal PG collection log-prob shape/finiteness invalid")
         log_prob_delta = np.abs(
             recomputed_log_probs - sealed_log_probs)
         log_prob_max_abs_delta = float(
@@ -3842,7 +3842,7 @@ class LeashedMaskablePPO(MaskablePPO):
             atol=1e-7,
         ):
             raise RuntimeError(
-                "formal PG 当前 actor/log-prob 与 collection 回执不闭合:"
+                "formal PG current actor/log-prob does not close with the collection receipt: "
                 f"max_abs_delta={log_prob_max_abs_delta}")
         # Every collected rollout, including critic-only warmup, must consume
         # exactly one receipt stream.  Only joint rollouts generate actor-PG
@@ -3863,7 +3863,7 @@ class LeashedMaskablePPO(MaskablePPO):
             -1, observations.shape[-1])
         masks = masks.reshape(-1, masks.shape[-1])
         if len(observations) != len(actions) or len(masks) != len(actions):
-            raise RuntimeError("formal PG rollout tensor 行数不闭合")
+            raise RuntimeError("formal PG rollout tensor row counts do not close")
         advantages_np = np.asarray(
             self.rollout_buffer.advantages,
             dtype=np.float64,
@@ -3872,7 +3872,7 @@ class LeashedMaskablePPO(MaskablePPO):
             len(advantages_np) != len(actions)
             or not np.isfinite(advantages_np).all()
         ):
-            raise RuntimeError("formal PG GAE advantage 序列非法")
+            raise RuntimeError("formal PG GAE advantage sequence invalid")
 
         reward_mean = float(rewards_np.mean())
         reward_centered_np = rewards_np - reward_mean
@@ -3898,7 +3898,7 @@ class LeashedMaskablePPO(MaskablePPO):
             advantage_variance,
         )
         if not all(math.isfinite(value) for value in numeric):
-            raise RuntimeError("formal PG rollout statistics 非有限")
+            raise RuntimeError("formal PG rollout statistics are not finite")
 
         # This audit-only REINFORCE term uses the exact Worker transition
         # reward, centered by a scalar baseline.  It is evaluated before any
@@ -3932,13 +3932,13 @@ class LeashedMaskablePPO(MaskablePPO):
                 self.policy,
                 AsymmetricWorkerMaskableActorCriticPolicy):
             raise RuntimeError(
-                "formal Worker PG context receipt 要求 asymmetric policy")
+                "formal Worker PG context receipt requires an asymmetric policy")
         adapter = self.policy.mlp_extractor.context_adapter
         context_groups = adapter.named_parameter_groups()
         context_parameters = tuple(adapter.parameters())
         if not context_parameters:
             raise RuntimeError(
-                "formal Worker PG context 参数集为空")
+                "formal Worker PG context parameter set is empty")
         reward_grad_norm = _finite_autograd_gradient_norm(
             reward_pg_loss,
             actor_parameters,
@@ -4216,11 +4216,11 @@ class LeashedMaskablePPO(MaskablePPO):
                 is not None
             ):
                 raise RuntimeError(
-                    "formal PG receipt 缺失却产生 gradient measurements")
+                    "formal PG receipt missing but gradient measurements were produced")
             return
-        # A4 修正案(2026-07-27):冻结配方自带 target_kl 早停,与满 epoch
-        # 地板冲突系配方内部矛盾(腿3 182,248 步实证:KL 尖峰 rollout 于第
-        # 7 步早停被误杀)。早停 rollout 豁免至 ≥1(活性仍保证),如实落旗。
+        # Amendment A4 (2026-07-27): the frozen recipe carries its own target_kl early stop, and its conflict with the full-epoch
+        # floor is an internal contradiction of the recipe (leg 3 at step 182,248 showed it: a KL-spike rollout
+        # stopped early at optimizer step 7 and was wrongly killed). Early-stopped rollouts are exempted down to >=1 (liveness still guaranteed), and the flag is recorded honestly.
         _floor = (
             1 if kl_early_stopped
             else WORKER_ONPOLICY_PG_MIN_OPTIMIZER_STEPS_PER_JOINT_ROLLOUT)
@@ -4229,10 +4229,10 @@ class LeashedMaskablePPO(MaskablePPO):
             or optimizer_steps < _floor
         ):
             raise RuntimeError(
-                "formal PG 每个 joint rollout 至少要求 "
+                "formal PG requires at least "
                 f"{_floor}"
-                f" 个 actor optimizer steps(kl_early_stopped="
-                f"{kl_early_stopped!r})，实得 {optimizer_steps!r}")
+                f" actor optimizer steps per joint rollout (kl_early_stopped="
+                f"{kl_early_stopped!r}), got {optimizer_steps!r}")
         if (
             len(pure_ppo_actor_grad_norms) != optimizer_steps
             or len(pure_ppo_root_grad_norms) != optimizer_steps
@@ -4303,7 +4303,7 @@ class LeashedMaskablePPO(MaskablePPO):
             )
         ):
             raise RuntimeError(
-                "formal PG optimizer/gradient measurements 不闭合")
+                "formal PG optimizer/gradient measurements do not close")
         norms = [float(value) for value in pure_ppo_actor_grad_norms]
         root_norms = [
             float(value) for value in pure_ppo_root_grad_norms]
@@ -4502,7 +4502,7 @@ class LeashedMaskablePPO(MaskablePPO):
         if not validate_worker_onpolicy_pg_receipt(
                 receipt,
                 expected_samples=int(self.n_steps) * int(self.n_envs)):
-            raise RuntimeError("formal Worker on-policy PG receipt 非法")
+            raise RuntimeError("formal Worker on-policy PG receipt invalid")
         committed = dict(receipt)
         self._worker_onpolicy_pg_rollout_receipts.append(committed)
         self._worker_onpolicy_pg_joint_rollouts += 1
@@ -4520,7 +4520,7 @@ class LeashedMaskablePPO(MaskablePPO):
         )
         if bool(actor_frozen) is not should_freeze:
             raise RuntimeError(
-                "main PPO actor_frozen 与持久 warmup 边界不一致")
+                "main PPO actor_frozen disagrees with the persisted warmup boundary")
         self.policy.optimizer.zero_grad()
         loss.backward()
         circuit_snapshot = (
@@ -4528,12 +4528,12 @@ class LeashedMaskablePPO(MaskablePPO):
             if self._bc_aux_circuit_spec is not None else [])
         if self.gradient_clip_mode == GRADIENT_CLIP_GLOBAL:
             if actor_frozen:
-                raise RuntimeError("global clip 禁止用于 critic-only warmup")
+                raise RuntimeError("global clip is forbidden for critic-only warmup")
             total = float(th.nn.utils.clip_grad_norm_(
                 self.policy.parameters(), self.max_grad_norm,
                 error_if_nonfinite=True).detach().cpu())
             if not math.isfinite(total):
-                raise RuntimeError("global gradient norm 非有限")
+                raise RuntimeError("global gradient norm is not finite")
             clip_record = {
                 "actor_counterfactual_norm": None,
                 "actor_preclip_norm": None,
@@ -4559,7 +4559,7 @@ class LeashedMaskablePPO(MaskablePPO):
             clip_record["global_preclip_norm"] = None
         else:
             raise RuntimeError(
-                f"未知 gradient_clip_mode:{self.gradient_clip_mode!r}")
+                f"unknown gradient_clip_mode: {self.gradient_clip_mode!r}")
         self.policy.optimizer.step()
         self._ppo_optimizer_steps_completed += 1
         if actor_frozen:
@@ -4567,7 +4567,7 @@ class LeashedMaskablePPO(MaskablePPO):
             current = actor_parameter_sha256(
                 self.policy, optimizer=self.policy.optimizer)
             if current != self._critic_warmup_actor_sha256:
-                raise RuntimeError("critic-only optimizer step 改写 actor")
+                raise RuntimeError("critic-only optimizer step rewrote the actor")
         else:
             self._actor_optimizer_steps_completed += 1
         self._project_bc_aux_adapter_weight()
@@ -4580,20 +4580,20 @@ class LeashedMaskablePPO(MaskablePPO):
             if optimizer_steps <= 0:
                 if not self._calib_tripped:
                     raise RuntimeError(
-                        "joint actor rollout 未执行 optimizer step")
+                        "joint actor rollout executed no optimizer step")
                 return
             self._distill_actor_rollouts_completed += 1
             return
         if optimizer_steps <= 0:
             if not self._calib_tripped:
-                raise RuntimeError("critic warmup rollout 未执行 optimizer step")
+                raise RuntimeError("critic warmup rollout executed no optimizer step")
             return
         self._critic_warmup_rollouts_completed += 1
         now = int(self.num_timesteps)
         if now == self._critic_warmup_until_timesteps:
             if (self._critic_warmup_rollouts_completed
                     != self._critic_warmup_expected_rollouts):
-                raise RuntimeError("critic warmup 末端 rollout 计数不闭合")
+                raise RuntimeError("critic warmup final rollout count does not close")
             self._critic_warmup_completed = True
             if isinstance(
                     self.policy,
@@ -4601,8 +4601,8 @@ class LeashedMaskablePPO(MaskablePPO):
                 self.policy.mlp_extractor.enable_actor_context()
 
     def _excluded_save_params(self):
-        # _last_*/_calib_* 不入 zip:β=0 腿的哨兵行必须报 null 而非上腿陈值;
-        # _calib_tripped=True 若被 load 驮回,会在续训第一步误杀健康腿(审查团确认项)
+        # _last_*/_calib_* are not saved in the zip: the sentinel row of a β=0 leg must report null, not a stale value from the previous leg;
+        # if _calib_tripped=True were carried back by load, it would wrongly kill a healthy leg on the first resumed step (confirmed in review)
         return super()._excluded_save_params() + [
             "teacher", "_last_distill_ce", "_last_diverge",
             "_calib_tripped", "_calib_done", "calib_record_only",
@@ -4628,7 +4628,7 @@ class LeashedMaskablePPO(MaskablePPO):
             or self._worker_onpolicy_pg_collection_actor_sha256 is not None
         ):
             raise RuntimeError(
-                "formal PG 新 rollout 前仍有未消费 collection 状态")
+                "formal PG: unconsumed collection state remains before a new rollout")
         actor_sha256 = actor_parameter_sha256(
             self.policy, optimizer=self.policy.optimizer)
         completed = super().collect_rollouts(*args, **kwargs)
@@ -4636,8 +4636,8 @@ class LeashedMaskablePPO(MaskablePPO):
             self.policy, optimizer=self.policy.optimizer)
         if actor_sha256_after != actor_sha256:
             raise RuntimeError(
-                "formal PG rollout 收集期间/rollout-end callback "
-                "改写 actor")
+                "formal PG rollout collection/rollout-end callback "
+                "rewrote the actor")
         if completed:
             if (
                 not isinstance(
@@ -4648,7 +4648,7 @@ class LeashedMaskablePPO(MaskablePPO):
                     self.rollout_buffer._formal_gae_snapshot, dict)
             ):
                 raise RuntimeError(
-                    "formal PG 完整 rollout 缺 GAE 密封快照")
+                    "formal PG full rollout is missing its GAE sealed snapshot")
             self._worker_onpolicy_pg_collection_actor_sha256 = (
                 actor_sha256)
         return completed
@@ -4669,28 +4669,28 @@ class LeashedMaskablePPO(MaskablePPO):
         super()._update_info_buffer(infos, dones)
         if self._worker_onpolicy_pg_audit_required:
             if not isinstance(infos, (list, tuple)):
-                raise RuntimeError("formal PG rollout info batch 形状异常")
+                raise RuntimeError("formal PG rollout info batch shape invalid")
             if len(infos) != int(self.n_envs):
                 raise RuntimeError(
-                    "formal PG rollout info batch 与 n_envs 不闭合:"
+                    "formal PG rollout info batch does not close with n_envs: "
                     f"{len(infos)} != {int(self.n_envs)}")
             n_actions = int(getattr(self.action_space, "n", 0))
             validated_rewards = []
             if dones is None:
                 raise RuntimeError(
-                    "formal PG rollout 缺少 dones，无法核对 TimeLimit")
+                    "formal PG rollout is missing dones; cannot check TimeLimit")
             dones_array = np.asarray(dones)
             if dones_array.shape != (int(self.n_envs),):
                 raise RuntimeError(
-                    "formal PG rollout dones 与 n_envs 不闭合:"
+                    "formal PG rollout dones do not close with n_envs: "
                     f"{dones_array.shape} != {(int(self.n_envs),)}")
             for index, info in enumerate(infos):
                 if not isinstance(info, dict) \
                         or "requested_action" not in info \
                         or "transition_reward" not in info:
                     raise RuntimeError(
-                        "formal PG rollout 缺 WorkerWindowEnv "
-                        "requested_action/transition_reward 回执")
+                        "formal PG rollout is missing the WorkerWindowEnv "
+                        "requested_action/transition_reward receipt")
                 requested = info["requested_action"]
                 reward = info["transition_reward"]
                 if (
@@ -4698,11 +4698,11 @@ class LeashedMaskablePPO(MaskablePPO):
                     or isinstance(requested, (bool, np.bool_))
                 ):
                     raise RuntimeError(
-                        "formal PG requested_action 非普通整数")
+                        "formal PG requested_action is not a plain integer")
                 requested = int(requested)
                 if not 0 <= requested < n_actions:
                     raise RuntimeError(
-                        "formal PG requested_action 越界")
+                        "formal PG requested_action out of range")
                 if (
                     not isinstance(
                         reward,
@@ -4712,7 +4712,7 @@ class LeashedMaskablePPO(MaskablePPO):
                     or not math.isfinite(float(reward))
                 ):
                     raise RuntimeError(
-                        "formal PG transition_reward 非有限普通数")
+                        "formal PG transition_reward is not a finite plain number")
                 timeout_fields = (
                     "worker_wage",
                     "worker_no_progress_timeout",
@@ -4722,8 +4722,8 @@ class LeashedMaskablePPO(MaskablePPO):
                 )
                 if any(field not in info for field in timeout_fields):
                     raise RuntimeError(
-                        "formal PG rollout 缺 Worker no-progress timeout "
-                        "逐步分账")
+                        "formal PG rollout is missing the Worker no-progress timeout "
+                        "per-step split")
                 worker_wage = info["worker_wage"]
                 timeout = info["worker_no_progress_timeout"]
                 timeout_components = tuple(info[field] for field in (
@@ -4746,27 +4746,27 @@ class LeashedMaskablePPO(MaskablePPO):
                     )
                 ):
                     raise RuntimeError(
-                        "formal PG no-progress timeout 分账类型/有限性异常")
+                        "formal PG no-progress timeout split type/finiteness invalid")
                 worker_wage = float(worker_wage)
                 timeout_base, timeout_additional, timeout_total = (
                     float(value) for value in timeout_components)
-                # R17.0 修正案一(合议庭更正二.2,收据地雷):worker_env 终局
-                # policy_reward 另含深度塑形/托管 vest/血量经济三分量
-                # (worker_env.step 两处组装点),旧守门员只对照
-                # wage(+timeout),首笔真实 vest 与超时同窗即误炸。三键
-                # 缺省 0.0(旧夹具/旧法逐位不变),各须有限普通数;求和
-                # 顺序与 worker_env 组装点一致:wage + timeout + shaping
-                # + vest + hp_econ(死亡三账在两分支内仍须恒 0)。
+                # R17.0 amendment 1 (panel correction 2.2, the receipt landmine): the worker_env terminal
+                # policy_reward also carries three components -- depth shaping / escrow vest / HP economy
+                # (two assembly points in worker_env.step); the old gatekeeper only checked
+                # wage(+timeout), so the first real vest landing in the same window as a timeout blew up wrongly. The three keys
+                # default to 0.0 (old fixtures/old rules unchanged bit for bit) and must each be finite plain numbers; summation
+                # order matches the worker_env assembly points: wage + timeout + shaping
+                # + vest + hp_econ (the three death entries must still be 0 in both branches).
                 policy_components = []
-                # R17.1(W/P 复核 M1):worker_env 自 R17.1 起为每笔 info 打
-                # schema 标记 worker_policy_reward_receipt="v1";带标记者三键
-                # 必在(缺键即炸),无标记者(旧夹具)保留缺省 0.0 的旧法路径。
+                # R17.1 (W/P review M1): since R17.1 worker_env stamps every info with the
+                # schema marker worker_policy_reward_receipt="v1"; for marked receipts the three keys
+                # must be present (a missing key blows up), unmarked ones (old fixtures) keep the old-rules path with default 0.0.
                 receipt_schema = info.get("worker_policy_reward_receipt")
                 for field in _WORKER_POLICY_REWARD_COMPONENT_FIELDS:
                     if receipt_schema == "v1" and field not in info:
                         raise RuntimeError(
-                            "formal PG policy_reward 分量回执缺键"
-                            f"({field}):带 v1 标记的回执不得缺省")
+                            "formal PG policy_reward component receipt missing key"
+                            f" ({field}): receipts marked v1 may not rely on defaults")
                     value = info.get(field, 0.0)
                     if (
                         not isinstance(
@@ -4777,18 +4777,18 @@ class LeashedMaskablePPO(MaskablePPO):
                         or not math.isfinite(float(value))
                     ):
                         raise RuntimeError(
-                            "formal PG policy_reward 分量回执"
-                            f"({field})非有限普通数")
+                            "formal PG policy_reward component receipt"
+                            f" ({field}) is not a finite plain number")
                     policy_components.append(float(value))
                 depth_shaping, escrow_vest, hp_econ = policy_components
                 expected_timeout_reward = (
                     worker_wage + timeout_total
                     + depth_shaping + escrow_vest + hp_econ)
                 if receipt_schema == "v1":
-                    # R17.1(W/P 复核 H3):真正的六项恒等式,对每一笔
-                    # transition 生效(不再只在超时支路);求和顺序与
-                    # worker_env 两处组装点逐位一致:
-                    # wage + death + timeout + shaping + vest + hp_econ。
+                    # R17.1 (W/P review H3): the real six-term identity, applied to every
+                    # transition (no longer only on the timeout branch); summation order
+                    # matches both worker_env assembly points bit for bit:
+                    # wage + death + timeout + shaping + vest + hp_econ.
                     credited_death = info.get(
                         "worker_credited_terminal_death_reward")
                     if (
@@ -4801,13 +4801,13 @@ class LeashedMaskablePPO(MaskablePPO):
                         or not math.isfinite(float(credited_death))
                     ):
                         raise RuntimeError(
-                            "formal PG 死亡分量回执缺失或非有限普通数")
+                            "formal PG death component receipt missing or not a finite plain number")
                     expected_policy_reward = (
                         worker_wage + float(credited_death) + timeout_total
                         + depth_shaping + escrow_vest + hp_econ)
                     if float(reward) != expected_policy_reward:
                         raise RuntimeError(
-                            "formal PG reward 六项恒等式不闭合:"
+                            "formal PG reward six-term identity does not close: "
                             f"reward={float(reward)!r} "
                             f"expected={expected_policy_reward!r}")
                 if not timeout:
@@ -4817,12 +4817,12 @@ class LeashedMaskablePPO(MaskablePPO):
                         timeout_total,
                     ) != (0.0, 0.0, 0.0):
                         raise RuntimeError(
-                            "formal PG 非 timeout transition 携失败成本")
+                            "formal PG non-timeout transition carries a failure cost")
                 elif (
-                    # R16 修宪(C8)零罚金法域:worker_env 以
-                    # no_progress_timeout_credit=="zero" 声明,超时仍终止
-                    # 窗、分账恒 (0,0,0)、reward == wage;死亡三账仍须为 0。
-                    # 旧法(death-equivalent / 键缺省)分毫不动,走下一分支。
+                    # R16 amendment (C8) zero-penalty regime: worker_env declares it with
+                    # no_progress_timeout_credit=="zero"; a timeout still ends the
+                    # window, the split is always (0,0,0), reward == wage; the three death entries must still be 0.
+                    # The old rule (death-equivalent / missing key) is untouched and takes the next branch.
                     info.get("no_progress_timeout_credit",
                              "death-equivalent") == "zero"
                 ):
@@ -4840,7 +4840,7 @@ class LeashedMaskablePPO(MaskablePPO):
                         )
                         or (timeout_base, timeout_additional, timeout_total)
                         != (0.0, 0.0, 0.0)
-                        # R17.0 修正案一:wage + 0 + shaping + vest + hp_econ
+                        # R17.0 amendment 1: wage + 0 + shaping + vest + hp_econ
                         or float(reward) != expected_timeout_reward
                         or any(
                             field not in info
@@ -4858,17 +4858,17 @@ class LeashedMaskablePPO(MaskablePPO):
                         )
                     ):
                         raise RuntimeError(
-                            "formal PG no-progress timeout(R16 零罚金法域)"
-                            "终止/零罚/死亡互斥账不闭合")
+                            "formal PG no-progress timeout (R16 zero-penalty regime) "
+                            "termination/zero-penalty/death mutually exclusive accounts do not close")
                 elif (
                     not bool(dones_array[index])
                     or info.get("TimeLimit.truncated", False) is not False
                     or info.get("time_limit_bootstrap_safe") is not False
-                    # A3 修正案(2026-07-27 批):快进链可把「工人窗超时
-                    # 罚款」与「整局预算于未结算态耗尽」桥进同一 transition
-                    # (fast_forward_extras 尾部触底)。此同现合法:放行
-                    # unsettled=True,但要求与 budget_exhausted 一致闭合。
-                    # 其余八肢原封。(第一腿 119,776 步确定性复现在案。)
+                    # Amendment A3 (approved 2026-07-27): the fast-forward chain can bridge "worker window timeout
+                    # penalty" and "episode budget exhausted in an unsettled state" into one transition
+                    # (fast_forward_extras bottoming out at the tail). This co-occurrence is legal: allow
+                    # unsettled=True, but require it to close consistently with budget_exhausted.
+                    # The other eight branches are untouched. (A deterministic reproduction from leg 1 at step 119,776 is on record.)
                     or info.get("unsettled_budget_terminal")
                     not in (False, True)
                     or (
@@ -4880,7 +4880,7 @@ class LeashedMaskablePPO(MaskablePPO):
                     or timeout_total
                     != timeout_base + timeout_additional
                     or timeout_total >= 0.0
-                    # R17.0 修正案一:wage + timeout + shaping + vest + hp_econ
+                    # R17.0 amendment 1: wage + timeout + shaping + vest + hp_econ
                     or float(reward) != expected_timeout_reward
                     or any(
                         field not in info
@@ -4899,25 +4899,25 @@ class LeashedMaskablePPO(MaskablePPO):
                 ):
                     raise RuntimeError(
                         "formal PG no-progress timeout "
-                        "终止/惩罚/死亡互斥账不闭合")
+                        "termination/penalty/death mutually exclusive accounts do not close")
                 if "executed_action" not in info:
                     raise RuntimeError(
-                        "formal PG rollout 缺 executed_action 回执")
+                        "formal PG rollout is missing its executed_action receipt")
                 executed = info["executed_action"]
                 if executed is not None and (
                     not isinstance(executed, (int, np.integer))
                     or isinstance(executed, (bool, np.bool_))
                 ):
                     raise RuntimeError(
-                        "formal PG executed_action 非普通整数/None")
+                        "formal PG executed_action is not a plain integer/None")
                 if executed is not None:
                     executed = int(executed)
                     if not 0 <= executed < n_actions:
                         raise RuntimeError(
-                            "formal PG executed_action 越界")
+                            "formal PG executed_action out of range")
                     if executed != requested:
                         raise RuntimeError(
-                            "formal PG 请求/执行动作回执不一致")
+                            "formal PG requested/executed action receipts disagree")
 
                 effect = info.get("action_effect_audit")
                 if effect is None:
@@ -4927,8 +4927,8 @@ class LeashedMaskablePPO(MaskablePPO):
                         and info.get("overridden") is True
                     ):
                         raise RuntimeError(
-                            "formal PG 非 fuse transition "
-                            "缺 action_effect_audit")
+                            "formal PG non-fuse transition "
+                            "is missing action_effect_audit")
                     combat_effect = False
                 else:
                     if (
@@ -4937,7 +4937,7 @@ class LeashedMaskablePPO(MaskablePPO):
                         != _WORKER_ACTION_EFFECT_AUDIT_KEYS
                     ):
                         raise RuntimeError(
-                            "formal PG action_effect_audit schema 漂移")
+                            "formal PG action_effect_audit schema drifted")
                     attempts = effect["native_attempts"]
                     accepts = effect["native_accepts"]
                     reasons = effect["effect_reasons"]
@@ -4988,7 +4988,7 @@ class LeashedMaskablePPO(MaskablePPO):
                         or info.get("overridden") is True
                     ):
                         raise RuntimeError(
-                            "formal PG action_effect_audit 字段不守恒")
+                            "formal PG action_effect_audit fields not conserved")
                     combat_effect = bool(
                         requested == 9
                         and executed == 9
@@ -5009,7 +5009,7 @@ class LeashedMaskablePPO(MaskablePPO):
                 ):
                     raise RuntimeError(
                         "formal PG unsettled budget terminal "
-                        "不得执行 TimeLimit bootstrap")
+                        "must not run a TimeLimit bootstrap")
                 if time_limit_bootstrap:
                     terminal_obs = self.policy.obs_to_tensor(
                         info["terminal_observation"])[0]
@@ -5047,43 +5047,43 @@ class LeashedMaskablePPO(MaskablePPO):
         if self._bc_aux_circuit_spec is None:
             return
         if not isinstance(infos, (list, tuple)):
-            raise RuntimeError("a12 rollout info batch 形状异常")
+            raise RuntimeError("a12 rollout info batch shape invalid")
         if len(infos) != int(self.n_envs):
             raise RuntimeError(
-                "a12 rollout info batch 与 n_envs 不闭合:"
+                "a12 rollout info batch does not close with n_envs: "
                 f"{len(infos)} != {int(self.n_envs)}")
         n_actions = int(getattr(self.action_space, "n", 0))
         if n_actions <= 0:
-            raise RuntimeError("a12 rollout action_space 非 Discrete")
+            raise RuntimeError("a12 rollout action_space is not Discrete")
         validated = []
         for info in infos:
             if not isinstance(info, dict) \
                     or "requested_action" not in info \
                     or "executed_action" not in info:
                 raise RuntimeError(
-                    "a12 rollout 缺 WorkerWindowEnv 执行回执")
+                    "a12 rollout is missing the WorkerWindowEnv execution receipt")
             requested = info["requested_action"]
             executed = info["executed_action"]
             if (
                 not isinstance(requested, (int, np.integer))
                 or isinstance(requested, (bool, np.bool_))
             ):
-                raise RuntimeError("a12 rollout requested_action 非普通整数")
+                raise RuntimeError("a12 rollout requested_action is not a plain integer")
             requested = int(requested)
             if not 0 <= requested < n_actions:
-                raise RuntimeError("a12 rollout requested_action 越界")
+                raise RuntimeError("a12 rollout requested_action out of range")
             if executed is not None and (
                 not isinstance(executed, (int, np.integer))
                 or isinstance(executed, (bool, np.bool_))
             ):
-                raise RuntimeError("a12 rollout executed_action 非普通整数/None")
+                raise RuntimeError("a12 rollout executed_action is not a plain integer/None")
             if executed is not None:
                 executed = int(executed)
                 if not 0 <= executed < n_actions:
-                    raise RuntimeError("a12 rollout executed_action 越界")
+                    raise RuntimeError("a12 rollout executed_action out of range")
                 if executed != requested:
                     raise RuntimeError(
-                        "a12 rollout 请求/执行动作回执不一致")
+                        "a12 rollout requested/executed action receipts disagree")
             validated.append((requested, executed))
 
         # Commit only after the complete VecEnv info batch validates.  A bad
@@ -5102,7 +5102,7 @@ class LeashedMaskablePPO(MaskablePPO):
         teacher_obs = _legacy_worker_observation_view(obs)
         teacher_width = int(self.teacher[0].in_features)
         if teacher_obs.shape[-1] < teacher_width:
-            raise ValueError("KING teacher observation 维度不足")
+            raise ValueError("KING teacher observation has too few dimensions")
         teacher_obs = teacher_obs[..., :teacher_width]
         t_logits = self.teacher(teacher_obs)
         mask = action_masks.reshape(t_logits.shape).bool()
@@ -5148,19 +5148,19 @@ class LeashedMaskablePPO(MaskablePPO):
             != ASYMMETRIC_WORKER_OBSERVATION_DIM
         ):
             raise ValueError(
-                "asymmetric distillation observation 形状异常")
+                "asymmetric distillation observation shape invalid")
         latent_pi = self.policy.mlp_extractor.policy_net(
             pi_features[:, :ASYMMETRIC_WORKER_LEGACY_DIM])
         return self.policy.action_net(latent_pi)
 
     def mount_bc_aux_demos(self, obs, actions, masks,
                            rng: np.random.Generator) -> None:
-        """挂载 rev4 校准 bank，并冻结首次 aux 根策略作为非触发态锚。
+        """Mount the rev4 calibration bank and freeze the first aux root policy as the anchor for non-trigger states.
 
-        bank 必须同时含 a12 正例与 ``m[12]=True,y!=12`` hard negatives；
-        前者教“何时可喝”，后者和起点分布 KL 共同防“有药就喝”及“全 a9”。
-        入口另保证这些行只来自 BC-v2 training episodes，原始 held-out
-        episodes 不得进入优化器。rng 仅用于分组无放回轮转，不触碰训练 RNG。
+        The bank must contain both a12 positives and ``m[12]=True,y!=12`` hard negatives;
+        the former teach "when drinking is allowed", the latter together with the starting-distribution KL guard against "drink whenever potions exist" and "all a9".
+        The entry point also guarantees these rows come only from BC-v2 training episodes; the original held-out
+        episodes must never reach the optimizer. The rng is used only for grouped rotation without replacement and never touches the training RNG.
         """
         obs = np.asarray(obs, dtype=np.float32)
         actions = np.asarray(actions)
@@ -5169,27 +5169,27 @@ class LeashedMaskablePPO(MaskablePPO):
         obs_dim = int(np.prod(self.observation_space.shape))
         if obs.ndim != 2 or len(obs) == 0 or obs.shape[1] != obs_dim:
             raise ValueError(
-                f"bc_aux 示范观测形状异常: {obs.shape}(期望 (N,{obs_dim}),N≥1)")
+                f"bc_aux demo observation shape invalid: {obs.shape} (expected (N,{obs_dim}), N>=1)")
         if (actions.ndim != 1 or len(actions) != len(obs)
                 or not np.issubdtype(actions.dtype, np.integer)
                 or not bool(((actions >= 0) & (actions < n_actions)).all())):
-            raise ValueError("bc_aux 示范标签形状/类型/取值异常")
+            raise ValueError("bc_aux demo labels shape/type/values invalid")
         if masks.shape != (len(obs), n_actions) or masks.dtype != np.bool_:
             raise ValueError(
-                f"bc_aux 示范掩码形状/dtype 异常: {masks.shape},{masks.dtype}")
+                f"bc_aux demo mask shape/dtype invalid: {masks.shape},{masks.dtype}")
         if not bool(masks[np.arange(len(actions)), actions].all()):
             raise ValueError(
-                "bc_aux 示范对存在标签被自身掩码禁止"
-                "(掩位 log-prob 为 -1e8,on-manifold 破缺,fail-loud)")
+                "bc_aux demo pairs have labels forbidden by their own mask"
+                " (masked log-prob is -1e8, on-manifold broken, fail-loud)")
         if not isinstance(rng, np.random.Generator):
-            raise ValueError("bc_aux 须挂专用 np.random.Generator 流(零染训练 RNG)")
+            raise ValueError("bc_aux must mount a dedicated np.random.Generator stream (never touching the training RNG)")
         positive = np.flatnonzero(actions == 12)
         negative = np.flatnonzero(actions != 12)
         if len(positive) == 0 or len(negative) == 0:
             raise ValueError(
-                "bc_aux rev4 bank 必须同时包含 a12 正例与非 a12 hard negative")
+                "bc_aux rev4 bank must contain both a12 positives and non-a12 hard negatives")
         if not bool(masks[:, 12].all()):
-            raise ValueError("bc_aux rev4 bank 全部样本均须 m[12]=True")
+            raise ValueError("bc_aux rev4 bank: every sample must have m[12]=True")
         self._bc_aux_obs = th.as_tensor(obs, device=self.device)
         self._bc_aux_actions = th.as_tensor(actions.astype(np.int64),
                                             device=self.device)
@@ -5201,9 +5201,9 @@ class LeashedMaskablePPO(MaskablePPO):
         self._bc_aux_cursors = {}
         self._bc_aux_train_calls = 0
         self._last_bc_aux_parts = None
-        # continuation 不得把 KL 锚逐腿重置为“本腿起点”。首次 aux 腿的六张量
-        # 根锚会随 checkpoint 持久化；后续腿即使 current 已漂移，也始终用该
-        # 根策略在同一 bank/masks 上的概率。正例不消费此锚，仍可提高 a12。
+        # A continuation must not reset the KL anchor per leg to "this leg's starting point". The six-tensor
+        # root anchor of the first aux leg persists with the checkpoint; later legs always use that
+        # root policy's probabilities on the same bank/masks even if current has drifted. Positives do not consume this anchor, so a12 can still rise.
         root = getattr(self, "bc_aux_root_anchor_sd", None)
         if root is None:
             was_training = self.policy.training
@@ -5229,14 +5229,14 @@ class LeashedMaskablePPO(MaskablePPO):
         else:
             if not isinstance(root, dict) \
                     or set(root) != set(_BC_AUX_POLICY_HEAD_KEYS):
-                raise ValueError("bc_aux persistent root 策略头键集合异常")
+                raise ValueError("bc_aux persistent root policy-head key set invalid")
             tensors = []
             for key in _BC_AUX_POLICY_HEAD_KEYS:
                 value = root[key]
                 if not isinstance(value, th.Tensor) \
                         or not bool(th.isfinite(value).all().item()):
                     raise ValueError(
-                        f"bc_aux persistent root 张量异常:{key}")
+                        f"bc_aux persistent root tensor invalid: {key}")
                 tensors.append(
                     value.detach().to(device=self.device, dtype=th.float32))
             w0, b0, w1, b1, wa, ba = tensors
@@ -5246,7 +5246,7 @@ class LeashedMaskablePPO(MaskablePPO):
                     or b1.shape != (w1.shape[0],)
                     or wa.shape != (n_actions, w1.shape[0])
                     or ba.shape != (n_actions,)):
-                raise ValueError("bc_aux persistent root 策略头形状异常")
+                raise ValueError("bc_aux persistent root policy-head shape invalid")
             with th.no_grad():
                 legacy_obs = _legacy_worker_observation_view(self._bc_aux_obs)
                 hidden = th.tanh(legacy_obs @ w0.T + b0)
@@ -5272,13 +5272,13 @@ class LeashedMaskablePPO(MaskablePPO):
         root = getattr(self, "bc_aux_root_anchor_sd", None)
         if not isinstance(root, dict) \
                 or set(root) != set(_BC_AUX_POLICY_HEAD_KEYS):
-            raise RuntimeError("a12 circuit validation 缺 persistent root")
+            raise RuntimeError("a12 circuit validation is missing the persistent root")
         tensors = [
             root[key].detach().to(device=self.device, dtype=th.float32)
             for key in _BC_AUX_POLICY_HEAD_KEYS
         ]
         if not all(bool(value.isfinite().all().item()) for value in tensors):
-            raise RuntimeError("a12 circuit root 含 NaN/Inf")
+            raise RuntimeError("a12 circuit root contains NaN/Inf")
         w0, b0, w1, b1, wa, ba = tensors
         with th.no_grad():
             legacy_obs = _legacy_worker_observation_view(obs)
@@ -5294,7 +5294,7 @@ class LeashedMaskablePPO(MaskablePPO):
             self, obs, actions, masks) -> None:
         """Mount the nested-validation domain used only by rollout gates."""
         if self._bc_aux_circuit_spec is None:
-            raise RuntimeError("validation 只适用于 active a12 circuit")
+            raise RuntimeError("validation only applies to an active a12 circuit")
         obs = np.asarray(obs, dtype=np.float32)
         actions = np.asarray(actions)
         masks = np.asarray(masks)
@@ -5312,7 +5312,7 @@ class LeashedMaskablePPO(MaskablePPO):
             or not bool(((actions != _LEGACY_DISTILL_EXCLUDED_ACTION)
                          & masks[:, _LEGACY_DISTILL_EXCLUDED_ACTION]).any())
         ):
-            raise ValueError("a12 circuit validation 输入形状/覆盖异常")
+            raise ValueError("a12 circuit validation input shape/coverage invalid")
         self._bc_aux_validation_obs = th.as_tensor(
             obs, device=self.device)
         self._bc_aux_validation_actions = th.as_tensor(
@@ -5327,7 +5327,7 @@ class LeashedMaskablePPO(MaskablePPO):
             self, obs, actions, masks) -> None:
         """Mount the complete nested-fit distribution (never a 1:8 bank)."""
         if self._bc_aux_circuit_spec is None:
-            raise RuntimeError("fit 只适用于 active a12 circuit")
+            raise RuntimeError("fit only applies to an active a12 circuit")
         obs = np.asarray(obs, dtype=np.float32)
         actions = np.asarray(actions)
         masks = np.asarray(masks)
@@ -5345,7 +5345,7 @@ class LeashedMaskablePPO(MaskablePPO):
             or not bool(((actions != _LEGACY_DISTILL_EXCLUDED_ACTION)
                          & masks[:, _LEGACY_DISTILL_EXCLUDED_ACTION]).any())
         ):
-            raise ValueError("a12 circuit fit 输入形状/覆盖异常")
+            raise ValueError("a12 circuit fit input shape/coverage invalid")
         self._bc_aux_obs = th.as_tensor(obs, device=self.device)
         self._bc_aux_actions = th.as_tensor(
             actions.astype(np.int64), device=self.device)
@@ -5358,11 +5358,11 @@ class LeashedMaskablePPO(MaskablePPO):
             self._bc_aux_obs, self._bc_aux_masks)
 
     def _bc_aux_take(self, group: str, count: int) -> np.ndarray:
-        """组内跨调用无放回轮转；耗尽才重洗，避免 199 正例反复抽中同一批。"""
+        """Rotate without replacement within a group across calls; reshuffle only when exhausted, so the 199 positives are not drawn as the same batch again and again."""
         pool = (self._bc_aux_positive if group == "positive"
                 else self._bc_aux_negative)
         if pool is None or len(pool) == 0:
-            raise RuntimeError(f"bc_aux {group} 池为空")
+            raise RuntimeError(f"bc_aux {group} pool is empty")
         need = int(count)
         out = []
         while need > 0:
@@ -5380,17 +5380,17 @@ class LeashedMaskablePPO(MaskablePPO):
         return np.concatenate(out).astype(np.int64, copy=False)
 
     def _bc_aux_ce_loss(self) -> th.Tensor:
-        """rev5 校准损失：soft binary target + 非触发态根策略 KL。
+        """rev5 calibration loss: soft binary target + KL to the root policy on non-trigger states.
 
-        正负组分别求均值后按 1:3 混合，不让 8:1 bank 大小隐式改变权重。
-        正例目标 0.65 而非 1.0，负例目标 0.01；KL 只施于负例，故不会把
-        a12 正例重新焊回 KING 的零使用状态。
+        Positive and negative groups are averaged separately and mixed 1:3, so the 8:1 bank sizes do not implicitly change the weights.
+        The positive target is 0.65 rather than 1.0, the negative target 0.01; KL applies only to negatives, so it never
+        welds a12 positives back to KING's zero-usage state.
         """
         if self._bc_aux_obs is None or self._bc_aux_rng is None:
             raise RuntimeError(
-                "λ_bc>0 但示范池未挂载(fail-loud 条款,反 P2 构造性零通路)")
+                "λ_bc>0 but the demo pool is not mounted (fail-loud clause, guards against the P2 structurally-zero pathway)")
         if self._bc_aux_anchor_probs is None:
-            raise RuntimeError("bc_aux rev4 根策略锚未挂载")
+            raise RuntimeError("bc_aux rev4 root policy anchor not mounted")
         size = min(int(self.batch_size), int(self._bc_aux_obs.shape[0]))
         pos_n = min(
             len(self._bc_aux_positive),
@@ -5415,12 +5415,12 @@ class LeashedMaskablePPO(MaskablePPO):
             dtype=th.long,
             device=self.device,
         )
-        # 方案A(2026-07-27 批,1-ULP 跨平台勘定):BCE 支路消费掩码后的
-        # 解析 a12 log-prob 列,不再经 log_prob() 的直通前向——直通残差
-        # (normalized−exact).detach() 是采样器 O(ulp) 归一化噪声,随
-        # BLAS/SIMD 归约序漂移(Mac ARM vs Linux AVX 差 1 ULP);解析列
-        # 对 a14 扰动逐位不变,梯度与直通反向同一张量,语义零变化。
-        # 直通值仍由 PPO ratio 路径独占消费(那里需要与采样器逐位一致)。
+        # Plan A (approved 2026-07-27, 1-ULP cross-platform finding): the BCE branch consumes the analytic, masked
+        # a12 log-prob column, no longer the straight-through forward of log_prob() -- the straight-through residual
+        # (normalized−exact).detach() is O(ulp) normalisation noise from the sampler that drifts with the
+        # BLAS/SIMD reduction order (1 ULP apart on Mac ARM vs Linux AVX); the analytic column
+        # is bit-for-bit invariant to a14 perturbations, and its gradient is the same tensor as the straight-through backward, so semantics are unchanged.
+        # The straight-through value is still consumed exclusively by the PPO ratio path (which must match the sampler bit for bit).
         exact_original = getattr(dist, "_original_exact_log_probs", None)
         if exact_original is not None:
             mask12 = self._bc_aux_masks[index][
@@ -5468,15 +5468,15 @@ class LeashedMaskablePPO(MaskablePPO):
         return loss
 
     def _peek_bc_aux_ce_loss(self) -> th.Tensor:
-        """构建 G-CAL 辅助图，但不消费生产示范流。
+        """Build the G-CAL auxiliary graph without consuming the production demo stream.
 
-        rev5 的真实辅助更新在每轮 PPO epochs 之后独立执行。G-CAL 仍需在
-        首个 PPO minibatch 上读取联合梯度方向；若直接调用采样器，末尾真实
-        更新会悄悄消费第二批示范。这里完整快照专用 RNG、排列和游标，返回
-        可求导图后恢复采样状态，使末尾重算严格取得同一批样本。
+        In rev5 the real auxiliary update runs separately after each round of PPO epochs. G-CAL still needs
+        to read the joint gradient direction on the first PPO minibatch; calling the sampler directly would make the final real
+        update silently consume a second demo batch. Here we snapshot the dedicated RNG, permutation and cursor, return
+        the differentiable graph, and restore the sampler state so the final recomputation draws exactly the same batch.
         """
         if self._bc_aux_rng is None:
-            raise RuntimeError("bc_aux peek 前示范池未挂载")
+            raise RuntimeError("bc_aux demo pool not mounted before peek")
         rng_state = copy.deepcopy(self._bc_aux_rng.bit_generator.state)
         permutations = {
             key: value.copy()
@@ -5491,15 +5491,15 @@ class LeashedMaskablePPO(MaskablePPO):
             self._bc_aux_cursors = cursors
 
     def _apply_bc_aux_step(self) -> th.Tensor:
-        """执行一次 rev5 独立辅助 optimizer step。
+        """Run one rev5 standalone auxiliary optimizer step.
 
-        旧实现把辅助项塞进首个 PPO minibatch，与 PPO/value/entropy/KING
-        梯度共同裁剪；而 liveness preflight 做的是纯辅助步，因而系统性
-        高估可学性。现在生产与预检共用这一原子顺序：
-        zero_grad → λ·loss.backward → 全局裁剪 → optimizer.step。
+        The old implementation stuffed the auxiliary term into the first PPO minibatch, clipped together with the PPO/value/entropy/KING
+        gradients, while the liveness preflight ran a pure auxiliary step, so it systematically
+        overestimated learnability. Production and preflight now share this atomic order:
+        zero_grad -> λ·loss.backward -> global clipping -> optimizer.step.
         """
         if not np.isfinite(self.bc_aux_lambda) or self.bc_aux_lambda <= 0:
-            raise RuntimeError("独立 bc_aux step 要求有限正 λ")
+            raise RuntimeError("standalone bc_aux step requires a finite positive λ")
         aux_loss = self._bc_aux_ce_loss()
         weighted = self.bc_aux_lambda * aux_loss
         self.policy.optimizer.zero_grad()
@@ -5534,15 +5534,15 @@ class LeashedMaskablePPO(MaskablePPO):
             "gate_parameter_abs_max",
         }
         if not isinstance(spec, dict) or set(spec) != required:
-            raise RuntimeError("a12 circuit spec 字段不精确")
+            raise RuntimeError("a12 circuit spec fields not exact")
         if spec["schema_version"] != _BC_AUX_CIRCUIT_SCHEMA:
-            raise RuntimeError("a12 circuit schema 漂移")
+            raise RuntimeError("a12 circuit schema drifted")
         base = int(spec["base_width"])
         width = int(spec["expanded_width"])
         action = int(spec["action_index"])
         policy_net = self.policy.mlp_extractor.policy_net
         if len(policy_net) < 3:
-            raise RuntimeError("a12 circuit 策略 MLP 结构异常")
+            raise RuntimeError("a12 circuit policy MLP structure invalid")
         w0, b0 = policy_net[0].weight, policy_net[0].bias
         w1, b1 = policy_net[2].weight, policy_net[2].bias
         wa, ba = self.policy.action_net.weight, self.policy.action_net.bias
@@ -5556,7 +5556,7 @@ class LeashedMaskablePPO(MaskablePPO):
             or not 0 < base < width
             or not 0 <= action < wa.shape[0]
         ):
-            raise RuntimeError("a12 circuit 参数形状与 spec 不闭合")
+            raise RuntimeError("a12 circuit parameter shapes do not close with the spec")
 
         masks = []
         for parameter in (w0, b0, w1, b1, wa, ba):
@@ -5581,7 +5581,7 @@ class LeashedMaskablePPO(MaskablePPO):
             or len(feature_indices) != len(parameter_columns)
             or tuple(parameter_columns) != tuple(range(base, width))
         ):
-            raise RuntimeError("a12 contextual gate 参数/特征映射不闭合")
+            raise RuntimeError("a12 contextual gate parameter/feature mapping does not close")
         masks[4][action, list(parameter_columns)] = False
         return list(zip((w0, b0, w1, b1, wa, ba), masks))
 
@@ -5593,7 +5593,7 @@ class LeashedMaskablePPO(MaskablePPO):
         for parameter, protected in self._bc_aux_circuit_protected_tensors():
             if parameter.grad is not None:
                 if parameter.grad.shape != parameter.shape:
-                    raise RuntimeError("a12 circuit gradient 形状异常")
+                    raise RuntimeError("a12 circuit gradient shape invalid")
                 parameter.grad.masked_fill_(protected, 0.0)
             state = optimizer.state.get(parameter, {})
             for key in ("exp_avg", "exp_avg_sq", "max_exp_avg_sq"):
@@ -5602,7 +5602,7 @@ class LeashedMaskablePPO(MaskablePPO):
                     if not isinstance(value, th.Tensor) \
                             or value.shape != parameter.shape:
                         raise RuntimeError(
-                            f"a12 circuit optimizer {key} 形状异常")
+                            f"a12 circuit optimizer {key} shape invalid")
                     value.masked_fill_(protected, 0.0)
             snapshots.append((
                 parameter, protected,
@@ -5617,7 +5617,7 @@ class LeashedMaskablePPO(MaskablePPO):
             after = parameter.detach()[protected]
             if not th.equal(after, before):
                 raise RuntimeError(
-                    "主 optimizer 改写了冻结 a12 circuit 参数")
+                    "the main optimizer rewrote frozen a12 circuit parameters")
 
     def _bc_aux_drift_for(
             self, obs, actions, masks, anchor) -> dict | None:
@@ -5735,7 +5735,7 @@ class LeashedMaskablePPO(MaskablePPO):
             not bool(th.isfinite(gate_weight).all().item())
             or not bool(th.isfinite(gate_bias).item())
         ):
-            raise RuntimeError("a12 contextual gate 参数含 NaN/Inf")
+            raise RuntimeError("a12 contextual gate parameters contain NaN/Inf")
         before_weight = gate_weight.detach().clone()
         before_bias = gate_bias.detach().clone()
         with th.no_grad():
@@ -5799,7 +5799,7 @@ class LeashedMaskablePPO(MaskablePPO):
         receipts = self._bc_aux_pending_action_receipts
         if not isinstance(receipts, list) or len(receipts) != len(actions):
             raise RuntimeError(
-                "a12 rollout buffer 与执行回执长度不闭合:"
+                "a12 rollout buffer and execution receipts lengths do not close: "
                 f"buffer={len(actions)},receipts="
                 f"{len(receipts) if isinstance(receipts, list) else 'invalid'}")
         receipt_requested = th.as_tensor(
@@ -5813,7 +5813,7 @@ class LeashedMaskablePPO(MaskablePPO):
                 .item()
             )
             raise RuntimeError(
-                "a12 rollout buffer 请求序列与执行回执错位:"
+                "a12 rollout buffer request sequence misaligned with the execution receipts: "
                 f"index={mismatch},buffer={int(actions[mismatch])},"
                 f"receipt={int(receipt_requested[mismatch])}")
         executed_actions = th.as_tensor(
@@ -5828,7 +5828,7 @@ class LeashedMaskablePPO(MaskablePPO):
             ((~eligible) & requested_a12).sum().cpu())
         if unexpected_requested_count:
             raise RuntimeError(
-                "a12 contextual mixture 在硬 eligibility 外请求动作12:"
+                "a12 contextual mixture requested action 12 outside hard eligibility: "
                 f"{unexpected_requested_count}")
         unexpected_count = int((~eligible & executed_a12).sum().cpu())
         pending_requested = int(requested_a12.sum().cpu())
@@ -5839,7 +5839,7 @@ class LeashedMaskablePPO(MaskablePPO):
             or not bool((executed_a12 <= requested_a12).all().item())
         ):
             raise RuntimeError(
-                "a12 rollout buffer 请求与原生执行回执不闭合:"
+                "a12 rollout buffer requests do not close with the native execution receipts: "
                 f"buffer={int(requested_a12.sum().cpu())},"
                 f"info_requested={pending_requested},"
                 f"info_executed={executed_count}")
@@ -5850,7 +5850,7 @@ class LeashedMaskablePPO(MaskablePPO):
             p12 = distribution.distribution.logits[:, action].exp()
             expected_mass = float(p12.sum().cpu())
         if not np.isfinite(expected_mass) or expected_mass < 0.0:
-            raise RuntimeError("a12 rollout expected probability mass 非法")
+            raise RuntimeError("a12 rollout expected probability mass invalid")
         self._bc_aux_eligible_states += eligible_count
         self._bc_aux_requested_a12 += pending_requested
         # ``sampled`` is retained as the historical receipt key, but from
@@ -5885,7 +5885,7 @@ class LeashedMaskablePPO(MaskablePPO):
         }
 
     def _bc_aux_rollout_monitor(self) -> dict | None:
-        """每个 optimizer rollout 后检查毁损上界；不对 recall 设下限。"""
+        """After each optimizer rollout, check the damage upper bounds; no lower bound on recall."""
         circuit_active = self._bc_aux_circuit_spec is not None
         if self.bc_aux_lambda <= 0 and not circuit_active:
             return None
@@ -5956,8 +5956,8 @@ class LeashedMaskablePPO(MaskablePPO):
                 reasons.append(
                     "bank_high_hp_false_drink_rate>"
                     f"{allowed_high_hp}")
-            # 小型 smoke bank 的单个 argmax 翻转占比很大；用 2/sqrt(N)
-            # 统计容差，生产约 1.8k bank 时仍收紧到注册 5%。
+            # In a small smoke bank a single argmax flip is a large fraction; use a 2/sqrt(N)
+            # statistical tolerance, which still tightens to the registered 5% for the ~1.8k production bank.
             allowed_a13 = max(
                 _BC_AUX_ROLLOUT_A13_SPILLOVER_MAX,
                 2.0 / np.sqrt(max(1, bank["pairs"])))
@@ -6002,10 +6002,10 @@ class LeashedMaskablePPO(MaskablePPO):
                      effective_distill_beta: float | None = None,
                      teacher_entropy=None, distill_kl=None,
                      distill_tv=None, total_loss=None, bc_aux_loss=None):
-        """生产 G-CAL：梯度全景 + a12 头 + 固定 off-policy bank 漂移。
+        """Production G-CAL: full gradient picture + a12 head + fixed off-policy bank drift.
 
-        ``calib_record_only`` 只保留给旧协议的零侵入对照；新生产命令不携该
-        旗，任一破坏性读数会在触发 minibatch 更新前停腿。
+        ``calib_record_only`` is kept only for zero-intrusion comparisons under the old protocol; new production commands do not carry the
+        flag, and any destructive reading stops the leg before the triggering minibatch updates.
         """
         if effective_distill_beta is None:
             effective_distill_beta = float(self.distill_beta)
@@ -6181,21 +6181,21 @@ class LeashedMaskablePPO(MaskablePPO):
         print(f"   [G-CAL] {rec}")
 
     def train(self) -> None:
-        # ===== sb3_contrib ppo_mask.py train() 诚实复写;“皮筋”段以 β>0 守卫 =====
+        # ===== honest rewrite of sb3_contrib ppo_mask.py train(); the "leash" block is guarded by β>0 =====
         if not np.isfinite(self.distill_beta) or self.distill_beta < 0:
-            raise ValueError(f"distill_beta 必须是有限非负数,实得 {self.distill_beta!r}")
+            raise ValueError(f"distill_beta must be a finite non-negative number, got {self.distill_beta!r}")
         if not np.isfinite(self.bc_aux_lambda) or self.bc_aux_lambda < 0:
             raise ValueError(
-                f"bc_aux_lambda 必须是有限非负数,实得 {self.bc_aux_lambda!r}")
+                f"bc_aux_lambda must be a finite non-negative number, got {self.bc_aux_lambda!r}")
         if self.bc_aux_lambda > 0 and (
                 self._bc_aux_obs is None or self._bc_aux_rng is None):
             raise RuntimeError(
-                "λ_bc>0 但示范池未挂载(fail-loud 条款,反 P2 构造性零通路)")
+                "λ_bc>0 but the demo pool is not mounted (fail-loud clause, guards against the P2 structurally-zero pathway)")
         if self._bc_aux_circuit_spec is not None and (
                 self._bc_aux_obs is None
                 or self._bc_aux_validation_obs is None):
             raise RuntimeError(
-                "a12 circuit 在位但 fit/validation bank 未完整挂载")
+                "a12 circuit is present but the fit/validation bank is not fully mounted")
         self.policy.set_training_mode(True)
         self._update_learning_rate(self.policy.optimizer)
         actor_frozen_for_rollout = self._prepare_main_ppo_rollout()
@@ -6245,7 +6245,7 @@ class LeashedMaskablePPO(MaskablePPO):
             )
         ):
             raise RuntimeError(
-                "formal PG actor root/context 参数分区不闭合")
+                "formal PG actor root/context parameter partition does not close")
         worker_pg_actor_start = (
             tuple(
                 parameter.detach().clone()
@@ -6264,7 +6264,7 @@ class LeashedMaskablePPO(MaskablePPO):
             != len(worker_pg_actor_parameters)
         ):
             raise RuntimeError(
-                "formal PG combat gradient/actor 参数数量不闭合")
+                "formal PG combat gradient/actor parameter counts do not close")
         worker_pg_combat_root_gradients = (
             _select_parameter_gradients(
                 worker_pg_actor_parameters,
@@ -6339,8 +6339,8 @@ class LeashedMaskablePPO(MaskablePPO):
         if self.bc_aux_lambda > 0:
             aux_call_index = int(self._bc_aux_train_calls)
             self._bc_aux_train_calls += 1
-            # 每个 rollout 更新至多消费一个辅助 batch（旧实现每个
-            # minibatch×epoch 约 80 批）；校准点同样保证包含生产辅助项。
+            # Each rollout update consumes at most one auxiliary batch (the old implementation used about 80 batches,
+            # one per minibatch x epoch); the calibration point is also guaranteed to include the production auxiliary term.
             bc_aux_due = (
                 aux_call_index % _BC_AUX_UPDATE_EVERY == 0 or calib_due)
         else:
@@ -6401,10 +6401,10 @@ class LeashedMaskablePPO(MaskablePPO):
                 distill_tv_for_calib = None
                 diverge_for_calib = 0.0
 
-                # ===== 皮筋(v24 唯一插入段;β=0 整段跳过 → G-KL-B 逐位等价)=====
+                # ===== leash (the single v24 insertion block; β=0 skips it entirely -> G-KL-B bit-for-bit equivalence) =====
                 if effective_distill_beta > 0:
                     if self.teacher is None:
-                        raise RuntimeError("β>0 但教师未挂载(fail-loud 条款)")
+                        raise RuntimeError("β>0 but the teacher is not mounted (fail-loud clause)")
                     distill_masks = _legacy_distillation_masks(
                         rollout_data.action_masks)
                     with th.no_grad():
@@ -6443,21 +6443,21 @@ class LeashedMaskablePPO(MaskablePPO):
                         diverge_for_calib = dv
                         diverges.append(dv)
                         t_confs.append(t_probs.max(dim=-1).values.mean().item())
-                # ===== 皮筋段结束 =====
+                # ===== end of leash block =====
 
-                # ===== rev5 辅助探针项（这里只窥视，不在 PPO minibatch 更新）=====
+                # ===== rev5 auxiliary probe term (only peeked here, never updated in the PPO minibatch) =====
                 bc_aux_ce = None
                 probe_total_loss = loss
                 if self.bc_aux_lambda > 0 and bc_aux_due and calib_due:
                     bc_aux_ce = self._peek_bc_aux_ce_loss()
-                    # G-CAL 继续报告“若仍联合更新”的完整梯度，专门暴露
-                    # PPO/KING 与 a12 目标的方向冲突；真实更新在 epochs 后
-                    # 由独立 step 执行，避免共同裁剪把辅助方向抵消。
+                    # G-CAL keeps reporting the full gradient "as if still updated jointly", specifically to expose
+                    # the directional conflict between PPO/KING and the a12 objective; the real update runs after the epochs
+                    # as a standalone step, so joint clipping cannot cancel the auxiliary direction.
                     probe_total_loss = loss + self.bc_aux_lambda * bc_aux_ce
-                # ===== 辅助探针段结束 =====
+                # ===== end of auxiliary probe block =====
 
-                # G-CAL 必须放在两项附加损失装配完之后；旧位置看不到 λaux、
-                # total gradient 或 a12 头，是 current funcaux 假 PASS 的直接缝。
+                # G-CAL must run after both extra loss terms are assembled; the old position could not see λaux,
+                # the total gradient or the a12 head, which was the direct gap behind the current funcaux false PASS.
                 if calib_due:
                     self._calib_probe(
                         policy_loss, distill_ce_for_calib,
@@ -6480,9 +6480,9 @@ class LeashedMaskablePPO(MaskablePPO):
                     approx_kl_div = th.mean((th.exp(log_ratio) - 1) - log_ratio).cpu().numpy()
                     approx_kl_divs.append(approx_kl_div)
 
-                # 主动 G-CAL 已裁决停腿时，连当前 minibatch 也不应再更新。
-                # 原实现要继续跑完本轮多个 epoch，到下一次 rollout 的
-                # callback 才停，裁决后仍可改变权重数百次。
+                # When an active G-CAL has already ruled to stop the leg, not even the current minibatch may update.
+                # The original implementation kept running the remaining epochs of the round and only stopped at the next rollout's
+                # callback, so the weights could still change hundreds of times after the verdict.
                 if self._calib_tripped:
                     continue_training = False
                     break
@@ -6766,10 +6766,10 @@ class LeashedMaskablePPO(MaskablePPO):
                 worker_pg_delta_context_on_combat_descent,
             optimizer_steps=ppo_optimizer_steps_this_rollout)
 
-        # rev5：每个 rollout 至多一次纯辅助 optimizer step。target_kl 只
-        # 提前结束 PPO epochs，不应吞掉本轮已注册的辅助更新；只有 G-CAL
-        # fail-closed 裁决会禁止它。末步之后再跑行为 monitor，覆盖 target_kl
-        # 看不到的 off-policy 跳变。
+        # rev5: at most one pure auxiliary optimizer step per rollout. target_kl only
+        # ends PPO epochs early and must not swallow this round's registered auxiliary update; only a G-CAL
+        # fail-closed verdict forbids it. After the final step the behaviour monitor runs, covering the off-policy jumps
+        # that target_kl cannot see.
         if bc_aux_due and not self._calib_tripped:
             bc_aux_ce = self._apply_bc_aux_step()
             bc_aux_ces.append(bc_aux_ce.item())
@@ -6882,7 +6882,7 @@ class LeashedMaskablePPO(MaskablePPO):
         self.logger.record("train/clip_range", clip_range)
         if self.clip_range_vf is not None:
             self.logger.record("train/clip_range_vf", clip_range_vf)
-        # v24 皮筋读数(跨 minibatch 均值,预注册 D4:不许只记末批)
+        # v24 leash readings (mean across minibatches, pre-registration D4: never record only the last batch)
         self.logger.record(
             "train/distill_beta_initial", self.distill_beta)
         self.logger.record(
@@ -6909,12 +6909,12 @@ class LeashedMaskablePPO(MaskablePPO):
             self._last_distill_tv = float(np.mean(distill_tvs))
             self._last_diverge = float(np.mean(diverges))
         else:
-            self._last_distill_ce = None    # β=0 腿:哨兵行报 null,双簿对账干净
+            self._last_distill_ce = None    # β=0 leg: the sentinel row reports null, both ledgers reconcile cleanly
             self._last_teacher_entropy = None
             self._last_distill_kl = None
             self._last_distill_tv = None
             self._last_diverge = None
-        # E3 ④乙读数(跨 minibatch 均值,承皮筋"不许只记末批"口径)
+        # E3 4B readings (mean across minibatches, following the leash's "never record only the last batch" definition)
         self.logger.record("train/bc_aux_lambda", self.bc_aux_lambda)
         self.logger.record("train/bc_aux_applied", int(bc_aux_applied))
         self.logger.record("train/bc_aux_train_calls",
@@ -6926,9 +6926,9 @@ class LeashedMaskablePPO(MaskablePPO):
             self._last_bc_aux_ce = float(np.mean(bc_aux_ces))
         else:
             self._last_bc_aux_ce = None
-        # G-CAL 稀疏探针之外，每个完整 PPO rollout 更新后都读固定 bank。
-        # 这里只检查过度饮药/a13 挤出的上界；最终原始 held-out 完整门由
-        # train_ppo 发布事务执行。
+        # Besides the sparse G-CAL probes, the fixed bank is read after every full PPO rollout update.
+        # Only the over-drinking/a13 crowd-out upper bounds are checked here; the full gate on the original held-out is
+        # executed by the train_ppo release transaction.
         if self.bc_aux_lambda > 0:
             self._bc_aux_rollout_monitor()
         elif self._bc_aux_circuit_spec is not None:

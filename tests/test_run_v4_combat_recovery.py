@@ -1,6 +1,6 @@
-"""official-v4 launcher 的轻量命令、状态机与防错回归。
+"""Lightweight command, state-machine and error-proofing regressions for the official-v4 launcher.
 
-本文件不启动 BC、Diablo 引擎或 PPO 训练。
+This file does not start BC, the Diablo engine or PPO training.
 """
 
 from __future__ import annotations
@@ -120,7 +120,7 @@ def _passing_metrics() -> dict:
         },
     }
     if set(metrics) != set(train_ppo._BC_AUX_BEHAVIOR_METRIC_KEYS):
-        raise AssertionError("测试 metrics 夹具与 producer schema 漂移")
+        raise AssertionError("the test metrics fixture drifted from the producer schema")
     return metrics
 
 
@@ -467,7 +467,7 @@ class FrozenCommandTests(unittest.TestCase):
         self.assertEqual(launcher.TRAINING_CONTRACT_REVISION, 12)
         with self.assertRaisesRegex(
             launcher.CampaignError,
-            "未命中 official-v4-r6",
+            "does not match the official-v4-r6",
         ):
             launcher._expected_training_contract(_snapshot(), _bc())
 
@@ -561,7 +561,7 @@ class FrozenCommandTests(unittest.TestCase):
             }
             report.write_text(json.dumps(record))
             with self.assertRaisesRegex(
-                    launcher.CampaignError, "禁止 launcher 自动重采"):
+                    launcher.CampaignError, "the launcher must not automatically re-sample"):
                 launcher._reject_current_bc_scientific_failure(
                     report,
                     implementation_sha256=implementation,
@@ -669,7 +669,7 @@ class ProvenanceHardeningTests(unittest.TestCase):
         document = _valid_liveness_document()
         del document["policy_gradient_canary"]
         with self.assertRaisesRegex(
-            launcher.CampaignError, "顶层 schema"
+            launcher.CampaignError, "top-level schema"
         ):
             launcher._validate_liveness_preflight(
                 json.dumps(document).encode(),
@@ -726,7 +726,7 @@ class ProvenanceHardeningTests(unittest.TestCase):
         document["simulation"] = (
             "isolated-structural-static-necessary-condition")
         with self.assertRaisesRegex(
-            launcher.CampaignError, "顶层 schema"
+            launcher.CampaignError, "top-level schema"
         ):
             launcher._validate_liveness_preflight(
                 json.dumps(document).encode(),
@@ -917,7 +917,7 @@ class ProvenanceHardeningTests(unittest.TestCase):
             mock.patch("eval_assembled.verify_publication_expectations"),
         ):
             with self.assertRaisesRegex(
-                launcher.CampaignError, "策略头 SHA"
+                launcher.CampaignError, "policy head SHA"
             ):
                 launcher._validate_candidate()
 
@@ -988,7 +988,7 @@ class StateIdentityTests(unittest.TestCase):
                 FRESH_POOL_OPENED_PATH=base / "opened.json",
             ):
                 with self.assertRaisesRegex(
-                    launcher.CampaignError, "禁止自动迁移"
+                    launcher.CampaignError, "automatic migration is forbidden"
                 ):
                     launcher._load_state()
 
@@ -1018,7 +1018,7 @@ class StateIdentityTests(unittest.TestCase):
                 EVAL_DIR=base / "eval",
             ):
                 with self.assertRaisesRegex(
-                    launcher.CampaignError, "配方/经理"
+                    launcher.CampaignError, "recipe/manager"
                 ):
                     launcher._load_state()
 
@@ -1226,7 +1226,7 @@ class PairedCombatGateTests(unittest.TestCase):
             ),
         ):
             with self.assertRaisesRegex(
-                launcher.CampaignError, "分析/裁决"
+                launcher.CampaignError, "analysis/verdict"
             ):
                 launcher._require_regression_complete(state, candidate_info)
 
@@ -1293,7 +1293,7 @@ class LedgerTests(unittest.TestCase):
                     "ledger_head_sha256": events[-1]["event_sha256"],
                 }
                 with self.assertRaisesRegex(
-                    launcher.CampaignError, "截尾|改写"
+                    launcher.CampaignError, "truncated|rewritten"
                 ):
                     launcher._verify_fresh_ledger_checkpoint(
                         state, events[:-1]
@@ -1303,7 +1303,7 @@ class LedgerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             path = pathlib.Path(directory) / "opened.json"
             launcher._exclusive_create_json(path, {"x": 1}, "pool")
-            with self.assertRaisesRegex(launcher.CampaignError, "已存在"):
+            with self.assertRaisesRegex(launcher.CampaignError, "already exists"):
                 launcher._exclusive_create_json(path, {"x": 2}, "pool")
 
     def test_pair_reads_protocol_seed_location(self):
@@ -1388,7 +1388,7 @@ class FreshRecoveryTests(unittest.TestCase):
                 with self.assertRaises(launcher.CommandFailed):
                     launcher.command_eval_fresh()
                 with self.assertRaisesRegex(
-                    launcher.CampaignError, "禁止第二次点火|唯一预注册发次"
+                    launcher.CampaignError, "second launch|single pre-registered attempt"
                 ):
                     launcher.command_eval_fresh()
 
@@ -1433,7 +1433,7 @@ class FreshRecoveryTests(unittest.TestCase):
                 with self.assertRaises(launcher.CommandFailed):
                     launcher.command_eval_fresh()
                 with self.assertRaisesRegex(
-                    launcher.CampaignError, "禁止第二次 baseline"
+                    launcher.CampaignError, "second baseline launch is forbidden"
                 ):
                     launcher.command_eval_fresh()
             self.assertEqual(invocations, 1)
@@ -1477,7 +1477,7 @@ class FreshRecoveryTests(unittest.TestCase):
                 ),
             ):
                 with self.assertRaisesRegex(
-                    launcher.CampaignError, "BIND 前已有档案/void"
+                    launcher.CampaignError, "already had archives/void before the official BIND"
                 ):
                     launcher.command_eval_fresh()
             self.assertFalse(launcher.FRESH_LEDGER_PATH.exists())

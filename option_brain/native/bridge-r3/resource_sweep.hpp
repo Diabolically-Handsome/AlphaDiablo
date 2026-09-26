@@ -1,19 +1,19 @@
-// R18-H (2026-09-07) sweep-v1: 宝箱/桶的原生观测通道。
+// R18-H (2026-09-07) sweep-v1: native observation channel for chests and barrels.
 //
 // Included inside the bridge's private namespace, immediately before Observe()
 // (EnsureEngineProcess / EnsureInGame / gInGame are already defined there).
 //
-// Chairman ruling 2026-09-07 14:00: the pair must play a complete Diablo, and
+// Design goal (2026-09-07): the agent must be able to finish a complete game, and
 // today it cannot see a chest and never smashes a barrel.  This file adds the
 // missing EYES only: one new default-false flag and one new raw observation key
-// "objects" (每项带 floor_items 同口径的 visible = IsTileLit).  The HANDS already exist — ACTION_OPERATE reaches OperateChest for
+// "objects" (each entry carries visible = IsTileLit, the same definition as floor_items).  The HANDS already exist — ACTION_OPERATE reaches OperateChest for
 // every chest type and StartAttack (via _oBreak == 1) for every barrel — so no
 // new native action and no engine patch is required.
 //
 // Off path: gObjectObservation stays false, Observe() appends nothing, and the
 // observation dict is byte-identical to the frozen one.
 
-// 默认关闭。开启后 Observe() 追加 raw["objects"];关闭时观测字典逐字不变。
+// Off by default. When on, Observe() appends raw["objects"]; when off the observation dict is unchanged byte for byte.
 bool gObjectObservation = false;
 
 void ConfigureObjectObservation(bool enabled)
@@ -26,8 +26,8 @@ void ConfigureObjectObservation(bool enabled)
 	gObjectObservation = enabled;
 }
 
-// 只公开与"捡东西"相关的物体类别。神龛/书架/杠杆等一律不出现,
-// 免得把普通交互变成全知自动操作(与 progression_targets 白名单同口径)。
+// Only expose the object kinds relevant to "picking things up". Shrines, bookcases, levers and the like never appear,
+// so ordinary interactions do not turn into omniscient automation (same definition as the progression_targets allowlist).
 const char *SweepObjectKind(const Object &object)
 {
 	switch (object._otype) {
@@ -62,14 +62,14 @@ py::list ObserveSweepObjects()
 		entry["x"] = static_cast<int>(object.position.x);
 		entry["y"] = static_cast<int>(object.position.y);
 		entry["kind"] = kind;
-		// R18-H review round (2026-09-07): 与 floor_items 同口径的可见性标签。
-		// 通道本身是全图的(和 floor_items 一样),由 SweepService 只把"曾经
-		// 见过亮光"的物体记入候选,未点亮的地图区域仍然属于部分可观测环境。
+		// R18-H review round (2026-09-07): visibility label with the same definition as floor_items.
+		// The channel itself covers the whole map (like floor_items); SweepService only records objects that have "ever
+		// been seen lit" as candidates, so unlit map regions keep the environment partially observable.
 		entry["visible"] = IsTileLit(object.position);
-		// canInteractWith() == selectionRegion != None,即现代引擎里 _oSelFlag
-		// 的替代:OperateChest 开箱后置 None,BreakBarrel 碎桶后同样置 None,
-		// 两个函数入口也都用它作 "还能操作吗" 的判据。因此
-		// interactable=false 恰好等于 "已开/已碎/不可再操作"。
+		// canInteractWith() == selectionRegion != None, i.e. the modern engine's replacement for _oSelFlag:
+		// OperateChest sets it to None after opening a chest, BreakBarrel does the same after smashing a barrel,
+		// and both functions also use it at entry as the "can this still be operated" test. Therefore
+		// interactable=false means exactly "already opened/smashed/no longer operable".
 		entry["interactable"] = object.canInteractWith();
 		entry["solid"] = object._oSolidFlag;
 		objects.append(entry);

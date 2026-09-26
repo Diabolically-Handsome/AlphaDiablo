@@ -1,80 +1,80 @@
-# R20：真实准备后的 DIVE 学习后缀
+# R20: a DIVE learning suffix after real preparation
 
-本协议新增可选训练模式 `earned-dive-suffix-v1`，默认行为仍是历史模式。
-它改变训练样本的起点，不改变模型网络、动作数、观测尺寸、原生战备门槛或正常部署的开局方式。
-代码与工程验证不代表模型已学会下楼，也不构成长训练、扩展课程或替换认证模型的授权。
+This protocol adds an optional training mode, `earned-dive-suffix-v1`; the default behaviour stays the historical mode.
+It changes where training samples start; it does not change the model network, the number of actions, the observation size, the native readiness thresholds or how a normal deployment starts a game.
+The code and engineering checks do not mean the model has learned to descend, and they do not authorize long training, extending the course or replacing the certified model.
 
-## 要检验的问题
+## The question to test
 
-已完成的 G0 v4c 训练包含 8192 个学习决策，其中 DIVE 为 539 个（约 6.6%）。
-因此本次不是首次开启 DIVE，也不新增已有的 a11 先验；要检验的是增加真实达标后的学习机会是否有帮助。
-换装战备保全采用已验证的 `sustain-v6`。此前工程种子经结果选择，不能作为新模式效果的独立样本。
+The completed G0 v4c training contained 8,192 learning decisions, of which 539 (about 6.6%) were DIVE.
+So this is not the first time DIVE is enabled, and it does not add the existing a11 prior; what is tested is whether more learning opportunities after genuinely meeting readiness help.
+Readiness preservation across gear swaps uses the verified `sustain-v6`. The earlier engineering seeds were chosen by outcome and cannot serve as independent samples of the new mode's effect.
 
-## 准备、交接与学习
+## Preparation, hand-over and learning
 
-每次尝试都执行原有正常 reset 和初始化导航，然后由固定原始 R16 执行实际 FARM 决策。
-经理继续使用现有资源协议；拾金、回城、治疗、购买、维修、换装和返层使用原有真实服务流程。
-父模型身份固定为 SHA256：
+Every attempt runs the original normal reset and initialization navigation, after which the fixed original R16 makes the actual FARM decisions.
+The manager keeps using the existing resource protocol; gold pickup, town return, healing, buying, repair, gear swaps and returning to the level use the original real service flows.
+The parent model identity is fixed by SHA256:
 
 `7e31dc5402caed733443abb9fef383c877d93b3623b199ba4b5c6293092592f0`
 
-只在原经理选择的一个新 DIVE 窗口中，完成原有开窗、保险丝恢复和动画结算之后检查交接。
-角色必须仍在主 L1、存活、处于可决策状态，实时原生战备通过，且原有掩码允许该机会。
-交接保留同一个已打开窗口、原生状态、经理历史、探索和时钟，不重新开窗，不添加观测或原生步。
-开场结算后不达标时，父模型执行完该窗口；不能在同窗中途恢复达标时偷偷换人。
+The hand-over is checked only in a new DIVE window chosen by the original manager, after the original window opening, fuse recovery and animation settling.
+The character must still be on main L1, alive and in a decidable state, the live native readiness must pass, and the original mask must allow the opportunity.
+The hand-over keeps the same already opened window, native state, manager history, exploration and clocks; it does not reopen the window and adds no observation or native step.
+If readiness is not met after the opening settles, the parent model plays that window to the end; it cannot quietly swap players mid-window when readiness is restored.
 
-交接是该局的一次性变化。之后 FARM 与 DIVE 都由待训练模型执行，包括 L2 战斗；
-RESUPPLY 保留原服务流程。父模型不代打交接后的 FARM。
-准备阶段的奖励、死亡和失败只进入独立账目；不能生成 learner transition 或进入 PPO 缓冲区。
-交接后的真实奖励、终止、自举和延迟结算继续使用原有 Worker 规则。
+The hand-over is a one-time change in that game. Afterwards both FARM and DIVE are executed by the model being trained, including L2 combat;
+RESUPPLY keeps the original service flow. The parent model does not play FARM after the hand-over.
+Rewards, deaths and failures of the preparation phase only go into a separate ledger; they cannot produce learner transitions or enter the PPO buffer.
+Real rewards, terminations, bootstrapping and delayed settlement after the hand-over keep using the original Worker rules.
 
-## 有限预算与随机数
+## Finite budgets and random numbers
 
-调用方必须显式指定 `--worker-prefix-model`、`--worker-prefix-max-attempts` 和
-`--worker-prefix-max-microsteps`。两个预算属于每个环境实例的整个运行寿命，跨 reset 累计，
-不是每次 reset 自动补满的额度。耗尽时报告采样预算失败并停止该实例，不能无限筛选成功开局。
+The caller must specify `--worker-prefix-model`, `--worker-prefix-max-attempts` and
+`--worker-prefix-max-microsteps` explicitly. The two budgets belong to the whole running lifetime of each environment instance and accumulate across resets;
+they are not allowances refilled at every reset. On exhaustion a sampling-budget failure is reported and the instance stops; successful starts cannot be screened indefinitely.
 
-微拍预算从原有正常 reset 完成后的正式原生时钟开始：
-`budget_start=after_normal_env_reset`，`bootstrap_navigation_in_budget=false`。
-原环境的初始化城镇导航在正式时钟清零之前发生，本模式保留该行为；每次仍实际执行，
-并在墙钟耗时中包含完整 reset。不能把前缀微拍上限宣称为包含初始化的全部引擎成本。
+The micro-tick budget starts at the formal native clock after the original normal reset has completed:
+`budget_start=after_normal_env_reset`, `bootstrap_navigation_in_budget=false`.
+The original environment's initialization town navigation happens before the formal clock is zeroed, and this mode keeps that behaviour; it still runs every time,
+and the wall-clock time includes the complete reset. The prefix micro-tick limit cannot be claimed to cover the whole engine cost including initialization.
 
-准备期间只把底层物理截止点收窄到剩余额度，使用原有宏动作、动画和终局结算到达边界。
-`OptionsEnv.max_steps` 保持原值，避免改变模型和经理看到的时间特征。
-交接后恢复原物理截止点；外部改动该截止点会被拒绝，不能静默恢复到猜测值。
-公开统计即使被清零，预算和回执仍以私有生命周期计数器为准。
+During preparation only the underlying physical deadline is narrowed to the remaining allowance, and the boundary is reached with the original macro actions, animations and terminal settlement.
+`OptionsEnv.max_steps` keeps its original value, so the time features the model and the manager see do not change.
+After the hand-over the original physical deadline is restored; an external change to that deadline is rejected and never silently restored to a guessed value.
+Even if the public statistics are cleared, the budgets and receipts follow the private lifetime counters.
 
-固定父模型使用私有 Python、NumPy 和 Torch CPU 随机数流。
-加载、按局播种和采样预测结束后恢复调用者的随机数状态；不改变学习器的全局线程设置。
-正常训练中父模型与学习器使用独立随机流。工程保真对照可显式让固定父模型接着执行后缀，
-用于逐步比较；这种诊断不计为模型学习或部署效果。
+The fixed parent model uses private Python, NumPy and Torch CPU random streams.
+After loading, per-game seeding and sampled prediction, the caller's random state is restored; the learner's global thread settings are not changed.
+In normal training the parent model and the learner use independent random streams. An engineering fidelity control can explicitly let the fixed parent model continue into the suffix
+for step-by-step comparison; such a diagnostic does not count as model learning or deployment effect.
 
-## 配方和模型身份
+## Recipe and model identity
 
-新模式仅适用于 CPU Worker MPPO、`dual-v4-asymmetric-v3`、15 动作、13012 维观测，
-以及 `l2-town-v1/full/sustain-v6` 和现有 `adjacent-v1` 恢复。
-保留 R16/G0 的先验和奖励：a14=2.5、DIVE a11=2、a13=2、reward v4、
-HP loss price=0.1、potion pickup bonus=2、no-progress timeout credit=zero、
-descend escrow fraction=0.5、power=1.6、实时原生 gate。
-保留 6000 正式微拍、FARM 3600、窗口时钟设置和现有独立梯度裁剪分组。
-不使用 skip-dry、深层预装、校准注入或外部教师损失。
+The new mode only applies to CPU Worker MPPO, `dual-v4-asymmetric-v3`, 15 actions, the 13,012-dim observation,
+`l2-town-v1/full/sustain-v6` and the existing `adjacent-v1` recovery.
+The R16/G0 priors and rewards are kept: a14=2.5, DIVE a11=2, a13=2, reward v4,
+HP loss price=0.1, potion pickup bonus=2, no-progress timeout credit=zero,
+descend escrow fraction=0.5, power=1.6, the live native gate.
+The 6000 formal micro ticks, FARM 3600, the window clock settings and the existing separate gradient-clipping groups are kept.
+No skip-dry, deep pre-equipment, calibration injection or external teacher loss is used.
 
-`worker_prefix` 合同记录父模型 SHA、输入和掩码协议、私有随机数、两个预算、时钟与交接语义。
-旧模式不新增该字段，也不加载父模型。
-常规 resume 不能通过宽松漂移选项跨越学习范围或改变前缀合同。
-从原始 R16 进入新范围必须走显式 resource warm start：保留所有原权重，清空 Adam，
-把新训练步数记为零，并保留原始 R16 的历史步数作为来源信息。
-不得把之前 G0 的优化器和成绩静默视作新模式续训。
+The `worker_prefix` contract records the parent model SHA, the input and mask protocols, the private random numbers, both budgets, and the clock and hand-over semantics.
+The old mode adds no such field and does not load the parent model.
+An ordinary resume cannot cross the learning scope or change the prefix contract through lenient drift options.
+Entering the new scope from the original R16 must go through an explicit resource warm start: keep all original weights, clear Adam,
+count the new training steps from zero, and keep the original R16's historical steps as provenance information.
+The optimizer and results of the earlier G0 must not be silently treated as a continuation in the new mode.
 
-## 验证和后续边界
+## Verification and next boundaries
 
-工程检查覆盖旧模式兼容、构造和合同拒绝、私有随机数隔离、交接时受伤和场景变化、
-宏动作内准确耗尽、跨 reset 预算、失败账目、同窗交接以及交接后二层 FARM。
-合成采样检查使用真实缓冲区，验证只有后缀数据及正确 GAE，不执行 optimizer 更新。
-真实运行先绑定冻结源码、原生库、父模型、种子、预算、脚本与比较字段；
-出现错误立即停止后续派发，保留失败记录。
+The engineering checks cover old-mode compatibility, construction and contract rejection, private random-number isolation, injuries and scene changes at the hand-over,
+exact exhaustion inside macro actions, budgets across resets, the failure ledger, same-window hand-over and second-level FARM after the hand-over.
+A synthetic sampling check uses the real buffer to verify that only suffix data enters and GAE is correct, without running an optimizer update.
+A real run first binds the frozen source, native library, parent model, seeds, budgets, scripts and comparison fields;
+on any error further dispatch stops immediately and the failure record is kept.
 
-效果验证仍需正常开局、完整生命历程的部署评测，检查是否损害前期发育。
-正式主指标仍是 6000 微拍内首次抵达 L2，并在随后完整 1800 微拍存活；
-只验证 64 个后缀决策不满足该指标。当前课程边界仍为 L2，尚未扩展到 L7 或 L16。
-完成代码、契约与零更新工程验证后，再提交具体有限训练预算与停止条件供宏观决策。
+Effect verification still needs a deployment evaluation with normal starts and complete lifetimes, checking whether early development is harmed.
+The formal primary metric is still first reaching L2 within 6000 micro ticks and then surviving the full following 1800 micro ticks;
+verifying only 64 suffix decisions does not satisfy that metric. The current course boundary is still L2 and has not been extended to L7 or L16.
+Only after the code, the contract and a zero-update engineering check are complete is a concrete finite training budget with stopping conditions put forward for a decision.

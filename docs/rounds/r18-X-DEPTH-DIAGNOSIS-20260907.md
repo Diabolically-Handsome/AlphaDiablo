@@ -1,83 +1,83 @@
-# R18-X 判决书:「为什么一直不下楼」(2026-09-07 午)
+# R18-X verdict: "why does it never descend" (2026-09-07)
 
-主席晨问:「为什么模型一直不下楼 真的只是训练量不够吗」。本文件只回答这一个问题。
-零训练、零协议改动;两支**诊断回放**(非考卷)跑在已消耗的配对池 2_133(2133000–2133047),
-工人 7e31dc54,coach-v03,sustain-loot-v1,completion-l2-r18c,retreat-v1,hunt 全开,采样解码逐局定种——
-即 R18-C/G/F 的撤退对照臂。驱动 `r10-staging/run_r18x_l2geom.py`(新文件),产物 `r10-staging/r18x-l2geom/`,
-汇总脚本 `~/r17_work/r18/geom_agg.py`、`geom_agg2.py`(已抄入 r10-staging)。
-回放身份:48 局的 micro_steps / 死亡 / 击杀 / clvl 与 `r18f-probe/r18f-retreat.json` 逐位相同(只有 6 局的
-"depth" 列不同,因回放记局末层数、探针记最深层数;`source_changed_during_run` 为空)。
+The question: why does the model never go downstairs, and is it really just a lack of training? This file answers only that question.
+Zero training and zero protocol changes; two **diagnostic replays** (not exams) run on the consumed paired pool 2_133 (2133000–2133047),
+worker 7e31dc54, coach-v03, sustain-loot-v1, completion-l2-r18c, retreat-v1, hunting fully on, sampled decoding seeded per game,
+i.e. the retreat control arm of R18-C/G/F. Driver `r10-staging/run_r18x_l2geom.py` (a new file) and outputs `r10-staging/r18x-l2geom/` (not published);
+summary scripts `geom_agg.py` and `geom_agg2.py` (local, not published).
+Replay identity: the micro_steps / deaths / kills / clvl of the 48 games are bit-identical to `r18f-probe/r18f-retreat.json` (only 6 games differ in the
+"depth" column, because the replay records the level at game end and the probe the deepest level; `source_changed_during_run` is empty).
 
-## 一、昨夜十个臂的逐局遥测(`~/r17_work/r18/depth_diag.py`)
+## 1. Per-game telemetry of the ten earlier arms (`depth_diag.py`, local, not published)
 
-以撤退对照臂(48 局)为例,其余臂同构:
+Taking the retreat control arm (48 games) as the example; the other arms have the same structure:
 
-| 量 | 值 |
+| Quantity | Value |
 |---|---|
-| 二层到达 / 三层到达 | 37 / 2 |
-| 二层停留 90 次:撤退 57、死 25、下楼 4、钟响 4 | 每次中位 417 拍、杀 5 只;二层花名册中位 140,离开时中位剩 128 |
-| 二层 DIVE 窗 121 个 | **到达当拍即开**(首窗延迟中位 0);占二层时间 59%;结局:撤退触发 61、封顶 30、停滞 22、下楼 2、死 2 |
-| 教练在二层的 DIVE 触发 | 法定 ready 47、法定 ready 但深度尺 <1 (const_dive) 74 |
-| 一层 DIVE 窗 452 个 | 下楼 37(清到剩 6 只之后);其余 fuse/封顶/停滞 |
-| 二层死亡 25 | 中位在层 352 拍;死时 clvl 3–5,AC 7–9 为主;20 次死在撤退途中 |
+| Level-2 arrivals / level-3 arrivals | 37 / 2 |
+| 90 level-2 stays: retreat 57, death 25, descent 4, clock 4 | median 417 ticks and 5 kills per stay; median level-2 roster 140, median 128 left on leaving |
+| 121 level-2 DIVE windows | **opened on the arrival tick** (median delay of the first window 0); 59% of the level-2 time; endings: retreat trigger 61, cap 30, stall 22, descent 2, death 2 |
+| The coach's DIVE triggers on level 2 | rule-ready 47, rule-ready but depth ruler <1 (const_dive) 74 |
+| 452 level-1 DIVE windows | 37 descents (after clearing down to 6 monsters); the rest fuse/cap/stall |
+| 25 level-2 deaths | median 352 ticks on the level; mostly clvl 3–5 and AC 7–9 at death; 20 died during a retreat |
 
-**结论一:经理不是瓶颈。** 教练一到二层就开 DIVE 窗,六成二层时间都在 DIVE 窗里。
+**Conclusion 1: the manager is not the bottleneck.** The coach opens a DIVE window as soon as the character reaches level 2, and 60% of the level-2 time is spent in DIVE windows.
 
-## 二、楼梯几何回放(自然策略,48 局,36 次首次到二层)
+## 2. Stairs-geometry replay (natural policy, 48 games, 36 first arrivals on level 2)
 
-| 量 | 值 |
+| Quantity | Value |
 |---|---|
-| 到二层时下楼梯的 Chebyshev 距离 | 中位 22(四分位 12 / 36;5 格内 5 局,40 格以上 6 局) |
-| 上下楼梯间距 | 中位 22.5 |
-| 走廊盒子内的怪 / 楼梯 8 格内的怪 | 中位 3 / 0 |
-| 每 10 次决策抽查一次避怪 BFS(1333 次) | **1299 次(97%)存在不碰怪的路直达楼梯**;仅 9 次被困 |
-| 87 次二层停留 | 26 次走到楼梯 5 格内,13 次到 2 格内;下楼 4 次(2 局) |
-| 到达时离楼梯 ≤6 格的 14 次停留 | 下楼 2、死 3、撤退 8 |
-| 二层 DIVE 窗内工人决策 8236 次 | **a11(下楼宏)每一次都可选,只按了 192 次(2.3%)**;a9 打怪 2225、a10 求战 1183、方向键 1–8 共 4396 |
-| 其中离楼梯 ≤5 格的 695 次决策 | a11 可选 695,按了 20 |
+| Chebyshev distance to the down stairs on reaching level 2 | median 22 (quartiles 12 / 36; within 5 tiles in 5 games, 40+ tiles in 6 games) |
+| Distance between the up and down stairs | median 22.5 |
+| Monsters inside the corridor box / within 8 tiles of the stairs | median 3 / 0 |
+| A monster-avoiding BFS sampled every 10 decisions (1333 samples) | **1299 (97%) have a path to the stairs that touches no monster**; only 9 trapped |
+| 87 level-2 stays | 26 got within 5 tiles of the stairs, 13 within 2 tiles; 4 descents (2 games) |
+| 14 stays that arrived within 6 tiles of the stairs | 2 descents, 3 deaths, 8 retreats |
+| 8236 worker decisions in level-2 DIVE windows | **a11 (the descend macro) was available every time but pressed only 192 times (2.3%)**; a9 attack 2225, a10 hunt 1183, direction keys 1–8 4396 in total |
+| Of these, the 695 decisions within 5 tiles of the stairs | a11 available 695 times, pressed 20 |
 
-**结论二:楼梯走得到,是工人不肯走。** 不是地图远、不是被怪堵、不是掩码禁。
+**Conclusion 2: the stairs are reachable; the worker will not go.** Not a distant map, not blocking monsters, not the mask.
 
-## 三、反事实:DIVE 窗内强制按 a11(同 48 局)
+## 3. Counterfactual: forcing a11 in DIVE windows (the same 48 games)
 
-| | 自然 | 强制 a11 |
+| | Natural | Forced a11 |
 |---|---|---|
-| 最深层直方 | L1 11 / L2 35 / L3 2 | L1 11 / **L2 16 / L3 20 / L4 1** |
-| 三层到达 | 2 / 36 | **21 / 36** |
-| 首次到二层 → 下三层 | 中位 4794 拍 | **中位 108 拍** |
-| 存活 | 15 / 48 | **5 / 48** |
-| 三层到达者存活 | 1 / 2 | **0 / 21** |
-| 死亡楼层 | L1 7 / L2 25 / L3 1 | L1 7 / L2 23 / **L3 12 / L4 1** |
-| 二层击杀总数 / 局末 clvl 4+ | 888 / 21 局 | 213 / 12 局 |
-| 逐局配对 | — | 深度 +19 / −0;存活 −10 / +0 |
+| Deepest-level histogram | L1 11 / L2 35 / L3 2 | L1 11 / **L2 16 / L3 20 / L4 1** |
+| Level-3 arrivals | 2 / 36 | **21 / 36** |
+| First arrival on level 2 → down to level 3 | median 4794 ticks | **median 108 ticks** |
+| Survival | 15 / 48 | **5 / 48** |
+| Survival of level-3 arrivals | 1 / 2 | **0 / 21** |
+| Death level | L1 7 / L2 25 / L3 1 | L1 7 / L2 23 / **L3 12 / L4 1** |
+| Total level-2 kills / games ending at clvl 4+ | 888 / 21 games | 213 / 12 games |
+| Per-game pairing | — | depth +19 / −0; survival −10 / +0 |
 
-**结论三:深度只差一个动作,但 3 级、AC 9 的战士下到三层就是死。**
-自然策略在二层"莽打"至少换来 21 局升到 4 级以上和 15 局存活;强制下楼把这些全丢了。
+**Conclusion 3: depth is only one action away, but a level-3 warrior with AC 9 dies on level 3.**
+The natural policy's "reckless fighting" on level 2 at least buys 21 games reaching level 4+ and 15 survivors; forcing the descent throws all of that away.
 
-## 四、为什么它不肯按 a11(证据链)
+## 4. Why it will not press a11 (chain of evidence)
 
-1. 工人的工资(env.py v4 奖励表):每杀一只 +1.0,XP +0.01/点,下楼奖金**归经理**(剥薪法条,
-   `worker_descend_bonus_fraction` 默认 0),工人只有"战备托管"——达标下楼、下一窗未死才兑现。
-2. R16 训练(工人 7e31dc54 的最后一程,449 局,220 局到过二层,12 局到过三层):**244 次下楼托管兑现 0 次**
-   (R16 判决书 §四;R17.0 判决书发现二:换 v0.2 尺后仍为 0——AC 9 需要掉落护甲,100 金买不起)。
-3. 于是它学到的是:"DIVE 窗 = 继续打",一层能下去只是因为清完了没得打(一层 452 个 DIVE 窗下楼 37 次,
-   下楼时本层平均只剩 6 只)。二层永远有得打,所以永远不下。
+1. The worker's wage (the env.py v4 reward table): +1.0 per kill, +0.01 per XP point; the descend bonus **goes to the manager** (the wage-stripping rule,
+   `worker_descend_bonus_fraction` defaults to 0), and the worker only has the "readiness escrow", which vests after a ready descent if it does not die in the next window.
+2. R16 training (the last run of worker 7e31dc54, 449 games, 220 reaching level 2 and 12 reaching level 3): **244 descent escrows, 0 vested**
+   (R16 verdict §4; finding 2 of the R17.0 verdict: still 0 after switching to the v0.2 ruler, because AC 9 needs dropped armor and 100 gold cannot buy it).
+3. So what it learned is "DIVE window = keep fighting"; it goes down from level 1 only because there is nothing left to fight after clearing (452 level-1 DIVE windows gave 37 descents,
+   with on average only 6 monsters left on the level at the time). Level 2 always has something to fight, so it never goes down.
 
-## 五、回答主席
+## 5. Answer
 
-**不是训练量的问题。** 四百万步的谱系里这个动作没拿到过一分钱,再训一千万步也一样。真正的两堵墙:
+**It is not a matter of training volume.** Across a lineage of four million steps this action never earned anything, and another ten million steps would change nothing. The real two walls:
 
-- **墙一(报酬)**:下楼从没被支付。今夜的训练臂是谱系里**第一次**托管能兑现的世界——coach-v03 的六条法在二层
-  多数时刻判 ready(121 个 DIVE 窗里 121 个是教练自愿开的),卖装备经济让 AC 9+ 买得起,托管在下一窗未死时兑现。
-- **墙二(实力)**:二层的雪球滚不动——每局 9000 拍只杀 25 只(花名册 140),六成时间耗在撤退往返,风险率 0.37/千拍。
-  这就是主席说的"走位/仇恨/择敌"课,只能训练。零训练接口(撤退、门、关全图求战)把风险率压到 0.23–0.27,
-  但不改变"打不过"。
+- **Wall 1 (pay)**: descending was never paid. The training arm of this round is the **first** world in the lineage where escrow can vest: coach-v03's six rules judge the character ready
+  most of the time on level 2 (all 121 of 121 DIVE windows were opened voluntarily by the coach), the loot-selling economy makes AC 9+ affordable, and escrow vests if the next window ends without death.
+- **Wall 2 (strength)**: the snowball on level 2 does not roll: only 25 kills per 9000-tick game (roster 140), 60% of the time spent on retreat round trips, hazard 0.37 per 1000 ticks.
+  This is the "positioning/aggro/target selection" lesson raised in the design review, and it can only be trained. The zero-training interfaces (retreat, portal, whole-map hunting off) push the hazard down to 0.23–0.27,
+  but they do not change "cannot win".
 
-这也回答了"该往哪训":学习窗只在二层(earned-dive-suffix),奖励里托管第一次有兑现路径,同时用主席三条裁定
-(卖装备进训练、二层关全图求战、卷轴带上)把二层变成能滚雪球的世界。若训练后工人学会"先滚雪球再下楼",
-三层到达与存活会一起动;若只学会下楼,会重演反事实(深度 +、存活 −)——四闸与配对复测能分辨这两种结局。
+This also answers "what to train": learning windows only on level 2 (earned-dive-suffix), escrow with a vesting path in the reward for the first time, together with the three design decisions
+(loot selling in training, whole-map hunting off on level 2, carrying scrolls) that turn level 2 into a world where the snowball can roll. If after training the worker learns "snowball first, then descend",
+level-3 arrivals and survival will move together; if it only learns to descend, the counterfactual repeats itself (depth up, survival down); the four gates and the paired re-test can tell these outcomes apart.
 
-## 六、种子与文件
+## 6. Seeds and files
 
-2_133 已消耗池重放,处女池零接触;无冻结工件改动;新文件:本判决书、`run_r18x_l2geom.py`、`r18x-l2geom/`、
-`geom_agg.py`、`geom_agg2.py`、`depth_diag.py`。
+Replays on the consumed pool 2_133; the virgin pools are untouched; no frozen artifact changed; new files: this verdict, and (not published) `run_r18x_l2geom.py`, `r18x-l2geom/`,
+`geom_agg.py`, `geom_agg2.py`, `depth_diag.py`.

@@ -53,7 +53,7 @@ convert to L3 at 10/16 (v18: 7/19), deaths now cluster at L3 rather
 than L2, dry deaths 2/15, and gear stays alive (9/32 equipped, 266
 presses). Real-drink share drew 77% — the style lottery's sixth hand
 (93/46/37/60/4/77). Procedural note: this generation launched without
-registered predictions (the night's one ritual miss) — scored
+registered predictions (this generation's one missed registration) — scored
 descriptively only. Chapter status: three auction knobs mapped
 (ladder → rush; death price → retreat; visibility → split), the spiral
 has not emerged at M1-Max budgets; the design doc's workstation line

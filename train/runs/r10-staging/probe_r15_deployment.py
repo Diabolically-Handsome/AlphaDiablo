@@ -1,22 +1,22 @@
-"""R15 部署形态法证探针(非考卷:不经档案身份系统,结果只入台账法证)。
+"""R15 deployment-form forensic probe (not an exam: it bypasses the archive identity system, results go only to the ledger forensics).
 
-readiness-v1 脚本经理 × 工人 zip(FARM+DIVE 双注册,主权开,economy v2),
-逐种子统计 最深层/死亡/通关/微拍。用法:
+readiness-v1 script manager x worker zip (FARM+DIVE dual registration, autonomy on, economy v2),
+per-seed statistics of deepest level/death/victory/micro-beats. Usage:
   probe_r15_deployment.py <worker.zip> <lo-hi seeds> <out.json> [max_steps=3000] [argmax|stochastic]
-max_steps 可放宽(长视野法证:战备表在充足预算下的可爬性)。
+max_steps can be relaxed (long-horizon forensics: whether the readiness table can climb given an ample budget).
 
-R16 修宪(v2):
-  C4 尸检污染——单机死亡时引擎剥光装备、金币减半,局末读面板得到尸检值
-     (AC=4/dmg=1/gold=50)。本版 died 行的 char_level/armor_class/max_hp/
-     gold/xp/kills/hit_damage 一律取「死亡前最后存活快照」:每个工人拍
-     (callback 入口,raw 为该拍决策前的活体状态)与每个存活收窗后各刷新
-     一次快照;post_death 列另存局末尸检值供审计;snapshot_micro_step/
-     snapshot_source 标注快照时刻。存活行 post_death=None,主列即局末值。
-  agg 增加存活分层:alive_n/alive_clvl_mean/alive_ac_mean/alive_kills_mean/
-     dead_kills_mean/median_steps_dead 等;每千拍归一 xp_per_1k(raw["xp"])。
-  C3 stochastic 解码改为与考卷(eval_assembled --worker-decoding sample)
-     同款逐局定种:每局 env.reset 后 model.set_random_seed(seed),torch
-     单线程;同 zip 同种子两遍逐位可复现。argmax 路径不变。
+R16 amendment (v2):
+  C4 autopsy contamination: on a single-player death the engine strips the gear and halves the gold, so reading the panel at episode end gives autopsy values
+     (AC=4/dmg=1/gold=50). In this version the char_level/armor_class/max_hp/
+     gold/xp/kills/hit_damage of died rows are all taken from the "last alive snapshot before death": the snapshot is refreshed once at every worker beat
+     (callback entry; raw is the live state before that beat's decision) and once after every surviving window close;
+     the post_death column separately stores the end-of-episode autopsy values for audit; snapshot_micro_step/
+     snapshot_source record when the snapshot was taken. Surviving rows have post_death=None and the main columns are the end-of-episode values.
+  agg adds survival strata: alive_n/alive_clvl_mean/alive_ac_mean/alive_kills_mean/
+     dead_kills_mean/median_steps_dead etc.; xp_per_1k (raw["xp"]) normalized per thousand beats.
+  C3 stochastic decoding now uses the same per-episode seeding as the exam (eval_assembled --worker-decoding sample):
+     after each env.reset, model.set_random_seed(seed), single-threaded
+     torch; the same zip and seed reproduce bit for bit across two runs. The argmax path is unchanged.
 """
 import hashlib
 import json
@@ -38,19 +38,19 @@ from diablogym.worker_env import (  # noqa: E402
     readiness_power_ratio_v2,
 )
 
-# R16 修宪(v3):第 6 参数为 JSON 环境覆写(新法锚/新法臂部署形态),键:
+# R16 amendment (v3): argument 6 is a JSON environment override (new-law anchor/new-law arm deployment form), keys:
 #   explore_global_hunt / explore_global_fallback / progress_far_tiles /
 #   farm_scene_cap / reset_layer_clock_on_window / reward_economy /
-#   drink_sovereignty(bool)/ manager("readiness-v1"|"readiness-v3")。
-# 缺省(不给第 6 参数)= 旧法探针形态逐字不变。
+#   drink_sovereignty(bool)/ manager("readiness-v1"|"readiness-v3").
+# Omitted (no argument 6) = the old-law probe form, verbatim unchanged.
 _R16_ENV_KEYS = ("explore_global_hunt", "explore_global_fallback",
                  "progress_far_tiles", "farm_scene_cap",
                  "reset_layer_clock_on_window", "reward_economy")
 _R16_MANAGERS = ("readiness-v1", "readiness-v3")
 
 PROBE_VERSION = "r15-deployment-v3"
-# 法证溯源(非身份系统):多队并行在位修法期间,记录本次探针实际 import 的
-# 协议源码与工人 zip 的 SHA-256,便于把结果归因到具体源码状态。
+# Forensic provenance (not the identity system): while several workstreams were changing the protocol in place in parallel, record the SHA-256 of the
+# protocol sources and worker zip this probe actually imported, so results can be attributed to a specific source state.
 _SOURCE_FILES = (
     "train/eval_contract.py", "train/leashed_ppo.py",
     "python/diablogym/__init__.py", "python/diablogym/controller_wire.py",
@@ -71,10 +71,10 @@ def source_identity(worker_zip):
 
 
 def load_zip_policy(path, stochastic=False):
-    """stochastic=True:按训练分布采样解码(审计团「argmax 冻结坍缩」判别用),
-    RNG 由调用方每局经 choose.episode_reseed(seed) 定种;默认 argmax 与考卷同款。
-    choose.on_beat 若被设置,则在每个工人拍(决策前)被调用一次——探针用它
-    在活体状态下采快照。"""
+    """stochastic=True: decode by sampling from the training distribution (used by the audit panel to tell "argmax freeze collapse" apart);
+    the RNG is seeded per episode by the caller via choose.episode_reseed(seed); the default argmax matches the exam.
+    If choose.on_beat is set, it is called once at every worker beat (before the decision); the probe uses it
+    to take snapshots of the live state."""
     from leashed_ppo import LeashedMaskablePPO
     model = LeashedMaskablePPO.load(
         path, env=None, device="cpu",
@@ -100,14 +100,14 @@ def load_zip_policy(path, stochastic=False):
 
 
 def panel(raw):
-    """面板六件套 + xp(全部取自同一 raw 快照)。"""
+    """The six panel values + xp (all taken from the same raw snapshot)."""
     return {
         "char_level": int(raw.get("char_level", 0)),
         "armor_class": int(raw.get("armor_class", 0)),
         "max_hp": int(raw.get("max_hp", 0)),
         "gold": int(raw.get("gold", 0)),
         "xp": int(raw.get("xp", 0)),
-        # R15.2 榨取率法证:击杀/单击伤害面板
+        # R15.2 extraction-rate forensics: kills/per-hit damage panel
         "kills": int(raw.get("monster_kill_total", 0)),
         "hit_damage": (int(raw.get("item_max_damage", 0))
                        + int(raw.get("damage_mod", 0))),
@@ -140,7 +140,7 @@ def aggregate(rows):
         "l3": sum(1 for r in rows if r["depth"] >= 3),
         "l5": sum(1 for r in rows if r["depth"] >= 5),
         "depth_mean": round(sum(r["depth"] for r in rows) / max(1, n), 3),
-        # 全体均值(died 行已改为死亡前快照,不再被尸检值污染)
+        # Overall means (died rows now use the pre-death snapshot and are no longer contaminated by autopsy values)
         "clvl_mean": round(
             sum(r["char_level"] for r in rows) / max(1, n), 2),
         "ac_mean": round(
@@ -156,7 +156,7 @@ def aggregate(rows):
             sum(r["xp_per_1k"] for r in rows) / max(1, n), 2),
         "micro_steps_mean": round(
             sum(r["micro_steps"] for r in rows) / max(1, n), 1),
-        # 存活分层(None = 该层为空)
+        # Survival strata (None = that stratum is empty)
         "alive_n": len(alive),
         "alive_clvl_mean": _mean((r["char_level"] for r in alive), 2),
         "alive_ac_mean": _mean((r["armor_class"] for r in alive), 1),
@@ -171,7 +171,7 @@ def aggregate(rows):
         "dead_gold_mean": _mean((r["gold"] for r in dead), 1),
         "dead_xp_per_1k_mean": _mean((r["xp_per_1k"] for r in dead), 2),
         "median_steps_dead": _median(r["micro_steps"] for r in dead),
-        # 审计对照:died 行尸检值均值(旧探针 v1 口径)
+        # Audit comparison: mean autopsy values of died rows (the old probe v1 definition)
         "dead_post_death_ac_mean": _mean(
             (r["post_death"]["armor_class"] for r in dead), 1),
         "dead_post_death_gold_mean": _mean(
@@ -186,9 +186,9 @@ def aggregate(rows):
 
 
 def run_episode(env, cb, seed, stochastic, manager="readiness-v1"):
-    """一局;返回 row。快照策略见模块 docstring。
-    manager: readiness-v1(v0.1 表 + 榨干旗逃生,旧法)/ readiness-v3(R16:
-    v0.2 表 + 逐层击杀口径清场比 ≥1.0(无活怪)逃生,与 worker_env._mgr_choose 同款)。"""
+    """One episode; returns a row. See the module docstring for the snapshot strategy.
+    manager: readiness-v1 (v0.1 table + drained-flag escape, old law) / readiness-v3 (R16:
+    v0.2 table + escape on a per-level kill-count clear ratio >=1.0 (no live monsters), same as worker_env._mgr_choose)."""
     snap = {"panel": None, "micro_step": None, "source": None}
     floor_state = {"dlvl": None, "kills_at_entry": 0}
 
@@ -203,8 +203,8 @@ def run_episode(env, cb, seed, stochastic, manager="readiness-v1"):
     cb.on_beat = lambda: take("beat")
     try:
         obs, _ = env.reset(seed=seed)
-        # 局开始时以该局 seed 定种(与 eval_assembled sample 模式同款);
-        # argmax 下为空操作。
+        # At episode start seed with that episode's seed (same as eval_assembled sample mode);
+        # a no-op under argmax.
         cb.episode_reseed(seed)
         take("reset")
         done = trunc = False
@@ -225,7 +225,7 @@ def run_episode(env, cb, seed, stochastic, manager="readiness-v1"):
             else:
                 ready = readiness_power_ratio(
                     raw, int(raw["dungeon_level"]) + 1) >= 1.0
-                # v2 逃生:真实清场,不认可白嫖的榨干旗
+                # v2 escape: a real clear; the free drained flag does not count
                 want = (DIVE if (ready or readiness_floor_cleared(raw))
                         else FARM)
             if not mask[want]:
@@ -272,24 +272,24 @@ def main():
     decoding_arg = sys.argv[5] if len(sys.argv) > 5 else "argmax"
     if decoding_arg not in ("argmax", "stochastic", "sample"):
         raise SystemExit(
-            f"第 5 参数只允许 argmax|stochastic|sample,收到 {decoding_arg!r}")
+            f"argument 5 only allows argmax|stochastic|sample, got {decoding_arg!r}")
     stochastic = decoding_arg in ("stochastic", "sample")
-    # R16(v3):第 6 参数 JSON 环境覆写;缺省 = 旧法形态逐字不变
+    # R16 (v3): argument 6 is a JSON environment override; omitted = the old-law form, verbatim unchanged
     overrides = json.loads(sys.argv[6]) if len(sys.argv) > 6 else {}
     unknown = set(overrides) - set(_R16_ENV_KEYS) - {"drink_sovereignty",
                                                      "manager"}
     if unknown:
-        raise SystemExit(f"第 6 参数含未知键: {sorted(unknown)}")
+        raise SystemExit(f"argument 6 has unknown keys: {sorted(unknown)}")
     manager = str(overrides.get("manager", "readiness-v1"))
     if manager not in _R16_MANAGERS:
-        raise SystemExit(f"manager 只允许 {_R16_MANAGERS},收到 {manager!r}")
+        raise SystemExit(f"manager only allows {_R16_MANAGERS}, got {manager!r}")
     drink_sovereignty = bool(overrides.get("drink_sovereignty", False))
     env_overrides = {k: overrides[k] for k in _R16_ENV_KEYS if k in overrides}
     lo, hi = (int(x) for x in seed_span.split("-"))
     identity_before = source_identity(worker_zip)
     cb = load_zip_policy(worker_zip, stochastic=stochastic)
     if drink_sovereignty:
-        # 主权开放:工人回调双标签改为环境掩码模式(OptionsEnv 自绑定校验)
+        # Autonomy on: the worker callback's dual labels switch to environment-mask mode (OptionsEnv validates its own binding)
         cb.diablogym_worker_action12_mode = "environment-mask"
     rows = []
     for seed in range(lo, hi + 1):
@@ -313,15 +313,15 @@ def main():
         k for k in identity_before if identity_before[k] != identity_after[k])
     doc = {"probe": PROBE_VERSION,
            "source_identity": identity_before,
-           # 非空即表示探针运行期间源码被改(并行修法),结果归因需谨慎
+           # Non-empty means the source changed while the probe ran (parallel protocol changes); attribute results with care
            "source_changed_during_run": changed_during_run,
-           "note": "法证探针,非考卷;readiness-v1 脚本经理部署形态",
+           "note": "forensic probe, not an exam; readiness-v1 script manager deployment form",
            "row_semantics": (
-               "died 行主列 = 死亡前最后存活快照(工人拍/存活收窗),"
-               "post_death = 局末尸检值;存活行主列 = 局末值,post_death=None"),
+               "died row main columns = last alive snapshot before death (worker beat/surviving window close), "
+               "post_death = end-of-episode autopsy values; surviving row main columns = end-of-episode values, post_death=None"),
            "worker_zip": worker_zip, "seeds": seed_span,
            "max_steps": max_steps,
-           # R16(v3):部署形态声明(缺省 = 旧法:readiness-v1/主权关/v2/无覆写)
+           # R16 (v3): deployment-form declaration (omitted = old law: readiness-v1/autonomy off/v2/no override)
            "manager": manager,
            "drink_sovereignty": drink_sovereignty,
            "r16_environment": env_overrides or None,

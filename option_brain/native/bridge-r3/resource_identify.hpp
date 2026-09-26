@@ -1,4 +1,4 @@
-// R18-H (2026-09-07) 凯恩鉴定 (Cain identify): the storyteller's fixed-fee
+// R18-H (2026-09-07) Cain identify: the storyteller's fixed-fee
 // identify service, exposed to the gym the way resource_loot.hpp exposes the
 // Smith's sale counter.
 //
@@ -6,13 +6,13 @@
 // ResourceTownActionAllowed / ResourceIdentity / AppendItemCombatState /
 // GetStoreSellPrice are all already visible.
 //
-// 未鉴定的魔法物品按 _ivalue 出售、并且不带任何词缀生效；凯恩以固定
-// StorytellerIdentifyPrice 金币翻开 _iIdentified 之后，同一件物品按 _iIvalue
-// 出售（stores.cpp NormalStoreSellPrice）。本文件只做那一笔交易，不改任何阈值。
+// An unidentified magic item sells at _ivalue and none of its affixes take effect; once Cain
+// flips _iIdentified for the fixed StorytellerIdentifyPrice gold, the same item sells at _iIvalue
+// (stores.cpp NormalStoreSellPrice). This file performs only that one transaction and changes no threshold.
 //
-// UI 独立性:引擎侧 TryIdentifyItem 不读任何商店/滚动条状态,所以这里 **不**
-// 需要先和凯恩开店(bridge 的 ActTalkTowner 也从不为 TOWN_STORY 开店)。可执行
-// 前提只有"真的站在凯恩旁边、且没有别的店面开着",与真人操作一致。
+// UI independence: the engine-side TryIdentifyItem reads no store/scrollbar state, so there is **no**
+// need to open Cain's store first (the bridge's ActTalkTowner never opens a store for TOWN_STORY either). The only
+// precondition is "actually standing next to Cain with no other store open", the same as for a human player.
 
 // The seven body slots StartStorytellerIdentify lists, in its own order.
 constexpr std::array<inv_body_loc, 7> ResourceIdentifyBodySlots = {

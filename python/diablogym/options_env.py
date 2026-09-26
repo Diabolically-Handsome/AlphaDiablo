@@ -1,45 +1,45 @@
-"""v22 策略脑/操作脑:OptionsEnv——冻结宏之上的 SMDP 包装器。
+"""v22 strategy brain/operating brain: OptionsEnv, an SMDP wrapper over frozen macros.
 
-设计稿:docs/design/DESIGN.md v22 章(评审团 wf_66e41e30 合成,Diabolically-Handsome 批准)。
-核心承诺:
-  - 操作脑 = 神谕 oracle_mountain 的内环逐字移植并冻结(平稳 SMDP);
-  - "榨干→下潜"不写死在脚本里,升格为策略脑的决策(本章唯一考题);
-  - 换层必归还控制权(显式不变量:每层至少一次新决策,16 层扩展性的地基);
-  - γ_mgr=1.0 由训练侧保证,选项内奖励不折现累加——策略脑优化的量
-    逐字等于神谕账本(3000 步不折现回报);
-  - 喝药是脑干反射(hp<0.5∧belt>0 → 12),刻意不是选项(v12 幽灵防复活)。
+Design: docs/design/DESIGN.md, chapter v22.
+Core commitments:
+  - operating brain = a verbatim, frozen port of the inner loop of the oracle oracle_mountain (a stationary SMDP);
+  - "exhausted -> dive" is not hard-coded in the script but promoted to a decision of the strategy brain (the only exam question of this chapter);
+  - a level change always hands control back (explicit invariant: at least one new decision per level, the foundation for extending to 16 levels);
+  - γ_mgr=1.0 is guaranteed on the training side and in-option rewards accumulate undiscounted, so the quantity the strategy brain optimizes
+    equals the oracle ledger verbatim (the undiscounted 3000-step return);
+  - drinking is a brainstem reflex (hp<0.5 ∧ belt>0 -> 12), deliberately not an option (keeping the v12 ghost from coming back).
 
-选项词表 Discrete(3):
-  0 FARM     清剿本层:有怪交战,无怪捡药/捡装/探索。终止:升级/无进展
-             140/本 scene 累计 FARM 1800/换层。
-  1 DIVE     战斗推进下一主线目标:挡路者(≤6 格)打穿,否则剧情/下楼宏。
-             终止:换场景/降层/停滞 140。
-  2 RESUPPLY 潜前补给:连续捡药。掩码:无地面药或腰带满。终止:满/无/零进展。
-通用终止:死亡/截断/TAU_CAP=600 微拍(命中率入 info,>5% 报警)。
-反藏身处:通常 FARM 为保底；但剧情目标已出现且无近敌时强制交权 DIVE，
-避免 action10 越权。榨干旗置位且 DIVE 合法时同样强制交权，切断旧经理
-依赖 action10 暗中下楼所形成的无限干窗；仅 DIVE 非法时保留 FARM，并强制
-≥25 拍复访地板。
+Option vocabulary Discrete(3):
+  0 FARM     clear the current level: engage when monsters exist, otherwise pick up potions/gear/explore. Terminates on: level-up/no progress
+             140/cumulative FARM 1800 in this scene/level change.
+  1 DIVE     push combat toward the next main-line target: break through blockers (≤6 tiles), otherwise the story/descend macro.
+             Terminates on: scene change/level loss/stall 140.
+  2 RESUPPLY pre-dive resupply: pick up potions repeatedly. Mask: no floor potion or belt full. Terminates on: full/none/zero progress.
+Common termination: death/truncation/TAU_CAP=600 micro ticks (hit rate goes to info, alarm above 5%).
+Anti-hideout: FARM is usually the fallback; but when a story target has appeared and no enemy is near, control is forcibly handed to DIVE,
+so that action10 does not overstep its authority. When the exhausted flag is set and DIVE is legal, control is also forcibly handed over, cutting off the endless dry windows
+the old manager formed by relying on action10 to descend covertly; FARM is kept only when DIVE is illegal, with a forced
+floor revisit of ≥25 ticks.
 
-v23(docs/prereg/PREREG-v23.md):窗口循环的逐拍簿记(保险丝/反射/终止阶梯)抽成
-共享方法——OptionsEnv(组装/评测)与 WorkerWindowEnv(在位训练)跑同一段
-代码,消灭"第三份实现"。支持 workers={选项: 策略} 把某选项的脚本内环换成
-可学习工人:
-  - 反射所有权上提:工人永不观测"反射待发"态,窗口开始与每个工人动作之后
-    由包装器排水(逐拍过保险丝/时钟/终止阶梯)。脚本路径为恒等变换
-    (dispatch 首分支即同款检查,提前判定不改变动作序列)。
-  - 工人工资 w_t = r_t − 换层奖金(唯一剥除项;下潜套利修复,教训16)。
-    账本恒等式:Σw ≡ 窗口R − DESCEND_UNIT×ΣΔdlvl⁺。经理账本一字不动。
-  - 工人观测 298 维 = 基础 295 +
-    [τ/TAU_CAP, 旧无新杀钟/140, 旧 exhausted]。后两维逐字保持冻结
-    V28 的 protocol-v3 语义；新“无正进展钟”与 scene FARM 累计预算只
-    负责当前收窗动力学，不偷换冻结网络的输入契约。第三维另以符号公开
-    本窗饮药历史：未饮仍为旧 0/1，本窗任一来源（工人主动或脑干反射）
-    已饮则编码为 -1/-2，绝不让隐藏闩制造同观测异标签。
-  - 工人动作恒掩 11(下楼归经理 DIVE 职权)，剧情交权态也掩 10；12 由
-    drink_sovereignty 控制，只在可见的 hp∈[0.5,0.75)、腰带有药且本窗
-    尚未发生任何饮药时合法。脑干反射本身不受此闩限制，紧急态仍可连续
-    排水；闩只防工人在已经获救后又浪费一瓶。
+v23 (docs/prereg/PREREG-v23.md): the per-tick bookkeeping of the window loop (fuse/reflexes/termination ladder) is extracted into
+shared methods: OptionsEnv (assembly/evaluation) and WorkerWindowEnv (in-place training) run the same
+code, eliminating a "third implementation". workers={option: policy} replaces an option's scripted inner loop with a
+learnable worker:
+  - reflex ownership moved up: the worker never observes a "reflex pending" state; at window start and after every worker action
+    the wrapper drains (tick by tick through the fuse/clock/termination ladder). For the scripted path this is an identity transformation
+    (the first dispatch branch is the same check, so deciding early does not change the action sequence).
+  - worker wage w_t = r_t − level-change bonus (the only stripped term; the dive-arbitrage fix, lesson 16).
+    Ledger identity: Σw ≡ window R − DESCEND_UNIT×ΣΔdlvl⁺. The manager ledger is untouched.
+  - worker observation 298 dims = base 295 +
+    [τ/TAU_CAP, old no-new-kill clock/140, old exhausted]. The last two keep the frozen
+    V28's protocol-v3 semantics verbatim; the new "no positive progress" clock and the scene FARM cumulative budget are only
+    responsible for the current window-closing dynamics and do not swap out the frozen network's input contract. The third dimension also publishes, by sign,
+    this window's drinking history: not drunk stays the old 0/1; once drunk from any source in this window (worker-initiated or brainstem reflex)
+    it is encoded as -1/-2, so a hidden latch never creates different labels for the same observation.
+  - worker action 11 is always masked (descending belongs to the manager's DIVE authority), and 10 is also masked in the story hand-over state; 12 is
+    controlled by drink_sovereignty and is legal only when the visible hp∈[0.5,0.75), the belt has potions and no drinking
+    has happened in this window yet. The brainstem reflex itself is not limited by this latch, so emergencies can still drain
+    continuously; the latch only stops the worker from wasting another potion after already being rescued.
 """
 from __future__ import annotations
 
@@ -60,35 +60,35 @@ from .env import (
 )
 
 FARM, DIVE, RESUPPLY = 0, 1, 2
-KILL_PATIENCE = 140   # 微拍:FARM 无正进展 / DIVE 无换层的停滞上限
-TAU_CAP = 600         # 选项最长占用(straggler 税封顶)
-REVISIT_FLOOR = 25    # 榨干旗下复选 FARM 的最小占用(堵秒终止搅拌键)
+KILL_PATIENCE = 140   # micro ticks: stall limit for FARM without positive progress / DIVE without a level change
+TAU_CAP = 600         # longest option occupancy (cap on the straggler tax)
+REVISIT_FLOOR = 25    # minimum occupancy when re-choosing FARM under the exhausted flag (blocks instant-termination key stirring)
 RESUPPLY_CAP = 60
-# 本场景 FARM 的累计占用硬预算。短钟会被新格/伤害等真实进展清零，不能
-# 同时承担“何时把控制权交回 DIVE”的职责；否则持续探索可把整个 3000 拍
-# 局都吃完。1800 给出生层约六成总预算，固定种子定标仍可清 40--90 只怪，
-# 同时为发现/执行 DIVE 留出至少 1200 拍。
+# Cumulative hard budget for FARM occupancy in this scene. The short clock is reset by real progress such as new tiles/damage, so it cannot
+# also decide "when to hand control back to DIVE"; otherwise continuous exploration could eat the whole 3000-tick
+# game. 1800 gives the spawn level about 60% of the total budget; fixed-seed calibration can still clear 40-90 monsters,
+# while leaving at least 1200 ticks to find/execute DIVE.
 FARM_SCENE_CAP = 1800
-BLOCKER_RADIUS = 6    # 剧情交权与 DIVE 清路共用；禁止两套阈值留下 4..6 空档
+BLOCKER_RADIUS = 6    # shared by story hand-over and DIVE path clearing; forbids two thresholds that leave a 4..6 gap
 GEAR_GRACE_MAX_DECISIONS = 3
-# 主动喝药是“有限主权”而不是任意掉血即可挥霍药水。脑干继续独占 <0.5
-# 的紧急排水；工人只在 [0.5, 0.75) 的安全包络内拥有选择权。上界刻意高于
-# BC-v2 教师的主档 0.65 与唯一 OC 0.70：mask 只封明显浪费态，并保留
-# [teacher_threshold, 0.75) 的真实合法 hard negatives 让策略学习边界，
-# 不把教师的目标策略直接硬编码成动作合法性。
+# Active drinking is a "limited sovereignty", not a licence to squander potions at any HP loss. The brainstem keeps exclusive control of the <0.5
+# emergency drain; the worker only has a choice inside the safe envelope [0.5, 0.75). The upper bound is deliberately above
+# the BC-v2 teacher's main setting 0.65 and its only OC 0.70: the mask only seals obviously wasteful states and keeps
+# real legal hard negatives in [teacher_threshold, 0.75) so the policy learns the boundary,
+# instead of hard-coding the teacher's target policy into action legality.
 VOLUNTARY_DRINK_HP_LOW = 0.50
 VOLUNTARY_DRINK_HP_HIGH = 0.75
-N_EXTRA_WORKER = 3    # 工人观测追加维:τ 钟 / 旧无新杀钟 / 旧 exhausted
-# 295 基础维之后的第三个 worker extra。非负值逐字保留旧 exhausted；
-# ≤-1 表示本窗已发生至少一次饮药（主动或反射），绝不改变旧零饮策略
-# 的任何输入；``-v-1`` 可无损还原旧 0/1。
+N_EXTRA_WORKER = 3    # extra worker observation dims: τ clock / old no-new-kill clock / old exhausted
+# The third worker extra after the 295 base dims. Non-negative values keep the old exhausted verbatim;
+# ≤-1 means at least one drink (active or reflex) has happened in this window, never changing any input of the old
+# zero-drink policy; ``-v-1`` restores the old 0/1 losslessly.
 WORKER_DRINK_LATCH_FEATURE = 297
 WORKER_OBSERVATION_VIEW_RAW_V4 = "raw-v4"
 WORKER_OBSERVATION_VIEW_LEGACY_V3 = "legacy-v3"
 WORKER_OBSERVATION_VIEW_A12_OVERLAY = "legacy-v3-a12-overlay"
 WORKER_OBSERVATION_VIEW_DUAL_V4_ASYMMETRIC = "dual-v4-asymmetric-v3"
-# R13 教室改革:v5 = 完整 v4 向量逐位前缀 + 12 维窗口模式追加块。
-# 旧 v4 布局与 sha 一字不动;v5 仅由 R13 预注册配方点名,默认路径不可达。
+# R13 classroom reform: v5 = the complete v4 vector as a bit-identical prefix + a 12-dim window-mode block appended.
+# The old v4 layout and sha are untouched; v5 is only named by the R13 pre-registered recipe, and the default path cannot reach it.
 WORKER_OBSERVATION_VIEW_DUAL_V5_WINDOW_MODE = "dual-v5-window-mode-v1"
 DUAL_WORKER_V5_APPENDIX_DIM = 12
 WORKER_OBSERVATION_VIEWS = frozenset({
@@ -128,17 +128,17 @@ def _resolve_worker_drink_sovereignty(
             continue
         if mode not in WORKER_ACTION12_MODES:
             raise ValueError(
-                "Worker callback action12 mode 未注册:"
+                "Worker callback action12 mode not registered: "
                 f"option={option!r},mode={mode!r}")
         modes.append(mode)
     if modes and untagged:
         raise ValueError(
-            "带 action12 contract 的 Worker 不得与无 contract callback "
-            f"混用:untagged={untagged!r}")
+            "a Worker with an action12 contract must not be mixed with a callback without a contract"
+            f": untagged={untagged!r}")
     unique_modes = set(modes)
     if len(unique_modes) > 1:
         raise ValueError(
-            "OptionsEnv 的全局 drink_sovereignty 无法表达多个 Worker "
+            "OptionsEnv's global drink_sovereignty cannot express multiple Worker "
             f"action12 mode:{sorted(unique_modes)!r}")
     derived = None
     if unique_modes:
@@ -151,18 +151,18 @@ def _resolve_worker_drink_sovereignty(
     configured = bool(requested)
     if derived is not None and configured != derived:
         raise ValueError(
-            "OptionsEnv drink_sovereignty 与 Worker action12 contract "
-            f"不一致:configured={configured},contract={next(iter(unique_modes))!r}")
+            "OptionsEnv drink_sovereignty inconsistent with the Worker action12 contract"
+            f": configured={configured},contract={next(iter(unique_modes))!r}")
     return configured
 
 
 @dataclass(frozen=True)
 class BeatOutcome:
-    """一拍的可审计结果。
+    """Auditable result of one tick.
 
-    fuse 命中时不再把请求动作静默替换成探索动作 10，而是拒绝本拍并让
-    当前选项以 ``reason="fuse"`` 收窗。这样 rollout 中记录的请求动作与
-    环境实际执行动作不会错标：``executed_action=None`` 明确表示未执行。
+    When the fuse fires, the requested action is no longer silently replaced by explore action 10; instead this tick is refused and
+    the current option closes its window with ``reason="fuse"``. This way the requested action recorded in the rollout and the action the
+    environment actually executed are never mislabelled: ``executed_action=None`` explicitly means not executed.
     """
 
     reason: str | None
@@ -175,7 +175,7 @@ class BeatOutcome:
 
 @dataclass(frozen=True)
 class WorkerStepOutcome:
-    """工人提案及其反射尾部的合并审计结果。"""
+    """Combined audit result of a worker proposal and its reflex tail."""
 
     reason: str | None
     requested_action: int
@@ -202,7 +202,7 @@ def _validated_action14_audit(info: dict) -> dict:
     audit = info.get("action14_audit")
     if not isinstance(audit, dict) or set(audit) != _ACTION14_AUDIT_KEYS:
         raise RuntimeError(
-            "action14 缺失/损坏原生因果回执")
+            "action14 native causal receipt missing/corrupt")
     accepted = audit["accepted"]
     integers = {
         key: audit[key]
@@ -230,7 +230,7 @@ def _validated_action14_audit(info: dict) -> dict:
         )
     ):
         raise RuntimeError(
-            "action14 原生因果回执字段不守恒")
+            "action14 native causal receipt fields do not balance")
     return {
         "accepted": accepted,
         **integers,
@@ -286,7 +286,7 @@ def _validated_action_effect_audit(
                 or not audit["request_executed"]))
         )
     ):
-        raise RuntimeError("基础动作缺失/损坏因果效果回执")
+        raise RuntimeError("base action causal-effect receipt missing/corrupt")
     return {
         "requested_action": int(audit["requested_action"]),
         "native_attempts": int(audit["native_attempts"]),
@@ -300,13 +300,13 @@ def _validated_action_effect_audit(
 
 
 def _floor_heals(raw) -> bool:
-    # 与基础 env 的动作目标/掩码共用唯一可见且可达口径；helper 对缺少
-    # visible/reachable 的旧 fixture 向后兼容，避免另造第二套筛选真源。
+    # Shares the single visible-and-reachable definition with the base env's action targets/masks; the helper stays backward compatible
+    # with old fixtures lacking visible/reachable, avoiding a second filtering source of truth.
     return bool(DiabloGymEnv._policy_floor_items(raw, "heal"))
 
 
 def _reflex(raw) -> bool:
-    """脑干反射条件(与 dispatch 首分支逐字同款)。"""
+    """Brainstem reflex condition (identical to the first dispatch branch)."""
     return DiabloGymEnv._reflex_eligible(raw)
 
 
@@ -320,8 +320,8 @@ def dispatch(
     action_mask=None,
     nearest_engageable_distance=_DISTANCE_UNSET,
 ) -> int:
-    """神谕内环逐字移植(纯函数,冻结)。mode ∈ {farm, dive, resupply}。
-    注意:神谕农期的 stagnant>=140→11 子分支被刻意剔除——归策略脑管。"""
+    """Verbatim port of the oracle's inner loop (pure function, frozen). mode ∈ {farm, dive, resupply}.
+    Note: the oracle farm phase's stagnant>=140 -> 11 sub-branch is deliberately removed; it belongs to the strategy brain."""
     hp = raw["hp"] / max(1, raw["max_hp"])
     belt = raw.get("belt_heals", 0)
     free_slots = DiabloGymEnv._belt_free_slots(raw)
@@ -330,7 +330,7 @@ def dispatch(
         action_mask = np.asarray(action_mask, dtype=bool)
         if action_mask.shape != (15,):
             raise ValueError(
-                "dispatch action_mask 必须是 (15,),收到 "
+                "dispatch action_mask must be (15,), got "
                 f"{action_mask.shape}")
         monster_available = bool(action_mask[9])
         heal_available = bool(action_mask[13])
@@ -347,16 +347,16 @@ def dispatch(
             if isinstance(near, bool) or not isinstance(
                     near, (int, float, np.integer, np.floating)):
                 raise TypeError(
-                    "nearest_engageable_distance 必须是非负数或 None")
+                    "nearest_engageable_distance must be a non-negative number or None")
             near = float(near)
             if not np.isfinite(near) or near < 0:
                 raise ValueError(
-                    "nearest_engageable_distance 必须是有限非负数")
-    if hp < 0.5 and belt > 0:          # 脑干反射,嵌在一切模式里
+                    "nearest_engageable_distance must be a finite non-negative number")
+    if hp < 0.5 and belt > 0:          # brainstem reflex, embedded in every mode
         return 12
     if mode == "resupply":
-        # OptionsEnv 正常只会在 RESUPPLY 掩码为真时进入此分支；额外守卫
-        # 让纯函数调用也绝不向“药少但被非药物塞满”的腰带发非法拾药。
+        # OptionsEnv normally enters this branch only when the RESUPPLY mask is true; the extra guard
+        # ensures that even a pure function call never issues an illegal pickup to a belt "short of potions but filled with non-potions".
         return 13 if heal_available else 0
     if mode == "dive":
         if belt <= 2 and heal_available:
@@ -376,10 +376,10 @@ def dispatch(
         return 11
     # farm
     if raw.get("progression_targets") and (near is None or near > 6):
-        # Flat 神谕没有 manager，必须立即执行 DIVE；旧 action10 会在
-        # progression 态确定性 wait，连续制造约 KILL_PATIENCE 个空标签。
-        # 层级 Options 会在到达这里前由 _farm_handoff 收窗。若 Worker
-        # 掩掉了 11，fail-closed 等待交权而不生成越权动作。
+        # The flat oracle has no manager and must execute DIVE immediately; the old action10 would wait deterministically
+        # in the progression state, producing about KILL_PATIENCE empty labels in a row.
+        # Hierarchical Options closes the window through _farm_handoff before reaching this point. If the Worker
+        # masked 11, fail closed and wait for the hand-over instead of generating an overstepping action.
         if action_mask is not None and not bool(action_mask[11]):
             # A just-cleared blocker may expose both the one-way progression
             # target and a strict gear upgrade.  During the single Worker
@@ -407,7 +407,7 @@ def _farm_handoff(
     raw,
     nearest_engageable_distance=_DISTANCE_UNSET,
 ) -> bool:
-    """剧情目标已出现且无近敌时，FARM 必须把职权交还给经理 DIVE。"""
+    """When a story target has appeared and no enemy is near, FARM must hand authority back to the manager's DIVE."""
     near = (
         _nearest(raw)
         if nearest_engageable_distance is _DISTANCE_UNSET
@@ -418,9 +418,9 @@ def _farm_handoff(
 
 
 class OptionsEnv(gym.Env):
-    """step(option) 把选项跑到终止,返回(303 维观测, 不折现累计奖励, ...)。"""
+    """step(option) runs the option to termination and returns (303-dim observation, undiscounted cumulative reward, ...)."""
 
-    N_EXTRA_MGR = 8  # time_remaining/旧无新杀钟/本层杀/旧本层耗时/上选项one-hot(3)/上选项τ
+    N_EXTRA_MGR = 8  # time_remaining/old no-new-kill clock/kills on this level/old time on this level/previous option one-hot(3)/previous option τ
 
     def __init__(self, max_steps: int = 3000, workers: dict | None = None,
                  drink_sovereignty: bool | None = None,
@@ -455,7 +455,7 @@ class OptionsEnv(gym.Env):
             self.resource_protocol, self.resource_purchase_mode, resource_service_policy)
         self.resource_calibration = validate_resource_calibration(
             self.resource_protocol, resource_calibration)
-        # R17.1 ruling 3: readiness law; default veto-v1 keeps env kwargs byte-identical.
+        # R17.1 readiness rule 3: readiness law; default veto-v1 keeps env kwargs byte-identical.
         self.resource_readiness_law = validate_readiness_law(
             self.resource_protocol, resource_readiness_law)
         if self.resource_readiness_law != "veto-v1":
@@ -532,59 +532,59 @@ class OptionsEnv(gym.Env):
             farm_scene_cap = (RESOURCE_FARM_CAP if self.resource_calibration is None
                               else self.resource_calibration.farm_scene_microstep_cap)
         self._workers = workers or {}
-        # R16 修宪(审计簇 C6/C3):出生层场景预算改为可配置(默认 1800 逐位
-        # 旧法);FARM 开窗时可选清零无进展钟——argmax 体制下 DIVE stall 后
-        # layer_clock 被继承,下一 FARM 窗一个决策即再榨干(时钟继承)。
+        # R16 amendment (audit cluster C6/C3): the spawn-level scene budget becomes configurable (default 1800, old rule bit for bit);
+        # the no-progress clock can optionally be reset when a FARM window opens; under argmax, after a DIVE stall
+        # layer_clock is inherited and the next FARM window is exhausted again after one decision (clock inheritance).
         _cap = int(farm_scene_cap)
         if _cap <= 0:
             raise ValueError(
-                f"farm_scene_cap 必须为正整数,收到 {farm_scene_cap!r}")
+                f"farm_scene_cap must be a positive integer, got {farm_scene_cap!r}")
         self.farm_scene_cap = _cap
         self.reset_layer_clock_on_window = bool(reset_layer_clock_on_window)
-        # R13 主权移交(默认 False = 旧法逐位不变):仅在 live DIVE 窗内
-        # 解禁 a11 与 1-8 踏 trigger 格;a10 剧情掩码与 FARM/RESUPPLY 窗
-        # 掩码在任何取值下一字不动。
+        # R13 sovereignty transfer (default False = old rule unchanged bit for bit): only inside live DIVE windows
+        # are a11 and stepping on trigger tiles with 1-8 unlocked; the a10 story mask and the FARM/RESUPPLY window
+        # masks are untouched for any value.
         self.dive_live_sovereignty = bool(dive_live_sovereignty)
-        # R14 乙案:live DIVE 窗内工人保留的下楼奖金比例(默认 0 = 全额
-        # 剥薪旧法);仅与主权移交同时生效,记账见 _win_beat。
+        # R14 option B: share of the descend bonus the worker keeps inside live DIVE windows (default 0 = the old rule of full
+        # wage stripping); only effective together with the sovereignty transfer; bookkeeping in _win_beat.
         _f = float(worker_descend_bonus_fraction)
         if not np.isfinite(_f) or not 0.0 <= _f <= 1.0:
             raise ValueError(
-                "worker_descend_bonus_fraction 必须在 [0,1] 内,"
-                f"收到 {worker_descend_bonus_fraction!r}")
+                "worker_descend_bonus_fraction must be within [0,1], "
+                f"got {worker_descend_bonus_fraction!r}")
         if _f > 0.0 and not self.dive_live_sovereignty:
             raise ValueError(
-                "worker_descend_bonus_fraction 仅与 dive_live_sovereignty "
-                "同时生效(非 live-DIVE 法域无下楼可酬)")
+                "worker_descend_bonus_fraction only takes effect together with dive_live_sovereignty "
+                "(outside the live-DIVE rule domain there is no descent to reward)")
         self.worker_descend_bonus_fraction = _f
         self.descend_bonus_kept_total = 0.0
-        # v32 喝药主权(④丙):默认 True = 新协议常态,工人可主动按 12;
-        # 0.5 反射(_drain/dispatch 内嵌)一字不动,永为兜底。False 系
-        # 对照腿/旧协议复现专用旋钮。带部署合约的 Worker 可在 None
-        # 默认下成为单一真源；若调用方又显式给值，两者必须一致。
+        # v32 potion autonomy (course 4C): default True = the normal state of the new protocol; the worker may press 12 on its own;
+        # the 0.5 reflex (embedded in _drain/dispatch) is untouched and always the fallback. False is a knob only for
+        # control legs/reproducing the old protocol. A Worker with a deployment contract can be the single source of truth under the None
+        # default; if the caller also gives a value explicitly, the two must agree.
         self.drink_sovereignty = _resolve_worker_drink_sovereignty(
             self._workers, drink_sovereignty)
-        # E-fix 修 B(甲形态):DIVE 停滞钟协议。"no-progress-v1" = 新协议
-        # 常态:唯「历史最小目标距严格改善 ∨ 击杀 ∨ positive_progress
-        # 全集」给 DIVE 窗续命;KILL_PATIENCE 常数(冻结观测归一化分母)
-        # 一字不动,TAU_CAP=600 仍为硬顶。裸位移不算进展(极限环每拍都在
-        # 位移,裸位移判据会把死窗烧到 TAU_CAP)。"tau-v3" = 旧协议纯耗时
-        # 收窗,系对照腿/旧档案位级重放专用端点。
+        # E-fix B (form 1): DIVE stall-clock protocol. "no-progress-v1" = the normal state of the new protocol:
+        # only "strict improvement of the historical minimum target distance ∨ a kill ∨ the full positive_progress
+        # set" extends a DIVE window; the KILL_PATIENCE constant (the normalization denominator of the frozen observation)
+        # is untouched, and TAU_CAP=600 is still the hard cap. Bare displacement is not progress (a limit cycle moves every tick,
+        # so a bare-displacement criterion would burn a dead window up to TAU_CAP). "tau-v3" = the old protocol's purely time-based
+        # window close, an end point only for control legs/bit-level replay of old archives.
         if dive_stall_protocol not in ("tau-v3", "no-progress-v1"):
             raise ValueError(
-                "dive_stall_protocol 必须是 'tau-v3' 或 'no-progress-v1'，"
-                f"收到 {dive_stall_protocol!r}")
+                "dive_stall_protocol must be 'tau-v3' or 'no-progress-v1', "
+                f"got {dive_stall_protocol!r}")
         self.dive_stall_protocol = dive_stall_protocol
         if worker_observation_view not in WORKER_OBSERVATION_VIEWS:
             raise ValueError(
-                "worker_observation_view 必须是 "
-                f"{sorted(WORKER_OBSERVATION_VIEWS)} 之一，收到 "
+                "worker_observation_view must be one of "
+                f"{sorted(WORKER_OBSERVATION_VIEWS)}, got "
                 f"{worker_observation_view!r}")
         self.worker_observation_view = worker_observation_view
         if manager_observation_view not in MANAGER_OBSERVATION_VIEWS:
             raise ValueError(
-                "manager_observation_view 必须是 "
-                f"{sorted(MANAGER_OBSERVATION_VIEWS)} 之一，收到 "
+                "manager_observation_view must be one of "
+                f"{sorted(MANAGER_OBSERVATION_VIEWS)}, got "
                 f"{manager_observation_view!r}")
         self.manager_observation_view = manager_observation_view
         env_kwargs.setdefault("descend_ladder", True)
@@ -593,8 +593,8 @@ class OptionsEnv(gym.Env):
         env_kwargs.setdefault("include_raw", False)
         if not bool(env_kwargs["descend_ladder"]):
             raise ValueError(
-                "OptionsEnv 要求 descend_ladder=True；Worker 工资会从基础"
-                "奖励中扣除同一深度奖金，关闭它会凭空制造负工资")
+                "OptionsEnv requires descend_ladder=True; the Worker wage deducts the same depth bonus from the base "
+                "reward, so turning it off would create negative wages out of nothing")
         required_controller_snapshot = (
             worker_observation_view in (
                 WORKER_OBSERVATION_VIEW_DUAL_V4_ASYMMETRIC,
@@ -605,8 +605,8 @@ class OptionsEnv(gym.Env):
             "controller_snapshot_enabled", required_controller_snapshot)
         if bool(requested_controller_snapshot) != required_controller_snapshot:
             raise ValueError(
-                "controller_snapshot_enabled 必须与 worker_observation_view "
-                "一致；只有 dual 家族视图可启用固定 controller wire")
+                "controller_snapshot_enabled must agree with worker_observation_view; "
+                "only the dual-family views may enable the fixed controller wire")
         self.env = DiabloGymEnv(max_steps=max_steps, **env_kwargs)
         if self.resource_calibration is not None:
             self.env._resource_calibration = self.resource_calibration
@@ -619,7 +619,7 @@ class OptionsEnv(gym.Env):
         self._win = None
         self._reset_wrapper_state()
 
-    # ---- wrapper 状态(跨选项持续)----
+    # ---- wrapper state (persists across options) ----
     def _reset_wrapper_state(self):
         from .resource_protocol import ResourceService
         service_type = ResourceService
@@ -699,19 +699,19 @@ class OptionsEnv(gym.Env):
                 protocol=self.resource_weapon_upgrade)
         else:
             self.weapon_upgrade_service = None
-        # 冻结的 V28 worker 与 M29 manager 都在 db7d26c 的 protocol-v3
-        # 状态上训练。新协议可以改变收窗动力学，却不能把同宽度列静默换义；
-        # 因此旧无新杀钟/榨干旗/本层起点独立维护，只供冻结网络观测。
+        # The frozen V28 worker and M29 manager were both trained on db7d26c's protocol-v3
+        # state. A new protocol may change window-closing dynamics but must not silently change the meaning of a column of the same width;
+        # so the old no-new-kill clock/exhausted flag/level start are maintained separately, only for the frozen networks' observations.
         self._legacy_layer_clock = 0
         self._legacy_exhausted = False
         self._legacy_layer_steps0 = 0
         self._layer_steps0 = 0
-        self.layer_clock = 0          # 本层无正进展微拍数(战斗/探索/物资/换层清零)
-        self.exhausted = False        # 榨干旗(任一可验证正进展/换层清除)
-        self.farm_scene_steps = 0     # 当前 scene 累计 FARM 微拍(正进展不清零)
+        self.layer_clock = 0          # micro ticks without positive progress on this level (reset by combat/exploration/supplies/level change)
+        self.exhausted = False        # exhausted flag (cleared by any verifiable positive progress/level change)
+        self.farm_scene_steps = 0     # cumulative FARM micro ticks in the current scene (not reset by positive progress)
         raw = getattr(self.env, "_raw", None)
         self._farm_scene = _scene_identity(raw) if raw is not None else None
-        self._fuse_sig = None         # B4 保险丝签名(跨选项边界持续)
+        self._fuse_sig = None         # B4 fuse signature (persists across option boundaries)
         self._fuse = 0
         self._fuse_recovery_pending = False
         self._layer_kills0 = 0
@@ -765,7 +765,7 @@ class OptionsEnv(gym.Env):
                 }
                 raise RuntimeError("completion L2 arrival before learner handoff")
             transition = raw.get("resource_state", {}).get("transition", {})
-            # R17.1 ruling 3: under coach-v03 a forced-unready arrival is legal
+            # R17.1 readiness rule 3: under coach-v03 a forced-unready arrival is legal
             # (accepted, pretransition_ready False, accounted, no escrow); only
             # the receipt's existence/acceptance and the 1->2 geometry are law.
             ready_required = getattr(self, "resource_readiness_law", "veto-v1") != "coach-v03"
@@ -780,23 +780,23 @@ class OptionsEnv(gym.Env):
             inner.max_steps = clock.state.physical_deadline
 
     def _mark_exhausted(self) -> None:
-        """原子发布当前协议的榨干态。
+        """Atomically publish the exhausted state of the current protocol.
 
-        ``layer_clock``/``exhausted`` 只负责当前收窗与掩码；冻结网络读取
-        独立的 protocol-v3 状态，避免 scene cap 或正向进度把旧输入换义。
+        ``layer_clock``/``exhausted`` only govern the current window close and masks; the frozen networks read
+        separate protocol-v3 state, so the scene cap or positive progress cannot change the meaning of old inputs.
         """
         self.exhausted = True
         self.layer_clock = max(int(self.layer_clock), KILL_PATIENCE)
 
     def _clear_exhausted(self) -> None:
-        """清除交权态；调用方必须已经确认 scene/预算允许继续 FARM。"""
+        """Clear the hand-over state; the caller must already have confirmed that the scene/budget allows FARM to continue."""
         self.exhausted = False
 
     def _sig(self, a, raw):
-        # fuse 只能识别“请求动作确实没有正进展”，不能把站桩输出误判成
-        # 卡死。玩家 hp/mana 刻意不入签名：敌方持续打人不是请求动作的
-        # 正进展，否则真正卡墙会靠掉血不断续命直到死亡。摘要全部排序，
-        # 禁止 bridge 列表枚举顺序抖动重置/触发保险丝。
+        # The fuse may only recognize "the requested action truly made no positive progress", and must not mistake standing-still output for
+        # being stuck. Player hp/mana are deliberately left out of the signature: enemies continuously hitting the player are not positive
+        # progress of the requested action, otherwise a real wall-stuck state would keep extending itself by losing HP until death. All digests are sorted,
+        # so jitter in the bridge's list enumeration order can never reset/trigger the fuse.
         monsters = tuple(sorted(
             (
              DiabloGymEnv._monster_generation_key(m),
@@ -866,18 +866,18 @@ class OptionsEnv(gym.Env):
         *,
         positive_progress: bool = False,
     ):
-        """同步推进旧观测钟与当前 FARM“无正进展”钟。
+        """Advance both the old observation clock and the current FARM "no positive progress" clock.
 
-        kill 只是进展的一种。action10 新踏足/开普通软墙、怪物最低血线
-        继续下降、成功取得腰带补给或穿上装备同样证明当前层尚未榨干；
-        若仍只认 kill，12 个探索宏左右就会在边疆尚存时误报 exhausted。
-        自己掉血、怪物回血后重打一段已付血线、重复走旧格都不清钟。
+        A kill is only one kind of progress. A new action10 visit/opening an ordinary softwall, a monster's lowest HP line
+        dropping further, successfully getting belt supplies or putting on gear equally prove the current level is not exhausted;
+        if only kills counted, exhausted would be misreported after about 12 explore macros while frontier still exists.
+        Losing HP oneself, re-hitting a monster's already-paid HP band after it heals, and walking old tiles again do not reset the clock.
         """
         raw = self.env._raw
         scene_changed = _scene_identity(raw) != scene_before
 
-        # protocol-v3 的逐拍语义：仅换 scene 或新杀清钟；探索、伤害、
-        # 拾取、穿装等后来新增的 positive_progress 不得影响冻结输入。
+        # protocol-v3 per-tick semantics: only a scene change or a new kill resets the clock; later additions such as exploration, damage,
+        # pickups and equipping (positive_progress) must not affect the frozen input.
         if scene_changed:
             self._legacy_layer_clock = 0
             self._legacy_exhausted = False
@@ -895,7 +895,7 @@ class OptionsEnv(gym.Env):
             self._layer_kills0 = self.env._ep_kills
             self._layer_steps0 = self.env._steps
         elif self.env._ep_kills > kills_before or positive_progress:
-            # 累计预算是独立的交权闸，不能被一块新地板或下一刀重新打开。
+            # The cumulative budget is a separate hand-over gate and cannot be reopened by a new floor tile or the next swing.
             if (getattr(self, "farm_scene_steps", 0)
                     < getattr(self, "farm_scene_cap", FARM_SCENE_CAP)):
                 self.layer_clock = 0
@@ -904,15 +904,15 @@ class OptionsEnv(gym.Env):
                 self._mark_exhausted()
         else:
             self.layer_clock += steps_delta
-            # cap 可能恰在一个没有正进展的宏内命中；在 _win_term 之前就
-            # 原子发布，保证任何调试/worker 观测都不会看见“钟未满但旗已满”
-            # 的中间态。
+            # The cap may fire exactly inside a macro without positive progress; publish atomically before
+            # _win_term, so that no debug/worker observation ever sees the intermediate state
+            # "clock not full but flag full".
             if (getattr(self, "farm_scene_steps", 0)
                     >= getattr(self, "farm_scene_cap", FARM_SCENE_CAP)):
                 self._mark_exhausted()
 
     def _sync_farm_scene(self, scene) -> None:
-        """scene identity 变化时原子清空累计 FARM 预算（主层/任务图均适用）。"""
+        """Atomically clear the cumulative FARM budget when the scene identity changes (applies to main levels and quest maps)."""
         scene = tuple(scene)
         if getattr(self, "_farm_scene", None) != scene:
             if getattr(self, "resource_protocol", "off") != "off":
@@ -925,10 +925,10 @@ class OptionsEnv(gym.Env):
                 self._farm_scene = scene
                 self.farm_scene_steps = 0
 
-    # ---- gym 接口 ----
+    # ---- gym interface ----
     def reset(self, *, seed=None, options=None):
-        # OptionsEnv 自身也是 Gym Env，必须建立它自己的 np_random；
-        # 只给内层 env 传 seed 会被 env_checker 判为不符合 Gymnasium 契约。
+        # OptionsEnv is itself a Gym Env and must establish its own np_random;
+        # passing seed only to the inner env would be judged by env_checker as violating the Gymnasium contract.
         super().reset(seed=seed)
         if getattr(self, "worker_time_protocol", "legacy").startswith("completion-l2"):
             self._completion_clock.reset()
@@ -967,13 +967,13 @@ class OptionsEnv(gym.Env):
 
     def action_masks(self) -> np.ndarray:
         if self._last_base_obs is None:
-            raise gym.error.ResetNeeded("OptionsEnv.action_masks() 前必须 reset()")
+            raise gym.error.ResetNeeded("OptionsEnv.action_masks() needs reset() first")
         self.env._ensure_active(allow_ended=True)
         raw = self.env._raw
         self._sync_farm_scene(_scene_identity(raw))
         m = np.ones(3, dtype=bool)
-        # DIVE = 推进下一项主线目标，而不再狭义等于 NEXT 楼梯：任务入口、
-        # Vile 机关、L16 开门机关及 set-level 返回都属于同一职权。
+        # DIVE = advance the next main-line target, no longer narrowly the NEXT stairs: quest entrances,
+        # Vile mechanisms, the L16 door mechanism and set-level returns all belong to the same authority.
         transition = (bridge.WM_DIABRTNLVL if raw.get("is_set_level")
                       else bridge.WM_DIABNEXTLVL)
         m[DIVE] = bool(raw.get("progression_targets")) or any(
@@ -983,11 +983,11 @@ class OptionsEnv(gym.Env):
         # exists somewhere in the full raw list".  The latter opened endless
         # two-wait windows for a visible potion just outside radius 12.
         m[RESUPPLY] = bool(controller_mask[13])
-        # 剧情目标是 DIVE 的专属职权。榨干态也必须在 DIVE 合法时交权：
-        # v4 已移除 action10“无 frontier 就偷偷下楼”的旧泄漏，而冻结旧 H
-        # 曾依赖该泄漏，即使 layer_clock 饱和仍会连续复选 FARM，直至整局
-        # 截断。若 DIVE 当前非法则 FARM 仍作保底，保证掩码永不全假，并
-        # 继续由 REVISIT_FLOOR 约束干层复访。
+        # Story targets are DIVE's exclusive authority. The exhausted state must also hand over when DIVE is legal:
+        # v4 removed action10's old leak of "no frontier, so sneak downstairs", and the frozen old H
+        # relied on that leak, re-choosing FARM continuously even with layer_clock saturated until the whole game
+        # was truncated. If DIVE is currently illegal, FARM remains the fallback, so the mask is never all false, and
+        # dry-level revisits stay constrained by REVISIT_FLOOR.
         forced_dive = _farm_handoff(
             raw, nearest) or (self.exhausted and bool(m[DIVE]))
         m[FARM] = not forced_dive
@@ -1136,7 +1136,7 @@ class OptionsEnv(gym.Env):
                 m[:] = False
                 m[RESUPPLY] = True
             elif law == "coach-v03":
-                # R17.1 ruling 3: the frozen forced-descent law stands (escape hatch
+                # R17.1 readiness rule 3: the frozen forced-descent law stands (escape hatch
                 # kept); forced-unready descents are recorded by the engine receipt
                 # and paid no escrow (worker_env settlement reads pretransition_ready_law).
                 m[FARM] = not forced_dive
@@ -1169,7 +1169,7 @@ class OptionsEnv(gym.Env):
         raw = self.env._raw
         # veto-v1: native seven-condition verdict; coach-v03: six-condition law
         # (health excluded). The town-trip trigger above keeps the full native
-        # verdict so low HP still sends the manager to Pepin (ruling 3).
+        # verdict so low HP still sends the manager to Pepin (readiness rule 3).
         if mask[DIVE] and (raw.get("is_set_level") or raw.get("progression_targets")
                            or law_ready(raw, getattr(self, "resource_readiness_law", "veto-v1"))):
             return DIVE
@@ -1178,10 +1178,10 @@ class OptionsEnv(gym.Env):
                 return option
         raise RuntimeError("Resource manager has no legal option")
 
-    # ---- 共享窗口核(v23:OptionsEnv 与 WorkerWindowEnv 唯一实现)----
+    # ---- shared window core (v23: the single implementation for OptionsEnv and WorkerWindowEnv) ----
     def _dive_target_distance(self, raw) -> int | None:
-        """DIVE 当前主线目标的 Chebyshev 距离(与 action_masks 同口径:
-        有剧情目标取各目标最小距,否则取 transition 触发器最近者)。"""
+        """Chebyshev distance to DIVE's current main-line target (same definition as action_masks:
+        the minimum over story targets if any, otherwise the nearest transition trigger)."""
         px, py = raw["player_x"], raw["player_y"]
         targets = raw.get("progression_targets") or []
         if targets:
@@ -1199,21 +1199,21 @@ class OptionsEnv(gym.Env):
 
     def _win_begin(self, option: int):
         if not self.action_space.contains(option):
-            raise ValueError(f"选项必须是 {self.action_space}中的整数，收到 {option!r}")
+            raise ValueError(f"option must be an integer in {self.action_space}, got {option!r}")
         option = int(option)
         if getattr(self, "resource_protocol", "off") != "off":
             self.env._resource_dive_authority = False
         if not self.action_masks()[option]:
-            raise ValueError(f"选项 {option} 被掩码却被选择")
+            raise ValueError(f"option {option} is masked but was chosen")
         raw = self.env._raw
         if (option == FARM
                 and getattr(self, "reset_layer_clock_on_window", False)):
-            # R16(C3 时钟继承):新 FARM 窗从零计无进展,不承接上一
-            # DIVE stall 的余额;榨干旗与 legacy 钟不动(冻结观测语义)。
+            # R16 (C3 clock inheritance): a new FARM window counts no-progress from zero and does not inherit the balance of the previous
+            # DIVE stall; the exhausted flag and the legacy clock are untouched (frozen observation semantics).
             self.layer_clock = 0
         self._win = {
-            # _decisions 只在 _win_end 增一，因此同一底层局内这是稳定、
-            # 单调且在窗口开始时即可对外报告的标识。
+            # _decisions only increments in _win_end, so within one underlying game this is a stable,
+            # monotone identifier that can be reported as soon as the window starts.
             "window_id": self._decisions + 1,
             "opt": option,
             "mode": ("farm", "dive", "resupply")[option],
@@ -1228,10 +1228,10 @@ class OptionsEnv(gym.Env):
             "dive_last_progress_tau": 0,
             "resupply_stall": 0,
             "R": 0.0, "W": 0.0, "bonus": 0.0,
-            # 这两本账只覆盖 _win_step_worker：开窗前的 fuse recovery /
-            # 脑干排水不属于网络 transition，不能混入 PPO 实际领取的工资
-            # 或“工人伴随击杀”。WorkerWindowEnv.step 返回的 wage 与这里
-            # 逐步累加的增量使用同一个 W 差分，二者必须严格同源。
+            # These two ledgers only cover _win_step_worker: the fuse recovery/brainstem drain before the window opens
+            # are not network transitions and must not be mixed into the wage PPO actually receives
+            # or into "kills accompanying the worker". The wage returned by WorkerWindowEnv.step and the increments accumulated
+            # step by step here use the same W difference, and the two must come from exactly the same source.
             "worker_wage": 0.0, "worker_kills": 0,
             "worker_action14_requests": 0,
             "worker_action14_native_successes": 0,
@@ -1269,11 +1269,11 @@ class OptionsEnv(gym.Env):
                 sweep is not None and sweep.active and option == RESUPPLY)
 
     def _beat(self, a: int, *, worker_authority: bool = False):
-        """一拍:保险丝 → env.step → 观测缓存 → 停滞钟。
+        """One tick: fuse -> env.step -> observation cache -> stall clock.
 
-        返回 ``(r, done, trunc, info, audit, lvl_before, belt_free_before)``。
-        保险丝命中时不执行任何基础动作，``audit.executed_action`` 为 None；
-        调用方必须立即以 ``reason="fuse"`` 结束当前窗口。
+        Returns ``(r, done, trunc, info, audit, lvl_before, belt_free_before)``.
+        When the fuse fires no base action is executed and ``audit.executed_action`` is None;
+        the caller must end the current window immediately with ``reason="fuse"``.
         """
         raw = self.env._raw
         requested = int(a)
@@ -1283,15 +1283,15 @@ class OptionsEnv(gym.Env):
         if sig == self._fuse_sig:
             self._fuse += 1
             if self._fuse >= 25:
-                # 旧行为在这里静默执行动作 10，但 PPO/BC 仍把本 transition
-                # 标成 requested，形成动作—结果错标。现在拒绝本拍并归还
-                # manager；清空签名使下一窗口从干净保险丝状态开始。
+                # The old behaviour silently executed action 10 here while PPO/BC still labelled this transition
+                # as requested, mislabelling action and result. Now this tick is refused and control returns to the
+                # manager; the signature is cleared so the next window starts from a clean fuse state.
                 self._fuse = 0
                 self._fuse_sig = None
-                # 保险丝拒拍不执行任何原生动作;a14 的回执强制(每个请求必带
-                # 因果回执)要求这里也发布显式拒绝回执,否则消费端 fail-closed。
-                # (2026-07-27 修复:07-25 加回执强制时漏改本早退分支——
-                # prepare-bc 教师连按 a14 至 25 拍触发保险丝即崩。)
+                # A fuse refusal executes no native action; a14's receipt enforcement (every request must carry a
+                # causal receipt) requires an explicit refusal receipt here too, otherwise the consumer fails closed.
+                # (Fixed 2026-07-27: when receipt enforcement was added on 07-25 this early-exit branch was missed;
+                # the prepare-bc teacher crashed as soon as pressing a14 repeatedly for 25 ticks triggered the fuse.)
                 fuse_action14_audit = None
                 if requested == 14:
                     fuse_utility = gear_combat_utility_value(
@@ -1406,7 +1406,7 @@ class OptionsEnv(gym.Env):
                 or drink_audit["accepted"] != drink_audit["consumed"]
             ):
                 raise RuntimeError(
-                    "action12 缺失/损坏真实执行回执")
+                    "action12 real execution receipt missing/corrupt")
             executed_action = 12 if drink_audit["consumed"] else None
         elif requested == 14:
             # A14 is a macro: an accepted safe walk/open is a real execution
@@ -1415,7 +1415,7 @@ class OptionsEnv(gym.Env):
             # implication that a successful commit was truly executed.
             if action14_audit["accepted"] and executed_action != 14:
                 raise RuntimeError(
-                    "action14 成功提交缺少通用执行回执")
+                    "action14 successful commit lacks the generic execution receipt")
         audit = BeatOutcome(
             reason=None,
             requested_action=requested,
@@ -1427,7 +1427,7 @@ class OptionsEnv(gym.Env):
         return float(r), done, trunc, info, audit, lvl_b, belt_free_b
 
     def _win_term(self, done, trunc, belt_free_b):
-        """七级终止阶梯(顺序与 v22 逐行同构)。返回 reason 或 None。"""
+        """Seven-step termination ladder (order structurally identical to v22 line by line). Returns reason or None."""
         w = self._win
         raw = self.env._raw
         tau = self.env._steps - w["t0"]
@@ -1439,8 +1439,8 @@ class OptionsEnv(gym.Env):
             if getattr(self, "resource_protocol", "off") != "off":
                 return ("descend" if int(self.env._resource_max_main_depth)
                         > w["resource_depth0"] else "scene")
-            # 进入/离开任务副本同样必须归还控制权，但只有主线深度增加
-            # 才叫 descend、才可领取下潜奖金。
+            # Entering/leaving a quest set-level must also hand control back, but only an increase in main-line depth
+            # counts as descend and may collect the dive bonus.
             return ("descend" if raw["dungeon_level"] > w["dlvl0"]
                     else "scene")
         opt = w["opt"]
@@ -1480,8 +1480,8 @@ class OptionsEnv(gym.Env):
             if (opt != RESUPPLY and not retreat.active
                     and retreat.trigger_reason(raw, self.env._steps) is not None):
                 return "retreat_trigger"
-        # FARM 的最后一只近敌被清掉后，剧情目标可能在同一拍成为当前
-        # 状态；必须先于复访地板/停滞钟收窗，不能让 action10 越权操作。
+        # Once FARM clears the last nearby enemy, a story target may become the current state in the same tick;
+        # the window must close before the revisit floor/stall clock, so action10 cannot overstep its authority.
         if opt == FARM:
             controller_mask, nearest = self._controller_action_context()
             if _farm_handoff(raw, nearest):
@@ -1509,9 +1509,9 @@ class OptionsEnv(gym.Env):
             return None
         if opt == FARM and raw["char_level"] > w["clvl0"]:
             return "levelup"
-        # db7d26c 只在 FARM 的这一层级、并且在 done/scene/floor/levelup
-        # 之后发布旧 exhausted。即使当前 no-progress 因真实正向进度而
-        # 不收窗，冻结 V28 仍应看到它在旧协议此刻会收到的 296/297。
+        # db7d26c publishes the old exhausted only at this level of FARM, and after done/scene/floor/levelup.
+        # Even if the current no-progress does not close the window because of real positive progress, the frozen V28
+        # should still see the 296/297 it would have received at this moment under the old protocol.
         if opt == FARM and self._legacy_layer_clock >= KILL_PATIENCE:
             self._legacy_exhausted = True
         if (opt == FARM
@@ -1550,7 +1550,7 @@ class OptionsEnv(gym.Env):
         return None
 
     def _win_beat(self, a: int, *, worker_authority: bool = False):
-        """一拍 + 账本(经理 R / 工人 W)+ 终止判定。"""
+        """One tick + ledgers (manager R / worker W) + termination check."""
         w = self._win
         # Narrow compatibility for hand-built unit-test windows.  Production
         # windows initialize every ledger in _win_begin.
@@ -1569,27 +1569,27 @@ class OptionsEnv(gym.Env):
         w["last_requested_action"] = audit.requested_action
         w["last_executed_action"] = audit.executed_action
         if audit.fuse_tripped:
-            # 拒绝提案不消耗基础微拍、不产生伪奖励；只登记可审计的
-            # manager 介入。dry revisit 的最小占用地板仍是硬不变量：
-            # 地板未满时本拍只拒绝、不收窗；清空后的 fuse 允许下一提案
-            # 正常推进，避免零微步死循环。
+            # A refused proposal consumes no base micro tick and produces no fake reward; it only registers an auditable
+            # manager intervention. The minimum occupancy floor of a dry revisit is still a hard invariant:
+            # while the floor is not reached this tick only refuses and does not close the window; the cleared fuse lets the next proposal
+            # advance normally, avoiding a zero-micro-step infinite loop.
             w["overrides"] += 1
             w["fuse_trips"] += 1
             w["fuse_requested_action"] = audit.requested_action
             tau = self.env._steps - w["t0"]
             reason = "fuse" if tau >= w["floor"] else None
             if reason is not None:
-                # 拒绝拍本身不偷执行任何动作。下一经理窗口开头再执行一拍
-                # 显式登记的脚本恢复，避免同一坏几何状态被经理反复重选。
+                # The refusal tick itself secretly executes nothing. At the start of the next manager window one explicitly registered
+                # scripted recovery tick runs, so the manager does not keep re-choosing the same bad geometric state.
                 self._fuse_recovery_pending = True
             return BeatOutcome(
                 reason=reason,
                 requested_action=audit.requested_action,
                 executed_action=None,
                 fuse_tripped=True,
-                # 2026-07-27 修复第二洞:窗口级 fuse 包装器必须传播内层
-                # a14 拒绝回执(_beat 保险丝路径已合成),否则 a14 请求在
-                # 此路径回执为 None,消费端 fail-closed(2_106 池阵亡原因)。
+                # Second hole fixed 2026-07-27: the window-level fuse wrapper must propagate the inner
+                # a14 refusal receipt (already synthesized on the _beat fuse path), otherwise an a14 request's receipt on
+                # this path is None and the consumer fails closed (the cause of death of the 2_106 pool).
                 action14_audit=audit.action14_audit,
                 action_effect_audit=audit.action_effect_audit,
             )
@@ -1608,19 +1608,19 @@ class OptionsEnv(gym.Env):
             w["executed_requests"] += 1
         w["R"] += r
         cur_lvl = self.env._raw["dungeon_level"]
-        # 剥薪单价跟随经济规格(v1 时 == DESCEND_UNIT,数值逐位同旧;
-        # R10 v2 换单价后恒等式 Σw ≡ 窗口R − unit×ΣΔdlvl⁺ 继续成立,
-        # 防"临战下楼避罚"套利语义不变)。测试替身/旧包装无该属性时
-        # 回退 v1——与历史行为逐位一致。
+        # The stripping unit price follows the economy spec (== DESCEND_UNIT under v1, values identical to the old bit for bit;
+        # after R10 v2 changes the unit price the identity Σw ≡ window R − unit×ΣΔdlvl⁺ still holds,
+        # and the anti-arbitrage semantics of "descending mid-fight to avoid penalties" are unchanged). Test doubles/old wrappers without this attribute
+        # fall back to v1, identical to historical behaviour bit for bit.
         descend_unit = getattr(
             self.env, "reward_economy", REWARD_ECONOMY_V1).descend_unit
         bonus = descend_unit * sum(range(lvl_b, cur_lvl)) if cur_lvl > lvl_b else 0.0
         if getattr(self, "resource_protocol", "off") != "off":
             bonus = float(info["resource_protocol"]["new_main_depth_bonus"])
-        # R14 乙案(主席批「先做乙 我想看看在乙的条件下 是否仍会出发
-        # 裸奔哥的情况」):live DIVE 窗内工人保留 fraction 的下楼奖金。
-        # w["bonus"] 语义=实际剥除额,恒等式 R≡W+bonus 逐位继续成立;
-        # fraction=0(默认)或非 live-DIVE 窗时本路径逐位同旧法。
+        # R14 option B (tried first, to see whether the "naked runner" behaviour still appears under
+        # option B): inside live DIVE windows the worker keeps fraction of the descend bonus.
+        # w["bonus"] means the amount actually stripped; the identity R≡W+bonus keeps holding bit for bit;
+        # with fraction=0 (default) or outside live-DIVE windows this path is identical to the old rule bit for bit.
         if (bonus > 0.0
                 and getattr(
                     self, "worker_descend_bonus_fraction", 0.0) > 0.0
@@ -1643,10 +1643,10 @@ class OptionsEnv(gym.Env):
         )
 
     def _drain(self):
-        """反射排水:hp<0.5∧belt>0 时由包装器逐拍喝药(工人路径专用;
-        每一拍照常过保险丝/时钟/终止阶梯——喝药拍可跨榨干/CAP/死亡)。
+        """Reflex drain: while hp<0.5∧belt>0 the wrapper drinks tick by tick (worker path only;
+        every tick goes through the fuse/clock/termination ladder as usual; a drink tick can cross exhausted/CAP/death).
 
-        返回使排水结束窗口的 BeatOutcome；排水完成且窗口仍活跃则返回 None。
+        Returns the BeatOutcome that made the drain end the window; returns None if the drain finished and the window is still active.
         """
         w = self._win
         while _reflex(self.env._raw):
@@ -1659,9 +1659,9 @@ class OptionsEnv(gym.Env):
         return None
 
     def _win_step_worker(self, a: int):
-        """工人一步 = 工人动作一拍 + 反射尾部排水。"""
+        """One worker step = one worker-action tick + reflex tail drain."""
         if not self.env.action_space.contains(a):
-            raise ValueError(f"工人动作必须是 {self.env.action_space}中的整数，收到 {a!r}")
+            raise ValueError(f"worker action must be an integer in {self.env.action_space}, got {a!r}")
         a = int(a)
         if (
             1 <= a <= 8
@@ -1669,12 +1669,12 @@ class OptionsEnv(gym.Env):
             and not (
                 getattr(self, "dive_live_sovereignty", False)
                 and (self._win or {}).get("opt") == DIVE
-            )   # R13:live DIVE 窗内踏格即职权,与掩码放行同条件
+            )   # R13: inside live DIVE windows stepping on the tile is within authority, same condition as the mask release
         ):
             raise ValueError(
-                f"工人动作 {a} 试图踏入 DIVE 专属 trigger/剧情格")
+                f"worker action {a} tried to step onto a DIVE-only trigger/story tile")
         if not self._worker_masks()[a]:
-            raise ValueError(f"工人动作 {a} 被掩码却被执行")
+            raise ValueError(f"worker action {a} is masked but was executed")
         wage_before = float(self._win["W"])
         kills_before = int(self.env._ep_kills)
         grace_decision = bool(
@@ -1699,10 +1699,10 @@ class OptionsEnv(gym.Env):
             self._win["gear_grace_consumed"] = False
             self._win["gear_grace_decisions"] -= 1
         if a == 12 and primary.executed_action == 12:
-            # 这是工人主动饮药，不含 _drain 的脑干反射。计数只用于审计；
-            # 计数会在下一策略观测的 feature 297 符号中公开，并关闭本窗
-            # 后续 worker-owned a12；脑干 _drain 仍可在紧急态连续排水。
-            # 这样“每窗至多一次工人饮药”既是可见状态也是执行约束。
+            # This is worker-initiated drinking, excluding the brainstem reflexes of _drain. The count is only for audits;
+            # it is published in the sign of feature 297 of the next policy observation and closes
+            # later worker-owned a12 in this window; the brainstem _drain can still drain continuously in emergencies.
+            # This makes "at most one worker drink per window" both a visible state and an execution constraint.
             self._win["voluntary_drinks"] += 1
         if a == 14:
             self._win.setdefault("worker_action14_requests", 0)
@@ -1713,14 +1713,14 @@ class OptionsEnv(gym.Env):
             self._win["worker_action14_requests"] += 1
             gear_audit = primary.action14_audit
             if gear_audit is None:
-                raise RuntimeError("action14 缺少原生装备提交回执")
+                raise RuntimeError("action14 lacks the native gear-commit receipt")
             if gear_audit["accepted"]:
                 if (
                     primary.executed_action != 14
                     or gear_audit["utility_delta"] <= 0
                 ):
                     raise RuntimeError(
-                        "action14 成功提交未发布真实执行回执")
+                        "action14 successful commit did not publish a real execution receipt")
                 self._win[
                     "worker_action14_native_successes"
                 ] += 1
@@ -1744,13 +1744,13 @@ class OptionsEnv(gym.Env):
             drain_ending = self._drain()
             if drain_ending is not None:
                 ending = drain_ending
-        # 与 WorkerWindowEnv.step 的 policy reward 完全相同：当前工人提案
-        # 及其反射尾部所造成的 W 增量。开窗恢复/排水发生在调用本方法之前，
-        # 因而不会被错误归给网络。
+        # Exactly the same as the policy reward of WorkerWindowEnv.step: the W increment caused by the current worker proposal
+        # and its reflex tail. The window-opening recovery/drain happens before this method is called,
+        # so it is never misattributed to the network.
         self._win["worker_wage"] += float(self._win["W"]) - wage_before
         worker_kills = int(self.env._ep_kills) - kills_before
         if worker_kills < 0:
-            raise RuntimeError("单局击杀计数在 worker transition 内回退")
+            raise RuntimeError("per-game kill count went backwards within a worker transition")
         self._win["worker_kills"] += worker_kills
         fuse = primary if primary.fuse_tripped else (
             ending if ending.fuse_tripped else None)
@@ -1766,7 +1766,7 @@ class OptionsEnv(gym.Env):
         )
 
     def _consume_fuse_recovery(self):
-        """在下一窗口开头执行一拍可审计恢复；不归因成被拒的 worker 动作。"""
+        """Execute one auditable recovery tick at the start of the next window; not attributed to the refused worker action."""
         if not self._fuse_recovery_pending:
             return None
         mode = self._win["mode"]
@@ -1774,8 +1774,8 @@ class OptionsEnv(gym.Env):
             raw = self.env._raw
             controller_mask, _nearest = (
                 self._controller_action_context())
-            # FARM recovery 也不得借 action10 操作剧情；有剧情时继续清理
-            # 可见 blocker（无怪的 handoff 态本就不会开 FARM）。
+            # FARM recovery must not use action10 to operate story targets either; with a story target it keeps clearing
+            # visible blockers (the monster-free hand-over state never opens FARM anyway).
             action = (
                 9 if (raw.get("progression_targets")
                       and bool(controller_mask[9]))
@@ -1789,9 +1789,9 @@ class OptionsEnv(gym.Env):
         return self._win_beat(action)
 
     def _win_end(self, reason: str):
-        """收窗:经理状态机推进 + option_extra。返回 (extra, base_info, done, trunc)。"""
+        """Close the window: advance the manager state machine + option_extra. Returns (extra, base_info, done, trunc)."""
         if reason is None:
-            raise RuntimeError("选项尚无终止原因却尝试收窗")
+            raise RuntimeError("attempted to close the window while the option has no termination reason")
         w = self._win
         for key in (
             "no_effect_requests",
@@ -1852,7 +1852,7 @@ class OptionsEnv(gym.Env):
             "fuse_requested_action": w["fuse_requested_action"],
             "dlvl0": w["dlvl0"], "dlvl_end": self.env._raw["dungeon_level"],
             "farm_scene_steps": self.farm_scene_steps,
-            "dry": w["floor"] > 0,      # 开窗时榨干旗在位(干层复访窗)
+            "dry": w["floor"] > 0,      # exhausted flag set when the window opened (dry-level revisit window)
             "base_done": w["done"] or w["trunc"],
             "base_trunc": w["trunc"] and not w["done"],
             "no_progress_micro_steps": int(self.layer_clock),
@@ -1870,13 +1870,13 @@ class OptionsEnv(gym.Env):
                     rel_tol=1e-12,
                     abs_tol=1e-12)):
             raise RuntimeError(
-                "选项回报分账异常: "
+                "option return split abnormal: "
                 f"R={extra['R']}, W={extra['W']}, bonus={extra['bonus']}, "
                 f"worker_wage={extra['worker_wage']}")
         if (extra["kills_delta"] < 0
                 or not 0 <= extra["worker_kills"] <= extra["kills_delta"]):
             raise RuntimeError(
-                "选项击杀分账异常: "
+                "option kill split abnormal: "
                 f"kills_delta={extra['kills_delta']}, "
                 f"worker_kills={extra['worker_kills']}")
         if (
@@ -1891,7 +1891,7 @@ class OptionsEnv(gym.Env):
             )
         ):
             raise RuntimeError(
-                "选项 action14 原生回执分账异常: "
+                "option action14 native receipt split abnormal: "
                 f"requests={extra['worker_action14_requests']}, "
                 "successes="
                 f"{extra['worker_action14_native_successes']}, "
@@ -1913,7 +1913,7 @@ class OptionsEnv(gym.Env):
             )
         ):
             raise RuntimeError(
-                "选项动作效果/装备学习窗口分账异常:"
+                "option action-effect/gear learning-window split abnormal: "
                 f"no_effect={extra['no_effect_requests']},"
                 f"worker_no_effect={extra['worker_no_effect_requests']},"
                 f"executed={extra['executed_requests']},"
@@ -1924,20 +1924,20 @@ class OptionsEnv(gym.Env):
         self._win = None
         return extra, base_info, done, trunc
 
-    # ---- 工人视角(v23)----
+    # ---- worker view (v23) ----
     def _worker_obs(self) -> np.ndarray:
         w = self._win
         tau = self.env._steps - w["t0"] if w is not None else self._last_tau
-        # V28/KING/root 的 actor 与 critic 均按 protocol-v3 训练：296 是
-        # 无新杀钟，297 是旧 exhausted。当前 no-progress/scene-cap 状态
-        # 仍驱动窗口，但不得进入这两个冻结输入槽。
+        # The actor and critic of V28/KING/root were trained on protocol-v3: 296 is
+        # the no-new-kill clock and 297 the old exhausted. The current no-progress/scene-cap state
+        # still drives the window but must not enter these two frozen input slots.
         legacy_exhausted = 1.0 if self._legacy_exhausted else 0.0
         exhausted_and_latch = legacy_exhausted
         if w is not None and (
             int(w.get("voluntary_drinks", 0)) > 0
             or int(w.get("drains", 0)) > 0
         ):
-            # 符号域与未饮的 0/1 严格分离；``-v-1`` 可无损恢复旧值。
+            # The sign domain is strictly separate from the undrunk 0/1; ``-v-1`` restores the old value losslessly.
             exhausted_and_latch = -(1.0 + legacy_exhausted)
         extra = np.asarray([
             min(1.0, tau / TAU_CAP),
@@ -1947,11 +1947,11 @@ class OptionsEnv(gym.Env):
         return np.concatenate([np.asarray(self._last_base_obs, dtype=np.float32), extra])
 
     def _worker_v5_window_appendix(self, w, tau, raw) -> np.ndarray:
-        """R13 v5 追加块(12 维):窗口模式感知 + DIVE 进展/价值分解特征。
+        """R13 v5 appended block (12 dims): window-mode awareness + DIVE progress/value decomposition features.
 
-        仅 dual-v5-window-mode-v1 视图构造本块;v4 前缀在调用方逐位拼装,
-        本函数零 RNG 消耗、零状态写入。零填充迁移的 actor/critic 对本块
-        初始权重为零,故行为自 v4 起点连续(D0 门的实现前提)。
+        Only the dual-v5-window-mode-v1 view builds this block; the v4 prefix is assembled bit for bit by the caller,
+        and this function consumes no RNG and writes no state. The actor/critic migrated by zero padding have zero
+        initial weights for this block, so behaviour continues from the v4 starting point (the implementation premise of the D0 gate).
         """
         mode = (w or {}).get("mode")
         best_d = (w or {}).get("dive_best_d")
@@ -1978,26 +1978,26 @@ class OptionsEnv(gym.Env):
         hp_frac = min(1.0, max(0.0, (
             float(raw.get("hp", 0)) / max(1.0, float(raw.get("max_hp", 0))))))
         appendix = np.asarray([
-            1.0 if mode == "farm" else 0.0,       # [0] 模式 one-hot
+            1.0 if mode == "farm" else 0.0,       # [0] mode one-hot
             1.0 if mode == "dive" else 0.0,       # [1]
             1.0 if mode == "resupply" else 0.0,   # [2]
             (min(1.0, max(0.0, float(best_d) / 50.0))
-             if best_d is not None else 0.0),     # [3] 主线目标最近距
-            stall,                                # [4] DIVE 停滞钟
-            min(1.0, max(0.0, float(tau) / max(1, TAU_CAP))),  # [5] 窗龄
-            min(1.0, max(0.0, dlvl / 15.0)),      # [6] 地牢层
-            min(1.0, max(-1.0, (clvl - dlvl) / 10.0)),  # [7] 等级余量
-            window_kills,                         # [8] 窗内击杀
-            hp_frac,                              # [9] 血量分数
-            worker_wage_frac,                     # [10] 窗内工人工资
-            drinks_frac,                          # [11] 窗内饮药
+             if best_d is not None else 0.0),     # [3] nearest main-line target distance
+            stall,                                # [4] DIVE stall clock
+            min(1.0, max(0.0, float(tau) / max(1, TAU_CAP))),  # [5] window age
+            min(1.0, max(0.0, dlvl / 15.0)),      # [6] dungeon level
+            min(1.0, max(-1.0, (clvl - dlvl) / 10.0)),  # [7] level margin
+            window_kills,                         # [8] kills in the window
+            hp_frac,                              # [9] HP fraction
+            worker_wage_frac,                     # [10] worker wage in the window
+            drinks_frac,                          # [11] drinks in the window
         ], dtype=np.float32)
         if (
             appendix.shape != (DUAL_WORKER_V5_APPENDIX_DIM,)
             or not np.isfinite(appendix).all()
         ):
             raise RuntimeError(
-                "dual Worker v5 追加块形状/有限性漂移:"
+                "dual Worker v5 appended block shape/finiteness drift: "
                 f"shape={appendix.shape},"
                 f"finite={np.isfinite(appendix).all()}")
         return appendix
@@ -2024,11 +2024,11 @@ class OptionsEnv(gym.Env):
         """
         if view not in WORKER_OBSERVATION_VIEWS:
             raise ValueError(
-                f"Worker policy observation view 未注册:{view!r}")
+                f"Worker policy observation view not registered: {view!r}")
         current = np.asarray(self._worker_obs(), dtype=np.float32)
         if current.shape != (298,):
             raise RuntimeError(
-                f"Worker raw-v4 观测形状漂移:{current.shape} != (298,)")
+                f"Worker raw-v4 observation shape drift: {current.shape} != (298,)")
         if view == WORKER_OBSERVATION_VIEW_RAW_V4:
             return current
 
@@ -2047,7 +2047,7 @@ class OptionsEnv(gym.Env):
         ]).astype(np.float32, copy=False)
         if legacy_result.shape != (298,):
             raise RuntimeError(
-                "Worker legacy 观测形状漂移:"
+                "Worker legacy observation shape drift: "
                 f"{legacy_result.shape} != (298,)")
         if view in (
             WORKER_OBSERVATION_VIEW_DUAL_V4_ASYMMETRIC,
@@ -2057,16 +2057,16 @@ class OptionsEnv(gym.Env):
                 p_skip = float(skip_dry_probability)
             except (TypeError, ValueError, OverflowError) as exc:
                 raise ValueError(
-                    "dual Worker skip_dry_probability 必须是 [0,1] 有限数"
+                    "dual Worker skip_dry_probability must be a finite number in [0,1]"
                 ) from exc
             if not math.isfinite(p_skip) or not 0.0 <= p_skip <= 1.0:
                 raise ValueError(
-                    "dual Worker skip_dry_probability 必须是 [0,1] 有限数")
+                    "dual Worker skip_dry_probability must be a finite number in [0,1]")
             current_base = np.asarray(
                 self._last_base_obs, dtype=np.float32)
             if current_base.shape != (295,):
                 raise RuntimeError(
-                    "dual Worker current-v4 base 形状漂移:"
+                    "dual Worker current-v4 base shape drift: "
                     f"{current_base.shape} != (295,)")
             snapshot_vectorizer = getattr(
                 self.env, "controller_snapshot_vector", None)
@@ -2081,7 +2081,7 @@ class OptionsEnv(gym.Env):
                 or not np.isfinite(controller_snapshot).all()
             ):
                 raise RuntimeError(
-                    "dual Worker controller snapshot 形状/有限性漂移:"
+                    "dual Worker controller snapshot shape/finiteness drift: "
                     f"shape={controller_snapshot.shape},"
                     f"finite={np.isfinite(controller_snapshot).all()}")
 
@@ -2094,7 +2094,7 @@ class OptionsEnv(gym.Env):
                 self._worker_masks(), dtype=bool)
             if manager_mask.shape != (3,) or worker_mask.shape != (15,):
                 raise RuntimeError(
-                    "dual Worker mask 形状漂移:"
+                    "dual Worker mask shape drift: "
                     f"worker={worker_mask.shape},manager={manager_mask.shape}")
 
             w = self._win
@@ -2167,7 +2167,7 @@ class OptionsEnv(gym.Env):
             ], dtype=np.float32)
             if context.shape != (9,):
                 raise RuntimeError(
-                    f"dual Worker context 形状漂移:{context.shape} != (9,)")
+                    f"dual Worker context shape drift: {context.shape} != (9,)")
 
             # ``_fuse`` counts repeats after the first matching request and
             # trips at 25.  A matching signature with counter zero is already
@@ -2192,7 +2192,7 @@ class OptionsEnv(gym.Env):
                     fuse_counter = int(self._fuse)
                     if not 0 <= fuse_counter < 25:
                         raise RuntimeError(
-                            "dual Worker fuse counter 必须在 [0,24]:"
+                            "dual Worker fuse counter must be within [0,24]: "
                             f"{fuse_counter}")
                     fuse_streak[fuse_action] = (
                         fuse_counter + 1) / 25.0
@@ -2208,7 +2208,7 @@ class OptionsEnv(gym.Env):
             ]).astype(np.float32, copy=False)
             expected_dim = DUAL_WORKER_OBSERVATION_DIM
             if view == WORKER_OBSERVATION_VIEW_DUAL_V5_WINDOW_MODE:
-                # R13:v4 前缀已在上方完整拼装(逐位同 v4),此处仅追加。
+                # R13: the v4 prefix was fully assembled above (bit-identical to v4); this only appends.
                 result = np.concatenate([
                     result,
                     self._worker_v5_window_appendix(w, tau, raw),
@@ -2219,7 +2219,7 @@ class OptionsEnv(gym.Env):
                 or not np.isfinite(result).all()
             ):
                 raise RuntimeError(
-                    "dual Worker policy observation 形状/有限性漂移:"
+                    "dual Worker policy observation shape/finiteness drift: "
                     f"shape={result.shape},finite={np.isfinite(result).all()}")
             return result
 
@@ -2254,22 +2254,22 @@ class OptionsEnv(gym.Env):
         m, nearest = self._controller_action_context()
         m = np.array(m, dtype=bool)
         raw = self.env._raw
-        # R13 主权移交:live DIVE 窗内工人获得 a11 与踏格职权(默认关,
-        # 旧法逐位不变)。FARM/RESUPPLY 窗以及旗关路径维持恒掩——
-        # 临战下楼规避死亡成本的逃跑漏洞只在「下楼本就是本窗任务」的
-        # DIVE 窗内不成立。
+        # R13 sovereignty transfer: inside live DIVE windows the worker gets a11 and the stepping authority (default off,
+        # old rule unchanged bit for bit). FARM/RESUPPLY windows and the flag-off path keep the permanent mask;
+        # the escape loophole of descending mid-fight to avoid the death cost only fails to apply inside DIVE windows,
+        # where "descending is this window's task" anyway.
         _dive_live_window = (
             getattr(self, "dive_live_sovereignty", False)
             and (self._win or {}).get("opt") == DIVE
         )
         if not _dive_live_window:
-            m[11] = False   # 主线推进归经理(DIVE 职权)
-            # 1..8 也能直接踏上相邻 trigger/剧情站位。仅剥掉换层奖金无法
-            # 封权：临战下楼可规避巨额死亡成本，Worker 会因此学会逃跑。
+            m[11] = False   # main-line progress belongs to the manager (DIVE authority)
+            # 1..8 can also step directly onto adjacent trigger/story stances. Stripping the level-change bonus alone cannot
+            # seal the authority: descending mid-fight can dodge a huge death cost, and the Worker would learn to run away.
             for action in DiabloGymEnv._protected_walk_actions(raw):
                 m[action] = False
-        # action10 会优先处理剧情白名单；只要目标存在就必须掩掉，哪怕
-        # 近敌尚需 FARM 清理，也不能让学习工人越过 manager DIVE。
+        # action10 handles the story allowlist first; as long as a target exists it must be masked, even if
+        # nearby enemies still need FARM clearing, so the learning worker cannot bypass the manager's DIVE.
         m[10] = m[10] and not bool(
             self.env._raw.get("progression_targets"))
         if bool((self._win or {}).get("gear_grace_pending", False)):
@@ -2282,10 +2282,10 @@ class OptionsEnv(gym.Env):
             grace[14] = bool(m[14])
             return grace, nearest
         if self.drink_sovereignty:
-            # 主权只在当前可见的安全包络内开放。用整数交叉乘避免
-            # 0.5/0.75 边界因浮点舍入在采集与部署间翻转。成功的主动饮
-            # 或反射饮都会置可见闩，并关闭本窗后续 worker-owned a12；
-            # 紧急 _drain() 自身仍可继续排水。
+            # Sovereignty only opens inside the currently visible safe envelope. Integer cross-multiplication keeps
+            # the 0.5/0.75 boundary from flipping between collection and deployment through float rounding. A successful active drink
+            # or reflex drink sets the visible latch and closes later worker-owned a12 in this window;
+            # the emergency _drain() itself can still keep draining.
             hp = int(raw.get("hp", 0))
             max_hp = max(1, int(raw.get("max_hp", 0)))
             in_safe_envelope = (
@@ -2309,7 +2309,7 @@ class OptionsEnv(gym.Env):
                 and not already_drank
             )
         else:
-            m[12] = False   # 喝药归脑干(v32 前旧协议;反射仍兜底)
+            m[12] = False   # drinking belongs to the brainstem (the old protocol before v32; the reflex still backs it up)
         return m, nearest
 
     def _worker_masks(self) -> np.ndarray:
@@ -2335,17 +2335,17 @@ class OptionsEnv(gym.Env):
         if declared_mode is None:
             if declared_view == WORKER_OBSERVATION_VIEW_DUAL_V4_ASYMMETRIC:
                 raise RuntimeError(
-                    "dual Worker callback 缺少 action12 deployment contract")
+                    "dual Worker callback lacks the action12 deployment contract")
             return
         if declared_mode != expected_mode:
             raise RuntimeError(
-                "Worker action12 contract 与 OptionsEnv "
-                "drink_sovereignty 不一致:"
+                "Worker action12 contract inconsistent with OptionsEnv "
+                "drink_sovereignty: "
                 f"callback={declared_mode!r},environment={expected_mode!r}")
 
     def step(self, option: int):
         if self._win is not None:
-            raise RuntimeError("上一个选项窗口尚未收束")
+            raise RuntimeError("the previous option window has not closed yet")
         self.env._ensure_active()
         self._win_begin(option)
         mode = self._win["mode"]
@@ -2410,7 +2410,7 @@ class OptionsEnv(gym.Env):
                     service = self.resource_service
                 if (getattr(self, "resource_readiness_law", "veto-v1") == "coach-v03"
                         and not getattr(service, "settle_exempt", False)):
-                    # R17.1 ruling 3 (T0′ crash, seed 2133003): a deadline-truncated
+                    # R17.1 readiness rule 3 (T0′ crash, seed 2133003): a deadline-truncated
                     # service walk can leave the player mid-tile; the service's next
                     # decision — and, at completion, the worker's first decision —
                     # must start from a decision-idle player (frozen worker law).
@@ -2461,7 +2461,7 @@ class OptionsEnv(gym.Env):
                             self.env._raw, int(self.env._steps),
                             int(getattr(service, "trip_count", 0)),
                             trip_budget_left=identify_trip_budget) == "identify"):
-                    # R18-H identify-v1 (chairman ruling 2026-09-07 14:00): the Cain
+                    # R18-H identify-v1 (design decision, 2026-09-07): the Cain
                     # leg runs at the EARLIEST town phase of every town trip -- the
                     # town service reaches town in "outbound" and turns it into
                     # "sell_idle" INSIDE its own next command, so this beat is the
@@ -2596,7 +2596,7 @@ class OptionsEnv(gym.Env):
             return self._mgr_obs(self._last_base_obs), extra["R"], done, trunc, info
         if worker is not None:
             if ending is None or ending.reason is None:
-                ending = self._drain()  # 工人首个观测必须是无反射态
+                ending = self._drain()  # the worker's first observation must be reflex-free
             while ending is None:
                 declared_view = getattr(
                     worker,
@@ -2691,7 +2691,7 @@ class OptionsEnv(gym.Env):
             MANAGER_OBSERVATION_VIEW_RAW_V4)
         if view not in MANAGER_OBSERVATION_VIEWS:
             raise RuntimeError(
-                f"manager observation view 未注册:{view!r}")
+                f"manager observation view not registered: {view!r}")
         if view == MANAGER_OBSERVATION_VIEW_LEGACY_V3:
             # M29 was trained on the same protocol-v3 base as V28.  Restoring
             # only belt feature 286 is insufficient: v4 also filtered monster
@@ -2709,7 +2709,7 @@ class OptionsEnv(gym.Env):
             manager_base = np.asarray(base_obs, dtype=np.float32).copy()
         if manager_base.shape != (295,):
             raise ValueError(
-                f"manager 基础观测必须为 (295,)，收到 {manager_base.shape}")
+                f"manager base observation must be (295,), got {manager_base.shape}")
         if view == MANAGER_OBSERVATION_VIEW_LEGACY_V3:
             # The vectorizer already used native legacy_belt_heals.  Keep this
             # assertion local so no future refactor can reintroduce a packed
@@ -2731,7 +2731,7 @@ class OptionsEnv(gym.Env):
             clock = self.layer_clock
             layer_steps0 = self._layer_steps0
         extra = np.asarray([
-            max(0.0, 1.0 - self.env._steps / max(1, self.max_steps)), # 余时
+            max(0.0, 1.0 - self.env._steps / max(1, self.max_steps)), # time remaining
             min(1.0, clock / KILL_PATIENCE),
             min(1.0, (self.env._ep_kills - self._layer_kills0) / 50.0),
             min(1.0, (self.env._steps - layer_steps0) / 1500.0),
@@ -2745,7 +2745,7 @@ class OptionsEnv(gym.Env):
 
 
 class StagnationClockWrapper(gym.Wrapper):
-    """恶魔臂 F 专用:295+1=296 维平面包装。
+    """For demon arm F only: a flat 295+1=296-dim wrapper.
 
     Clock progress uses the same factual signals as OptionsEnv.  Counting only
     kills taught the flat oracle to abandon a high-HP monster after 140 beats

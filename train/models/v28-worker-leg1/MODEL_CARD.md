@@ -1,8 +1,8 @@
-# v28-worker-leg1(绿洲续航腿 1;新谱系头,未登基)
+# v28-worker-leg1 (oasis continuation leg 1; head of a new lineage, never promoted to incumbent)
 
-- model_sha16: 0c6f014da19c3bf2(2026-09-23 重新保存:仅 zip 内 `data` 元数据里的本机路径换成中性路径,权重与优化器状态逐字节不变;原始文件见提交 c1ffced,原 2f7bc9dd810956c3);训练至 nt=3,497,984(v26-leg6 + 499,712 @ β恒0.015625)
-- **满 32 = 112.4(项目史高),死 0,配对 +20.42,赢 16/32(线 18,差 2),后 16 赢 10/16**
-- 半池幻影史上首次反向:前 16 = 105.5 < 满 32(前 16 均值 105.5 / 后 16 均值 119.3)
-- 未发射(赢数差 2 票),王座 v24-golden 97.2 不动;档案 v28-G3-leg1.json(sha 6fc6a44c7862424a)
-- 判决:PREREG-v28 ④ 档(驱动判词);划分盲区注记见 DESIGN v28 章
-- 血统:BC→v24 皮筋(未采用)→ v26-leg6(绿洲)→ 本模型;后续训练一律从此起
+- model_sha16: 0c6f014da19c3bf2 (re-saved on 2026-09-23 with a neutral path in the zip metadata; weights and optimizer state unchanged; previous SHA-256 prefix 2f7bc9dd810956c3); trained to nt=3,497,984 (v26-leg6 + 499,712 at a constant β=0.015625)
+- **Full 32 seeds = 112.4 (project high), 0 deaths, paired +20.42, won 16/32 (line 18, 2 short), won 10/16 on the last 16**
+- The half-pool illusion reversed for the first time: first 16 = 105.5 < full 32 (first-16 mean 105.5 / last-16 mean 119.3)
+- Not promoted (2 wins short); the incumbent v24-golden (97.2) stays; evaluation archive v28-G3-leg1.json (sha 6fc6a44c7862424a; not published)
+- Verdict: PREREG-v28 tier 4 (driver verdict); a note on the split blind spot is in the v28 chapter of DESIGN.md
+- Lineage: BC → v24 leash (not adopted) → v26-leg6 (oasis) → this model; all later training starts from here

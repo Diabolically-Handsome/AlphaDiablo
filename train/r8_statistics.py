@@ -1,6 +1,6 @@
 """Deterministic, fail-closed paired statistics for the R7 campaign.
-# R8 派生件(2026-07-28,PREREG-R8):自 r7_statistics 逐字继承,
-# 仅死亡非劣性肢换精确条件 McNemar;方法修订号随动。
+# R8 derivative (2026-07-28, PREREG-R8): inherited verbatim from r7_statistics;
+# only the death non-inferiority limb switches to the exact conditional McNemar; the method revision number follows.
 
 The evaluation archive contract proves *what* was evaluated and that every
 aggregate is reproduced by its rows.  This module answers the separate
@@ -648,14 +648,14 @@ def analyze_paired_archives(
         bool(baseline[death_key]) and (not bool(candidate[death_key]))
         for baseline, candidate in zip(baseline_rows, candidate_rows)
     )
-    # R8(PREREG-R8 §1.3):精确条件 McNemar 非劣尺。给定不一致对总数
+    # R8 (PREREG-R8 §1.3): exact conditional McNemar non-inferiority rule. Given the total discordant pairs
     # D = candidate_only + baseline_only,candidate_only ~ Bin(D, θ);
-    # 风险差 δ = (2c − D)/n 关于 c 单调,故 δ 的精确上界 =
-    # (2·CP_up(c | D, α) − 1)·D/n。α 沿用 per_constraint_alpha/2
-    # (与 PREREG-R8 冻结的功效表、KAT 校准向量 0.0805 同口径,余下
-    # α/2 作为条件化保守余量)。R7 终考实况 (c=31, D=62, n=256) 在本尺
-    # 下 UCB=0.0805,系后见事实——本尺于任何 R8 数据前冻结,禁止回判
-    # R7 已读池。
+    # the risk difference δ = (2c − D)/n is monotone in c, so the exact upper bound of δ =
+    # (2·CP_up(c | D, α) − 1)·D/n. α stays per_constraint_alpha/2
+    # (same definition as the power table frozen in PREREG-R8 and the KAT calibration vector 0.0805; the remaining
+    # α/2 is a conservative margin for conditioning). The R7 final exam (c=31, D=62, n=256) gives
+    # UCB=0.0805 under this rule, a hindsight fact -- the rule was frozen before any R8 data; re-judging
+    # the already-read R7 pool is forbidden.
     component_alpha = per_constraint_alpha / 2.0
     discordant_pairs = candidate_only_deaths + baseline_only_deaths
     if discordant_pairs:

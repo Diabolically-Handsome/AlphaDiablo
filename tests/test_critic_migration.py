@@ -15,10 +15,10 @@ import gymnasium as gym
 import numpy as np
 import platform as _platform
 
-# 前向 logits 原始字节的平台取证 KAT(matmul/tanh 归约序随 BLAS/SIMD 而异,
-# 迁移正确性由 helper 内 torch.equal(source,target) 保证;SHA 仅锚定各平台数值):
-# - darwin arm64 (Mac Accelerate): 原始取证值(audit-r7-dual-smoke 07-25 在案)
-# - linux x86_64 (torch 2.12.1+cpu MKL/AVX): 2026-07-27 WSL2 移植取证值
+# Per-platform KAT of the raw bytes of the forward logits (the matmul/tanh reduction order varies with BLAS/SIMD;
+# migration correctness is guaranteed by torch.equal(source, target) inside the helper; the SHA only anchors each platform's numbers):
+# - darwin arm64 (Accelerate): the original reference value (recorded by the audit-r7-dual-smoke run, 2026-07-25)
+# - linux x86_64 (torch 2.12.1+cpu, MKL/AVX): reference value recorded under WSL2, 2026-07-27
 BITWISE_PROBE_SHA_BY_PLATFORM = {
     ("darwin", "arm64"):
         "67d9bd852faf53af457848d9730b7693c0e9219f098801ae3407cd4e782038c8",
@@ -424,7 +424,7 @@ class CriticMigrationTests(unittest.TestCase):
         drifted_runtime = copy.deepcopy(runtime)
         drifted_runtime["context"]["parameter_count"] -= 1
         with self.assertRaisesRegex(
-                ValueError, "容量/张量拓扑漂移"):
+                ValueError, "capacity/tensor topology drift"):
             train_ppo._validate_current_dual_worker_contract(
                 contract, runtime_evidence=drifted_runtime)
         args.allow_environment_restart_resume = False
@@ -434,7 +434,7 @@ class CriticMigrationTests(unittest.TestCase):
                 args, {"diablogym_contract": contract})
         args.allow_environment_restart_resume = True
         args.reset_worker_critic = True
-        with self.assertRaisesRegex(ValueError, "禁止重复 reset critic"):
+        with self.assertRaisesRegex(ValueError, "repeated reset critic or disguised legacy migration is forbidden"):
             train_ppo._classify_dual_worker_resume(
                 args, {"diablogym_contract": contract})
 
@@ -595,7 +595,7 @@ class CriticMigrationTests(unittest.TestCase):
                 torch.random.get_rng_state(), torch_before))
             self.assertIsNotNone(
                 EXPECTED_BITWISE_PROBE_SHA,
-                "本平台无取证 KAT:先取证 bitwise_probe_sha256 再入表")
+                "no KAT recorded for this platform: record bitwise_probe_sha256 first, then add it to the table")
             self.assertEqual(
                 receipt["bitwise_probe_sha256"], EXPECTED_BITWISE_PROBE_SHA)
             preserved_states.append(
@@ -637,7 +637,7 @@ class CriticMigrationTests(unittest.TestCase):
         )
         self.assertIsNotNone(
             EXPECTED_BITWISE_PROBE_SHA,
-            "本平台无取证 KAT:先取证 bitwise_probe_sha256 再入表")
+            "no KAT recorded for this platform: record bitwise_probe_sha256 first, then add it to the table")
         self.assertEqual(
             receipt["bitwise_probe_sha256"], EXPECTED_BITWISE_PROBE_SHA)
         evidence = asymmetric_worker_runtime_evidence(target.policy)
@@ -773,7 +773,7 @@ class CriticMigrationTests(unittest.TestCase):
             path = pathlib.Path(directory) / "relu-source.zip"
             relu_source.save(path)
             relu_payload = path.read_bytes()
-        with self.assertRaisesRegex(ValueError, "registered|注册"):
+        with self.assertRaisesRegex(ValueError, "registered"):
             train_ppo._initialize_asymmetric_worker_actor(
                 target,
                 source_checkpoint_payload=relu_payload,
@@ -1337,7 +1337,7 @@ class CriticMigrationTests(unittest.TestCase):
         self.assertEqual(
             model._effective_distill_beta(actor_frozen=False), 0.0)
 
-        with self.assertRaisesRegex(ValueError, "0 或 >=2"):
+        with self.assertRaisesRegex(ValueError, "must be 0 or an integer >= 2"):
             LeashedMaskablePPO(
                 AsymmetricWorkerMaskableActorCriticPolicy,
                 _DualMaskEnv(),
@@ -1367,7 +1367,7 @@ class CriticMigrationTests(unittest.TestCase):
         masks = torch.zeros((1, 15), dtype=torch.bool)
         masks[0, 12] = True
         masks[0, 14] = True
-        with self.assertRaisesRegex(ValueError, "全 False"):
+        with self.assertRaisesRegex(ValueError, "all False"):
             _legacy_distillation_masks(masks)
 
     def test_action14_prior_is_mask_bound_on_policy_and_trainable(self):
@@ -2084,7 +2084,7 @@ class CriticMigrationTests(unittest.TestCase):
             critic_warmup_steps=4,
         )
         with self.assertRaisesRegex(
-                RuntimeError, "joint rollout 至少要求 8"):
+                RuntimeError, "requires at least 8 actor optimizer steps per joint rollout"):
             model.learn(total_timesteps=8)
         self.assertEqual(model._critic_warmup_rollouts_completed, 1)
         self.assertTrue(model._critic_warmup_completed)
@@ -2337,7 +2337,7 @@ class CriticMigrationTests(unittest.TestCase):
                     actor[0].reshape(-1)[0].add_(0.25)
 
         with self.assertRaisesRegex(
-                RuntimeError, "rollout-end callback 改写 actor"):
+                RuntimeError, "rollout-end callback rewrote the actor"):
             model.learn(total_timesteps=4, callback=_RewriteActor())
         self.assertEqual(model._worker_onpolicy_pg_rollout_receipts, [])
 
@@ -2352,7 +2352,7 @@ class CriticMigrationTests(unittest.TestCase):
                 self.model.rollout_buffer.advantages[0, 0] += np.float32(1.0)
 
         with self.assertRaisesRegex(
-                RuntimeError, "buffer\\.advantages 在 GAE 后被改写"):
+                RuntimeError, "buffer\\.advantages was rewritten after GAE"):
             model.learn(total_timesteps=4, callback=_RewriteAdvantage())
         self.assertEqual(model._worker_onpolicy_pg_rollout_receipts, [])
 
@@ -2373,7 +2373,7 @@ class CriticMigrationTests(unittest.TestCase):
                 buffer._formal_gae_snapshot["log_probs"][0, 0] += offset
 
         with self.assertRaisesRegex(
-                RuntimeError, "actor/log-prob 与 collection 回执不闭合"):
+                RuntimeError, "actor/log-prob does not close with the collection receipt"):
             model.learn(
                 total_timesteps=4,
                 callback=_RewriteCollectionLogProb(),
@@ -2406,7 +2406,7 @@ class CriticMigrationTests(unittest.TestCase):
         model._begin_worker_onpolicy_pg_rollout = types.MethodType(
             _tampered_begin, model)
         with self.assertRaisesRegex(
-                RuntimeError, "buffer\\.rewards 在 GAE 后被改写"):
+                RuntimeError, "buffer\\.rewards was rewritten after GAE"):
             model.learn(total_timesteps=4)
         self.assertEqual(
             len(model._worker_onpolicy_pg_pending_receipts), 4)
@@ -2534,19 +2534,19 @@ class CriticMigrationTests(unittest.TestCase):
             gradient_clip_mode=GRADIENT_CLIP_SEPARATE_ACTOR_CRITIC_V1,
             critic_warmup_steps=4,
         )
-        with self.assertRaisesRegex(RuntimeError, "已配置"):
+        with self.assertRaisesRegex(RuntimeError, "already configured"):
             model.configure_critic_migration(
                 gradient_clip_mode=
                     GRADIENT_CLIP_SEPARATE_ACTOR_CRITIC_V1,
                 critic_warmup_steps=4,
             )
         model.num_timesteps = 4
-        with self.assertRaisesRegex(RuntimeError, "端点跳跃"):
+        with self.assertRaisesRegex(RuntimeError, "endpoint jumped"):
             model._prepare_main_ppo_rollout()
 
     def test_warmup_rejects_non_rollout_multiple(self):
         model = _model(n_steps=3)
-        with self.assertRaisesRegex(ValueError, "完整 rollout 量子"):
+        with self.assertRaisesRegex(ValueError, "full rollout quantum"):
             model.configure_critic_migration(
                 gradient_clip_mode=
                     GRADIENT_CLIP_SEPARATE_ACTOR_CRITIC_V1,
@@ -2559,7 +2559,7 @@ class CriticMigrationTests(unittest.TestCase):
         _branch_loss(model).backward()
         model.policy.optimizer.step()
         self.assertTrue(model.policy.optimizer.state)
-        with self.assertRaisesRegex(RuntimeError, "清空全部 state"):
+        with self.assertRaisesRegex(RuntimeError, "all state cleared"):
             model.configure_critic_migration(
                 gradient_clip_mode=
                     GRADIENT_CLIP_SEPARATE_ACTOR_CRITIC_V1,

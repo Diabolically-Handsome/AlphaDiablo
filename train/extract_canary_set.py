@@ -1,14 +1,14 @@
-"""B1-E8:W-C 金丝雀记分种子集机器提取器(PREREG-B1 W-C/E8)。
+"""B1-E8: machine extractor for the W-C canary scoring seed set (PREREG-B1 W-C/E8).
 
-自指定评测档案提取 depth≥2 之全部种子(提取口径逐字承 run_v32_sovereign
-depth2_count 先例:row["depth"] >= 2),并集健康对照 {7003, 7011}(P5 无
-尖峰种子,阴性对照)。提取结果由驱动器以 CANARY_SET 事件写死(携 n_D 与
-逐种子名单);本提取器随冻结 commit 入库——否则"以档案行为准"不可复验。
+Extracts every depth>=2 seed from the given evaluation archive (the extraction rule follows the run_v32_sovereign
+depth2_count precedent verbatim: row["depth"] >= 2), unioned with the healthy controls {7003, 7011} (P5 seeds without
+spikes, negative controls). The driver pins the result with a CANARY_SET event (carrying n_D and
+the per-seed list); this extractor is committed with the freeze commit -- otherwise "the archive rows decide" could not be re-verified.
 
-用法:
+Usage:
   .venv/bin/python train/extract_canary_set.py \
       [train/runs/eval-assembled/v32-ref-launch.json] [--controls 7003,7011]
-输出:JSON 到 stdout(archive/archive_sha256/depth2_seeds/n_D/controls/C)。
+Output: JSON to stdout (archive/archive_sha256/depth2_seeds/n_D/controls/C).
 """
 from __future__ import annotations
 
@@ -23,16 +23,16 @@ sys.path.insert(0, str(ROOT / "python"))
 sys.path.insert(0, str(ROOT / "train"))
 
 DEFAULT_ARCHIVE = ROOT / "train" / "runs" / "eval-assembled" / "v32-ref-launch.json"
-DEFAULT_CONTROLS = (7003, 7011)   # PREREG-B1 W-C:P5 无尖峰健康对照,阴性对照
+DEFAULT_CONTROLS = (7003, 7011)   # PREREG-B1 W-C: P5 spike-free healthy controls, negative controls
 
 
 def depth2_seeds(rows: list[dict]) -> list[int]:
-    """depth≥2 提取(照 run_v32_sovereign.depth2_count 先例,行口径同一)。"""
+    """depth>=2 extraction (per the run_v32_sovereign.depth2_count precedent, same row rule)."""
     if not isinstance(rows, list) or not rows:
-        raise ValueError("档案 rows 缺失/为空")
+        raise ValueError("archive rows missing/empty")
     seeds = sorted(int(r["seed"]) for r in rows if r["depth"] >= 2)
     if len(seeds) != len(set(seeds)):
-        raise ValueError("档案 rows 含重复 seed")
+        raise ValueError("archive rows contain duplicate seed")
     return seeds
 
 
@@ -47,10 +47,10 @@ def extract(archive_path: str | pathlib.Path,
     archive_seed_set = {int(r["seed"]) for r in doc["rows"]}
     bad_controls = [s for s in controls if s not in archive_seed_set]
     if bad_controls:
-        raise ValueError(f"健康对照种子不在档案种子面内: {bad_controls}")
+        raise ValueError(f"healthy control seeds not in the archive seed set: {bad_controls}")
     overlap = sorted(set(d2) & set(controls))
     if overlap:
-        raise ValueError(f"健康对照与 depth≥2 集相交,阴性对照失义: {overlap}")
+        raise ValueError(f"healthy controls overlap the depth>=2 set, negative control void: {overlap}")
     return {
         "archive": str(p),
         "archive_sha256": hashlib.sha256(payload).hexdigest(),
@@ -65,7 +65,7 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("archive", nargs="?", default=str(DEFAULT_ARCHIVE))
     ap.add_argument("--controls", default=",".join(map(str, DEFAULT_CONTROLS)),
-                    help="健康对照种子(逗号分隔;传空串 = 不并集对照)")
+                    help="healthy control seeds (comma-separated; empty string = no controls unioned)")
     args = ap.parse_args()
     controls = tuple(int(x) for x in args.controls.split(",") if x.strip())
     print(json.dumps(extract(args.archive, controls), ensure_ascii=False, indent=1))

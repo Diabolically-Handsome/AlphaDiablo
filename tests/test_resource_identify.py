@@ -1,4 +1,4 @@
-"""R18-H identify-v1 (凯恩鉴定) boundaries.
+"""R18-H identify-v1 (Cain identify) boundaries.
 
 Two independent suites in one file, in the house shape of
 ``test_resource_portal.py``:
@@ -474,7 +474,7 @@ class IdentifyServiceContractTests(unittest.TestCase):
 # ------------------------------------------------- R18-H review round additions
 class IdentifyPortalReserveTests(unittest.TestCase):
     """R18-F portal-v1 buys its 200-gold scroll LATER in the same town trip. The
-    amount is always measured; whether it binds is the chairman's switch."""
+    amount is always measured; whether it binds is a configuration switch."""
 
     @staticmethod
     def armed(**kwargs):

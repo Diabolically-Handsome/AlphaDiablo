@@ -1,6 +1,6 @@
 """R18-H (2026-09-07) sweep-v1: the scripted chest/barrel sweep on main L1.
 
-Chairman ruling 2026-09-07 14:00: the pair must play a complete Diablo, and
+Design goal (2026-09-07): the agent must be able to finish a complete game, and
 today it cannot see a chest and never smashes a barrel for loot.  The eyes are
 the new native ``raw["objects"]`` channel (``src/resource_sweep.hpp``); the
 hands already existed (``("open", x, y)`` -> ``act_controller_operate`` reaches
@@ -16,7 +16,7 @@ Law (v1):
   BEFORE ``SustainLootService.maybe_start`` in ``OptionsEnv.action_masks``, so
   the drops it creates are on the floor before the collect stage runs.  It is
   NOT the whole of ``maybe_start``'s admission law: the native-deficit gate is
-  deliberately NOT copied (review round 2026-09-07 — the ruling asks the pair to
+  deliberately NOT copied (review round 2026-09-07 — the design goal asks the pair to
   open chests whenever it plays, a deficit appears later in every episode, and
   the sweep's own drops are themselves a legal second-trip trigger).  The window
   ledger records ``trip_slots0`` / ``readiness_deficit0`` so the orphaned-drop
@@ -28,7 +28,7 @@ Law (v1):
 * only objects this episode has actually SEEN LIT are candidates.  The native
   channel carries ``visible`` (``IsTileLit``) exactly like ``floor_items``, and
   the service keeps a per-episode memory of the objects it has seen lit — the
-  same partial-observability 口径 as the loot memory, so the sweep never walks
+  same partial-observability definition as the loot memory, so the sweep never walks
   to a chest on an unexplored side of the floor;
 * bounded — ``SWEEP_MICROSTEP_BUDGET`` microsteps and ``SWEEP_MAX_TARGETS``
   targets per EPISODE — and abandoned the beat an alive monster comes within
@@ -85,7 +85,7 @@ def sweep_objects(raw):
 
 
 def alive_monsters_within(raw, radius):
-    """Same alive-monster口径 as RetreatService (type 109 = the invalid marker)."""
+    """Same alive-monster definition as RetreatService (type 109 = the invalid marker)."""
     px, py = int(raw["player_x"]), int(raw["player_y"])
     count = 0
     for monster in raw.get("monsters", ()):
@@ -290,7 +290,7 @@ class SweepService:
     def _observe_objects(self, raw):
         """Remember every object seen LIT this episode.
 
-        Partial observability, same 口径 as the floor-item channel's
+        Partial observability, same definition as the floor-item channel's
         ``visible`` (``IsTileLit``) and the loot service's identity memory: an
         object the pair has never had in the light is not a legal target, and
         one it HAS seen stays a target after the light moves on."""
@@ -325,7 +325,7 @@ class SweepService:
         raw, which is a superset the command loop re-checks with the real
         planner before it walks.
 
-        Same planner口径 as ``_walk``: the monster-avoiding BFS first, the plain
+        Same planner definition as ``_walk``: the monster-avoiding BFS first, the plain
         BFS as the fallback.  Without the fallback an idle monster standing in a
         corridor made every object behind it "unreachable" (review round
         2026-09-07) even though the walker would have gone there."""
@@ -518,7 +518,7 @@ class SweepService:
 
     @staticmethod
     def _walk(env, x, y):
-        """Identical planner口径 to RetreatService._walk: the monster-avoiding
+        """Identical planner definition to RetreatService._walk: the monster-avoiding
         BFS first, the plain BFS as the fallback, and a closed door / blocking
         barrel on the way is opened rather than walked into."""
         raw = env._raw
@@ -587,7 +587,7 @@ class SweepService:
 
     def observe_gold(self, raw):
         """Keep the gold pair honest after the sweep hands back: the loot service
-        collects the drops in the trip that follows, and the ruling asks for the
+        collects the drops in the trip that follows, and the design goal asks for the
         gold across sweep + collect.
 
         ``gold_after`` is the LATEST wallet, which by episode end has also been

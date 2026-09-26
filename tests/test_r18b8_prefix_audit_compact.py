@@ -1,6 +1,6 @@
 """R18-B8 (2026-09-08): the earned-prefix audit must not grow quadratically.
 
-The R18-B arm (r18-arm-a-loot-2) died of ENOSPC at 02:19 after the rollout-boundary audit
+The R18-B arm (r18-arm-a-loot-2) died of ENOSPC on 2026-09-08 after the rollout-boundary audit
 reached 6.2 GB (full attempt history with state dumps every 2048 learner steps).
 PrefixAuditCallback.compact_ledger keeps counters and the latest attempts without state dumps;
 the complete ledger is still written once at training_end.

@@ -1,6 +1,6 @@
 """R18-D aggro cap (hold-v1): stop pulling new monsters while a crowd is on us.
 
-Chairman's order (2026-09-07 01:05): "拿到 3-5 只怪的仇恨之后,就在原地处理完再打别的".
+Design requirement (2026-09-07): once 3-5 monsters are aggroed, finish them where they stand before engaging others.
 Data (T0-double-prime): at the moment the retreat law fired, 7.5 alive monsters
 stood within 6 tiles on average.
 
@@ -19,7 +19,7 @@ AGGRO_CAP_PROTOCOLS = ("off", "hold-v1")
 
 @dataclass(frozen=True)
 class AggroCapPolicy:
-    count: int = 5     # chairman: 3-5; T0-double-prime mean at retreat trigger 7.5
+    count: int = 5     # design requirement: 3-5; T0-double-prime mean at retreat trigger 7.5
     radius: int = 6
 
     def __post_init__(self):

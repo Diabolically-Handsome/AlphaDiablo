@@ -1,13 +1,13 @@
-"""v22 发车前探针:G1b 机械保真 / G2 词表充分性 / G3 评估段参考行 / G4 预算校准。
+"""v22 pre-launch probe: G1b mechanical fidelity / G2 vocabulary sufficiency / G3 evaluation-range reference rows / G4 budget calibration.
 
-用法:.venv/bin/python train/probe_options.py --oracle /path/to/oracle_mountain.json
-默认只写诊断 JSON；全部闸通过后显式加 --write-board 才更新排行榜。
+Usage: .venv/bin/python train/probe_options.py --oracle /path/to/oracle_mountain.json
+By default only the diagnostic JSON is written; the leaderboard is updated only with an explicit --write-board after every gate passes.
 
-闸门(预注册):
-  G1b wrapper-rush(恒 DIVE)对神谕 rush 臂逐种子 |Δ| ≤ max(5%, 1.0)
-  G2  教师(榨干旗或 clvl≥dlvl+2 → DIVE)均值 ≥36 且 配对胜 wrapper-retire ≥24/32
-  G3  三参考臂 9000-9031 成绩写入当前协议版本的 hierarchy leaderboard
-  G4  τ̄ 与吞吐实测 → 双币种停车规则定数
+Gates (pre-registered):
+  G1b wrapper-rush (always DIVE) vs the oracle rush arm, per seed |delta| <= max(5%, 1.0)
+  G2  teacher (drained flag or clvl>=dlvl+2 -> DIVE) mean >=36 and paired wins over wrapper-retire >=24/32
+  G3  the three reference arms' 9000-9031 scores are written to the hierarchy leaderboard of the current protocol version
+  G4  measured tau-bar and throughput -> fix the numbers of the dual-currency stopping rule
 """
 import argparse
 import hashlib
@@ -37,9 +37,9 @@ from evaluate_options import (LB, LB_LOCK, LEADERBOARD_HEADER,
 
 PROBE_SEEDS = list(range(7000, 7032))
 EVAL_SEEDS = list(range(9000, 9032))
-# 不能在冻结 runtime contract 前导入 diablogym：原生扩展/engine 一旦映射，
-# 随后只哈希磁盘路径就可能把“已加载旧字节”误记成“磁盘新字节”。数值是
-# 评估协议的一部分；真实导入后还会逐项核对 options_env 的公开常量。
+# diablogym must not be imported before the runtime contract is frozen: once the native extension/engine is mapped,
+# hashing only the on-disk path afterwards could record "old bytes already loaded" as "new bytes on disk". The numbers are
+# part of the evaluation protocol; after the real import the public constants of options_env are checked one by one.
 FARM, DIVE = 0, 1
 OptionsEnv = None
 
@@ -49,10 +49,10 @@ def _masked_option_or_first_legal(requested, mask) -> int:
     valid = np.asarray(mask, dtype=bool)
     if valid.shape != (3,):
         raise ValueError(
-            f"probe option 动作掩码形状异常:{valid.shape} != (3,)")
+            f"probe option action mask shape is malformed: {valid.shape} != (3,)")
     legal = np.flatnonzero(valid)
     if len(legal) == 0:
-        raise ValueError("probe option 动作掩码全假")
+        raise ValueError("probe option action mask is all False")
     if (
         isinstance(requested, (int, np.integer))
         and not isinstance(requested, (bool, np.bool_))
@@ -64,14 +64,14 @@ def _masked_option_or_first_legal(requested, mask) -> int:
 
 
 def _options_env_class():
-    if OptionsEnv is not None:  # 单元测试显式注入；生产默认为 None。
+    if OptionsEnv is not None:  # Injected explicitly by unit tests; None in production.
         return OptionsEnv
     from diablogym import OptionsEnv as env_class
     from diablogym.options_env import DIVE as actual_dive, FARM as actual_farm
 
     if (actual_farm, actual_dive) != (FARM, DIVE):
         raise RuntimeError(
-            "OptionsEnv 选项编号与 probe protocol 不一致:"
+            "OptionsEnv option indices disagree with the probe protocol: "
             f"actual={(actual_farm, actual_dive)}, expected={(FARM, DIVE)}")
     return env_class
 
@@ -88,10 +88,10 @@ def run_policy(env, choose, seed):
         taus.append(info["option_extra"]["tau"])
     ex = validated_episode_extra(info, seed)
     if not math.isfinite(float(R)):
-        raise RuntimeError(f"seed {seed} 累计回报含 NaN/Inf")
+        raise RuntimeError(f"seed {seed} cumulative return contains NaN/Inf")
     oe = info.get("option_extra")
     if not isinstance(oe, dict) or "mode_seq" not in oe:
-        raise RuntimeError(f"seed {seed} 缺少完整 option_extra")
+        raise RuntimeError(f"seed {seed} lacks a complete option_extra")
     return {"ret": round(R, 2), "depth": ex["depth"],
             "died": ex["died"], "kills": ex["kills"],
             "decisions": len(taus), "tau_mean": round(sum(taus) / max(1, len(taus)), 1),
@@ -109,13 +109,13 @@ POLICIES = {
 
 
 def validate_oracle_rush(oracle) -> dict[int, float]:
-    """冻结 G1b 所需的精确 seed→return 映射；重复/额外/非有限值全拒绝。"""
+    """Freeze the exact seed->return mapping G1b needs; duplicate/extra/non-finite values are all rejected."""
     try:
         entries = oracle["arms"]["rush"]
     except (KeyError, TypeError) as exc:
-        raise ValueError("oracle 缺少 arms.rush") from exc
+        raise ValueError("oracle lacks arms.rush") from exc
     if not isinstance(entries, list):
-        raise ValueError("oracle arms.rush 必须是列表")
+        raise ValueError("oracle arms.rush must be a list")
     by_seed: dict[int, float] = {}
     for index, entry in enumerate(entries):
         if not isinstance(entry, dict) or "error" in entry:
@@ -124,55 +124,55 @@ def validate_oracle_rush(oracle) -> dict[int, float]:
             seed = entry["seed"]
             value = entry["snaps"]["3000"]["ret"]
         except (KeyError, TypeError) as exc:
-            raise ValueError(f"oracle rush[{index}] 结构异常") from exc
+            raise ValueError(f"oracle rush[{index}] structure is malformed") from exc
         if not isinstance(seed, int) or isinstance(seed, bool):
-            raise ValueError(f"oracle rush[{index}].seed 非整数")
+            raise ValueError(f"oracle rush[{index}].seed is not an integer")
         if seed in by_seed:
-            raise ValueError(f"oracle rush 含重复 seed:{seed}")
+            raise ValueError(f"oracle rush contains a duplicate seed: {seed}")
         if not isinstance(value, (int, float)) or isinstance(value, bool):
-            raise ValueError(f"oracle seed {seed} ret 非数值")
+            raise ValueError(f"oracle seed {seed} ret is not numeric")
         value = float(value)
         if not math.isfinite(value):
-            raise ValueError(f"oracle seed {seed} ret 非有限")
+            raise ValueError(f"oracle seed {seed} ret is not finite")
         by_seed[seed] = value
     expected = set(PROBE_SEEDS)
     if set(by_seed) != expected:
         missing = sorted(expected - set(by_seed))
         extra = sorted(set(by_seed) - expected)
-        raise ValueError(f"oracle rush seed 集合异常:missing={missing},extra={extra}")
+        raise ValueError(f"oracle rush seed set is malformed: missing={missing}, extra={extra}")
     return by_seed
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--oracle", type=pathlib.Path, required=True,
-                    help="oracle_mountain.json 路径（不再依赖作者机器的 /private/tmp）")
+                    help="path to oracle_mountain.json (no longer assumes a fixed /private/tmp location)")
     ap.add_argument("--output", type=pathlib.Path,
                     default=ROOT / "train" / "runs" / "probes" / "probe_v22.json")
     ap.add_argument("--write-board", action="store_true",
-                    help="全部闸门 PASS 后更新 9000 段参考行；默认只产出诊断 JSON")
+                    help="update the 9000-range reference rows after every gate PASSes; by default only the diagnostic JSON is produced")
     args = ap.parse_args()
     require_fresh_native_runtime("probe_options.py")
     output_path = args.output.resolve()
     if output_path == args.oracle.resolve():
-        ap.error("--output 不能覆盖 --oracle")
+        ap.error("--output cannot overwrite --oracle")
     if output_path in {LB.resolve(), LB_LOCK.resolve()}:
-        ap.error("--output 不能覆盖当前协议排行榜或其锁文件")
+        ap.error("--output cannot overwrite the current protocol leaderboard or its lock file")
     try:
         oracle_payload = args.oracle.read_bytes()
         oracle = strict_json_loads(oracle_payload)
         oracle_rush = validate_oracle_rush(oracle)
         oracle_sha256 = hashlib.sha256(oracle_payload).hexdigest()
     except (OSError, ValueError) as e:
-        ap.error(f"无法读取 oracle: {e}")
+        ap.error(f"cannot read oracle: {e}")
 
     contract = hierarchy_contract()
     if args.write_board:
         ensure_leaderboard_compatible(
             LB, contract, initial_text=LEADERBOARD_HEADER)
     try:
-        # probe 明细也是发布证据：同一目标只允许创建一次，避免旧档案被静默
-        # 替换；需要重跑时显式选择新的 --output 或先归档旧文件。
+        # The probe detail is also publication evidence: each target may be created only once, so an old archive cannot be silently
+        # replaced; to re-run, explicitly choose a new --output or archive the old file first.
         with reserve_output(args.output):
             env = _options_env_class()(max_steps=3000)
             verify_loaded_native_runtime(contract)
@@ -181,12 +181,12 @@ def main():
                     oracle_rush, env, args.oracle.resolve(), oracle_sha256,
                     contract)
             finally:
-                # close 失败也必须发生在任何 JSON/排行榜正式发布之前。
+                # A close failure must also happen before any official JSON/leaderboard publication.
                 env.close()
             if (out.get("meta", {}).get("contract") != contract
                     or out.get("meta", {}).get("contract_sha256")
                     != contract_sha256(contract)):
-                raise RuntimeError("probe 结果未绑定发车前 standalone contract")
+                raise RuntimeError("probe result is not bound to the pre-launch standalone contract")
             verify_standalone_contract(contract)
             return _publish_probe(args, out, g1b, g2)
     except OutputReservationError as exc:
@@ -204,7 +204,7 @@ def _collect_probe(oracle_rush: dict[int, float], env, oracle_path: pathlib.Path
     }
     t_wall0 = time.time()
 
-    # ---- 探针段 7000-7031 ----
+    # ---- probe range 7000-7031 ----
     for name, pol in POLICIES.items():
         eps = []
         for seed in PROBE_SEEDS:
@@ -216,17 +216,17 @@ def _collect_probe(oracle_rush: dict[int, float], env, oracle_path: pathlib.Path
               f"depth_med {statistics.median(e['depth'] for e in eps)} "
               f"decisions_med {statistics.median(e['decisions'] for e in eps)}", flush=True)
 
-    # G1b:wrapper-rush vs 神谕 rush(3000 快照)
+    # G1b: wrapper-rush vs the oracle rush (3000 snapshot)
     fails = []
     for e in out["probe"]["wrapper-rush"]:
         ref = oracle_rush[e["seed"]]
         if abs(e["ret"] - ref) > max(0.05 * abs(ref), 1.0):
             fails.append((e["seed"], e["ret"], ref))
     g1b = len(fails) == 0
-    print(f"G1b {'PASS' if g1b else 'FAIL'}: wrapper-rush 对神谕 rush 逐种子偏差超限 {len(fails)}/32 "
-          + (f"首例 {fails[0]}" if fails else ""), flush=True)
+    print(f"G1b {'PASS' if g1b else 'FAIL'}: wrapper-rush vs oracle rush per-seed deviations over the limit {len(fails)}/32 "
+          + (f"first case {fails[0]}" if fails else ""), flush=True)
 
-    # G2:教师充分性
+    # G2: teacher sufficiency
     t_rets = [e["ret"] for e in out["probe"]["teacher"]]
     r_rets = [e["ret"] for e in out["probe"]["wrapper-retire"]]
     t_mean = sum(t_rets) / 32
@@ -234,10 +234,10 @@ def _collect_probe(oracle_rush: dict[int, float], env, oracle_path: pathlib.Path
     wins = sum(e["ret"] > retire_by_seed[e["seed"]] for e in out["probe"]["teacher"])
     g2 = t_mean >= 36 and wins >= 24
     grey = 34 <= t_mean < 36
-    print(f"G2 {'PASS' if g2 else ('GREY' if grey else 'FAIL')}: 教师均值 {t_mean:.1f}(线 36,灰带 [34,36)) "
-          f"配对胜 retire {wins}/32(线 24)", flush=True)
+    print(f"G2 {'PASS' if g2 else ('GREY' if grey else 'FAIL')}: teacher mean {t_mean:.1f} (line 36, grey band [34,36)) "
+          f"paired wins over retire {wins}/32 (line 24)", flush=True)
 
-    # ---- G3:评估段参考行 9000-9031 ----
+    # ---- G3: evaluation-range reference rows 9000-9031 ----
     for name, pol in POLICIES.items():
         eps = [{"seed": s, **run_policy(env, pol, s)} for s in EVAL_SEEDS]
         out["eval_refs"][name] = eps
@@ -245,16 +245,16 @@ def _collect_probe(oracle_rush: dict[int, float], env, oracle_path: pathlib.Path
         print(f"[eval] {name}: mean {sum(rs)/32:.1f} died {sum(e['died'] for e in eps)}/32 "
               f"depth_med {statistics.median(e['depth'] for e in eps)}", flush=True)
 
-    # G4:预算校准
+    # G4: budget calibration
     wall = time.time() - t_wall0
     all_probe = [e for eps in out["probe"].values() for e in eps]
     all_eps = all_probe + [e for eps in out["eval_refs"].values() for e in eps]
     tau_bar = sum(e["tau_sum"] for e in all_probe) / max(1, sum(e["decisions"] for e in all_probe))
     total_micro = sum(e["tau_sum"] for e in all_eps)
     micro_per_s = total_micro / wall
-    print(f"G4: τ̄≈{tau_bar:.0f} 微拍/选项,吞吐≈{micro_per_s:.0f} micro/s(单 env),"
-          f"40k 管理器步 ≈ {40_000 * tau_bar / 1e6:.1f}M 微步;"
-          f"4-env 预计墙钟 ≈ {40_000 * tau_bar / (micro_per_s * 2.5) / 60:.0f} 分钟", flush=True)
+    print(f"G4: tau-bar ~{tau_bar:.0f} micro-beats/option, throughput ~{micro_per_s:.0f} micro/s (single env), "
+          f"40k manager steps ~ {40_000 * tau_bar / 1e6:.1f}M micro-steps; "
+          f"4-env estimated wall clock ~ {40_000 * tau_bar / (micro_per_s * 2.5) / 60:.0f} minutes", flush=True)
 
     return out, g1b, g2
 
@@ -265,27 +265,27 @@ def _publish_probe(args, out: dict, g1b: bool, g2: bool) -> int:
         oracle_path = out["meta"]["oracle_path"]
         expected_oracle_sha = out["meta"]["oracle_sha256"]
     except (KeyError, TypeError) as exc:
-        raise ValueError("probe 输出缺少完整 provenance") from exc
+        raise ValueError("probe output lacks complete provenance") from exc
     verify_standalone_contract(contract)
     try:
         current_oracle_sha = sha256_file(oracle_path)
     except OSError as exc:
-        raise RuntimeError("probe 发布前 oracle 不可读") from exc
+        raise RuntimeError("probe oracle unreadable before publishing") from exc
     if current_oracle_sha != expected_oracle_sha:
-        raise RuntimeError("probe oracle 在诊断 JSON 发布前发生变化")
+        raise RuntimeError("probe oracle changed before the diagnostic JSON was published")
     payload = json.dumps(out, default=float, allow_nan=False, sort_keys=True)
     if args.output.exists():
-        raise OutputReservationError(f"探针档案已存在，拒绝覆写:{args.output}")
+        raise OutputReservationError(f"probe archive already exists, refusing to overwrite: {args.output}")
     atomic_write_text(args.output, payload)
-    print(f"探针明细已存 {args.output}", flush=True)
+    print(f"probe detail saved to {args.output}", flush=True)
 
     if not (g1b and g2):
-        print("闸门未全部 PASS：拒绝写排行榜", flush=True)
+        print("not every gate PASSed: refusing to write the leaderboard", flush=True)
         return 1
 
-    # 评估段参考行入新表
+    # Evaluation-range reference rows go into the new table
     if not args.write_board:
-        print("G3: 未指定 --write-board，排行榜未改动", flush=True)
+        print("G3: --write-board not given, leaderboard unchanged", flush=True)
         print("GATES: G1b=PASS G2=PASS", flush=True)
         return 0
     contract = out["meta"]["contract"]
@@ -313,7 +313,7 @@ def _publish_probe(args, out: dict, g1b: bool, g2: bool) -> int:
     upsert_leaderboard_rows(
         LB, rows, contract=contract, initial_text=LEADERBOARD_HEADER,
         lock_path=LB_LOCK)
-    print(f"G3: 参考行已写入 {LB.name}", flush=True)
+    print(f"G3: reference rows written to {LB.name}", flush=True)
     print("GATES: G1b=PASS G2=PASS", flush=True)
     return 0
 

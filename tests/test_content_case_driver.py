@@ -1,21 +1,21 @@
-"""v33 内容案驱动器之自包含快速回归(PREREG-内容案-课⑤x④乙 对应件;
-不启动引擎/训练/评测,循 tests/test_b1_infra.py 与 tests/test_content_case.py
-风格;一切写台账路径经 monkeypatch 捕获,正账零触碰)。
+"""Self-contained fast regression for the v33 content-case driver (counterpart of PREREG-v33-content-case;
+no engine, training or evaluation is started; follows the style of tests/test_b1_infra.py and tests/test_content_case.py;
+every ledger write path is captured with monkeypatch, and the real ledgers are never touched).
 
-覆盖(施工任务清单逐项):
-- LEGS 表逐字断言(三腿完整 CLI 逐项:共用命令形 + D3 逐腿附加项);
-- 退出码表(D5 集中常量化);
-- W-LAUNCH 发车令闸(无 LAUNCH_ORDER 必 exit 9;非失败态);
-- 阶段序防后见(后阶段在前阶段未 done 时拒跑;N12 PASS 语义谓词);
-- 304000/308000 对账断言函数(合成台账正反例)+ 评测池段守卫;
-- 金丝雀补评截止断言(该腿 s16 FIRING_START 前);
-- 额度计数(P2 评测发 2 / P3 腿点火 2);
-- 附:退火主表与腿终复核、REF_BITEQ 纯比对、烟测命令形、W-PIN 冻结常量
-  对实件抽验、判据纯函数(资格/胜者/课⑤/④乙档位)、MS 计算;
-- rev4 十二附二补铸对应件(修①-⑤):N12_GATE 落定值硬取键 + L-full 点火前
-  demos 字节链(④);G0-2a sentinel/dry-anchor 双行型分计(⑤);
-  DRY_CURRICULUM_TABLE 全精度落账(⑥);G0-2b episode 种子序列恒等之
-  可见面等价物(③);共用命令形 E5①② 两旋钮 + DRYWIN_METRICS 转录件(①)。
+Covers (item by item from the implementation task list):
+- verbatim assertions on the LEGS table (the full CLI of the three legs, item by item: the shared command form + the D3 per-leg additions);
+- the exit-code table (D5, centralised as constants);
+- the W-LAUNCH launch-order gate (without LAUNCH_ORDER it must exit 9; not a failure state);
+- stage order against hindsight (a later stage refuses to run while an earlier stage is not done; N12 PASS semantic predicate);
+- the 304000/308000 reconciliation assertion functions (positive and negative synthetic ledgers) + the evaluation-pool range guard;
+- the canary make-up evaluation cutoff assertion (before that leg's s16 FIRING_START);
+- budget counting (P2 evaluations: 2 / P3 leg launches: 2);
+- also: the main annealing table and the end-of-leg re-check, REF_BITEQ pure comparison, the smoke command form, spot checks of the
+    frozen W-PIN constants against the real files, pure criterion functions (eligibility / winner / course 5 / course 4b tier), the MS computation;
+- counterparts of the rev4 item-12 annex-2 additions (fixes 1-5): hard key lookup of the settled N12_GATE value + the pre-launch
+    L-full demos byte chain (4); separate counts of the two G0-2a sentinel/dry-anchor row types (5);
+    full-precision booking of DRY_CURRICULUM_TABLE (6); the visible-surface equivalent of the G0-2b episode seed-sequence
+    identity (3); the two E5 (1)(2) knobs in the shared command form + the DRYWIN_METRICS transcript (1).
 """
 
 from __future__ import annotations
@@ -37,13 +37,20 @@ sys.path.insert(0, str(ROOT / "train"))
 import run_v33_content as v33  # noqa: E402
 from eval_contract import EvalContractError, OperationalFailure  # noqa: E402
 
+# The W-PIN checks read run archives and ledgers that are not published (the
+# v32-ref and b1-ref8k evaluation archives, g1_results.json and the pinned run
+# ledgers), so they can only run in a tree that has them.
+_PINNED_PRESENT = all(
+    path.is_file()
+    for path, _ in {**v33.W_PIN, **v33.W_PIN_LEDGERS}.values())
+
 MAIN_TABLE_LITERAL = "linear:1.0:0.5:147,hold:0.5:97"
 CALIB_LITERAL = ("3547136,3596288,3645440,3694592,3743744,"
                  "3792896,3842048,3891200,3940352,3989504")
 
 
 def _staged_events(upto: str | None = None) -> list[dict]:
-    """合成台账:STAGE_SEQUENCE 依序全事件(upto 为止,含 upto)。"""
+    """Synthetic ledger: every event of STAGE_SEQUENCE in order (up to and including upto)."""
     seq = [
         {"event": "G0_BASELINE"},
         {"event": "BC_REGEN"},
@@ -56,7 +63,7 @@ def _staged_events(upto: str | None = None) -> list[dict]:
         {"event": "REF_BITEQ", "ref": "launch"},
         {"event": "REF_BITEQ", "ref": "science"},
         {"event": "FREEZE_SHA", "sha": "deadbeef"},
-        {"event": "LAUNCH_ORDER", "order": "亲发原文占位(合成测试件)"},
+        {"event": "LAUNCH_ORDER", "order": "synthetic launch order (test fixture)"},
     ]
     if upto is None:
         return seq
@@ -83,7 +90,7 @@ def _full32_doc(died=2, override=0.0, cap=0.0, descend=0.0, mode_seq="FFF",
 
 
 class LegsTableTests(unittest.TestCase):
-    """D3 LEGS 表逐字:三腿完整 CLI(共用命令形 + 逐腿附加项)。"""
+    """D3 LEGS table verbatim: the full CLI of the three legs (shared command form + per-leg additions)."""
 
     def _val(self, cmd, flag):
         return cmd[cmd.index(flag) + 1]
@@ -102,7 +109,7 @@ class LegsTableTests(unittest.TestCase):
                                    ("--ckpt-every-steps", "98304"),
                                    ("--sentinel-every", "49152"),
                                    ("--dry-anchor-every", "49152"),
-                                   # rev4 D3 勘正增列末两枚(十二附二①)
+                                   # the last two added by the rev4 D3 correction (item 12, annex 2.1)
                                    ("--distill-ce-probe-every", "49152"),
                                    ("--drywin-metrics-every", "49152"),
                                    ("--run-name", leg)):
@@ -110,8 +117,8 @@ class LegsTableTests(unittest.TestCase):
             for flag in ("--worker", "--allow-legacy-resume"):
                 self.assertIn(flag, cmd, (leg, flag))
             self.assertNotIn("--calib-record-only", cmd,
-                             "生产腿 G-CAL 必须可裁，不得 record-only")
-            # 主权开系默认;一切发无 --board
+                             "the G-CAL of a production leg must be able to rule; record-only is not allowed")
+            # sovereignty on is the default; nothing is issued with --board
             self.assertNotIn("--no-drink-sovereignty", cmd)
             self.assertNotIn("--board", cmd)
             self.assertTrue(self._val(cmd, "--resume-from").endswith(
@@ -119,18 +126,18 @@ class LegsTableTests(unittest.TestCase):
             self.assertTrue(self._val(cmd, "--teacher-sd").endswith(
                 "bc-worker/policy_sd.pt"))          # BC_SD(v1)
             self.assertTrue(self._val(cmd, "--teacher-override").endswith(
-                "v32/king_anchor_sd.pt"))           # KING_SD 锚随王走不破
+                "v32/king_anchor_sd.pt"))           # the KING_SD anchor follows the king unchanged
 
     def test_l_base_extras(self):
         cmd = v33.leg_cmd("v33-base")
-        self.assertIn("--skip-dry", cmd)            # 共用形不产生 p≡1.0,必显携
+        self.assertIn("--skip-dry", cmd)            # the shared form does not produce p==1.0, so it must be carried explicitly
         self.assertNotIn("--dry-curriculum-schedule", cmd)
         self.assertNotIn("--bc-aux-lambda", cmd)
         self.assertNotIn("--bc-aux-demos", cmd)
 
     def test_l_cur_extras(self):
         cmd = v33.leg_cmd("v33-cur")
-        self.assertNotIn("--skip-dry", cmd)         # 两旗互斥(E1)
+        self.assertNotIn("--skip-dry", cmd)         # the two flags are mutually exclusive (E1)
         self.assertEqual(self._val(cmd, "--dry-curriculum-schedule"),
                          MAIN_TABLE_LITERAL)
         self.assertNotIn("--bc-aux-lambda", cmd)
@@ -142,7 +149,7 @@ class LegsTableTests(unittest.TestCase):
                          MAIN_TABLE_LITERAL)
         self.assertEqual(self._val(cmd, "--bc-aux-lambda"), "0.015625")
         self.assertTrue(self._val(cmd, "--bc-aux-demos").endswith(
-            "runs/bc-worker-v2/demos.npz"))         # D3 字面路径
+            "runs/bc-worker-v2/demos.npz"))         # D3 literal path
         self.assertIn("--bc-aux-liveness-preflight", cmd)
 
     def test_leg_accounting_constants(self):
@@ -154,23 +161,23 @@ class LegsTableTests(unittest.TestCase):
 
 
 class ExitCodeTableTests(unittest.TestCase):
-    """D5 退出码表(集中常量化,逐字)。"""
+    """D5 exit-code table (centralised as constants, verbatim)."""
 
     def test_exit_code_table_closed_enumeration(self):
         self.assertEqual(set(v33.EXIT_CODES), {0, 2, 3, 4, 5, 6, 7, 8, 9})
-        self.assertEqual(v33.EXIT_CODES[0], "案结/幂等")
+        self.assertEqual(v33.EXIT_CODES[0], "case closed/idempotent")
         self.assertIn("PREFLIGHT_FAIL", v33.EXIT_CODES[3])
-        self.assertIn("锁冲突", v33.EXIT_CODES[4])
-        self.assertIn("发车前漂移", v33.EXIT_CODES[5])
-        self.assertIn("案中漂移", v33.EXIT_CODES[6])
+        self.assertIn("lock conflict", v33.EXIT_CODES[4])
+        self.assertIn("pre-launch drift", v33.EXIT_CODES[5])
+        self.assertIn("drift during the case", v33.EXIT_CODES[6])
         self.assertEqual(v33.EXIT_CODES[7], "CASE_HALT_G0")
         self.assertEqual(v33.EXIT_CODES[8], "REF_DIVERGENCE")
         self.assertIn("AWAITING_LAUNCH", v33.EXIT_CODES[9])
-        self.assertIn("非失败", v33.EXIT_CODES[9])
+        self.assertIn("not a failure", v33.EXIT_CODES[9])
 
 
 class LaunchGateTests(unittest.TestCase):
-    """W-LAUNCH 发车令闸:无 LAUNCH_ORDER 必 exit 9(非失败态)。"""
+    """W-LAUNCH launch-order gate: without LAUNCH_ORDER it must exit 9 (not a failure state)."""
 
     def test_missing_launch_order_exits_9(self):
         with self.assertRaises(SystemExit) as cm:
@@ -187,7 +194,7 @@ class LaunchGateTests(unittest.TestCase):
 
 
 class StageOrderTests(unittest.TestCase):
-    """阶段序防后见(D2 严格串行):后阶段在前阶段未 done 时拒跑。"""
+    """Stage order against hindsight (D2 strictly serial): a later stage refuses to run while an earlier stage is not done."""
 
     def test_full_prefix_passes(self):
         v33.assert_stage_prereqs(_staged_events(), "LEGS")
@@ -199,7 +206,7 @@ class StageOrderTests(unittest.TestCase):
             v33.assert_stage_prereqs(events, "FREEZE_SHA")
 
     def test_later_stage_refused_when_nothing_done(self):
-        with self.assertRaisesRegex(v33.PreflightFailure, "防后见"):
+        with self.assertRaisesRegex(v33.PreflightFailure, "no-hindsight"):
             v33.assert_stage_prereqs([], "N12_GATE")
 
     def test_n12_fail_event_does_not_satisfy_pass_predicate(self):
@@ -217,7 +224,7 @@ class StageOrderTests(unittest.TestCase):
 
 
 class SeedAssertionTests(unittest.TestCase):
-    """304000 对账(恰为且仅为 infra-b1 P8 leg_start)/ 308000 处女 / 池守卫。"""
+    """304000 reconciliation (exactly and only the infra-b1 P8 leg_start) / 308000 fresh / pool guard."""
 
     P8_LINE = json.dumps({"event": "leg_start", "leg": "b1-p8",
                           "seed": 304000})
@@ -234,7 +241,7 @@ class SeedAssertionTests(unittest.TestCase):
             v33.assert_seed_304000_provenance(lines)
 
     def test_304000_zero_occurrence_rejected(self):
-        # "恰为"要求在册:P8 leg_start 缺席同样失败
+        # "exactly" requires it on record: a missing P8 leg_start fails too
         with self.assertRaisesRegex(v33.PreflightFailure, "304000"):
             v33.assert_seed_304000_provenance({"infra-b1": ['{"event": "x"}']})
 
@@ -253,22 +260,23 @@ class SeedAssertionTests(unittest.TestCase):
             v33.assert_seed_virgin(
                 {"infra-b1": ['{"event": "x", "seed": 308000}']}, 308000)
 
+    @unittest.skipUnless(_PINNED_PRESENT, 'pinned run files are not published')
     def test_real_pinned_ledgers_scan(self):
-        # 实件扫描(只读):304000 恰一处;308000 零出现(预登记 2026-07-19)
+        # Scan of the real files (read-only): 304000 exactly once; 308000 never (pre-registered 2026-07-19)
         lines = v33.w_pin_ledger_lines()
         v33.assert_seed_304000_provenance(lines)
         v33.assert_seed_virgin(lines, v33.SMOKE_SEED)
 
     def test_pool_guard(self):
-        v33.assert_pool_guard(308000, "烟测")
-        v33.assert_pool_guard(304000, "训练")
+        v33.assert_pool_guard(308000, "smoke")
+        v33.assert_pool_guard(304000, "training")
         for bad in (6998, 7000, 7031, 7999, 8000, 9000, 8999):
-            with self.assertRaisesRegex(v33.PreflightFailure, "撞评测池"):
+            with self.assertRaisesRegex(v33.PreflightFailure, "collides with an evaluation pool"):
                 v33.assert_pool_guard(bad, "x")
 
 
 class CanaryCutoffTests(unittest.TestCase):
-    """补评截止 = 该腿 s16 FIRING_START 前(驱动器内断言;P-canary)。"""
+    """Make-up evaluation cutoff = before that leg's s16 FIRING_START (assertion inside the driver; P-canary)."""
 
     def test_s16_fired_predicate(self):
         self.assertFalse(v33.s16_fired([], "v33-base"))
@@ -285,11 +293,11 @@ class CanaryCutoffTests(unittest.TestCase):
         self.assertIsNone(d)
         self.assertFalse(fresh)
         self.assertEqual(captured[0]["event"], "OPERATIONAL-canary")
-        self.assertIn("补评截止", captured[0]["why"])
+        self.assertIn("make-up deadline", captured[0]["why"])
 
 
 class QuotaTests(unittest.TestCase):
-    """额度计数:P2 评测发 2 / P3 腿点火 2(台账制,耗尽即停机)。"""
+    """Budget counting: P2 evaluations 2 / P3 leg launches 2 (ledger-based; stops when exhausted)."""
 
     def test_firing_count_and_leg_starts(self):
         events = [{"event": "FIRING_START", "tag": "t"},
@@ -304,7 +312,7 @@ class QuotaTests(unittest.TestCase):
     def test_exam_case_quota_exhausted_raises(self):
         events = [{"event": "FIRING_START", "tag": "v33-unittest-quota"},
                   {"event": "FIRING_START", "tag": "v33-unittest-quota"}]
-        with self.assertRaisesRegex(OperationalFailure, "额度耗尽"):
+        with self.assertRaisesRegex(OperationalFailure, "budget exhausted"):
             v33.exam_case(events, "/nonexistent.npz", "v33-unittest-quota",
                           "7000-7015")
 
@@ -312,22 +320,22 @@ class QuotaTests(unittest.TestCase):
         events = _staged_events() + [
             {"event": "leg_start", "leg": "v33-base"},
             {"event": "leg_start", "leg": "v33-base"}]
-        with self.assertRaisesRegex(OperationalFailure, "点火额度耗尽"):
+        with self.assertRaisesRegex(OperationalFailure, "launch budget exhausted"):
             v33.leg_stage(events, "v33-base")
 
 
 class CurriculumTableTests(unittest.TestCase):
-    """退火主表(圈 2 附裁)与腿终复核(实测 p 序列 ≡ 注册表)。"""
+    """Main annealing table (design decision 2 and its addendum) and the end-of-leg re-check (measured p sequence == the registered table)."""
 
     def test_main_table_shape_and_endpoints(self):
         import train_ppo
         self.assertEqual(v33.MAIN_TABLE, MAIN_TABLE_LITERAL)
         self.assertEqual(v33.MAIN_TABLE, train_ppo._DRY_CURRICULUM_MAIN_TABLE)
         table = v33.dry_curriculum_table()
-        self.assertEqual(len(table), 244)                  # 147+97 量子
-        self.assertEqual(147 * 2048 + 97 * 2048, 499_712)  # 恰等腿长
+        self.assertEqual(len(table), 244)                  # 147+97 quanta
+        self.assertEqual(147 * 2048 + 97 * 2048, 499_712)  # exactly the leg length
         self.assertEqual(table[0], 1.0)
-        self.assertEqual(table[146], 0.5)                  # 内插语义:末项恰达 0.5
+        self.assertEqual(table[146], 0.5)                  # interpolation semantics: the last entry reaches exactly 0.5
         self.assertTrue(all(p == 0.5 for p in table[147:]))
         self.assertTrue(all(table[i] > table[i + 1] for i in range(146)))
 
@@ -342,13 +350,13 @@ class CurriculumTableTests(unittest.TestCase):
                                         "num_timesteps": 0}) + "\n")
             self.assertEqual(
                 v33.verify_curriculum_prefix(run_dir, table, 3), [])
-            # 整表移位/恒定值构造必被抓(对抗席构造对应件)
+            # a shifted table or a constant-value construction must be caught (counterpart of the adversarial reviewer's construction)
             with open(p, "w") as f:
                 for i in range(3):
                     f.write(json.dumps({"rollout_index": i, "p": 0.5,
                                         "num_timesteps": 0}) + "\n")
             self.assertTrue(v33.verify_curriculum_prefix(run_dir, table, 3))
-            # 短账(少 rollout)必被抓
+            # a short ledger (missing rollouts) must be caught
             with open(p, "w") as f:
                 f.write(json.dumps({"rollout_index": 0, "p": 1.0,
                                     "num_timesteps": 0}) + "\n")
@@ -360,8 +368,9 @@ class CurriculumTableTests(unittest.TestCase):
                 v33.verify_curriculum_prefix(pathlib.Path(d), (1.0,), 1)
 
 
+@unittest.skipUnless(_PINNED_PRESENT, 'pinned run files are not published')
 class BiteqTests(unittest.TestCase):
-    """REF_BITEQ 纯比对:全表逐种子逐字段 + agg 核心 + ret_mean 恒等。"""
+    """REF_BITEQ pure comparison: the whole table seed by seed and field by field + the agg core + ret_mean identity."""
 
     @classmethod
     def setUpClass(cls):
@@ -385,7 +394,7 @@ class BiteqTests(unittest.TestCase):
 
 
 class SmokeCmdTests(unittest.TestCase):
-    """G0-2a/2b 烟测命令形(种子 308000 预登记;bare = v32-sov 逐字含 --skip-dry)。"""
+    """G0-2a/2b smoke command form (seed 308000 pre-registered; bare = v32-sov verbatim, including --skip-dry)."""
 
     def _val(self, cmd, flag):
         return cmd[cmd.index(flag) + 1]
@@ -397,18 +406,18 @@ class SmokeCmdTests(unittest.TestCase):
         self.assertEqual(self._val(cmd, "--total-steps"), "102400")
         self.assertEqual(self._val(cmd, "--calib-probes"), "3747984,3947984")
         self.assertNotIn("--dry-curriculum-schedule", cmd)
-        self.assertNotIn("--ckpt-every-steps", cmd)      # B1 旋钮不携(裸臂)
-        # rev4 增列两枚亦不携:裸臂 = v32-sov 逐字不许动(十二附二①)
+        self.assertNotIn("--ckpt-every-steps", cmd)      # B1 knobs not carried (bare arm)
+        # the two rev4 additions are not carried either: bare arm = v32-sov verbatim, unchanged (item 12, annex 2.1)
         self.assertNotIn("--distill-ce-probe-every", cmd)
         self.assertNotIn("--drywin-metrics-every", cmd)
         self.assertNotIn("--no-drink-sovereignty", cmd)
-        self.assertIn("--calib-record-only", cmd)   # 旧 v32 裸对照逐字
+        self.assertIn("--calib-record-only", cmd)   # the old v32 bare control, verbatim
 
     def test_knobs_arm_pins_p1_and_inactive_bc_aux(self):
         cmd = v33._smoke_cmd("knobs")
-        self.assertNotIn("--skip-dry", cmd)              # 两旗互斥
+        self.assertNotIn("--skip-dry", cmd)              # the two flags are mutually exclusive
         self.assertEqual(self._val(cmd, "--dry-curriculum-schedule"),
-                         "hold:1.0:50")                  # 调度钉 p≡1.0
+                         "hold:1.0:50")                  # the schedule pins p==1.0
         self.assertEqual(self._val(cmd, "--bc-aux-lambda"), "0.0")  # λ_bc=0
         self.assertEqual(self._val(cmd, "--distill-ce-probe-every"), "49152")
         self.assertEqual(self._val(cmd, "--drywin-metrics-every"), "49152")
@@ -429,28 +438,29 @@ class SmokeCmdTests(unittest.TestCase):
         for cmd in (funcp, funcaux):
             self.assertNotIn("--calib-record-only", cmd)
             self.assertEqual(self._val(cmd, "--seed"), "308000")
-            # E5①② 旋钮随共用形在位(rev4;各恰一现,无重复旗)
+            # the E5 (1)(2) knobs are present with the shared form (rev4; each exactly once, no duplicate flags)
             for flag in ("--distill-ce-probe-every", "--drywin-metrics-every"):
                 self.assertEqual(cmd.count(flag), 1, flag)
                 self.assertEqual(self._val(cmd, flag), "49152", flag)
 
     def test_knobs_and_leg_cmds_carry_e5_knobs_exactly_once(self):
-        # 修⑤a 回归:共用形注入后无重复旗(命令形逐字纪律)
+        # fix 5a regression: no duplicate flags after injection into the shared form (verbatim command-form discipline)
         for cmd in (v33._smoke_cmd("knobs"), v33.leg_cmd("v33-base"),
                     v33.leg_cmd("v33-cur"), v33.leg_cmd("v33-full")):
             for flag in ("--distill-ce-probe-every", "--drywin-metrics-every"):
                 self.assertEqual(cmd.count(flag), 1, flag)
 
 
+@unittest.skipUnless(_PINNED_PRESENT, 'pinned run files are not published')
 class WPinFrozenConstantTests(unittest.TestCase):
-    """W-PIN 冻结常量对实件抽验(只读;失配即本测先于预检报警)。"""
+    """Spot check of the frozen W-PIN constants against the real files (read-only; a mismatch alarms here before the preflight)."""
 
     def test_all_pinned_files_match_frozen_sha(self):
         for name, (path, expected) in {**v33.W_PIN,
                                        **v33.W_PIN_LEDGERS}.items():
             self.assertTrue(path.is_file(), name)
             actual = hashlib.sha256(path.read_bytes()).hexdigest()
-            self.assertEqual(actual, expected, f"W-PIN 失配:{name}")
+            self.assertEqual(actual, expected, f"W-PIN mismatch: {name}")
 
     def test_event_line_pins_match(self):
         lines = v33.w_pin_ledger_lines()
@@ -481,18 +491,18 @@ class WPinFrozenConstantTests(unittest.TestCase):
 
 
 class VerdictFunctionTests(unittest.TestCase):
-    """判据纯函数:资格(D4-1)/胜者(D4-5)/课⑤(D4-2)/④乙档位(D4-3)。"""
+    """Pure criterion functions: eligibility (D4-1) / winner (D4-5) / course 5 (D4-2) / course 4b tier (D4-3)."""
 
     def test_qual_of_grid(self):
         self.assertTrue(v33.qual_of(_full32_doc())["qual_ok"])
         self.assertFalse(v33.qual_of(_full32_doc(died=9))["qual_ok"])
         q_cap = v33.qual_of(_full32_doc(cap=0.06))
         self.assertFalse(q_cap["qual_ok"])
-        self.assertIn("cap_drift_note", q_cap)     # 仅因 cap 失格之漂移候选注记
+        self.assertIn("cap_drift_note", q_cap)     # note on a drift candidate disqualified only by the cap
         q_void = v33.qual_of(_full32_doc(override=0.09))
         self.assertTrue(q_void["void"])
         self.assertFalse(q_void["qual_ok"])
-        # died≤8(G1 L2-0 (a) 同值替换):died=8 本身不失格
+        # died<=8 (G1 L2-0 (a) same-value substitution): died=8 itself does not disqualify
         self.assertTrue(v33.qual_of(_full32_doc(died=8))["qual_ok"])
 
     def test_decide_winner_band_and_prescription_preference(self):
@@ -500,10 +510,10 @@ class VerdictFunctionTests(unittest.TestCase):
         died = {"v33-base": 2, "v33-cur": 2, "v33-full": 2}
         quals = {n: {"qual_ok": True} for n in means}
         win = v33.decide_winner(means, died, quals)
-        self.assertEqual(win["winner"], "v33-full")   # 差≤0.05 → died 平 → 处方腿
+        self.assertEqual(win["winner"], "v33-full")   # difference <= 0.05 -> died tied -> the prescribed leg
         died2 = {"v33-base": 1, "v33-cur": 3, "v33-full": 3}
         win2 = v33.decide_winner(means, died2, quals)
-        self.assertEqual(win2["winner"], "v33-base")  # died 少者
+        self.assertEqual(win2["winner"], "v33-base")  # fewer deaths wins
         self.assertFalse(win2["substituted"])
 
     def test_decide_winner_substitution_and_empty_pool(self):
@@ -513,7 +523,7 @@ class VerdictFunctionTests(unittest.TestCase):
                  "v33-full": {"qual_ok": False}}
         win = v33.decide_winner(means, died, quals)
         self.assertEqual(win["winner"], "v33-base")
-        self.assertTrue(win["substituted"])           # 递补入册
+        self.assertTrue(win["substituted"])           # the substitute is entered
         self.assertEqual(win["prelim"], "v33-full")
         none = v33.decide_winner(means, died,
                                  {n: {"qual_ok": False} for n in means})
@@ -524,22 +534,22 @@ class VerdictFunctionTests(unittest.TestCase):
         self.assertEqual(v33.course5_ruling(5, 4)["branch"], "noise")
         self.assertEqual(v33.course5_ruling(5, 5)["branch"], "no_improvement")
         low = v33.course5_ruling(4, 2)
-        self.assertEqual(low["branch"], "success")    # 锚=4 → 成功线 ≤2
+        self.assertEqual(low["branch"], "success")    # anchor=4 -> success line <= 2
         self.assertIn("note_low_anchor", low)
         floor = v33.course5_ruling(3, 0)
-        self.assertEqual(floor["branch"], "floor")    # 锚≤3 → 地板效应不可判
-        self.assertIn("不可判", floor["verdict"])
+        self.assertEqual(floor["branch"], "floor")    # anchor<=3 -> floor effect, cannot be decided
+        self.assertIn("undecidable", floor["verdict"])
 
     def test_a12_tier_ruling_grid(self):
         t1 = v33.a12_tier_ruling(0.5, 3, 0.0, 3, 0.0)
         self.assertEqual(t1["tier"], 1)
         self.assertTrue(t1["main_line"])
         self.assertNotIn("circle12_exit", t1)
-        t2 = v33.a12_tier_ruling(0.0, 4, 0.0, 3, 0.0)   # died ≤ ctrl+1 一命噪声带
+        t2 = v33.a12_tier_ruling(0.0, 4, 0.0, 3, 0.0)   # died <= ctrl+1: the one-life noise band
         self.assertEqual(t2["tier"], 2)
-        self.assertIn("circle12_exit", t2)              # 圈 12 出口语法强制
+        self.assertIn("circle12_exit", t2)              # exit syntax of design decision 12 enforced
         low = v33.a12_tier_ruling(0.05, 3, 0.0, 3, 0.0)
-        self.assertEqual(low["tier"], 2)                # 低用量依档序落档2
+        self.assertEqual(low["tier"], 2)                # low usage falls to tier 2 by tier order
         self.assertIn("low_use_note", low)
         t3a = v33.a12_tier_ruling(0.5, 6, -10.0, 3, 0.0)
         self.assertEqual(t3a["tier"], 3)
@@ -550,21 +560,21 @@ class VerdictFunctionTests(unittest.TestCase):
 
     def test_a12_control_crossline_branch(self):
         crossed = v33.a12_tier_ruling(0.5, 3, 0.0, 3, 0.2)
-        self.assertIn("control_crossline", crossed)     # L-cur ≥0.1 归因降级
+        self.assertIn("control_crossline", crossed)     # L-cur >= 0.1: attribution downgraded
         clean = v33.a12_tier_ruling(0.5, 3, 0.0, 3, 0.0)
         self.assertNotIn("control_crossline", clean)
 
 
 class N12DemosChainTests(unittest.TestCase):
-    """修①b/①c(rev4 十二附二④):vacuous 兜底废止改硬失败 + L-full 点火前
-    demos 实测字节 ≡ N12_GATE 落定值。"""
+    """Fixes 1b/1c (rev4 item 12, annex 2.4): the vacuous fallback is abolished in favour of a hard failure + the pre-launch L-full
+    measured demos bytes == the settled N12_GATE value."""
 
     def test_gate_sha_missing_key_hard_fails(self):
-        with self.assertRaisesRegex(OperationalFailure, "缺 demos_sha256"):
+        with self.assertRaisesRegex(OperationalFailure, "missing demos_sha256"):
             v33.n12_gate_demos_sha({"event": "N12_GATE", "gate": "PASS"})
-        with self.assertRaisesRegex(OperationalFailure, "缺 demos_sha256"):
+        with self.assertRaisesRegex(OperationalFailure, "missing demos_sha256"):
             v33.n12_gate_demos_sha({"demos_sha256": "short"})
-        with self.assertRaisesRegex(OperationalFailure, "缺 demos_sha256"):
+        with self.assertRaisesRegex(OperationalFailure, "missing demos_sha256"):
             v33.n12_gate_demos_sha({"demos_sha256": None})
 
     def test_gate_sha_present_returns_verbatim(self):
@@ -577,22 +587,22 @@ class N12DemosChainTests(unittest.TestCase):
             demos.write_bytes(b"demo-bytes")
             sha = hashlib.sha256(b"demo-bytes").hexdigest()
             with mock.patch.object(v33, "BC_V2_DEMOS", demos):
-                v33.assert_lfull_demos_chain(          # 正例:恒等即静默通过
+                v33.assert_lfull_demos_chain(          # positive case: identity passes silently
                     [{"event": "N12_GATE", "gate": "PASS",
                       "demos_sha256": sha}])
-                with self.assertRaisesRegex(OperationalFailure, "断裂"):
+                with self.assertRaisesRegex(OperationalFailure, "identity chain broken"):
                     v33.assert_lfull_demos_chain(
                         [{"event": "N12_GATE", "gate": "PASS",
                           "demos_sha256": "b" * 64}])
                 with self.assertRaisesRegex(OperationalFailure,
-                                            "缺 demos_sha256"):
+                                            "missing demos_sha256"):
                     v33.assert_lfull_demos_chain(
                         [{"event": "N12_GATE", "gate": "PASS"}])
-                with self.assertRaisesRegex(OperationalFailure, "不在册"):
+                with self.assertRaisesRegex(OperationalFailure, "not recorded"):
                     v33.assert_lfull_demos_chain(
                         [{"event": "N12_GATE", "gate": "FAIL",
                           "demos_sha256": sha}])
-                # 多发 N12_GATE:取末次 PASS 为落定值
+                # several N12_GATE events: the last PASS is the settled value
                 v33.assert_lfull_demos_chain(
                     [{"event": "N12_GATE", "gate": "PASS",
                       "demos_sha256": "c" * 64},
@@ -600,7 +610,7 @@ class N12DemosChainTests(unittest.TestCase):
                       "demos_sha256": sha}])
             with mock.patch.object(v33, "BC_V2_DEMOS",
                                    pathlib.Path(d) / "gone.npz"):
-                with self.assertRaisesRegex(OperationalFailure, "demos 缺失"):
+                with self.assertRaisesRegex(OperationalFailure, "demos missing"):
                     v33.assert_lfull_demos_chain(
                         [{"event": "N12_GATE", "gate": "PASS",
                           "demos_sha256": sha}])
@@ -611,7 +621,7 @@ class N12DemosChainTests(unittest.TestCase):
         self.assertIn("assert_lfull_demos_chain(events)", src)
         self.assertLess(src.index("assert_lfull_demos_chain"),
                         src.index('"event": "leg_start"'))
-        # 修①b:bc2_stage 幂等分支同用硬取键(vacuous .get 兜底退场)
+        # fix 1b: the idempotent bc2_stage branch uses the same hard key lookup (the vacuous .get fallback is gone)
         src_bc2 = inspect.getsource(v33.bc2_stage)
         self.assertIn("n12_gate_demos_sha(passed[-1])", src_bc2)
         self.assertNotIn('.get("demos_sha256",', src_bc2)
@@ -620,8 +630,8 @@ class N12DemosChainTests(unittest.TestCase):
 
 
 class SentinelEvidenceTests(unittest.TestCase):
-    """修②(rev4 十二附二⑤):G0-2a 仪表实燃四件全查之 sentinel/dry-anchor
-    双行型分计(sentinel.jsonl 同文件双行型)。"""
+    """Fix 2 (rev4 item 12, annex 2.5): separate counts of the two sentinel/dry-anchor row types when checking all four live G0-2a
+    instruments (two row types in the same sentinel.jsonl file)."""
 
     def test_dual_type_counts(self):
         with tempfile.TemporaryDirectory() as d:
@@ -638,10 +648,10 @@ class SentinelEvidenceTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             p = pathlib.Path(d) / "sentinel.jsonl"
             self.assertEqual(v33.sentinel_line_counts(p),
-                             {"sentinel": 0, "dry_anchor": 0})   # 缺档记 0
+                             {"sentinel": 0, "dry_anchor": 0})   # a missing file counts as 0
             p.write_text(json.dumps({"sentinel": "v23", "step": 1}) + "\n")
             counts = v33.sentinel_line_counts(p)
-            self.assertEqual(counts["dry_anchor"], 0)   # 干层锚没跑必 0
+            self.assertEqual(counts["dry_anchor"], 0)   # the dry-level anchor did not run, so it must be 0
             self.assertEqual(counts["sentinel"], 1)
 
     def test_g0_2a_conjunction_carries_both_limbs(self):
@@ -651,8 +661,8 @@ class SentinelEvidenceTests(unittest.TestCase):
 
 
 class TableFullPrecisionTests(unittest.TestCase):
-    """修③(rev4 十二附二⑥):DRY_CURRICULUM_TABLE 全精度 float 落账,
-    与 verify_curriculum_prefix 复核真源同一;round(p,10) 口径废止。"""
+    """Fix 3 (rev4 item 12, annex 2.6): DRY_CURRICULUM_TABLE is booked as full-precision floats,
+    identical to the source of truth re-checked by verify_curriculum_prefix; the round(p,10) criterion is abolished."""
 
     def test_event_table_is_full_precision_and_json_lossless(self):
         captured = []
@@ -662,9 +672,9 @@ class TableFullPrecisionTests(unittest.TestCase):
         table = v33.dry_curriculum_table()
         self.assertEqual(ev["event"], "DRY_CURRICULUM_TABLE")
         self.assertEqual(ev["table"], [float(p) for p in table])
-        self.assertEqual(ev["table"][1], table[1])            # 全精度位同一
-        self.assertNotEqual(round(table[1], 10), table[1])    # 反例非空:
-        # round(,10) 于 linear 段第 1 项即失位,旧口径与复核真源不同一
+        self.assertEqual(ev["table"][1], table[1])            # full precision, bit-identical
+        self.assertNotEqual(round(table[1], 10), table[1])    # the negative case is not vacuous:
+        # round(,10) already loses bits at the first entry of the linear segment, so the old criterion differs from the source of truth
         self.assertEqual(json.loads(json.dumps(ev["table"])), list(table))
 
     def test_idempotent_when_already_logged(self):
@@ -675,9 +685,9 @@ class TableFullPrecisionTests(unittest.TestCase):
 
 
 class SeedSeqEquivalentTests(unittest.TestCase):
-    """修④(rev4 十二附二③):G0-2b episode 种子序列恒等之可见面最强等价物
-    ——两跑 progress.jsonl (ep, reward, len) 公共前缀恒等(首 rollout 覆盖
-    下界 512;progress.jsonl 无 episode 种子字段,呈报见交接单)。"""
+    """Fix 4 (rev4 item 12, annex 2.3): the strongest visible-surface equivalent of the G0-2b episode seed-sequence identity:
+    the common prefix of (ep, reward, len) in progress.jsonl of the two runs is identical (the first rollout covers the
+    lower bound of 512; progress.jsonl has no episode-seed field, as noted in the hand-over)."""
 
     def test_identical_sequences_full_prefix(self):
         a = [{"ep": i + 1, "reward": 1.0 * i, "len": 300} for i in range(4)]
@@ -689,7 +699,7 @@ class SeedSeqEquivalentTests(unittest.TestCase):
                                 v33.SEED_EQUIV_MIN_PREFIX_STEPS)
 
     def test_first_line_divergence_caught(self):
-        # 初始 episode 种子流被污染之指纹:首行即分歧 → 前缀 0,必不过下界
+        # fingerprint of a polluted initial episode-seed stream: diverges at the first line -> prefix 0, must fail the lower bound
         a = [{"ep": 1, "reward": 1.0, "len": 600}]
         b = [{"ep": 1, "reward": 2.0, "len": 600}]
         out = v33.progress_common_prefix(a, b)
@@ -716,12 +726,12 @@ class SeedSeqEquivalentTests(unittest.TestCase):
         self.assertIn("progress_common_prefix", src)
         self.assertIn("and seed_seq_ok", src)
         self.assertIn("episode_seed_seq_identity", src)
-        self.assertEqual(v33.SEED_EQUIV_MIN_PREFIX_STEPS, 512)  # n-steps 下界
+        self.assertEqual(v33.SEED_EQUIV_MIN_PREFIX_STEPS, 512)  # n-steps lower bound
 
 
 class InstrumentDigestTests(unittest.TestCase):
-    """修⑤b(rev4 十二附二①/D8):DRYWIN_METRICS 转录载荷件——文件 sha256 +
-    行数 + final 段聚合;缺档/空档 fail-loud;leg_stage 腿终落笔。"""
+    """Fix 5b (rev4 item 12, annex 2.1/D8): the DRYWIN_METRICS transcript payload: file sha256 +
+    line count + aggregation of the final segment; a missing or empty file fails loud; written at the end of leg_stage."""
 
     def test_digest_prefers_final_line(self):
         with tempfile.TemporaryDirectory() as d:
@@ -746,11 +756,11 @@ class InstrumentDigestTests(unittest.TestCase):
 
     def test_digest_fails_loud_on_missing_or_empty(self):
         with tempfile.TemporaryDirectory() as d:
-            with self.assertRaisesRegex(OperationalFailure, "仪表档缺失"):
+            with self.assertRaisesRegex(OperationalFailure, "instrument file missing"):
                 v33.instrument_jsonl_digest(pathlib.Path(d) / "gone.jsonl")
             empty = pathlib.Path(d) / "drywin_metrics.jsonl"
             empty.write_text("")
-            with self.assertRaisesRegex(OperationalFailure, "仪表档为空"):
+            with self.assertRaisesRegex(OperationalFailure, "instrument file empty"):
                 v33.instrument_jsonl_digest(empty)
 
     def test_leg_stage_transcribes_drywin_metrics_event(self):
@@ -761,7 +771,7 @@ class InstrumentDigestTests(unittest.TestCase):
 
 
 class StatsToolTests(unittest.TestCase):
-    """MS 计算与配对统计块(R 线口径)。"""
+    """MS computation and the paired statistics block (R-line criterion)."""
 
     def test_ms_vectors_hand_computed(self):
         leg_h = {s: _row(s, ret=r) for s, r in
@@ -789,10 +799,10 @@ class StatsToolTests(unittest.TestCase):
 
 
 class LegLockProbeTests(unittest.TestCase):
-    """B 修(发射夜审计 major):点火前 RUNS/<leg>/.run.lock 非阻塞 flock
-    探测——锁被持即孤儿腿停机(OperationalFailure)且不落 leg_start;
-    无锁持有/残留锁文件静默通过(flock 内核崩溃自动释放,探测可靠,
-    承 train_ppo._RunLock 语义)。"""
+    """Fix B (launch-time regression audit, major): before launch, a non-blocking flock probe of RUNS/<leg>/.run.lock:
+    if the lock is held, an orphan leg stops the run (OperationalFailure) and no leg_start is booked;
+    no holder / a leftover lock file passes silently (the kernel releases flock on a crash, so the probe is reliable,
+    following the train_ppo._RunLock semantics)."""
 
     def test_held_lock_halts_as_orphan_leg(self):
         with tempfile.TemporaryDirectory() as d:
@@ -805,33 +815,33 @@ class LegLockProbeTests(unittest.TestCase):
             try:
                 fcntl.flock(holder.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
                 with mock.patch.object(v33, "RUNS", runs):
-                    with self.assertRaisesRegex(OperationalFailure, "孤儿腿"):
+                    with self.assertRaisesRegex(OperationalFailure, "orphan leg"):
                         v33.assert_leg_lock_free("v33-base")
             finally:
                 fcntl.flock(holder.fileno(), fcntl.LOCK_UN)
                 holder.close()
 
     def test_stale_or_absent_lockfile_passes(self):
-        # 崩溃/SIGKILL 后 flock 已被内核释放:残留锁文件不构成持锁
+        # After a crash/SIGKILL the kernel has released the flock: a leftover lock file does not count as holding the lock
         with tempfile.TemporaryDirectory() as d:
             runs = pathlib.Path(d)
             (runs / "v33-cur").mkdir()
             (runs / "v33-cur" / ".run.lock").write_text('{"pid": 1}')
             with mock.patch.object(v33, "RUNS", runs):
-                v33.assert_leg_lock_free("v33-cur")     # 残留锁文件:静默通过
-                v33.assert_leg_lock_free("v33-full")    # 锁文件不存在:同过
+                v33.assert_leg_lock_free("v33-cur")     # leftover lock file: passes silently
+                v33.assert_leg_lock_free("v33-full")    # no lock file: passes too
 
     def test_probe_wired_before_leg_start_in_leg_stage(self):
         src = inspect.getsource(v33.leg_stage)
         self.assertIn("assert_leg_lock_free(leg)", src)
         self.assertLess(src.index("assert_leg_lock_free(leg)"),
-                        src.index('"event": "leg_start"'))   # 先探测后落账
+                        src.index('"event": "leg_start"'))   # probe first, then book
 
 
 class RawMeanAdjudicationTests(unittest.TestCase):
-    """C 修(发射夜审计 major):发射均差肢与 MS 分支触发消费 mean_raw
-    (原始均值裁决,v32 先例);2dp 圆整值仅作落账显示——0.005 窗内圆整
-    可静默翻转判决。"""
+    """Fix C (launch-time regression audit, major): the launch mean-difference limb and the MS branch trigger consume mean_raw
+    (adjudication on the raw mean, v32 precedent); the 2dp rounded value is only for display in the ledger: rounding inside a 0.005 window
+    can silently flip the verdict."""
 
     def test_mean_raw_carried_and_display_mean_is_its_rounding(self):
         leg = {7000 + i: _row(7000 + i, ret=110.0) for i in range(4)}
@@ -842,18 +852,18 @@ class RawMeanAdjudicationTests(unittest.TestCase):
         self.assertEqual(st["mean"], round(st["mean_raw"], 2))
 
     def test_17_315_window_borderline_fails_raw_line_but_ledger_shows_2dp(self):
-        # 审计对应件(17.315 型 0.005 圆整窗贴线):16 种子 +17.32、16 种子
-        # +17.315 → 原始均值 ≈17.3175,恰落 [17.315, 17.32) 静默翻转窗——
-        # 圆整读数 17.32 假过线;raw 语义下 < 17.32 不过线。
+        # Audit counterpart (the 17.315-type 0.005 rounding window at the line): 16 seeds at +17.32 and 16 seeds
+        # at +17.315 -> raw mean about 17.3175, exactly inside the [17.315, 17.32) silent-flip window:
+        # the rounded reading 17.32 falsely passes the line; under raw semantics < 17.32 does not pass.
         diffs = [17.32] * 16 + [17.315] * 16
         leg = {7000 + i: _row(7000 + i, ret=100.0 + diffs[i])
                for i in range(32)}
         ref = {s: _row(s, ret=100.0) for s in leg}
         st = v33.paired_diff_stats(leg, ref)
-        self.assertEqual(st["mean"], 17.32)                # 落账仍显示 2dp
-        self.assertGreater(st["mean_raw"], 17.315)         # 恰在圆整窗内
-        self.assertLess(st["mean_raw"], v33.G1_PAIRED_DIFF)          # raw 拦
-        self.assertGreaterEqual(st["mean"], v33.G1_PAIRED_DIFF)      # 圆整假过
+        self.assertEqual(st["mean"], 17.32)                # the ledger still shows 2dp
+        self.assertGreater(st["mean_raw"], 17.315)         # exactly inside the rounding window
+        self.assertLess(st["mean_raw"], v33.G1_PAIRED_DIFF)          # raw stops it
+        self.assertGreaterEqual(st["mean"], v33.G1_PAIRED_DIFF)      # rounding falsely passes
 
     def test_launch_limb_and_ms_branch_consume_raw_not_rounded(self):
         src_main = inspect.getsource(v33._main)
@@ -865,8 +875,8 @@ class RawMeanAdjudicationTests(unittest.TestCase):
 
 
 class LegTrainLogNameTests(unittest.TestCase):
-    """D 修(发射夜审计 minor):腿训练日志文件名携发次——run() 系 "w"
-    截断写,固定名第二发必毁第一发崩溃日志取证面。"""
+    """Fix D (launch-time regression audit, minor): the leg training log file name carries the launch number: run() writes with "w"
+    truncation, so with a fixed name a second launch would destroy the first launch's crash-log evidence."""
 
     def test_log_name_carries_attempt_and_attempts_never_collide(self):
         self.assertEqual(v33.leg_train_log_name("v33-base", 1),
@@ -880,20 +890,20 @@ class LegTrainLogNameTests(unittest.TestCase):
         src = inspect.getsource(v33.leg_stage)
         self.assertIn("leg_train_log_name(leg, attempt)", src)
         self.assertIn("attempt = leg_starts(events, leg) + 1", src)
-        # 发次序号于本发 leg_start 落账之前计得(N = 已在册 + 1)
+        # the launch number is computed before this launch's leg_start is booked (N = already on record + 1)
         self.assertLess(src.index("attempt = leg_starts"),
                         src.index('"event": "leg_start"'))
-        self.assertNotIn('f"train-{leg}.log"', src)      # 固定名退场
+        self.assertNotIn('f"train-{leg}.log"', src)      # the fixed name is gone
 
 
 class CanaryResidueRecoveryTests(unittest.TestCase):
-    """E 修(发射夜审计 minor):金丝雀残档采信处 validate_adopted 抛
-    EvalContractError 不再直穿 P1——按 P-canary『失败只记不停腿』:
-    残档 .void 封存 + 事件在册 + 继续本函数正常序。"""
+    """Fix E (launch-time regression audit, minor): EvalContractError raised by validate_adopted where a canary residue is adopted
+    no longer passes straight through P1; per P-canary "record failures, do not stop the leg": the residue is sealed as .void,
+    the event is recorded, and the function continues in its normal order."""
 
     @staticmethod
     def _bad_adopt(*_a, **_k):
-        raise EvalContractError("合成坏采信件")
+        raise EvalContractError("synthetic bad adopted artifact")
 
     def test_bad_residue_voided_logged_no_raise(self):
         captured = []
@@ -910,15 +920,15 @@ class CanaryResidueRecoveryTests(unittest.TestCase):
                                              tag, None, l1_fired=True)
             self.assertIsNone(doc)
             self.assertFalse(fresh)
-            self.assertFalse(residue.exists())            # 残档已离位
+            self.assertFalse(residue.exists())            # the residue has been moved away
             voids = sorted(eval_dir.glob(f"{tag}.*.void"))
-            self.assertEqual(len(voids), 1)               # .void 封存
+            self.assertEqual(len(voids), 1)               # sealed as .void
             self.assertEqual(captured[0]["event"], "OPERATIONAL-canary")
-            self.assertIn("只记不停腿", captured[0]["why"])
+            self.assertIn("record only, the leg continues", captured[0]["why"])
             self.assertEqual(captured[0]["void"], voids[0].name)
 
     def test_flow_continues_to_reexam_within_cutoff(self):
-        # 截止内(该腿 s16 未燃):残档 .void 后继续走重考路径,不停腿
+        # within the cutoff (that leg's s16 has not fired): after .void the residue goes down the re-exam path, the leg is not stopped
         synthetic = {"rows": [], "agg": {"_sha": "abcd"}}
         captured = []
         with tempfile.TemporaryDirectory() as d:
@@ -938,13 +948,13 @@ class CanaryResidueRecoveryTests(unittest.TestCase):
 
 
 class LaunchCheckIdempotencyTests(unittest.TestCase):
-    """F 修(发射夜审计 minor):无胜者分支 launch_check 落账幂等护栏
-    (与有胜者分支对称)——重入不重复落账。"""
+    """Fix F (launch-time regression audit, minor): idempotency guard for booking launch_check in the no-winner branch
+    (symmetric with the winner branch): re-entry does not book twice."""
 
     def test_reentry_does_not_duplicate_ledger_line(self):
         captured = []
         events = []
-        limbs = {"verdict": "三腿资格全失(合成)"}
+        limbs = {"verdict": "all three legs ineligible (synthetic)"}
         with mock.patch.object(v33, "log", captured.append):
             v33.log_launch_check_no_winner(events, limbs, {"v33-base": {}})
             v33.log_launch_check_no_winner(events, limbs, {"v33-base": {}})
@@ -966,9 +976,9 @@ class LaunchCheckIdempotencyTests(unittest.TestCase):
 
 
 class DeathSeedSetsTests(unittest.TestCase):
-    """G 修(发射夜审计 minor):④乙判词死亡种子集合差之对照 = D4-3 本案
-    语境 ctrl = L-cur×M29(full32-m29)rows;v32-ref-science 对照退场,
-    rescued/new_deaths 语义随之(语境勘正注记随行)。"""
+    """Fix G (launch-time regression audit, minor): the control for the death-seed set difference in the course-4b verdict = D4-3 in
+    this case's context, ctrl = L-cur x M29 (full32-m29) rows; the v32-ref-science control is retired,
+    and the rescued/new_deaths semantics follow (with a context-correction note)."""
 
     def test_set_difference_taken_from_cur_m29_ctrl_rows(self):
         full = [{"seed": 7000, "died": False}, {"seed": 7001, "died": True},
@@ -976,11 +986,11 @@ class DeathSeedSetsTests(unittest.TestCase):
         ctrl = [{"seed": 7000, "died": True}, {"seed": 7001, "died": False},
                 {"seed": 7002, "died": False}, {"seed": 7017, "died": True}]
         out = v33.death_seed_sets(full, ctrl)
-        self.assertEqual(out["rescued"], [7000])       # ctrl 死而 full 活
-        self.assertEqual(out["new_deaths"], [7001])    # full 死而 ctrl 活
-        self.assertIn("L-cur×M29", out["ctrl"])        # 语境勘正注记在册
-        # 反例:同 full 换第三方对照死亡面(v32-ref-science 型)集合差随之
-        # 改变——证集合差确实取自传入 ctrl rows,而非任何外部参照
+        self.assertEqual(out["rescued"], [7000])       # ctrl died, full survived
+        self.assertEqual(out["new_deaths"], [7001])    # full died, ctrl survived
+        self.assertIn("L-cur×M29", out["ctrl"])        # the context-correction note is on record
+        # Negative case: the same full against a third-party control death surface (v32-ref-science type) changes the set difference
+        # accordingly, proving that the set difference really comes from the ctrl rows passed in, not from any external reference
         science_like = [{"seed": 7000, "died": False},
                         {"seed": 7001, "died": False},
                         {"seed": 7002, "died": True},
@@ -997,17 +1007,17 @@ class DeathSeedSetsTests(unittest.TestCase):
 
 
 class Rc10HalfOpenBandTests(unittest.TestCase):
-    """H 修(发射夜审计 minor):RC.10 损伤分支带 [0.0, 0.5) 系半开——
-    retention 恰 0.5 须落健康分支;band_judge 上界开口径仅此带,
-    全局闭区间语义禁改。"""
+    """Fix H (launch-time regression audit, minor): the RC.10 damage branch band [0.0, 0.5) is half-open:
+    a retention of exactly 0.5 must fall in the healthy branch; band_judge's open-upper criterion applies to this band only,
+    and the global closed-interval semantics must not change."""
 
     def test_exact_half_falls_healthy_not_damaged(self):
         damaged = v33.band_judge(0.5, *v33.RC10_BAND["damaged"],
                                  upper_open=True)
-        self.assertFalse(damaged["in_band"])           # 0.5 不落损伤带
+        self.assertFalse(damaged["in_band"])           # 0.5 is not in the damage band
         self.assertIs(damaged["upper_open"], True)
         healthy = v33.band_judge(0.5, *v33.RC10_BAND["healthy"])
-        self.assertTrue(healthy["in_band"])            # 恰落健康分支
+        self.assertTrue(healthy["in_band"])            # falls exactly in the healthy branch
 
     def test_just_below_half_stays_damaged(self):
         self.assertTrue(v33.band_judge(0.4999, *v33.RC10_BAND["damaged"],
@@ -1015,13 +1025,13 @@ class Rc10HalfOpenBandTests(unittest.TestCase):
 
     def test_global_closed_semantics_untouched(self):
         default = v33.band_judge(0.5, 0.0, 0.5)
-        self.assertTrue(default["in_band"])            # 默认闭区间原封
+        self.assertTrue(default["in_band"])            # the default closed interval is unchanged
         self.assertNotIn("upper_open", default)
 
     def test_scorecard_applies_open_bound_to_damaged_branch_only(self):
         src = inspect.getsource(v33.scorecard_stage)
         self.assertIn('upper_open=(branch == "damaged")', src)
-        self.assertEqual(src.count("upper_open="), 1)  # 仅 RC.10 一处,禁全局
+        self.assertEqual(src.count("upper_open="), 1)  # only the one RC.10 place; no global change
 
 
 if __name__ == "__main__":

@@ -1,37 +1,37 @@
-"""v23:FARM 操作脑 BC 热启动(docs/prereg/PREREG-v23.md D4)。
+"""v23: BC warm start of the FARM operator brain (docs/prereg/PREREG-v23.md D4).
 
-在位采集:冻结 H 经理 + 脚本教师(dispatch farm 分支;反射拍是包装器所有,
-天然不入集;保险丝强制拍整拍剔除)。当前示范种子 2102000-2102127,只录 FARM
-窗口；已消费 2100000-2100127 永久 burned。
-产出 train/runs/bc-worker/policy_sd.pt(SB3 键名,--bc-init 用)+ bc_report.json。
-候选选择:既有训练局内再作整局 validation；validation top-1 <0.95 或
-训练侧样本 ≥300 的类之 validation 召回 <0.85 → 类加权 CE 重训一次
-(BC 唯一重试)。候选冻结后，final held-out 才首次用于同阈值数据闸与回执。
+On-policy collection: frozen H manager + scripted teacher (dispatch farm branch; reflex steps belong to the wrapper
+and never enter the set; fuse-forced steps are dropped whole). Current demo seeds 2102000-2102127, FARM
+windows only; the consumed 2100000-2100127 are permanently burned.
+Output: train/runs/bc-worker/policy_sd.pt (SB3 key names, for --bc-init) + bc_report.json.
+Candidate selection: whole-episode validation carved out of the training episodes; validation top-1 < 0.95 or
+validation recall < 0.85 for any class with >= 300 training-side samples -> retrain once with class-weighted CE
+(the only BC retry). Only after the candidate is frozen is the final held-out used, once, for the same-threshold data gate and receipt.
 
-E2 乙1′(PREREG-内容案-课⑤x④乙 E2):增教师 v2(bc-worker-v2)——
-dispatch("farm") 前置预防饮分支 hp∈[0.5,0.65)∧belt>0→12。该目标必须
-完全由 298 维可见状态决定；旧“每窗一次”隐藏闩会把同一血线合法态的
-75% 标成非 12，实测在 recall=.60 时最低 FPR 仍 3.5%，不可学习。
-世代旗 teacher_generation 1/2;v2 产物独立目录 runs/bc-worker-v2/
-(v1 canonical 路径一字不动,规避 _previous 归档互斥);v2 demos 增逐样本
-masks(env.action_masks() 现场捕获,唯一 on-manifold 真源);v2 回执独立
-文件名 bc_report_v2.json + 独立 schema 标识 + 专用验证器(v1 验证器对
-v2 件天然 fail-loud);n₁₂ 闸与 recall 门读数入回执(fail-closed)。
-`python train/bc_worker.py` = v1(原样);`--v2 [--preventive-threshold 0.7]` = v2。
+E2 B1′ (docs/prereg/PREREG-v33-content-case.md E2): adds teacher v2 (bc-worker-v2) --
+a preventive-drink branch ahead of dispatch("farm"): hp in [0.5, 0.65) and belt > 0 -> 12. The target must
+be fully determined by the 298-dim visible state; the old hidden "once per window" latch labelled 75% of
+legal states at the same HP line as non-12; measured, the lowest FPR at recall=.60 was still 3.5%: unlearnable.
+Generation flag teacher_generation 1/2; v2 artifacts live in their own directory runs/bc-worker-v2/
+(the v1 canonical path is untouched, avoiding the _previous archive exclusivity); v2 demos add per-sample
+masks (captured live from env.action_masks(), the only on-manifold source of truth); the v2 receipt has its own
+file name bc_report_v2.json + its own schema identifier + a dedicated validator (the v1 validator
+fails loudly on v2 artifacts by construction); the n₁₂ gate and recall gate readings go into the receipt (fail-closed).
+`python train/bc_worker.py` = v1 (unchanged); `--v2 [--preventive-threshold 0.7]` = v2.
 
-方案甲(2026-07-19 亲批):① v2 采集局数扩为 v1 × 3(_V2_COLLECTION_EPISODE_FACTOR;
-rev6 诊断已查看旧 100..483 池，rev12 又发现 1000..1383 的 final 域被
-覆盖诊断提前读取；后续 2101000..2101383 也已由一次性 producer 打开，
-当前 active v2 池迁至预先未使用且不相交的 2103000..2103383；② v2 主训改类平衡
-加权 CE(w_c = N/(K·n_c) 标准平衡式,类集 = 实际出现类)。两者只作用于 v2;
-v1 采集局数/种子纪律与 v1 训练路径(train_bc 调用不传权)一字不动。
+Plan A (approved 2026-07-19): (1) v2 collects v1 x 3 episodes (_V2_COLLECTION_EPISODE_FACTOR;
+the rev6 diagnosis had already looked at the old 100..483 pool, rev12 then found that the final domain of 1000..1383 was
+read early by the coverage diagnosis; the later 2101000..2101383 was also opened by a one-shot producer,
+so the current active v2 pool moved to the never-used, disjoint 2103000..2103383); (2) v2 primary training switches to class-balanced
+weighted CE (w_c = N/(K·n_c), the standard balancing formula, class set = classes actually present). Both apply only to v2;
+v1 episode count/seed discipline and the v1 training path (train_bc is called without weights) are unchanged.
 
-审计修复(2026-07-25):极稀有 a12 用全类平衡 CE 会把约 0.04% 正例放大
-千倍，却没有显式约束误报；旧件虽 recall_12 过门，held-out 上曾产生 867
-个假饮。v2 最终模型因此增加训练集专用的教师边界校准阶段：真实 masks
-决定 a12 是否可达，hp 带与 feature 297 的可见本窗饮药闩进入 SB3 六张量内
-的一条从优化第 0 步起隔离的保留神经通路，偏置只由 nested-fit episode
-拟合；固定 validation/final-heldout 整局仅用于选型/最终硬门，不参与调参。
+Audit fix (2026-07-25): with fully class-balanced CE the very rare a12 (about 0.04% positives) is amplified
+a thousandfold with no explicit constraint on false positives; the old artifact passed the recall_12 gate yet produced 867
+false drinks on held-out. The final v2 model therefore adds a teacher-boundary calibration stage fitted on the training set only: the real masks
+decide whether a12 is reachable, and the hp band plus the visible this-window drink latch of feature 297 enter a reserved
+neural pathway inside the six SB3 tensors that is isolated from optimisation step 0; its bias is fitted only on nested-fit
+episodes; the fixed validation/final-heldout episodes are used only for model selection/the final hard gate, never for tuning.
 """
 import json
 import hashlib
@@ -96,45 +96,45 @@ OUT.mkdir(parents=True, exist_ok=True)
 NPZ = ROOT / "train" / "models" / "v22-h-manager" / "policy.npz"
 DEMO_SEEDS = list(_WORKER_BC_DEMO_SEEDS)
 
-# ---- E2 乙1′ 教师 v2(bc-worker-v2)常量注册(PREREG-内容案 E2/D7)----
-OUT_V2 = ROOT / "train" / "runs" / "bc-worker-v2"  # v2 独立产物目录;v1 canonical 原封
+# ---- E2 B1′ teacher v2 (bc-worker-v2) constant registration (PREREG-v33-content-case E2/D7) ----
+OUT_V2 = ROOT / "train" / "runs" / "bc-worker-v2"  # separate v2 artifact directory; v1 canonical untouched
 TEACHER_GENERATION_V1 = 1
 TEACHER_GENERATION_V2 = 2
-_PREVENTIVE_HP_LOW = 0.5                # 预防带下界(闭;恰在 0.5 脑干反射之上,
-                                        # 反射态归排水,教师原理上不可见)
-_PREVENTIVE_THRESHOLD_MAIN = 0.65       # 主案预防阈(D7"预防阈"行)
+_PREVENTIVE_HP_LOW = 0.5                # lower bound of the preventive band (closed; just above the 0.5 brainstem reflex,
+                                        # reflex states are drained, so the teacher never sees them by construction)
+_PREVENTIVE_THRESHOLD_MAIN = 0.65       # main-case preventive threshold (D7 "preventive threshold" row)
 # The historical 0.70 OC reused the same final episodes after observing 0.65.
 # Rev13 disables it until an independent, training-reserved pool is registered.
 _REGISTERED_PREVENTIVE_THRESHOLDS = (_PREVENTIVE_THRESHOLD_MAIN,)
-_V2_FORBIDDEN_ACTIONS = (11,)           # v2 路径禁 11 允 12(守卫面不弱化;
-                                        # v1 路径 _WORKER_BC_FORBIDDEN_ACTIONS 原封)
-_N12_GATE_MIN = 122                     # n₁₂ 闸 ≥122(=审计点估 244 之半,D7)
+_V2_FORBIDDEN_ACTIONS = (11,)           # v2 path forbids 11, allows 12 (the guard surface is not weakened;
+                                        # v1 path _WORKER_BC_FORBIDDEN_ACTIONS untouched)
+_N12_GATE_MIN = 122                     # n₁₂ gate >= 122 (= half the audited point estimate of 244, D7)
 _RECALL12_GATE_MIN = _BC_V2_TEACHER_RECALL_MIN
-_BC_V2_REPORT_NAME = "bc_report_v2.json"  # v2 回执独立文件名(schema 隔离)
-# 独立 schema 标识:取非 int 字符串——v1 验证器(train_ppo._validate_bc_report)
-# 之键集合精确等断言 + _is_plain_int(schema_version)==1 断言对 v2 件双重必炸。
-# ---- v2 a12 训练集校准（导出后仍是标准 SB3 64x64 MLP）----
+_BC_V2_REPORT_NAME = "bc_report_v2.json"  # separate v2 receipt file name (schema isolation)
+# Separate schema identifier: a non-int string -- the v1 validator's (train_ppo._validate_bc_report)
+# exact key-set assertion + _is_plain_int(schema_version)==1 assertion both blow up on v2 artifacts.
+# ---- v2 a12 training-set calibration (the export is still a standard SB3 64x64 MLP) ----
 if _A12_CALIBRATION_DRINK_LATCH_FEATURE != WORKER_DRINK_LATCH_FEATURE:
-    raise RuntimeError("BC-v2 校准主动饮位与 Worker 观测契约漂移")
+    raise RuntimeError("BC-v2 calibration active-drink bit drifted from the Worker observation contract")
 
-# ---- BC 候选选择集（最终 held-out 只许在选型完成后读取）----
-# 逆频率加权后的优化问题比无权主训收敛慢。旧代码仍只给重试 8 epoch；
-# protocol-v4 实测 validation 尚在 .9017 / recall10=.816 时便停，而同一
-# 冻结目标到 12 epoch 已达 .9982 / .997。v2 的主训/重试更曾因相同
-# objective、seed 和 8 epoch 成为逐位相同的假重试。
+# ---- BC candidate-selection sets (the final held-out may be read only after selection) ----
+# Inverse-frequency weighting converges more slowly than unweighted primary training. The old code still gave the retry only 8 epochs;
+# under protocol-v4 validation stopped at .9017 / recall10=.816, while the same
+# frozen target reached .9982 / .997 by 12 epochs. v2 primary/retry runs were even bit-identical fake retries
+# because of the same objective, seed and 8 epochs.
 _BC_PRIMARY_EPOCHS = 8
 _BC_WEIGHTED_RETRY_EPOCHS = 12
 
 # ---- append-only replacement collection registries ----
-_V2_COLLECTION_EPISODE_FACTOR = 3   # 方案甲 a:v2 采集局数 = v1 × 3
-# 当前 active registry 为 v2 2103000..2103383、v1
-# 2102000..2102127；所有旧池永久留在 burned/训练拒采表。
+_V2_COLLECTION_EPISODE_FACTOR = 3   # plan A (a): v2 collection episodes = v1 x 3
+# The current active registry is v2 2103000..2103383, v1
+# 2102000..2102127; all old pools stay permanently in the burned/training refusal table.
 if list(DEMO_SEEDS) != list(range(DEMO_SEEDS[0],
                                   DEMO_SEEDS[0] + len(DEMO_SEEDS))):
-    raise RuntimeError("v1 示范种子非连续升序整数:v2 种子延拓规则前提破坏")
+    raise RuntimeError("v1 demo seeds are not consecutive ascending integers: premise of the v2 seed-extension rule broken")
 DEMO_SEEDS_V2 = list(_BC_V2_COLLECTION_EPISODES)
 if len(DEMO_SEEDS_V2) != _V2_COLLECTION_EPISODE_FACTOR * len(DEMO_SEEDS):
-    raise RuntimeError("rev6 v2 replacement 种子数不等于 v1×3")
+    raise RuntimeError("rev6 v2 replacement seed count is not v1x3")
 
 def artifact_provenance():
     return {
@@ -149,7 +149,7 @@ def artifact_provenance():
 
 def _final_holdout_pool_spec(
         generation: int, seeds: list[int] | tuple[int, ...]) -> dict:
-    """不可变 final-pool 身份；不含实现哈希，代码变化也不能重开同一池。"""
+    """Immutable final-pool identity; excludes the implementation hash, so code changes cannot reopen the same pool."""
     return _bc_final_holdout_pool_spec(generation, seeds)
 
 
@@ -174,7 +174,7 @@ def _assert_final_holdout_unused(
         out_dir, generation, seeds)
     if marker.exists():
         raise RuntimeError(
-            "BC 注册池已被一次性消费，禁止同池再次采集/评分:"
+            "BC registered pool already consumed once; collecting/scoring the same pool again is forbidden: "
             f"generation={generation},pool_sha256={pool_sha256},"
             f"marker={marker}")
     _assert_bc_final_holdout_pool_disjoint(
@@ -202,7 +202,7 @@ def _mark_final_holdout_started(
             "BC final heldout registry"):
         if marker.exists():
             raise RuntimeError(
-                "BC pool one-shot marker 已存在，禁止重采/重读:"
+                "BC pool one-shot marker already exists; re-collection/re-reading is forbidden: "
                 f"{marker}")
         _assert_bc_final_holdout_pool_disjoint(
             out_dir, generation, seeds)
@@ -222,7 +222,7 @@ def _mark_final_holdout_started(
                 str(marker), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
         except FileExistsError as exc:
             raise RuntimeError(
-                "BC pool one-shot marker 已存在，禁止重采/重读:"
+                "BC pool one-shot marker already exists; re-collection/re-reading is forbidden: "
                 f"{marker}") from exc
         try:
             with os.fdopen(fd, "wb", closefd=True) as stream:
@@ -231,7 +231,7 @@ def _mark_final_holdout_started(
                 os.fsync(stream.fileno())
             _fsync_directory(marker.parent)
         except Exception:
-            # 即使写入中断也保留 marker；存在性本身就是“可能已打开”的证据。
+            # Keep the marker even if the write is interrupted; its existence is itself evidence that the pool "may have been opened".
             raise
     return {
         **record,
@@ -241,7 +241,7 @@ def _mark_final_holdout_started(
 
 def _reject_same_generator_terminal(
         out_dir: pathlib.Path, report_name: str, provenance: dict) -> None:
-    """direct CLI 也不得把同生成器终态移入 _previous 后绕过 launcher。"""
+    """A direct CLI run must not move a same-generator final state into _previous and bypass the launcher either."""
     candidates = [pathlib.Path(out_dir) / report_name]
     candidates.extend(sorted(
         (pathlib.Path(out_dir) / "_previous").glob(
@@ -262,12 +262,12 @@ def _reject_same_generator_terminal(
             == provenance.get("generator_sha256")
         ):
             raise RuntimeError(
-                "当前 implementation/generator 已有 BC 科学终态，"
-                f"禁止 direct CLI 重试或归档绕过:{report}")
+                "the current implementation/generator already has a final BC scientific state; "
+                f"direct CLI retry or archive bypass is forbidden: {report}")
 
 
 def begin_output_attempt(provenance: dict | None = None):
-    """去掉 canonical 旧产物，防止本次 FAIL 后下游误吃上次权重。"""
+    """Remove old canonical artifacts so that after a FAIL downstream cannot consume the previous weights by mistake."""
     provenance = artifact_provenance() if provenance is None else provenance
     _assert_final_holdout_unused(
         OUT, TEACHER_GENERATION_V1, DEMO_SEEDS)
@@ -322,9 +322,9 @@ def collect():
             pair = (np.asarray(obs, dtype=np.float32), a)
             obs2, w, term, trunc, info = env.step(a)
             if info.get("overridden"):
-                dropped += 1          # 保险丝改写过的步整拍剔除
+                dropped += 1          # steps rewritten by the fuse are dropped whole
             elif "executed_action" not in info:
-                raise RuntimeError("BC-v1 step 缺少 executed_action 回执")
+                raise RuntimeError("BC-v1 step is missing its executed_action receipt")
             elif info["executed_action"] is None:
                 # A legal proposal may still lose a dynamic native race or
                 # degrade to an explicit wait.  Training that observation
@@ -335,37 +335,37 @@ def collect():
             else:
                 if int(info["executed_action"]) != int(a):
                     raise RuntimeError(
-                        "BC-v1 executed_action 与教师提案不一致:"
+                        "BC-v1 executed_action disagrees with the teacher proposal: "
                         f"requested={a},executed={info['executed_action']}")
                 X.append(pair[0]); Y.append(pair[1]); groups.append(seed)
-            # 局尽 next_window 返回 None(绝不滚新局——示范池纪律)
+            # at episode end next_window returns None (never rolls a new episode -- demo pool discipline)
             obs = env.next_window() if (term or trunc) else obs2
         if (i + 1) % 16 == 0:
-            print(f"  采集 {i+1}/{len(DEMO_SEEDS)} 局,{len(Y)} 对"
-                  f"(保险丝剔除 {dropped},无效果剔除 {dropped_no_effect}"
+            print(f"  collected {i+1}/{len(DEMO_SEEDS)} episodes, {len(Y)} pairs"
+                  f" (fuse drops {dropped}, no-effect drops {dropped_no_effect}"
                   f"{dict(sorted(dropped_no_effect_by_action.items()))})",
                   flush=True)
-    # 示范池纪律断言:每个示范种子恰好一局,零兜底滚局(否则数据混入未知种子)
+    # demo pool discipline assertion: exactly one episode per demo seed, zero fallback rerolls (otherwise unknown seeds leak into the data)
     if env.stats["episodes"] != len(DEMO_SEEDS) or env.stats["reseeds"] != 0:
-        raise RuntimeError(f"示范池种子纪律破坏: {env.stats}")
-    print(f"示范:{len(Y)} 决策对,剔除保险丝拍 {dropped},"
-          f"剔除无效果拍 {dropped_no_effect},"
-          f"按动作 {dict(sorted(dropped_no_effect_by_action.items()))},"
-          f"类分布 {dict(sorted(Counter(Y).items()))}", flush=True)
+        raise RuntimeError(f"demo pool seed discipline broken: {env.stats}")
+    print(f"demos: {len(Y)} decision pairs, dropped fuse steps {dropped}, "
+          f"dropped no-effect steps {dropped_no_effect}, "
+          f"by action {dict(sorted(dropped_no_effect_by_action.items()))}, "
+          f"class distribution {dict(sorted(Counter(Y).items()))}", flush=True)
     env.close()
     groups_array = np.asarray(groups, dtype=np.int64)
     labels = np.asarray(Y, dtype=np.int64)
     if not np.array_equal(np.unique(groups_array), np.asarray(DEMO_SEEDS)):
         raise RuntimeError(
-            "示范集没有精确覆盖当前固定种子 2102000..2102127")
+            "demo set does not exactly cover the current fixed seeds 2102000..2102127")
     if np.isin(labels, _WORKER_BC_FORBIDDEN_ACTIONS).any():
-        raise RuntimeError("示范集含禁采动作 11/12(11 恒掩归经理;12 系脚本教师"
-                           "排水后不采——主权世代示范池纪律)")
+        raise RuntimeError("demo set contains forbidden actions 11/12 (11 is always masked and belongs to the manager; 12 is"
+                           " never collected after the scripted teacher's drain -- autonomy-era demo pool discipline)")
     return np.stack(X), labels, groups_array
 
 
 class PiHead(nn.Module):
-    """与 SB3 MlpPolicy(64,64) 策略侧同构。"""
+    """Isomorphic to the policy side of SB3 MlpPolicy(64,64)."""
 
     def __init__(self, obs_dim=298, n_act=15):
         super().__init__()
@@ -378,40 +378,40 @@ class PiHead(nn.Module):
 
 
 def split_by_episode(groups):
-    """整局切分，避免同一条确定性轨迹的相邻帧泄漏到 held-out。"""
+    """Split by whole episodes so adjacent frames of one deterministic trajectory cannot leak into held-out."""
     episodes = np.unique(groups)
     if len(episodes) < 2:
-        raise ValueError("BC held-out 至少需要 2 个独立 episode")
+        raise ValueError("BC held-out needs at least 2 independent episodes")
     order = np.random.default_rng(_BC_FINAL_SPLIT_SEED).permutation(episodes)
     n_holdout = max(1, int(round(len(order) * 0.1)))
     holdout_episodes = order[:n_holdout]
     ho_mask = np.isin(groups, holdout_episodes)
     tr, ho = np.flatnonzero(~ho_mask), np.flatnonzero(ho_mask)
     if len(tr) == 0 or len(ho) == 0:
-        raise ValueError("BC episode split 产生了空训练集或空 held-out")
+        raise ValueError("BC episode split produced an empty training set or empty held-out")
     return tr, ho, holdout_episodes
 
 
 def _split_fit_validation_by_episode(groups):
-    """在既有训练 episode 内再切 validation，最终 held-out 完全隔离。
+    """Carve validation out of the existing training episodes; the final held-out stays fully isolated.
 
-    外层 ``split_by_episode`` 仍定义报告/最终闸所用的 canonical held-out；
-    本函数只对其训练侧 episode 作第二次确定性整局切分。validation 仅用于
-    首训是否触发唯一 retry，绝不进入梯度。至少需要三局，才能同时保留
-    fit / validation / final-held-out 三个非空集合。
+    The outer ``split_by_episode`` still defines the canonical held-out used for the report/final gate;
+    this function only makes a second deterministic whole-episode split of its training-side episodes. Validation is used only
+    to decide whether the first training triggers the single retry, and never enters the gradient. At least three episodes are needed to keep
+    three non-empty sets: fit / validation / final-held-out.
     """
     groups = np.asarray(groups)
     outer_train, outer_holdout, _ = split_by_episode(groups)
     training_episodes = np.unique(groups[outer_train])
     if len(training_episodes) < 2:
         raise ValueError(
-            "BC 候选选择至少需要 3 个独立 episode"
-            "(fit/validation/final-held-out 各非空)")
+            "BC candidate selection needs at least 3 independent episodes"
+            " (fit/validation/final-held-out each non-empty)")
     order = np.random.default_rng(
         _BC_SELECTION_SPLIT_SEED).permutation(training_episodes)
     n_validation = max(
         1, int(round(len(order) * _BC_SELECTION_VALIDATION_FRACTION)))
-    # round(0.1*n) 在当前池不会吞光 fit；仍显式钳住以防未来小池改动。
+    # round(0.1*n) cannot swallow all of fit on the current pool; still clamp explicitly in case a future small pool changes that.
     n_validation = min(n_validation, len(order) - 1)
     validation_episodes = order[:n_validation]
     validation_mask = np.isin(groups, validation_episodes)
@@ -420,16 +420,16 @@ def _split_fit_validation_by_episode(groups):
     fit = np.flatnonzero(outer_train_mask & ~validation_mask)
     validation = np.flatnonzero(outer_train_mask & validation_mask)
     if len(fit) == 0 or len(validation) == 0:
-        raise ValueError("BC nested episode split 产生空 fit 或 validation")
+        raise ValueError("BC nested episode split produced an empty fit or validation set")
     if (np.intersect1d(fit, validation).size
             or np.intersect1d(fit, outer_holdout).size
             or np.intersect1d(validation, outer_holdout).size):
-        raise RuntimeError("BC nested episode split 集合相交")
+        raise RuntimeError("BC nested episode split sets intersect")
     return fit, validation, validation_episodes
 
 
 def _require_zero_exact_label_conflicts(X, Y) -> None:
-    """A2 demos-validity 硬断言:同一精确观测不得携带互斥标签。"""
+    """A2 demos-validity hard assertion: the same exact observation must not carry conflicting labels."""
     import hashlib as _hashlib
     seen: dict = {}
     for i in range(len(X)):
@@ -439,21 +439,21 @@ def _require_zero_exact_label_conflicts(X, Y) -> None:
             seen[key] = int(Y[i])
         elif prev != int(Y[i]):
             raise RuntimeError(
-                f"BC demos 标签冲突:同一观测行携带动作 {prev} 与 {int(Y[i])}")
+                f"BC demos label conflict: the same observation row carries actions {prev} and {int(Y[i])}")
 
 
 def _bc_quality_gate_passes(top1, recalls) -> bool:
-    """v1/v2 共用候选质量条件；输入域由调用者决定。"""
+    """Candidate quality condition shared by v1/v2; the caller decides the input domain."""
     return float(top1) >= 0.95 and all(
         float(recall) >= 0.85 for recall in recalls.values())
 
 
 def _bc_v2_quality_gate_passes(top1, recalls) -> bool:
-    """v2 通用分类门；a12 只走其独立的安全/召回行为门。
+    """v2 generic classification gate; a12 goes only through its own safety/recall behaviour gates.
 
-    a12 有单独注册的 recall/FPR/高血误饮/占比/13 溢出约束和训练集校准。
-    把它同时塞进 ``>=300 类 recall>=.85`` 会在 n12 随采集扩容跨过 300
-    时突然把专用 ``recall>=.5`` 门抬成 .85，且与冻结校准目标 .75 冲突。
+    a12 has separately registered recall/FPR/high-HP false-drink/share/13-spillover constraints and a training-set calibration.
+    Also putting it under ``>=300-class recall>=.85`` would, once n12 crosses 300 as collection grows,
+    suddenly raise its dedicated ``recall>=.5`` gate to .85, conflicting with the frozen calibration target of .75.
     """
     return float(top1) >= 0.95 and all(
         int(action) == 12 or float(recall) >= 0.85
@@ -473,7 +473,7 @@ def _require_v1_action14_coverage(labels, groups) -> dict:
     if (labels.ndim != 1 or groups.shape != labels.shape
             or labels.dtype != np.int64 or groups.dtype != np.int64):
         raise RuntimeError(
-            "BC-v1 a14 覆盖检查要求同形一维 int64 labels/groups")
+            "BC-v1 a14 coverage check requires same-shape 1-D int64 labels/groups")
     selected = labels == 14
     readings = {
         "labels": int(selected.sum()),
@@ -482,7 +482,7 @@ def _require_v1_action14_coverage(labels, groups) -> dict:
     if (readings["labels"] < _WORKER_BC_MIN_ACTION14_LABELS
             or readings["episodes"] < _WORKER_BC_MIN_ACTION14_EPISODES):
         raise RuntimeError(
-            "BC-v1 a14 严格升级覆盖不足:"
+            "BC-v1 a14 strict-upgrade coverage insufficient: "
             f"labels={readings['labels']}"
             f"<{_WORKER_BC_MIN_ACTION14_LABELS},"
             f"episodes={readings['episodes']}"
@@ -491,9 +491,9 @@ def _require_v1_action14_coverage(labels, groups) -> dict:
 
 
 def _reserve_a12_calibration_path(model: PiHead) -> None:
-    """从优化第 0 步起隔离 3+1 个校准神经元，避免事后删除普通类表示。"""
+    """Isolate 3+1 calibration neurons from optimisation step 0, so no ordinary class representation has to be deleted afterwards."""
     if not isinstance(model, PiHead):
-        raise TypeError("a12 保留通路只接受 PiHead")
+        raise TypeError("a12 reserved pathway only accepts PiHead")
     w0, b0 = model.net[0].weight, model.net[0].bias
     w1, b1 = model.net[2].weight, model.net[2].bias
     wa = model.head.weight
@@ -525,18 +525,18 @@ def train_bc(X, Y, groups, class_weights=None, *,
              epochs: int = _BC_PRIMARY_EPOCHS, masks=None,
              reserve_a12_path: bool = False,
              required_recall_actions=()):
-    """只在 fit 上训练，并只在 validation 上返回候选选择读数。
+    """Train only on fit and return candidate-selection readings only on validation.
 
-    最终 held-out 不在本函数的训练、逐类计数或评分路径中；调用者必须在
-    所有 retry/选型完成之后，显式调用 ``_score_bc_model`` 做最终一次闸评。
+    The final held-out is not on this function's training, per-class counting or scoring path; the caller must
+    call ``_score_bc_model`` explicitly for the single final gate evaluation after all retry/selection is done.
     """
     if not isinstance(epochs, int) or isinstance(epochs, bool) or epochs <= 0:
-        raise ValueError("BC epochs 必须是正整数")
+        raise ValueError("BC epochs must be a positive integer")
     if masks is not None:
         masks = np.asarray(masks)
         if masks.shape != (len(Y), 15) or masks.dtype != np.bool_:
             raise ValueError(
-                f"BC validation masks 形状/dtype 非法:{masks.shape}/{masks.dtype}")
+                f"BC validation masks shape/dtype invalid: {masks.shape}/{masks.dtype}")
     torch.manual_seed(23)
     fit, validation, _ = _split_fit_validation_by_episode(groups)
     outer_train, _, _ = split_by_episode(groups)
@@ -561,8 +561,8 @@ def train_bc(X, Y, groups, class_weights=None, *,
             tot += loss.item() * len(yb); cnt += len(yb)
             correct += int((logits.argmax(1) == yb).sum())
         print(f"BC epoch {epoch}: loss {tot/cnt:.4f} acc {correct/cnt:.3f}", flush=True)
-    # 候选选择只读 validation；门槛类计数也只看 outer training episodes，
-    # 防止 final held-out 标签通过“是否达到 300”侧信道改变 retry 路径。
+    # Candidate selection reads validation only; per-class threshold counts look only at outer training episodes,
+    # so final held-out labels cannot change the retry path through a "does it reach 300" side channel.
     top1, recalls = _score_bc_model_indices(
         model, X, Y, validation, eligibility_indices=outer_train,
         masks=masks, required_recall_actions=required_recall_actions)
@@ -582,7 +582,7 @@ def export_sb3_sd(model):
 
 
 def _masked_bc_predictions(model, X, masks=None) -> np.ndarray:
-    """模型 argmax；v2 必须消费采集时真实 masks，v1 传 None 保持原语义。"""
+    """Model argmax; v2 must consume the real masks from collection, v1 passes None to keep the original semantics."""
     model.eval()
     with torch.no_grad():
         logits = model(torch.from_numpy(np.asarray(X, dtype=np.float32)))
@@ -590,7 +590,7 @@ def _masked_bc_predictions(model, X, masks=None) -> np.ndarray:
             masks = np.asarray(masks)
             if masks.shape != tuple(logits.shape) or masks.dtype != np.bool_:
                 raise RuntimeError(
-                    f"BC 评分 masks 形状/dtype 非法:{masks.shape}/{masks.dtype}")
+                    f"BC scoring masks shape/dtype invalid: {masks.shape}/{masks.dtype}")
             logits = torch.where(
                 torch.from_numpy(masks), logits,
                 torch.full_like(logits, -1e8))
@@ -600,20 +600,20 @@ def _masked_bc_predictions(model, X, masks=None) -> np.ndarray:
 def _score_bc_model_indices(model, X, Y, score_indices, *,
                             eligibility_indices, masks=None,
                             required_recall_actions=()):
-    """在显式行集评分；逐类门槛计数只读取显式 eligibility 行集。"""
+    """Score on an explicit row set; per-class threshold counts read only the explicit eligibility row set."""
     X = np.asarray(X)
     Y = np.asarray(Y)
     score_indices = np.asarray(score_indices, dtype=np.int64)
     eligibility_indices = np.asarray(eligibility_indices, dtype=np.int64)
     if (score_indices.ndim != 1 or eligibility_indices.ndim != 1
             or len(score_indices) == 0 or len(eligibility_indices) == 0):
-        raise ValueError("BC 评分集/类别资格集必须是一维非空索引")
+        raise ValueError("BC scoring set/class eligibility set must be 1-D non-empty indices")
     required = tuple(required_recall_actions)
     if (any(not isinstance(action, (int, np.integer))
             or isinstance(action, (bool, np.bool_))
             or not 0 <= int(action) < 15 for action in required)
             or len(set(map(int, required))) != len(required)):
-        raise ValueError("BC required_recall_actions 必须是无重复的 0..14 整数")
+        raise ValueError("BC required_recall_actions must be unique integers in 0..14")
     pred = _masked_bc_predictions(
         model, X[score_indices],
         None if masks is None else np.asarray(masks)[score_indices])
@@ -635,10 +635,10 @@ def _score_bc_model_indices(model, X, Y, score_indices, *,
 
 def _score_bc_model(model, X, Y, groups, masks=None,
                     required_recall_actions=()):
-    """选型完成后，在固定 final held-out 上重算 top-1/逐类召回。
+    """After selection, recompute top-1/per-class recall on the fixed final held-out.
 
-    校准会改写最终导出的六张量，所以 v2 必须在校准后重新评分，禁止沿用
-    校准前的 validation 数字。v1 调用不传 masks，报告 schema 保持原样。
+    Calibration rewrites the six exported tensors, so v2 must be re-scored after calibration; reusing
+    the pre-calibration validation numbers is forbidden. v1 calls pass no masks, and the report schema is unchanged.
     """
     _, ho, _ = split_by_episode(groups)
     return _score_bc_model_indices(
@@ -667,21 +667,21 @@ def main():
     })
     X, Y, groups = collect()
     action14_coverage = _require_v1_action14_coverage(Y, groups)
-    print(f"v1 a14 严格升级覆盖 {action14_coverage}", flush=True)
+    print(f"v1 a14 strict-upgrade coverage {action14_coverage}", flush=True)
     demos_tmp = OUT / "demos.tmp.npz"
     np.savez_compressed(demos_tmp, X=X, Y=Y, episode_id=groups)
     demos_tmp.replace(OUT / "demos.npz")
     tr, ho, holdout_episodes = split_by_episode(groups)
     fit, _, _ = _split_fit_validation_by_episode(groups)
-    # train_bc 只把 fit/validation 送入梯度或候选读数；整池虽已采集，
-    # 但已由 pre-collection marker 永久记为消费。
+    # train_bc sends only fit/validation into the gradient or candidate readings; although the whole pool was collected,
+    # it was already marked permanently consumed by the pre-collection marker.
     model, top1, recalls = train_bc(
         X, Y, groups,
         required_recall_actions=_WORKER_BC_REQUIRED_RECALL_ACTIONS)
     retrained = False
     if not _bc_quality_gate_passes(top1, recalls):
-        print(f"首训 validation 未达标(top1 {top1:.3f} 召回 {recalls})"
-              "→ 类加权重训(唯一重试)",
+        print(f"first training missed validation targets (top1 {top1:.3f} recall {recalls})"
+              " -> class-weighted retraining (the single retry)",
               flush=True)
         counts = np.bincount(Y[fit], minlength=15).astype(np.float64)
         weights = np.where(counts > 0, counts.sum() / np.maximum(counts, 1), 0.0)
@@ -692,20 +692,20 @@ def main():
             required_recall_actions=_WORKER_BC_REQUIRED_RECALL_ACTIONS)
         retrained = True
     if not _bc_quality_gate_passes(top1, recalls):
-        # A2 修正案(总设计师 2026-07-27 批「A2方案为主」):策略质量线降为
-        # 只记不裁——0.95/0.85 系 R5/R6(BC 当教师锚)时代遗留;R7 训练命令
-        # 不消费本策略(teacher=KING_SD),demos 才是被消费物(dry-anchor 锚)。
-        # 实测天花板(200ep+类权,burned-2_104 demos 离线诊断):top1≈0.88-0.90、
-        # 稀有键≤0.43——门在 07-25 未过滤 v3 视图下结构性不可达。
-        print(f"候选质量线未达(top1 {top1:.3f} 召回 {recalls})——A2 只记不裁,"
-              "继续发布流程(质量读数随报告落档)", flush=True)
-    # 候选已冻结；final held-out 现在才进入模型评分路径。
+        # Amendment A2 (approved 2026-07-27): the policy-quality line is downgraded to
+        # record only, no verdict -- 0.95/0.85 are left over from the R5/R6 era (BC as the teacher anchor); the R7 training command
+        # does not consume this policy (teacher=KING_SD); the demos are what gets consumed (dry-anchor).
+        # Measured ceiling (200ep + class weights, offline diagnosis on burned-2_104 demos): top1 ~0.88-0.90,
+        # rare keys <= 0.43 -- under the unfiltered v3 view of 07-25 the gate was structurally unreachable.
+        print(f"candidate quality line not met (top1 {top1:.3f} recall {recalls}) -- A2 record only, no verdict; "
+              "continuing the release flow (quality readings are filed with the report)", flush=True)
+    # The candidate is frozen; only now does the final held-out enter the model scoring path.
     top1, recalls = _score_bc_model(
         model, X, Y, groups,
         required_recall_actions=_WORKER_BC_REQUIRED_RECALL_ACTIONS)
-    # A2:发布门 = demos-validity(池覆盖/局纪律/a14 覆盖已由 collect 与
-    # _require_v1_action14_coverage 硬断言;此处补零标签冲突硬断言)。
-    # held_out_top1/class_recalls 保持原字段落档,身份与逐位复算链原封。
+    # A2: release gate = demos-validity (pool coverage/episode discipline/a14 coverage are already hard-asserted by collect and
+    # _require_v1_action14_coverage; here we add the zero-label-conflict hard assertion).
+    # held_out_top1/class_recalls keep their original fields in the file; the identity and bitwise recomputation chain are untouched.
     _require_zero_exact_label_conflicts(X, Y)
     ok = True
     report = {
@@ -718,11 +718,11 @@ def main():
     if not ok:
         write_report(report)
         raise RuntimeError(
-            f"BC 数据闸 FAIL(top1={top1:.3f}, recalls={recalls});"
-            "拒绝覆写 policy_sd.pt")
+            f"BC data gate FAIL (top1={top1:.3f}, recalls={recalls}); "
+            "refusing to overwrite policy_sd.pt")
     policy_tmp = OUT / "policy_sd.tmp.pt"
     if artifact_provenance() != provenance:
-        raise RuntimeError("BC worker 运行期间实现/引擎/内容/经理发生漂移")
+        raise RuntimeError("implementation/engine/content/manager drifted while BC worker was running")
     torch.save(export_sb3_sd(model), policy_tmp)
     policy_tmp.replace(OUT / "policy_sd.pt")
     report["policy_sha256"] = hashlib.sha256(
@@ -730,44 +730,44 @@ def main():
     report["demos_sha256"] = hashlib.sha256(
         (OUT / "demos.npz").read_bytes()).hexdigest()
     write_report(report)
-    print(f"held-out top-1 {top1:.3f} 召回 {recalls} retry={retrained} "
-          f"→ 数据闸 PASS;已存 {OUT}/policy_sd.pt", flush=True)
+    print(f"held-out top-1 {top1:.3f} recall {recalls} retry={retrained} "
+          f"-> data gate PASS; saved {OUT}/policy_sd.pt", flush=True)
 
 
-# ==== E2 乙1′ v2 件(以下全部新增;v1 面(上文)一字不动)====
+# ==== E2 B1′ v2 parts (everything below is new; the v1 surface above is unchanged) ====
 
 def forbidden_actions_for_generation(generation: int) -> tuple[int, ...]:
-    """禁采断言世代条件化(E2):v1 禁 (11,12) 原封;v2 禁 11 允 12。"""
+    """Forbidden-action assertion conditioned on generation (E2): v1 forbids (11,12) unchanged; v2 forbids 11, allows 12."""
     if generation == TEACHER_GENERATION_V1:
-        return tuple(_WORKER_BC_FORBIDDEN_ACTIONS)   # (11, 12) 原封
+        return tuple(_WORKER_BC_FORBIDDEN_ACTIONS)   # (11, 12) unchanged
     if generation == TEACHER_GENERATION_V2:
-        return _V2_FORBIDDEN_ACTIONS                 # 禁 11 允 12(守卫面不弱化)
-    raise ValueError(f"未知教师世代: {generation!r}(只有 1/2)")
+        return _V2_FORBIDDEN_ACTIONS                 # forbid 11, allow 12 (guard surface not weakened)
+    raise ValueError(f"unknown teacher generation: {generation!r} (only 1/2)")
 
 
 def teacher_v2_preventive_trigger(
         observation, masks,
         preventive_threshold: float = _PREVENTIVE_THRESHOLD_MAIN) -> bool:
-    """E2 教师 v2 的纯可观测前置谓词。
+    """Pure observable precondition predicate of E2 teacher v2.
 
-    ``hp∈[0.5, 阈) ∧ live m12 ∧ 本窗尚未主动饮``。hp 下界闭、上界开；
-    belt/动作合法性只读采集时现场 mask；每窗饮历史只读 feature 297 的
-    已公开符号位。目标不再读取教师对象内部状态或未入 298 维的窗口历史。
+    ``hp in [0.5, threshold) and live m12 and no active drink yet this window``. hp lower bound closed, upper open;
+    belt/action legality is read only from the live mask at collection time; per-window drink history is read only from the
+    published sign bit of feature 297. The target no longer reads teacher-internal state or window history outside the 298 dims.
     """
     observation = np.asarray(observation)
     masks = np.asarray(masks)
     if observation.shape != (298,) or not np.issubdtype(
             observation.dtype, np.floating):
         raise ValueError(
-            f"TeacherV2 观测必须是 (298,) 浮点数组:{observation.shape}/"
+            f"TeacherV2 observation must be a (298,) float array: {observation.shape}/"
             f"{observation.dtype}")
     if masks.shape != (15,) or masks.dtype != np.bool_:
         raise ValueError(
-            f"TeacherV2 masks 必须是 (15,) bool:{masks.shape}/{masks.dtype}")
+            f"TeacherV2 masks must be (15,) bool: {masks.shape}/{masks.dtype}")
     hp = float(observation[_A12_CALIBRATION_HP_FEATURE])
     latch = float(observation[_A12_CALIBRATION_DRINK_LATCH_FEATURE])
     if not math.isfinite(hp) or not math.isfinite(latch):
-        raise ValueError("TeacherV2 可见 hp/主动饮位必须有限")
+        raise ValueError("TeacherV2 visible hp/active-drink bit must be finite")
     no_prior_window_drink = latch >= 0.0
     return bool(
         hp >= _PREVENTIVE_HP_LOW - _A12_VISIBLE_HP_BOUNDARY_EPS
@@ -777,21 +777,21 @@ def teacher_v2_preventive_trigger(
 
 
 class TeacherV2:
-    """E2 乙1′ 教师 v2：可观测的预防饮分支优先于 dispatch。
+    """E2 B1′ teacher v2: the observable preventive-drink branch takes priority over dispatch.
 
-    每次决策只读当前 298 维观测与现场 mask；对象本身不保存“本窗是否
-    喝过”的隐藏状态。feature 297 显式公开该位，故相同观测永远同一标签。
+    Each decision reads only the current 298-dim observation and the live mask; the object keeps no hidden
+    "already drank this window" state. Feature 297 publishes that bit explicitly, so the same observation always gets the same label.
     """
 
     def __init__(self, preventive_threshold: float = _PREVENTIVE_THRESHOLD_MAIN):
         if preventive_threshold not in _REGISTERED_PREVENTIVE_THRESHOLDS:
             raise ValueError(
-                f"预防阈 {preventive_threshold!r} 未注册:rev13 仅允许 "
-                "0.65 主案；旧 0.70 OC 没有独立 fresh pool")
+                f"preventive threshold {preventive_threshold!r} not registered: rev13 only allows "
+                "the 0.65 main case; the old 0.70 OC has no independent fresh pool")
         self.preventive_threshold = float(preventive_threshold)
 
     def begin_window(self) -> None:
-        """兼容采集器的窗口通知；教师目标本身保持无状态。"""
+        """Window notification kept for collector compatibility; the teacher target itself stays stateless."""
 
     def action(self, env, observation=None, masks=None) -> int:
         raw = env.oe.env._raw
@@ -811,7 +811,7 @@ class TeacherV2:
         if not math.isclose(
                 observed_hp, raw_hp, rel_tol=0.0, abs_tol=1e-6):
             raise RuntimeError(
-                "TeacherV2 决策态 obs/raw hp 错位:"
+                "TeacherV2 decision-state obs/raw hp misaligned: "
                 f"{observed_hp} != {raw_hp}")
         visible_latch = float(
             np.asarray(observation)[
@@ -823,8 +823,8 @@ class TeacherV2:
         )
         if raw_preventive_state and not bool(np.asarray(masks)[12]):
             raise RuntimeError(
-                "教师 v2 可见预防态动作 12 不在现场掩码内:"
-                "on-manifold 示范纪律破坏")
+                "teacher v2 visible preventive state: action 12 not in the live mask: "
+                "on-manifold demo discipline broken")
         if teacher_v2_preventive_trigger(
                 observation, masks, self.preventive_threshold):
             return 12
@@ -838,40 +838,40 @@ class TeacherV2:
             a = dispatch(
                 "farm", raw, bool(masks[14]), action_mask=masks)
         if a == 12:
-            # dispatch 内嵌 0.5 反射分支对教师应为死代码:开窗排水 + 反射尾部
-            # 排水保证工人观测永为无反射态;走到此处即示范池纪律破坏,禁静默采。
-            raise RuntimeError("教师 v2 见反射态(hp<0.5∧belt>0):排水失守,"
-                               "a12 实标只许出自前置预防分支")
+            # The 0.5 reflex branch embedded in dispatch should be dead code for the teacher: the window-open drain + reflex-tail
+            # drain guarantee the worker only observes reflex-free states; reaching here means demo pool discipline is broken, never collect silently.
+            raise RuntimeError("teacher v2 saw a reflex state (hp<0.5 and belt>0): drain breached; "
+                               "real a12 labels may only come from the preventive precondition branch")
         return a
 
 
 def collect_v2(preventive_threshold: float = _PREVENTIVE_THRESHOLD_MAIN,
                manager_npz: str | pathlib.Path = NPZ,
                manager_sha256: str | None = None):
-    """E2:主权开采集环真实执行、真实入池(on-manifold,禁反事实标签)。
+    """E2: with autonomy on, the collection loop really executes and really fills the pool (on-manifold, no counterfactual labels).
 
-    与 v1 collect() 使用同一真实执行纪律:
-      - 逐样本 masks 系决策态 env.action_masks() 现场捕获(唯一真源;
-        a12 之 belt 位自 obs belt 维反推系第二真源,禁用);
-      - overridden 与 executed_action=None 整拍剔除（拒绝/无效果拍不入池）;
-      - TeacherV2 标签只依当前 298 维 hp/主动饮位与现场 mask；
-        窗口通知不改变同观测标签；
-      - 禁采断言世代条件化:v2 禁 11 允 12;
-      - 当前采集环消费 DEMO_SEEDS_V2(v1 × 3,固定
-        2103000..2103383)；v1 consume fresh 2102000..2102127。
-    返回 (X, labels, groups, masks, belts);belts 系逐样本决策态腰带读数
-    (腰带经济回执供源)。
+    Uses the same real-execution discipline as v1 collect():
+      - per-sample masks are captured live from env.action_masks() in the decision state (the single source of truth;
+        inferring a12's belt bit from the obs belt dims would be a second source of truth, forbidden);
+      - overridden steps and executed_action=None steps are dropped whole (refused/no-effect steps never enter the pool);
+      - TeacherV2 labels depend only on the current 298-dim hp/active-drink bit and the live mask;
+        window notifications never change the label of the same observation;
+      - forbidden-action assertion conditioned on generation: v2 forbids 11, allows 12;
+      - the current collection loop consumes DEMO_SEEDS_V2 (v1 x 3, fixed
+        2103000..2103383); v1 consumes fresh 2102000..2102127.
+    Returns (X, labels, groups, masks, belts); belts are per-sample belt readings in the decision state
+    (source for the belt-economy receipt).
     """
     teacher = TeacherV2(preventive_threshold)
     manager_path = pathlib.Path(manager_npz)
     if not manager_path.is_file():
-        raise RuntimeError(f"BC-v2 经理 npz 不存在:{manager_path}")
+        raise RuntimeError(f"BC-v2 manager npz does not exist: {manager_path}")
     if manager_sha256 is None:
         manager_sha256 = hashlib.sha256(
             manager_path.read_bytes()).hexdigest()
     if (not isinstance(manager_sha256, str) or len(manager_sha256) != 64
             or any(ch not in "0123456789abcdef" for ch in manager_sha256)):
-        raise RuntimeError("BC-v2 manager_sha256 非法")
+        raise RuntimeError("BC-v2 manager_sha256 invalid")
     env = WorkerWindowEnv(
         str(manager_path), max_steps=3000, rng_seed=0,
         manager_sha256=manager_sha256, seed_scope="bc-v2",
@@ -886,64 +886,64 @@ def collect_v2(preventive_threshold: float = _PREVENTIVE_THRESHOLD_MAIN,
     dropped_no_effect_by_action = Counter()
     for i, seed in enumerate(DEMO_SEEDS_V2):
         obs, _ = env.reset(seed=seed)
-        teacher.begin_window()            # reset 即首窗,开闩
+        teacher.begin_window()            # reset is the first window; open the latch
         while obs is not None:
-            masks = np.asarray(env.action_masks(), dtype=bool)  # 现场捕获
+            masks = np.asarray(env.action_masks(), dtype=bool)  # captured live
             a = teacher.action(env, obs, masks)
             if not masks[a]:
                 raise RuntimeError(
-                    f"教师 v2 提案 {a} 不在现场掩码内(a12 须 m[12]=True):"
-                    "on-manifold 示范纪律破坏")
+                    f"teacher v2 proposal {a} not in the live mask (a12 needs m[12]=True): "
+                    "on-manifold demo discipline broken")
             belt = int(env.oe.env._raw.get("belt_heals", 0))
             pair = (np.asarray(obs, dtype=np.float32), a, masks, belt)
             obs2, w, term, trunc, info = env.step(a)
             if info.get("overridden"):
-                dropped += 1              # 保险丝改写过的步整拍剔除(v1 条款原封)
+                dropped += 1              # steps rewritten by the fuse are dropped whole (v1 clause unchanged)
             elif "executed_action" not in info:
-                raise RuntimeError("BC-v2 step 缺少 executed_action 回执")
+                raise RuntimeError("BC-v2 step is missing its executed_action receipt")
             elif info["executed_action"] is None:
                 dropped_no_effect += 1
                 dropped_no_effect_by_action[int(a)] += 1
             else:
                 if int(info["executed_action"]) != int(a):
                     raise RuntimeError(
-                        "BC-v2 executed_action 与教师提案不一致:"
+                        "BC-v2 executed_action disagrees with the teacher proposal: "
                         f"requested={a},executed={info['executed_action']}")
                 X.append(pair[0]); Y.append(pair[1]); M.append(pair[2])
                 groups.append(seed); belts.append(pair[3])
             farm_window_end = bool(info.get("farm_window_end", False))
             if farm_window_end:
-                # 保留显式窗口通知接口，便于未来无状态教师做逐窗审计；
-                # 它不得改变同一可见状态的目标动作。
+                # Keep the explicit window-notification interface so a future stateless teacher can be audited per window;
+                # it must not change the target action for the same visible state.
                 teacher.begin_window()
             if term or trunc:
-                # 局尽 next_window 返回 None(绝不滚新局——示范池纪律)
+                # at episode end next_window returns None (never rolls a new episode -- demo pool discipline)
                 obs = env.next_window()
             else:
                 obs = obs2
         if (i + 1) % 16 == 0:
-            print(f"  v2 采集 {i+1}/{len(DEMO_SEEDS_V2)} 局,{len(Y)} 对"
-                  f"(保险丝剔除 {dropped},"
-                  f"无效果剔除 {dropped_no_effect}"
+            print(f"  v2 collected {i+1}/{len(DEMO_SEEDS_V2)} episodes, {len(Y)} pairs"
+                  f" (fuse drops {dropped}, "
+                  f"no-effect drops {dropped_no_effect}"
                   f"{dict(sorted(dropped_no_effect_by_action.items()))})",
                   flush=True)
     if env.stats["episodes"] != len(DEMO_SEEDS_V2) or env.stats["reseeds"] != 0:
-        raise RuntimeError(f"示范池种子纪律破坏: {env.stats}")
-    print(f"v2 示范:{len(Y)} 决策对,剔除保险丝拍 {dropped},"
-          f"剔除无效果拍 {dropped_no_effect},"
-          f"按动作 {dict(sorted(dropped_no_effect_by_action.items()))},"
-          f"类分布 {dict(sorted(Counter(Y).items()))}", flush=True)
+        raise RuntimeError(f"demo pool seed discipline broken: {env.stats}")
+    print(f"v2 demos: {len(Y)} decision pairs, dropped fuse steps {dropped}, "
+          f"dropped no-effect steps {dropped_no_effect}, "
+          f"by action {dict(sorted(dropped_no_effect_by_action.items()))}, "
+          f"class distribution {dict(sorted(Counter(Y).items()))}", flush=True)
     env.close()
     groups_array = np.asarray(groups, dtype=np.int64)
     labels = np.asarray(Y, dtype=np.int64)
     if not np.array_equal(np.unique(groups_array), np.asarray(DEMO_SEEDS_V2)):
         raise RuntimeError(
-            "v2 示范集没有精确覆盖当前固定种子 "
+            "v2 demo set does not exactly cover the current fixed seeds "
             "2103000..2103383")
     if np.isin(labels, forbidden_actions_for_generation(
             TEACHER_GENERATION_V2)).any():
-        raise RuntimeError("v2 示范集含禁采动作 11(11 恒掩归经理;"
-                           "12 系 v2 预防饮实标,允采)")
+        raise RuntimeError("v2 demo set contains forbidden action 11 (11 is always masked and belongs to the manager; "
+                           "12 is the real v2 preventive-drink label and may be collected)")
     masks_array = np.stack(M).astype(bool)
     belts_array = np.asarray(belts, dtype=np.int64)
     visible_targets = np.fromiter(
@@ -954,24 +954,24 @@ def collect_v2(preventive_threshold: float = _PREVENTIVE_THRESHOLD_MAIN,
     if not np.array_equal(labels == 12, visible_targets):
         mismatch = np.flatnonzero((labels == 12) != visible_targets)
         raise RuntimeError(
-            "v2 整池标签不等于可见 TeacherV2 谓词"
-            f"(hp/m12/主动饮位)，首个错位行={int(mismatch[0])}")
+            "v2 whole-pool labels differ from the visible TeacherV2 predicate"
+            f" (hp/m12/active-drink bit), first mismatched row={int(mismatch[0])}")
     return np.stack(X), labels, groups_array, masks_array, belts_array
 
 
 def _save_demos_v2(out_dir: pathlib.Path, X, labels, groups, masks,
                    provenance: dict, *,
                    destination: pathlib.Path | None = None) -> pathlib.Path:
-    """写自带 provenance 的 v2/3 demos；PASS report 才是 bundle 提交标记。"""
+    """Write the v2/3 demos with their own provenance; the PASS report is the bundle commit marker."""
     n = len(labels)
     if masks.shape != (n, 15) or masks.dtype != np.bool_:
-        raise RuntimeError(f"v2 masks 形状/dtype 非法: {masks.shape}/{masks.dtype}"
-                           "(须 (pairs, 15) bool)")
+        raise RuntimeError(f"v2 masks shape/dtype invalid: {masks.shape}/{masks.dtype}"
+                           " (must be (pairs, 15) bool)")
     if not masks[np.arange(n), labels].all():
-        raise RuntimeError("v2 demos 存在提案不在掩码内的样本"
-                           "(含 a12 须 m[12]=True;on-manifold 破坏)")
+        raise RuntimeError("v2 demos contain samples whose proposal is not in the mask"
+                           " (a12 needs m[12]=True; on-manifold broken)")
     if masks[:, 11].any():
-        raise RuntimeError("v2 demos m[11] 必须恒 False(11 恒掩归经理)")
+        raise RuntimeError("v2 demos m[11] must be always False (11 is always masked and belongs to the manager)")
     required_provenance = {
         "schema_version", "protocol_version", "implementation_sha256",
         "generator_sha256", "manager_npz_sha256", "teacher_generation",
@@ -979,7 +979,7 @@ def _save_demos_v2(out_dir: pathlib.Path, X, labels, groups, masks,
     }
     if not isinstance(provenance, dict) \
             or not required_provenance <= set(provenance):
-        raise RuntimeError("v2 demos provenance 缺字段:"
+        raise RuntimeError("v2 demos provenance missing fields: "
                            f"{sorted(required_provenance - set(provenance or {}))}")
     final = destination or (out_dir / "demos.npz")
     tmp = final.with_name(f".{final.stem}.{time.time_ns()}.tmp.npz")
@@ -1001,16 +1001,16 @@ def _save_demos_v2(out_dir: pathlib.Path, X, labels, groups, masks,
 
 
 def _balanced_class_weights(labels, n_act: int = 15) -> np.ndarray:
-    """方案甲 b(2026-07-19 亲批):类平衡权重 w_c = N/(K·n_c)(标准平衡式)。
+    """Plan A (b) (approved 2026-07-19): class-balanced weights w_c = N/(K·n_c) (standard balancing formula).
 
-    类集 = 实际出现类(n_c > 0);K = 出现类数;N = 样本总数;未出现类记
-    0.0(CE weight 向量占位,训练面不消费)。纯整数计数算术,确定性。
-    只作用于 v2 主训调用;v1 训练路径零触碰(train_bc 缺省参 None,v1
-    调用不传)。
+    Class set = classes actually present (n_c > 0); K = number of present classes; N = total samples; absent classes get
+    0.0 (a placeholder in the CE weight vector, never consumed by training). Pure integer-count arithmetic, deterministic.
+    Applies only to the v2 primary training call; the v1 training path is never touched (train_bc defaults to None and v1
+    calls never pass it).
     """
     labels = np.asarray(labels)
     if labels.size == 0:
-        raise RuntimeError("类平衡权重:空标签集(方案甲 b 前提破坏)")
+        raise RuntimeError("class-balanced weights: empty label set (plan A (b) premise broken)")
     counts = np.bincount(labels, minlength=n_act).astype(np.float64)
     present = counts > 0
     k = int(present.sum())
@@ -1021,23 +1021,23 @@ def _balanced_class_weights(labels, n_act: int = 15) -> np.ndarray:
 
 def _wire_a12_teacher_boundary(
         model: PiHead, preventive_threshold: float) -> None:
-    """把稀有 a12 判别器写入标准 64x64 策略 MLP 的保留神经元。
+    """Write the rare a12 discriminator into reserved neurons of the standard 64x64 policy MLP.
 
-    第一层 61..63 分别编码 hp≥0.5、hp<预防阈、本窗尚未主动饮；第二层
-    63 形成软 AND。belt 可用性由现场 action mask 的 m12 精确执行。该
-    边界与 TeacherV2 的可见谓词同构；其余动作不读保留神经元，a12 不再
-    读旧的失校准全类 CE 行。导出仍只有 SB3 原生六张量。
+    Layer-1 neurons 61..63 encode hp >= 0.5, hp < preventive threshold, and no active drink yet this window; layer-2
+    neuron 63 forms a soft AND. Belt availability is enforced exactly by m12 of the live action mask. This
+    boundary is isomorphic to the TeacherV2 visible predicate; other actions do not read the reserved neurons, and a12 no longer
+    reads the old miscalibrated all-class CE row. The export still has only the six native SB3 tensors.
     """
     if not isinstance(model, PiHead):
-        raise RuntimeError("a12 校准只接受 PiHead(SB3 64x64 同构模型)")
+        raise RuntimeError("a12 calibration only accepts PiHead (SB3 64x64 isomorphic model)")
     if model.net[0].weight.shape[0] != 64 \
             or model.net[2].weight.shape != (64, 64) \
             or model.head.weight.shape != (15, 64):
-        raise RuntimeError("a12 校准所需 64x64/15 策略头形制不匹配")
+        raise RuntimeError("a12 calibration: 64x64/15 policy head shape mismatch")
     if model.net[0].weight.shape[1] <= max(
             _A12_CALIBRATION_HP_FEATURE,
             _A12_CALIBRATION_DRINK_LATCH_FEATURE):
-        raise RuntimeError("a12 校准缺少 worker hp/主动饮可见位")
+        raise RuntimeError("a12 calibration is missing the worker hp/active-drink visible bits")
 
     # Lower edge is closed and hp<0.5 is never live-m12, so a small outward
     # pad safely makes exact hp=0.5 a positive.  The upper edge is open:
@@ -1054,8 +1054,8 @@ def _wire_a12_teacher_boundary(
         w1, b1 = model.net[2].weight, model.net[2].bias
         wa, ba = model.head.weight, model.head.bias
 
-        # train_bc(reserve_a12_path=True) 必须从第 0 步就隔离这些参数；
-        # 否则此处清零会删掉普通动作已经学到的表示。
+        # train_bc(reserve_a12_path=True) must isolate these parameters from step 0;
+        # otherwise zeroing them here would delete representations ordinary actions have already learned.
         reserved_zero = (
             int(torch.count_nonzero(w0[61:64])) == 0
             and int(torch.count_nonzero(b0[61:64])) == 0
@@ -1066,14 +1066,14 @@ def _wire_a12_teacher_boundary(
         )
         if not reserved_zero:
             raise RuntimeError(
-                "a12 校准保留通路曾参与普通 CE；拒绝破坏性事后接线")
+                "a12 calibration reserved pathway took part in ordinary CE; refusing destructive after-the-fact wiring")
 
         w0[61, _A12_CALIBRATION_HP_FEATURE] = slope
         b0[61] = -slope * (_PREVENTIVE_HP_LOW - lower_edge_pad)
         w0[62, _A12_CALIBRATION_HP_FEATURE] = -slope
         b0[62] = slope * float(preventive_threshold)
         w0[63, _A12_CALIBRATION_DRINK_LATCH_FEATURE] = slope
-        # 未饮域最低为 0，已饮域最高为 -1；0.05 margin 令二者饱和分离。
+        # The not-drunk domain is at least 0, the drunk domain at most -1; a 0.05 margin separates them at saturation.
         b0[63] = slope * 0.05
 
         w1[63].zero_()
@@ -1082,18 +1082,18 @@ def _wire_a12_teacher_boundary(
 
         wa[12].zero_()
         wa[12, 63] = 8.0
-        ba[12].zero_()  # 随后仅由训练 episode 的 margin 分位拟合
+        ba[12].zero_()  # then fitted only from margin quantiles of training episodes
 
 
 def _calibrate_a12_policy(model: PiHead, X, labels, groups, masks,
                           preventive_threshold: float) -> dict:
-    """仅在 nested-fit 上校准 a12，返回可入回执的完整拟合记录。
+    """Calibrate a12 on nested-fit only and return the full fit record for the receipt.
 
-    validation 和 final-heldout 都不读取。可见 hp/每窗饮历史边界固定为
-    教师谓词，仅以冻结的 fit 正例 75% 召回为目标拟合 a12 bias，并用
-    独立 validation/final 的 0.50 门留出抽样裕量；同时以生产概率门
-    约束 soft leakage，并用更严的 fit FPR/high-HP 线筛选；禁止窥看
-    任一评估域后调参。
+    Neither validation nor final-heldout is read. The visible hp/per-window drink history boundary is fixed to
+    the teacher predicate; the a12 bias is fitted only to a frozen 75% recall of fit positives, and the
+    0.50 gate on independent validation/final leaves a sampling margin; the production probability gate
+    also bounds soft leakage, and stricter fit FPR/high-HP lines screen candidates; tuning after peeking at
+    any evaluation domain is forbidden.
     """
     X = np.asarray(X, dtype=np.float32)
     labels = np.asarray(labels)
@@ -1104,7 +1104,7 @@ def _calibrate_a12_policy(model: PiHead, X, labels, groups, masks,
             _A12_CALIBRATION_DRINK_LATCH_FEATURE) \
             or labels.shape != (len(X),) or groups.shape != (len(X),) \
             or masks.shape != (len(X), 15) or masks.dtype != np.bool_:
-        raise RuntimeError("a12 校准输入形状/dtype 异常")
+        raise RuntimeError("a12 calibration input shape/dtype invalid")
     fit, validation, validation_episodes = (
         _split_fit_validation_by_episode(groups))
     _, final_heldout, final_heldout_episodes = split_by_episode(groups)
@@ -1113,21 +1113,21 @@ def _calibrate_a12_policy(model: PiHead, X, labels, groups, masks,
     negative = ~true12
     legal12 = masks[fit, 12]
     if int(true12.sum()) < 2 or not bool(legal12[true12].all()):
-        raise RuntimeError("a12 校准 fit 切分正例不足或正例被真实 mask 禁止")
+        raise RuntimeError("a12 calibration fit split has too few positives, or positives are forbidden by the real mask")
     legal_negative = negative & legal12
     if int(legal_negative.sum()) < 3 * int(true12.sum()):
-        raise RuntimeError("a12 校准 fit 缺少至少 3:1 的真实 m12 hard negatives")
+        raise RuntimeError("a12 calibration fit lacks real m12 hard negatives at a ratio of at least 3:1")
 
     target_count = int(math.ceil(
         _A12_CALIBRATION_TRAIN_RECALL_TARGET * int(true12.sum())))
     minimum_share = target_count / len(fit)
     if minimum_share > _A12_PREDICTED_SHARE_MAX:
         raise RuntimeError(
-            "BC-v2 a12 fit 门算术不可达:"
+            "BC-v2 a12 fit gate arithmetically unreachable: "
             f"ceil({int(true12.sum())}×"
             f"{_A12_CALIBRATION_TRAIN_RECALL_TARGET})/{len(fit)}"
             f"={minimum_share:.8f} > predicted_share_max "
-            f"{_A12_PREDICTED_SHARE_MAX};拒绝靠降安全门或调 bias 掩盖")
+            f"{_A12_PREDICTED_SHARE_MAX}; refusing to hide it by lowering the safety gate or tuning the bias")
     _wire_a12_teacher_boundary(model, preventive_threshold)
     model.eval()
     with torch.no_grad():
@@ -1138,21 +1138,21 @@ def _calibrate_a12_policy(model: PiHead, X, labels, groups, masks,
         other[:, 12] = -1e8
         margin = (logits[:, 12] - other.max(1).values).cpu().numpy()
 
-    # 最保守地跨过冻结 fit recall 目标对应的 margin；不以评估域定 bias。
+    # Cross the margin of the frozen fit recall target as conservatively as possible; the bias is never set from an evaluation domain.
     positive_margin = np.sort(margin[true12])[::-1]
     cut = float(positive_margin[target_count - 1])
     bias = float(-cut + 1e-6)
     with torch.no_grad():
         model.head.bias[12] = bias
-        # 参数张量是 float32；回执必须绑定“真正部署的值”，不能记录赋值前
-        # 的 Python float。大幅 bias 的量化误差可到 1e-6，足以让生产者
-        # 自己生成的合法件在 PPO 入口被拒。
+        # The parameter tensors are float32; the receipt must bind the value "actually deployed", not the Python float
+        # from before assignment. Quantisation error for a large bias can reach 1e-6, enough for the producer's
+        # own valid artifact to be rejected at the PPO entry.
         bias = float(model.head.bias[12].item())
 
     def deployed_fit_metrics() -> dict:
-        # 必须走 PPO 消费端同一份六张量前向+mask+argmax。旧的
-        # ``margin+bias >= 0`` 捷径在 float32 加法舍入或 logit 平局时会把
-        # action 9/12 的 tie 算成 12，而真实 argmax 选择较小索引 9。
+        # Must use the same six-tensor forward + mask + argmax as the PPO consumer. The old
+        # ``margin+bias >= 0`` shortcut, under float32 addition rounding or a logit tie, would count
+        # an action 9/12 tie as 12, while the real argmax picks the smaller index 9.
         behavior = bc_aux_behavior_metrics(
             export_sb3_sd(model), X[fit], labels[fit], groups[fit],
             masks[fit], heldout_only=False)
@@ -1176,9 +1176,9 @@ def _calibrate_a12_policy(model: PiHead, X, labels, groups, masks,
         }
 
     selected = deployed_fit_metrics()
-    # 初始解析 bias 理论上跨过第 target_count 个 margin；float32 最终前向
-    # 仍可能因舍入形成 tie。只在 fit 上逐 ULP 上推到真实 argmax 达目标，
-    # 且随后所有 FPR/share 门都按同一最终六张量重算。
+    # The initial analytic bias crosses the target_count-th margin in theory; the final float32 forward
+    # can still create a tie through rounding. Push up ULP by ULP on fit only until the real argmax reaches the target,
+    # and recompute every subsequent FPR/share gate on the same final six tensors.
     for _ in range(64):
         if (selected["recall_12"]
                 >= _A12_CALIBRATION_TRAIN_RECALL_TARGET):
@@ -1190,7 +1190,7 @@ def _calibrate_a12_policy(model: PiHead, X, labels, groups, masks,
         selected = deployed_fit_metrics()
     else:
         raise RuntimeError(
-            "BC-v2 a12 fit 校准在 64 个 float32 ULP 内仍无法达到目标召回")
+            "BC-v2 a12 fit calibration still cannot reach the target recall within 64 float32 ULPs")
 
     bias = selected["bias_12"]
     tp = selected["tp"]
@@ -1224,7 +1224,7 @@ def _calibrate_a12_policy(model: PiHead, X, labels, groups, masks,
             for k, v in selected.items() if k != "bias_12"
         }
         raise RuntimeError(
-            "BC-v2 a12 fit 校准不可达；拒绝让失校准分类器进入 validation:"
+            "BC-v2 a12 fit calibration unreachable; refusing to let a miscalibrated classifier into validation: "
             f"{compact}")
 
     return {
@@ -1253,21 +1253,21 @@ def _calibrate_a12_policy(model: PiHead, X, labels, groups, masks,
 
 
 def _n12_readings(labels, groups, belts) -> dict:
-    """n₁₂ 闸读数：全部可见预防带内 a12 执行态（overridden 拍剔除）。"""
+    """n₁₂ gate reading: all a12 executed states inside the visible preventive band (overridden steps dropped)."""
     n = int(len(labels))
     a12 = labels == 12
     a13 = labels == 13
     n12 = int(a12.sum())
     by_episode = {str(int(seed)): int((a12 & (groups == seed)).sum())
-                  for seed in np.unique(groups[a12])}   # 零计局省略,余局恒 0
+                  for seed in np.unique(groups[a12])}   # zero-count episodes omitted; the rest are always 0
     return {
         "n12": n12,
         "n12_by_episode": by_episode,
         "class_share_12": round(n12 / n, 6) if n else 0.0,
         "class_share_13": round(int(a13.sum()) / n, 6) if n else 0.0,
         "belt_economy": {
-            # 裁量注记:图纸"腰带经济读数"未钉字段,注册为三项——a12 实标态
-            # 腰带均值 / 全集腰带均值 / a13(拾取补给)对数;零覆盖记 0.0 不消失。
+            # Discretionary note: the design did not pin the fields of the "belt economy reading"; three are registered -- belt mean
+            # in real-a12 states / belt mean over the whole set / a13 (pick up supplies) log count; zero coverage records 0.0 rather than vanishing.
             "belt_mean_at_a12": (round(float(belts[a12].mean()), 4)
                                  if n12 > 0 else 0.0),
             "belt_mean_overall": round(float(belts.mean()), 4) if n else 0.0,
@@ -1277,7 +1277,7 @@ def _n12_readings(labels, groups, belts) -> dict:
 
 
 def _a12_behavior_from_model(model, X, labels, groups, masks) -> dict:
-    """以真实 v2 masks 在固定 held-out 整局上评估 a12 行为面。"""
+    """Evaluate the a12 behaviour surface on fixed held-out whole episodes with the real v2 masks."""
     model.eval()
     return bc_aux_behavior_metrics(
         export_sb3_sd(model), X, labels, groups, masks,
@@ -1286,10 +1286,10 @@ def _a12_behavior_from_model(model, X, labels, groups, masks) -> dict:
 
 def _a12_behavior_from_indices(
         model, X, labels, groups, masks, indices) -> dict:
-    """用显式 selection 行集评估 a12，绝不隐式切到 final-heldout。"""
+    """Evaluate a12 on an explicit selection row set; never switch implicitly to final-heldout."""
     indices = np.asarray(indices, dtype=np.int64)
     if indices.ndim != 1 or len(indices) == 0:
-        raise ValueError("a12 validation indices 必须是一维非空索引")
+        raise ValueError("a12 validation indices must be 1-D non-empty indices")
     model.eval()
     return bc_aux_behavior_metrics(
         export_sb3_sd(model),
@@ -1299,7 +1299,7 @@ def _a12_behavior_from_indices(
 
 
 def _bc_v2_a12_gate_passes(metrics: dict) -> tuple[bool, dict]:
-    """BC-v2 专用 a12 门 = 通用行为安全门 + 注册的 0.5 recall。"""
+    """BC-v2 dedicated a12 gate = generic behaviour safety gate + the registered 0.5 recall."""
     gate = bc_aux_behavior_gate(
         metrics, require_teacher_recall=False)
     recall = metrics.get("recall_12") if isinstance(metrics, dict) else None
@@ -1313,10 +1313,10 @@ def _bc_v2_a12_gate_passes(metrics: dict) -> tuple[bool, dict]:
 
 
 def _recall12_from_model(model, X, labels, groups, masks) -> tuple[float, int]:
-    """recall 门(E2/D7 钉死):分母 = 现切分下 held-out 之实标 a12 态
-    （全部由可见 hp/belt 谓词产生的 on-manifold 执行态）；
-    度量 = held-out argmax 命中;fail-closed 承 v1 类召回先例
-    (train_bc 零覆盖记 0.0 不消失)。返回 (recall_12, 分母计数)。"""
+    """Recall gate (pinned by E2/D7): denominator = real-a12 states in held-out under the current split
+    (all on-manifold executed states produced by the visible hp/belt predicate);
+    measure = held-out argmax hits; fail-closed, following the v1 class-recall precedent
+    (train_bc zero coverage records 0.0 rather than vanishing). Returns (recall_12, denominator count)."""
     _, ho, _ = split_by_episode(groups)
     pred = _masked_bc_predictions(model, X[ho], masks[ho])
     true12 = labels[ho] == 12
@@ -1334,7 +1334,7 @@ def artifact_provenance_v2(
         manager_payload = manager_path.read_bytes()
     except OSError as exc:
         raise ValueError(
-            f"BC-v2 经理 npz 缺失/不可读:{manager_path}") from exc
+            f"BC-v2 manager npz missing/unreadable: {manager_path}") from exc
     return {
         "schema_version": _BC_V2_REPORT_SCHEMA_VERSION,
         "teacher_generation": TEACHER_GENERATION_V2,
@@ -1348,7 +1348,7 @@ def artifact_provenance_v2(
 
 
 def begin_output_attempt_v2(provenance: dict | None = None):
-    """v2 目录去旧防误吃(v1 同型;目录独立,规避 _previous 归档互斥)。"""
+    """Clear old v2 artifacts to prevent mistaken consumption (same as v1; separate directory avoids the _previous archive exclusivity)."""
     provenance = (
         artifact_provenance_v2(_PREVENTIVE_THRESHOLD_MAIN, NPZ)
         if provenance is None else provenance)
@@ -1365,8 +1365,8 @@ def begin_output_attempt_v2(provenance: dict | None = None):
         archive.mkdir(parents=True)
         for path in old:
             path.replace(archive / path.name)
-    # 上次进程若死在 report 提交前，pending 数据绝不能在下一次尝试中
-    # 留作貌似可用输入；canonical 三件套已经在上面统一归档。
+    # If the previous process died before committing the report, pending data must never survive into the next attempt
+    # as seemingly usable input; the canonical three-file set was already archived above.
     for residue in OUT_V2.glob(".*.tmp.npz"):
         residue.unlink(missing_ok=True)
     (OUT_V2 / "demos.pending.npz").unlink(missing_ok=True)
@@ -1386,13 +1386,13 @@ def _validate_bc_v2_report(p: pathlib.Path,
                            report_payload: bytes | None = None,
                            demos_payload: bytes | None = None,
                            expected_manager_sha256: str | None = None) -> dict:
-    """BC-v2 专用验证器(E2 schema 隔离,形制承 v1 验证器)。
+    """Dedicated BC-v2 validator (E2 schema isolation, shaped after the v1 validator).
 
-    键集合精确等断言 + 独立 schema 标识:对 v1 件必炸(键集合不等);
-    v1 验证器(train_ppo._validate_bc_report)对 v2 件亦必炸(键集合
-    精确等 + schema_version 非 int 双重不相容)——v1/v2 验证器互斥。
-    demos 实测字节断言(rev4 十二附二④ 补铸):demos.npz 字节 sha256 ≡
-    回执 demos_sha256,镜像 policy 侧真字节断言形制。
+    Exact key-set assertion + separate schema identifier: always blows up on v1 artifacts (key sets differ);
+    the v1 validator (train_ppo._validate_bc_report) also always blows up on v2 artifacts (exact key set
+    + non-int schema_version, doubly incompatible) -- the v1/v2 validators are mutually exclusive.
+    Measured demos-bytes assertion (added in rev4 addendum 12.2 (4)): sha256 of the demos.npz bytes ==
+    receipt demos_sha256, mirroring the real-bytes assertion on the policy side.
     """
     from eval_contract import EvalContractError, strict_json_loads
 
@@ -1412,51 +1412,51 @@ def _validate_bc_v2_report(p: pathlib.Path,
                          else report_payload)
         rec = strict_json_loads(frozen_report)
     except (OSError, EvalContractError) as exc:
-        raise ValueError(f"BC-v2 回执缺失/不可读: {report}") from exc
-    _fail(isinstance(rec, dict), f"BC-v2 回执必须是 JSON 对象: {report}")
+        raise ValueError(f"BC-v2 receipt missing/unreadable: {report}") from exc
+    _fail(isinstance(rec, dict), f"BC-v2 receipt must be a JSON object: {report}")
     _fail(set(rec) == set(_BC_V2_PASS_KEYS),
-          f"BC-v2 回执字段/schema 不匹配(v1/v2 件互斥): {report}")
+          f"BC-v2 receipt fields/schema mismatch (v1/v2 artifacts are mutually exclusive): {report}")
     _fail(rec["schema_version"] == _BC_V2_REPORT_SCHEMA_VERSION,
-          f"BC-v2 回执 schema 标识不符: {rec['schema_version']!r}")
+          f"BC-v2 receipt schema identifier mismatch: {rec['schema_version']!r}")
     _fail(rec["teacher_generation"] == TEACHER_GENERATION_V2,
-          f"BC-v2 回执 teacher_generation 必须为 2: {rec['teacher_generation']!r}")
+          f"BC-v2 receipt teacher_generation must be 2: {rec['teacher_generation']!r}")
     _fail(rec["preventive_threshold"] in _REGISTERED_PREVENTIVE_THRESHOLDS,
-          f"BC-v2 回执预防阈未注册: {rec['preventive_threshold']!r}")
+          f"BC-v2 receipt preventive threshold not registered: {rec['preventive_threshold']!r}")
     _fail(rec["data_gate"] == "PASS",
-          f"拒绝采信未过 data_gate 闸的 BC-v2 件: {rec['data_gate']!r}")
+          f"refusing to accept a BC-v2 artifact that did not pass the data_gate: {rec['data_gate']!r}")
     _fail(_plain_num(rec["held_out_top1"])
           and math.isfinite(float(rec["held_out_top1"]))
           and 0.95 <= float(rec["held_out_top1"]) <= 1.0,
-          f"BC-v2 held-out top1 门不满足: {rec['held_out_top1']!r}")
+          f"BC-v2 held-out top1 gate not met: {rec['held_out_top1']!r}")
     class_recalls = rec["class_recalls"]
     _fail(isinstance(class_recalls, dict) and class_recalls,
-          "BC-v2 class_recalls 必须是非空对象")
+          "BC-v2 class_recalls must be a non-empty object")
     for raw_action, raw_recall in class_recalls.items():
         try:
             action = int(raw_action)
         except (TypeError, ValueError) as exc:
             raise ValueError(
-                f"BC-v2 class_recalls 键必须是动作编号: {raw_action!r}"
+                f"BC-v2 class_recalls keys must be action numbers: {raw_action!r}"
             ) from exc
         _fail(str(action) == str(raw_action) and 0 <= action < 15,
-              f"BC-v2 class_recalls 键非法: {raw_action!r}")
+              f"BC-v2 class_recalls key invalid: {raw_action!r}")
         _fail(_plain_num(raw_recall)
               and math.isfinite(float(raw_recall))
               and 0.0 <= float(raw_recall) <= 1.0,
-              f"BC-v2 class_recalls[{raw_action!r}] 非法: {raw_recall!r}")
+              f"BC-v2 class_recalls[{raw_action!r}] invalid: {raw_recall!r}")
         if action != 12:
             _fail(float(raw_recall) >= 0.85,
-                  "BC-v2 非 a12 逐类召回门不满足:"
+                  "BC-v2 non-a12 per-class recall gate not met:"
                   f" action={action}, recall={raw_recall!r}")
     _fail(_plain_int(rec["n12"]) and rec["n12"] >= _N12_GATE_MIN,
-          f"BC-v2 n₁₂ 闸不满足(≥{_N12_GATE_MIN}): {rec['n12']!r}")
+          f"BC-v2 n₁₂ gate not met (>={_N12_GATE_MIN}): {rec['n12']!r}")
     _fail(_plain_num(rec["recall_12"])
           and _RECALL12_GATE_MIN <= float(rec["recall_12"]) <= 1.0,
-          f"BC-v2 recall 门不满足(≥{_RECALL12_GATE_MIN}): {rec['recall_12']!r}")
+          f"BC-v2 recall gate not met (>={_RECALL12_GATE_MIN}): {rec['recall_12']!r}")
     behavior = rec["a12_behavior"]
     _fail(isinstance(behavior, dict)
           and set(behavior) == set(_BC_AUX_BEHAVIOR_METRIC_KEYS),
-          f"BC-v2 a12_behavior 字段/schema 不匹配: {behavior!r}")
+          f"BC-v2 a12_behavior fields/schema mismatch: {behavior!r}")
     _fail(behavior["pairs"] == rec["held_out_pairs"]
           and behavior["true_a12"] + behavior["all_non_a12"]
           == behavior["pairs"]
@@ -1465,22 +1465,22 @@ def _validate_bc_v2_report(p: pathlib.Path,
           and behavior["fp"] + behavior["tn"] == behavior["non_a12"]
           and behavior["tp"] + behavior["fp"]
           == behavior["predicted_a12"],
-          "BC-v2 a12_behavior 计数/分母不闭合")
+          "BC-v2 a12_behavior counts/denominators do not close")
     recomputed_gate = bc_aux_behavior_gate(
         behavior, require_teacher_recall=False)
     _fail(rec["a12_behavior_gate"] == recomputed_gate,
-          "BC-v2 a12_behavior_gate 与行为读数/注册阈值不一致")
+          "BC-v2 a12_behavior_gate disagrees with the behaviour readings/registered thresholds")
     _fail(recomputed_gate["verdict"] == "PASS",
-          "BC-v2 a12 行为硬门未过:"
+          "BC-v2 a12 behaviour hard gate not passed: "
           f"{recomputed_gate['reasons']}")
     _fail(float(behavior["recall_12"]) >= _RECALL12_GATE_MIN,
-          f"BC-v2 a12 专用 recall 门不满足(≥{_RECALL12_GATE_MIN}):"
+          f"BC-v2 a12 dedicated recall gate not met (>={_RECALL12_GATE_MIN}):"
           f" {behavior['recall_12']!r}")
     _fail(isinstance(rec["held_out_episodes"], list)
           and _plain_int(rec["collection_episodes"])
           and rec["collection_episodes"]
           >= max(1, len(rec["held_out_episodes"])),
-          f"BC-v2 回执 collection_episodes 非法:"
+          f"BC-v2 receipt collection_episodes invalid: "
           f"{rec['collection_episodes']!r}")
     calibration = rec["a12_calibration"]
     calibration_keys = {
@@ -1493,10 +1493,10 @@ def _validate_bc_v2_report(p: pathlib.Path,
     }
     _fail(isinstance(calibration, dict)
           and set(calibration) == calibration_keys,
-          "BC-v2 a12_calibration 字段/schema 不匹配")
+          "BC-v2 a12_calibration fields/schema mismatch")
     _fail(calibration["schema_version"] == _A12_CALIBRATION_SCHEMA_VERSION
           and calibration["fit_scope"] == "nested-fit-episodes-only",
-          "BC-v2 a12_calibration 身份/拟合域不符")
+          "BC-v2 a12_calibration identity/fit domain mismatch")
     _fail(_plain_int(calibration["fit_pairs"])
           and _plain_int(calibration["validation_pairs_excluded"])
           and _plain_int(calibration["final_heldout_pairs_excluded"])
@@ -1507,10 +1507,10 @@ def _validate_bc_v2_report(p: pathlib.Path,
           + calibration["validation_pairs_excluded"]
           + calibration["final_heldout_pairs_excluded"]
           == rec["pairs"],
-          "BC-v2 a12_calibration 三域 pairs 切分不闭合")
+          "BC-v2 a12_calibration three-domain pairs split does not close")
     _fail(calibration["final_heldout_pairs_excluded"]
           == rec["held_out_pairs"],
-          "BC-v2 a12_calibration final-heldout pairs 与回执不一致")
+          "BC-v2 a12_calibration final-heldout pairs disagree with the receipt")
     _fail(_plain_int(calibration["fit_episodes"])
           and _plain_int(calibration["validation_episodes_excluded"])
           and _plain_int(calibration["final_heldout_episodes_excluded"])
@@ -1521,10 +1521,10 @@ def _validate_bc_v2_report(p: pathlib.Path,
           + calibration["validation_episodes_excluded"]
           + calibration["final_heldout_episodes_excluded"]
           == rec["collection_episodes"],
-          "BC-v2 a12_calibration 三域 episode 切分不闭合")
+          "BC-v2 a12_calibration three-domain episode split does not close")
     _fail(calibration["final_heldout_episodes_excluded"]
           == len(rec["held_out_episodes"]),
-          "BC-v2 a12_calibration final-heldout episodes 与回执不一致")
+          "BC-v2 a12_calibration final-heldout episodes disagree with the receipt")
     _fail(calibration["hp_low"] == _PREVENTIVE_HP_LOW
           and calibration["hp_high"] == rec["preventive_threshold"]
           and calibration["hp_feature"] == _A12_CALIBRATION_HP_FEATURE
@@ -1535,7 +1535,7 @@ def _validate_bc_v2_report(p: pathlib.Path,
           == _A12_CALIBRATION_TRAIN_RECALL_TARGET
           and _plain_num(calibration["bias_12"])
           and math.isfinite(float(calibration["bias_12"])),
-          "BC-v2 a12_calibration 参数未注册")
+          "BC-v2 a12_calibration parameters not registered")
     fit_metrics = calibration["fit_metrics"]
     metric_keys = {
         "tp", "fp", "precision_12", "recall_12", "fpr_12",
@@ -1579,92 +1579,92 @@ def _validate_bc_v2_report(p: pathlib.Path,
           and fit_metrics["legal_negative_probability_12_max"]
           <= _A12_LEGAL_NEGATIVE_PROBABILITY_MAX
           and fit_metrics["a13_spillover"] <= _A13_SPILLOVER_MAX,
-          "BC-v2 a12_calibration fit 安全读数不满足")
-    # 回执旧 recall 字段与新行为面必须同源，禁一个 PASS 一个 FAIL。
+          "BC-v2 a12_calibration fit safety readings not met")
+    # The old recall field of the receipt and the new behaviour surface must share a source; one PASS and one FAIL is forbidden.
     _fail(math.isclose(float(rec["recall_12"]),
                        round(float(behavior["recall_12"]), 4),
                        rel_tol=0, abs_tol=1e-12)
           and rec["recall_12_denominator"] == behavior["true_a12"],
-          "BC-v2 recall 旧字段与 a12_behavior 不一致")
+          "BC-v2 old recall field disagrees with a12_behavior")
     if "12" in class_recalls:
         _fail(math.isclose(
                   float(class_recalls["12"]),
                   float(behavior["recall_12"]),
                   rel_tol=0.0, abs_tol=1e-15),
-              "BC-v2 class_recalls[12] 与专用行为 recall 不一致")
-    # 方案甲回执新字段断言(2026-07-19 亲批)
+              "BC-v2 class_recalls[12] disagrees with the dedicated behaviour recall")
+    # Plan A new receipt field assertions (approved 2026-07-19)
     _fail(isinstance(rec["held_out_episodes"], list)
           and _plain_int(rec["collection_episodes"])
           and rec["collection_episodes"] >= max(1, len(rec["held_out_episodes"])),
-          f"BC-v2 回执 collection_episodes 非法: {rec['collection_episodes']!r}")
+          f"BC-v2 receipt collection_episodes invalid: {rec['collection_episodes']!r}")
     class_weights = rec["class_weights"]
     _fail(isinstance(class_weights, dict) and len(class_weights) > 0,
-          f"BC-v2 回执 class_weights 必须是非空对象: {report}")
+          f"BC-v2 receipt class_weights must be a non-empty object: {report}")
     for raw_class, raw_weight in class_weights.items():
         try:
             class_id = int(raw_class)
         except (TypeError, ValueError) as exc:
             raise ValueError(
-                f"BC-v2 回执 class_weights 键必须是动作编号: {raw_class!r}"
+                f"BC-v2 receipt class_weights keys must be action numbers: {raw_class!r}"
             ) from exc
         _fail(str(class_id) == str(raw_class) and 0 <= class_id < 15,
-              f"BC-v2 回执 class_weights 键非法: {raw_class!r}")
+              f"BC-v2 receipt class_weights key invalid: {raw_class!r}")
         _fail(_plain_num(raw_weight) and raw_weight > 0,
-              f"BC-v2 回执 class_weights[{raw_class!r}] 非法: {raw_weight!r}")
+              f"BC-v2 receipt class_weights[{raw_class!r}] invalid: {raw_weight!r}")
     _fail(rec["protocol_version"] == PROTOCOL_VERSION,
-          f"BC-v2 回执协议过期: {rec['protocol_version']!r}")
+          f"BC-v2 receipt protocol outdated: {rec['protocol_version']!r}")
     expected_impl = (expected_implementation_sha256
                      if expected_implementation_sha256 is not None
                      else _implementation_bundle_sha256())
     _fail(rec["implementation_sha256"] == expected_impl,
-          "BC-v2 回执的实现/引擎/游戏内容身份与当前运行时不一致")
+          "BC-v2 receipt implementation/engine/game-content identity disagrees with the current runtime")
     generator_sha = hashlib.sha256(
         pathlib.Path(__file__).read_bytes()).hexdigest()
     _fail(rec["generator_sha256"] == generator_sha,
-          "BC-v2 回执生成器已漂移: train/bc_worker.py")
+          "BC-v2 receipt generator has drifted: train/bc_worker.py")
     _validate_bc_final_holdout_marker(
         p.parent, TEACHER_GENERATION_V2, DEMO_SEEDS_V2, rec)
     manager_sha = rec["manager_npz_sha256"]
     _fail(isinstance(manager_sha, str) and len(manager_sha) == 64
           and all(ch in "0123456789abcdef" for ch in manager_sha),
-          f"BC-v2 回执 manager_npz_sha256 非法: {manager_sha!r}")
+          f"BC-v2 receipt manager_npz_sha256 invalid: {manager_sha!r}")
     if expected_manager_sha256 is not None:
         _fail(isinstance(expected_manager_sha256, str)
               and len(expected_manager_sha256) == 64
               and all(ch in "0123456789abcdef"
                       for ch in expected_manager_sha256),
-              "BC-v2 预期 manager SHA 非法")
+              "BC-v2 expected manager SHA invalid")
         _fail(manager_sha == expected_manager_sha256,
-              "BC-v2 回执经理身份与训练经理不一致:"
+              "BC-v2 receipt manager identity disagrees with the training manager: "
               f"{manager_sha} != {expected_manager_sha256}")
     expected_sha = rec["policy_sha256"]
     _fail(isinstance(expected_sha, str) and len(expected_sha) == 64,
-          f"BC-v2 回执缺少 policy_sha256 绑定: {report}")
+          f"BC-v2 receipt is missing its policy_sha256 binding: {report}")
     try:
         frozen_policy = (p.read_bytes() if policy_payload is None
                          else policy_payload)
     except OSError as exc:
-        raise ValueError(f"BC-v2 权重缺失/不可读: {p}") from exc
+        raise ValueError(f"BC-v2 weights missing/unreadable: {p}") from exc
     _fail(hashlib.sha256(frozen_policy).hexdigest() == expected_sha,
-          "BC-v2 权重与回执 SHA 不匹配")
+          "BC-v2 weights SHA does not match the receipt")
     _fail(isinstance(rec["demos_sha256"], str) and len(rec["demos_sha256"]) == 64,
-          f"BC-v2 回执缺少 demos_sha256 绑定: {report}")
+          f"BC-v2 receipt is missing its demos_sha256 binding: {report}")
     demos = p.with_name("demos.npz")
     try:
         frozen_demos = (demos.read_bytes() if demos_payload is None
                         else demos_payload)
     except OSError as exc:
-        raise ValueError(f"BC-v2 demos 缺失/不可读: {demos}") from exc
+        raise ValueError(f"BC-v2 demos missing/unreadable: {demos}") from exc
     _fail(hashlib.sha256(frozen_demos).hexdigest() == rec["demos_sha256"],
-          "BC-v2 demos 与回执 SHA 不匹配")
+          "BC-v2 demos SHA does not match the receipt")
     return rec
 
 
 def main_v2(preventive_threshold: float = _PREVENTIVE_THRESHOLD_MAIN,
             manager_npz: str | pathlib.Path = NPZ):
     if preventive_threshold not in _REGISTERED_PREVENTIVE_THRESHOLDS:
-        raise ValueError(f"预防阈 {preventive_threshold!r} 未注册"
-                         "(rev13 仅 0.65 主案；0.70 无独立 fresh pool)")
+        raise ValueError(f"preventive threshold {preventive_threshold!r} not registered"
+                         " (rev13 only the 0.65 main case; 0.70 has no independent fresh pool)")
     manager_path = pathlib.Path(manager_npz)
     provenance = artifact_provenance_v2(
         preventive_threshold, manager_path)
@@ -1691,7 +1691,7 @@ def main_v2(preventive_threshold: float = _PREVENTIVE_THRESHOLD_MAIN,
     post_drink_coverage = _bc_v2_post_drink_coverage(
         X, labels, groups, masks, scopes=("fit", "validation"))
     print(
-        "v2 可见后饮 hard-negative 预选域覆盖 "
+        "v2 visible post-drink hard-negative pre-selection domain coverage "
         f"{post_drink_coverage}",
         flush=True,
     )
@@ -1701,23 +1701,23 @@ def main_v2(preventive_threshold: float = _PREVENTIVE_THRESHOLD_MAIN,
         destination=pending_demos)
     tr, ho, holdout_episodes = split_by_episode(groups)
     fit, _, _ = _split_fit_validation_by_episode(groups)
-    # 方案甲 b(2026-07-19 亲批):v2 主训即类平衡加权 CE——权重自训练切分
-    # 标签计数确定性导出(w_c = N/(K·n_c),类集 = 实际出现类);v1 主训
-    # 调用 train_bc(X, Y, groups) 不传权,零触碰。类别权重只读 fit，避免
-    # validation/final-held-out 标签反向塑造候选。
+    # Plan A (b) (approved 2026-07-19): v2 primary training is class-balanced weighted CE -- weights derived
+    # deterministically from label counts of the training split (w_c = N/(K·n_c), class set = classes actually present); the v1 primary
+    # training call train_bc(X, Y, groups) passes no weights, untouched. Class weights read fit only, so
+    # validation/final-held-out labels cannot shape the candidate in reverse.
     class_weights_v2 = _balanced_class_weights(labels[fit])
-    # train_bc 只把 fit/validation 送入梯度或候选读数；整池采集本身已由
-    # pre-collection marker 永久登记。
+    # train_bc sends only fit/validation into the gradient or candidate readings; whole-pool collection itself is already
+    # permanently registered by the pre-collection marker.
     model, top1, recalls = train_bc(
         X, labels, groups, class_weights=class_weights_v2,
         masks=masks, reserve_a12_path=True)
     retrained = False
     if not _bc_v2_quality_gate_passes(top1, recalls):
-        # v1 同款唯一重试,触发条件限 v1 面质量闸(top1/≥300 类召回)——
-        # n₁₂/recall_12 永不触发类加权重训:类加权系 N12 已除名预案,
-        # 须另行亲批(PREREG-内容案 D2-5/D5 P-N12/D7)。
-        print(f"v2 首训 validation 未达标(top1 {top1:.3f} 召回 {recalls})"
-              "→ 类加权重训(唯一重试;n₁₂/recall_12 永不触发此重试)",
+        # The same single retry as v1, triggered only by the v1-surface quality gate (top1/>=300-class recall) --
+        # n₁₂/recall_12 never trigger class-weighted retraining: class weighting as an N12 remedy was struck from the plan
+        # and would need a separate approval (PREREG-v33-content-case D2-5/D5 P-N12/D7).
+        print(f"v2 first training missed validation targets (top1 {top1:.3f} recall {recalls})"
+              " -> class-weighted retraining (the single retry; n₁₂/recall_12 never trigger this retry)",
               flush=True)
         counts = np.bincount(labels[fit], minlength=15).astype(np.float64)
         weights = np.where(counts > 0, counts.sum() / np.maximum(counts, 1), 0.0)
@@ -1741,11 +1741,11 @@ def main_v2(preventive_threshold: float = _PREVENTIVE_THRESHOLD_MAIN,
         })
         raise RuntimeError(
             f"BC-v2 candidate validation FAIL(top1={top1:.3f}, "
-            f"recalls={recalls});final held-out 未进入候选指标，"
-            "但整池已一次性消费，拒绝发布/同池重试")
-    # 类平衡 CE 对 0.04% 稀有类只改善 recall、没有误报约束。最终导出前
-    # 用训练 episode + 真实 masks 校准网络内 a12 通路，再对最终六张量
-    # 重新计算 held-out top1/recalls，禁止沿用校准前读数。
+            f"recalls={recalls}); final held-out did not enter the candidate metrics, "
+            "but the whole pool was consumed once; refusing to release/retry on the same pool")
+    # Class-balanced CE only improves recall on the 0.04% rare class, with no false-positive constraint. Before the final export,
+    # calibrate the in-network a12 pathway with training episodes + real masks, then recompute held-out top1/recalls
+    # on the final six tensors; reusing pre-calibration readings is forbidden.
     try:
         a12_calibration = _calibrate_a12_policy(
             model, X, labels, groups, masks, preventive_threshold)
@@ -1763,9 +1763,9 @@ def main_v2(preventive_threshold: float = _PREVENTIVE_THRESHOLD_MAIN,
             **provenance,
         })
         raise
-    # 校准会直接改最终导出的 action head；它不是只读后处理。最终候选须
-    # 用同一 nested validation 和采集时真实 masks 再过一次选择门，未过
-    # 时 final-heldout 仍保持零读取。
+    # Calibration directly changes the final exported action head; it is not read-only post-processing. The final candidate must
+    # pass the selection gate again with the same nested validation and the real collection masks; if it fails,
+    # final-heldout still stays unread.
     outer_train, _, _ = split_by_episode(groups)
     _, validation, _ = _split_fit_validation_by_episode(groups)
     validation_top1, validation_recalls = _score_bc_model_indices(
@@ -1794,13 +1794,13 @@ def main_v2(preventive_threshold: float = _PREVENTIVE_THRESHOLD_MAIN,
         raise RuntimeError(
             "BC-v2 post-calibration validation FAIL"
             f"(top1={validation_top1:.3f}, recalls={validation_recalls});"
-            "final held-out 未进入候选指标，但整池已一次性消费，"
-            "拒绝发布/同池重试")
-    # 从此点开始 final split 才进入候选模型的评分/行为统计路径。
+            "final held-out did not enter the candidate metrics, but the whole pool was consumed once; "
+            "refusing to release/retry on the same pool")
+    # Only from this point does the final split enter the candidate model's scoring/behaviour statistics path.
     final_post_drink_coverage = _bc_v2_post_drink_coverage(
         X, labels, groups, masks, scopes=("final",))
     print(
-        "v2 可见后饮 hard-negative final 域覆盖 "
+        "v2 visible post-drink hard-negative final domain coverage "
         f"{final_post_drink_coverage}",
         flush=True,
     )
@@ -1829,8 +1829,8 @@ def main_v2(preventive_threshold: float = _PREVENTIVE_THRESHOLD_MAIN,
         "a12_behavior_gate": a12_behavior_gate,
         "a12_calibration": a12_calibration,
         "n12_gate_min": _N12_GATE_MIN,
-        # 方案甲回执新字段(2026-07-19 亲批):实测采集局数(×3 纪律已由
-        # collect_v2 断言钉死)+ 主训类平衡权重逐类摘要(仅实际出现类)。
+        # Plan A new receipt fields (approved 2026-07-19): measured collection episodes (the x3 discipline is already
+        # pinned by a collect_v2 assertion) + per-class summary of the primary-training class-balanced weights (classes actually present only).
         "collection_episodes": int(np.unique(groups).size),
         "class_weights": {str(int(c)): round(float(class_weights_v2[c]), 6)
                           for c in np.flatnonzero(class_weights_v2 > 0)},
@@ -1841,49 +1841,49 @@ def main_v2(preventive_threshold: float = _PREVENTIVE_THRESHOLD_MAIN,
         pending_demos.unlink(missing_ok=True)
         write_report_v2(report)
         raise RuntimeError(
-            f"BC-v2 数据闸 FAIL(top1={top1:.3f}, n12={readings['n12']}, "
+            f"BC-v2 data gate FAIL (top1={top1:.3f}, n12={readings['n12']}, "
             f"recall_12={recall_12},"
             f" behavior={a12_behavior_gate['reasons']});"
-            "拒绝覆写 policy_sd.pt。旧 0.70 OC 与主案共用 final pool，"
-            "rev13 已禁用；若 n₁₂ 不足须先注册独立 fresh pool，"
-            "不得同池重采")
+            "refusing to overwrite policy_sd.pt. The old 0.70 OC shared the final pool with the main case, "
+            "and rev13 disabled it; if n₁₂ is insufficient, register an independent fresh pool first; "
+            "never re-collect on the same pool")
     policy_tmp = OUT_V2 / "policy_sd.tmp.pt"
     if artifact_provenance_v2(
             preventive_threshold, manager_path) != provenance:
-        raise RuntimeError("BC-v2 运行期间实现/引擎/内容/经理发生漂移")
+        raise RuntimeError("implementation/engine/content/manager drifted while BC-v2 was running")
     torch.save(export_sb3_sd(model), policy_tmp)
     policy_tmp.replace(OUT_V2 / "policy_sd.pt")
     report["policy_sha256"] = hashlib.sha256(
         (OUT_V2 / "policy_sd.pt").read_bytes()).hexdigest()
     report["demos_sha256"] = hashlib.sha256(
         pending_demos.read_bytes()).hexdigest()
-    # report 是 bundle 的最后提交标记：policy/demos 即使先发布后进程崩溃，
-    # sibling 仍为 RUNNING，训练消费者会 fail-closed。只有三件字节与回执
-    # 哈希全部就位后，PASS report 才原子替换。
+    # The report is the bundle's final commit marker: even if policy/demos were published and the process then crashed,
+    # the sibling is still RUNNING and training consumers fail closed. Only after the bytes of all three files and the receipt
+    # hashes are in place is the PASS report atomically replaced.
     pending_demos.replace(OUT_V2 / "demos.npz")
     write_report_v2(report)
     print(f"v2 held-out top-1 {top1:.3f} n12 {readings['n12']} "
-          f"recall_12 {recall_12} retry={retrained} → 数据闸 PASS;"
-          f"已存 {OUT_V2}/policy_sd.pt", flush=True)
+          f"recall_12 {recall_12} retry={retrained} -> data gate PASS; "
+          f"saved {OUT_V2}/policy_sd.pt", flush=True)
 
 
 if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(
-        description="BC worker 采集/训练(默认 v1 面原样;--v2 系 E2 乙1′ 件)")
+        description="BC worker collection/training (default: v1 surface unchanged; --v2 is the E2 B1′ path)")
     parser.add_argument("--v2", action="store_true",
-                        help="教师 v2 采集+训练 → runs/bc-worker-v2/"
-                             "(PREREG-内容案 E2)")
+                        help="teacher v2 collection + training -> runs/bc-worker-v2/"
+                             " (PREREG-v33-content-case E2)")
     parser.add_argument("--preventive-threshold", type=float, default=None,
                         choices=_REGISTERED_PREVENTIVE_THRESHOLDS,
-                        help="v2 预防阈:rev13 仅允许 0.65 主案"
-                             "(仅与 --v2 同用)")
+                        help="v2 preventive threshold: rev13 only allows the 0.65 main case"
+                             " (only with --v2)")
     parser.add_argument(
         "--manager-npz", default=None,
-        help="BC-v2 采集所用经理 policy.npz；缺省仍为 canonical v22 H。"
-             "所选经理字节 SHA 会同时写入 demos/report，训练消费者必须与"
-             "实际 --manager-npz 对账（仅与 --v2 同用）")
+        help="manager policy.npz used for BC-v2 collection; defaults to the canonical v22 H. "
+             "The SHA of the selected manager bytes is written to demos/report, and training consumers must reconcile it with"
+             " the actual --manager-npz (only with --v2)")
     cli = parser.parse_args()
     if cli.v2:
         threshold = (cli.preventive_threshold
@@ -1891,12 +1891,12 @@ if __name__ == "__main__":
                      else _PREVENTIVE_THRESHOLD_MAIN)
         manager = pathlib.Path(cli.manager_npz) if cli.manager_npz else NPZ
         OUT_V2.mkdir(parents=True, exist_ok=True)
-        with exclusive_lock(OUT_V2 / ".bc.lock", "BC worker v2 产物"):
+        with exclusive_lock(OUT_V2 / ".bc.lock", "BC worker v2 artifacts"):
             main_v2(threshold, manager)
     else:
         if cli.preventive_threshold is not None:
-            parser.error("--preventive-threshold 仅与 --v2 同用(v1 面一字不动)")
+            parser.error("--preventive-threshold only with --v2 (v1 surface unchanged)")
         if cli.manager_npz is not None:
-            parser.error("--manager-npz 仅与 --v2 同用(v1 面一字不动)")
-        with exclusive_lock(OUT / ".bc.lock", "BC worker 产物"):
+            parser.error("--manager-npz only with --v2 (v1 surface unchanged)")
+        with exclusive_lock(OUT / ".bc.lock", "BC worker artifacts"):
             main()

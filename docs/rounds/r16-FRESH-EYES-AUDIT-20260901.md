@@ -1,148 +1,291 @@
-# AlphaDiablo 七路审计合成裁定书(2026-09-01)
+# AlphaDiablo: synthesis of seven audits (2026-09-01)
 
-## 一、去重合并结果
+## 1. Deduplicated and merged results
 
-七路报告共提出 38 条候选致因,合并为 12 个独立致因簇(编号 C1–C12)。合并原则:同一机制、同一代码位点、同一数据源者并为一簇;仅"镜头"不同者不拆分。
+The seven reports raised 38 candidate causes in total, merged into 12 independent cause clusters (C1-C12).
+Merging rule: the same mechanism, the same code location or the same data source form one cluster; items
+that differ only in "lens" are not split.
 
-| 簇 | 合并自 | 一句话 |
+| Cluster | Merged from | In one sentence |
 |---|---|---|
-| C1 战备表 L2 门规格不可能 | 审1-3/4、审2-1、审4-1、审6-1 | HP90⇔clvl4⇔8040 XP > L1 全清 XP 池;AC15 需 +8 掉落彩票 |
-| C2 清场逃生口是死代码 | 审3-5、审4-2 | raw['monsters'] 只含活怪,alive/total≡1,且 4 个 golem 槽永远 hp>0 |
-| C3 考卷/部署 argmax 与训练采样脱节 | 审3-3/4、审5-6、审7-1、审3(时钟继承) | 撞墙环、假 140 榨干、DIVE 极限环,kills 减半、DIVE 成功率 60%→10% |
-| C4 死亡剥装测量伪影 | 审1(排除项)、审2-2、审4-4、审5-2、审6-2、审7-2 | 死亡行 AC=4/dmg=1/gold=50 是尸检值,"零装备成长/金币无处花"失真 |
-| C5 a10 探索宏 radius-12 边疆饱和 | 审1-1、审4-3、审6-5;**与审3 排除项冲突** | 局部 BFS 无候选→wait→假榨干;可达花名册仅 40-65% |
-| C6 时钟三件套:3000 拍局长 / FARM_SCENE_CAP=1800 / 进展定义太便宜 | 审1-2、审3-1/2、审6-4 | 3000 拍物理上限≈clvl2;cap 在清场 31% 时赶人下楼;踱步即"进展" |
-| C7 血量经济零定价 + a12 掩码 + a13 无先验 + 深度乘数符号错误 | 审5-1/5、审7-5、审4(排除项反证) | 死亡 100% 在 belt=0,地面有药不捡;L2 每杀失血 2.4-5×,工资只 +25% |
-| C8 终局记账反向:timeout≡death、反躺平半价、腿内死亡率单调上升 | 审3-7、审5-3/4、审7-3 | 幸存溢价为零;专打 L1 磨等级轨迹 |
-| C9 装备通道:掉落率、耐久、无商店/不捡金、E1 比价 | 审2-3/4/5、审4-5、审6-3 | AC 维度是彩票且瞬态;金币恒 100 从未拾取 |
-| C10 接近塑形低于噪声底 | 审7-4 | a1-a8 ≈均匀噪声,走位从未学到;C3 撞墙环的根 |
-| C11 协议统计病:死亡截尾、37 个致死种子、门 B 锚反生存 | 审6-6/7/8 | 局末均值是删失量 |
-| C12 爆炸桶封死出生口袋 | 审3-6 | 1/128 种子,必死 |
+| C1 the L2 gate of the readiness table is impossible by specification | audit 1-3/4, audit 2-1, audit 4-1, audit 6-1 | HP90 ⇔ clvl4 ⇔ 8040 XP > the XP pool of a full L1 clear; AC15 needs a +8 drop lottery |
+| C2 the clear-the-level escape hatch is dead code | audit 3-5, audit 4-2 | raw['monsters'] contains only live monsters, alive/total≡1, and 4 golem slots always have hp>0 |
+| C3 argmax in exams / deployment is disconnected from training sampling | audit 3-3/4, audit 5-6, audit 7-1, audit 3 (clock inheritance) | wall-bump loops, fake 140 exhaustion, DIVE limit cycles; kills halved, DIVE success 60%→10% |
+| C4 measurement artefact from death stripping gear | audit 1 (exclusion item), audit 2-2, audit 4-4, audit 5-2, audit 6-2, audit 7-2 | the death rows' AC=4/dmg=1/gold=50 are post-mortem values; "zero gear growth / gold with nowhere to spend" is distorted |
+| C5 frontier saturation of the a10 exploration macro at radius 12 | audit 1-1, audit 4-3, audit 6-5; **conflicts with an exclusion item of audit 3** | local BFS finds no candidate → wait → fake exhaustion; the reachable roster is only 40-65% |
+| C6 the clock trio: 3000-step episode / FARM_SCENE_CAP=1800 / a definition of progress that is too cheap | audit 1-2, audit 3-1/2, audit 6-4 | 3000 steps physically cap at ≈clvl2; the cap chases the worker downstairs at 31% cleared; pacing counts as "progress" |
+| C7 HP economy priced at zero + a12 mask + no prior for a13 + wrong sign of the depth multiplier | audit 5-1/5, audit 7-5, audit 4 (counter-evidence of an exclusion item) | 100% of deaths at belt=0 with potions on the floor not picked up; on L2 each kill costs 2.4-5× the HP, while the wage is only +25% |
+| C8 end-of-episode accounting runs backwards: timeout≡death, anti-idling at half pay, the in-leg death rate rises monotonically | audit 3-7, audit 5-3/4, audit 7-3 | zero survival premium; trajectories that grind levels on L1 are punished |
+| C9 the gear channel: drop rates, durability, no shops / no gold pick-up, E1 price ratio | audit 2-3/4/5, audit 4-5, audit 6-3 | the AC dimension is a lottery and transient; gold is always 100 and never picked up |
+| C10 approach shaping is below the noise floor | audit 7-4 | a1-a8 ≈ uniform noise, movement never learned; the root of C3's wall-bump loops |
+| C11 statistical diseases of the protocol: death censoring, 37 lethal seeds, the gate B anchor works against survival | audit 6-6/7/8 | end-of-episode means are censored quantities |
+| C12 an explosive barrel seals the spawn pocket | audit 3-6 | 1/128 seeds, certain death |
 
 ---
 
-## 二、Top 8 排序(证据强度 × 若成立影响 × 验证代价)
+## 2. Top 8 ranking (strength of evidence × impact if true × cost of verification)
 
-### 第 1 位 · C1 战备表第一阶门槛按构造不可达
-- **最强证据**:`worker_env.py:148-154` L2 行 = (clvl3, HP90, AC15, dmg8),取四比值 min;战士 HP = 70 + 8×(clvl−1)(attributes.tsv adjLife18/lvlLife2/chrLife2 + `diablogym.cpp:2069-2079` 3体:2力),实测 clvl3→86、clvl4→94,故 **HP≥90 ⇔ clvl≥4 ⇔ 8040 XP**;而 L1 全清 XP 池(含等级差折扣 `player.cpp:2437`)四路独立实测 5875–9124,半数种子清光整层也到不了 clvl4。AC:出生 7(dex20/5+Buckler3),mlvl≤2 可掉护甲仅 Cap/Cape/Rags/Cloak/Buckler,护甲掉率≈1.65%/杀。四审计独立得出同一结论,`readiness_power_ratio(raw,2)` 在注入 8040 XP 后仍 0.467(AC 短板)。附:按表口径出生角色对 L1 的比值也只有 0.58——表本身口径错位。
-- **影响**:决定性。escrow 全拒(vested=0/denied=15459)是常数,与工人能力零相关;R15 整层"成长引擎"根因的判据无效。
-- **判别探针(≤5 分钟)**:`python -c 'from diablogym.worker_env import readiness_power_ratio as f; print(f({"char_level":3,"max_hp":86,"armor_class":15,"item_max_damage":8,"damage_mod":0},2))'` → 预期 0.956<1;改 max_hp=94 → 1.0。配合 farm12000.json 中 122–128 杀 <8040 XP 两行闭合。
-- **对策方向**:门槛按引擎算术反推——L2 行降为 (clvl2, HP78, AC9, dmg6) 一类 3000 拍可达值,或改为"可得 XP 比例 + 存活"门;删除 HP 列与 clvl 列的冗余(HP 从 L4 起系统性压过 clvl)。
+### 1 · C1: the first rung of the readiness table is unreachable by construction
+- **Strongest evidence**: at `worker_env.py:148-154` the L2 row = (clvl3, HP90, AC15, dmg8), taking the min of
+  four ratios; warrior HP = 70 + 8×(clvl−1) (attributes.tsv adjLife18/lvlLife2/chrLife2 +
+  `diablogym.cpp:2069-2079` 3 vitality : 2 strength), measured clvl3→86, clvl4→94, so **HP≥90 ⇔ clvl≥4 ⇔
+  8040 XP**; while the XP pool of a full L1 clear (including the level-difference discount at
+  `player.cpp:2437`) measured 5875-9124 in four independent runs, and on half the seeds even clearing the
+  whole level does not reach clvl4. AC: 7 at spawn (dex20/5 + Buckler 3); at mlvl≤2 the only armour drops
+  are Cap/Cape/Rags/Cloak/Buckler, at an armour drop rate of ≈1.65% per kill. Four audits reached the same
+  conclusion independently: `readiness_power_ratio(raw,2)` is still 0.467 after injecting 8040 XP (AC is the
+  weak link). Also: by the table's own definition a freshly spawned character scores only 0.58 on L1; the
+  table itself is mis-scaled.
+- **Impact**: decisive. Escrow refusing everything (vested=0/denied=15459) is a constant, with zero
+  correlation to worker ability; the criterion behind R15's "growth engine" root cause is invalid.
+- **Discriminating probe (≤5 minutes)**: `python -c 'from diablogym.worker_env import readiness_power_ratio
+  as f; print(f({"char_level":3,"max_hp":86,"armor_class":15,"item_max_damage":8,"damage_mod":0},2))'` →
+  expected 0.956<1; with max_hp=94 → 1.0. Together with the two rows in farm12000.json where 122-128 kills
+  give <8040 XP, this closes the case.
+- **Direction of the fix**: work the thresholds back from engine arithmetic: lower the L2 row to values such
+  as (clvl2, HP78, AC9, dmg6) that are reachable within 3000 steps, or switch to a "share of available XP +
+  survival" gate; remove the redundancy between the HP and clvl columns (from L4 on HP systematically
+  dominates clvl).
 
-### 第 2 位 · C2 清场逃生口是死代码,榨干掩码成唯一下楼通道
-- **最强证据**:`worker_env.py:133-144` 注释假设死怪保留 hp≤0,实测 reset 107 只→probe_kill 90 只后 len=17、alive=17、dead_listed=0(`diablogym.cpp:1362-1370` 导出时 `hasNoLife()` 即 continue);另 4 个 golem 占位槽(mlvl12/xp0/不可见)恒 hp>0。两体制 408+182 个窗口末 alive==roster 零例外;225 个 DIVE 窗 cleared=0、forced_dive=100%。
-- **影响**:高。readiness-v2 的"25% 逃生口"从未打开,"白嫖榨干旗"不是投机而是唯一合法通道;任何以 raw 花名册占比做闸/工资条件的课程都会静默失效。
-- **判别探针(2 分钟)**:reset→逐只 probe_kill_monster→step(20)→打印 `len(monsters)`, `sum(hp>0)`, `readiness_floor_cleared(raw)`。
-- **对策方向**:清场比 = `monster_kill_total / (monster_kill_total + alive − golem)`,局初记录基数;经理观测同步换口径。
+### 2 · C2: the clear-the-level escape hatch is dead code, so the exhaustion mask is the only way down
+- **Strongest evidence**: the comment at `worker_env.py:133-144` assumes dead monsters stay with hp≤0, but
+  measured: reset with 107 monsters → probe_kill of 90 → len=17, alive=17, dead_listed=0
+  (`diablogym.cpp:1362-1370` continues past `hasNoLife()` at export); in addition, 4 golem placeholder slots
+  (mlvl12 / xp0 / invisible) always have hp>0. Across the two regimes, 408+182 window ends had
+  alive==roster without exception; 225 DIVE windows had cleared=0 and forced_dive=100%.
+- **Impact**: high. The "25% escape hatch" of readiness-v2 never opened, and "free-riding the exhaustion
+  flag" was not opportunism but the only legal way down; any curriculum that uses the raw roster share as a
+  gate or a wage condition will fail silently.
+- **Discriminating probe (2 minutes)**: reset → probe_kill_monster one by one → step(20) → print
+  `len(monsters)`, `sum(hp>0)`, `readiness_floor_cleared(raw)`.
+- **Direction of the fix**: cleared share = `monster_kill_total / (monster_kill_total + alive − golem)`, with
+  the base recorded at the start of the episode; switch the manager observation to the same definition.
 
-### 第 3 位 · C3 考卷/部署 argmax 与训练采样体制脱节
-- **最强证据**:`eval_assembled.py:1600` 与 `probe_r15_deployment.py` 均 `deterministic=True`;训练熵 0.96–1.07 nat、top-1 仅 0.51–0.65。同 zip 同种子:argmax kills 23.6–30.5 vs 采样 39.3–51.0(×1.6–2.2),DIVE descend 10% vs 60%(后者与训练 r13_dive_audit 636/1083 一致),a2/a4/a8 撞墙占 45–50% 决策且 73–91% 无位移,fuse 收窗 52% vs 0.9%;13/32 种子在 L1 烧掉≥500 拍(占总预算 26%)。附带机制:DIVE stall 后 layer_clock 不在 `_win_begin` 清零(`options_env.py:750-801`),下一 FARM 窗 1 个决策即再榨干(16/49)。
-- **影响**:高(评测层)。"3000 拍成长天花板 clvl 1.5–1.7"、"无法下潜"的读数有一半是解码伪影;三份审计一致;对训练本身影响小(2.6%)。
-- **判别探针(≤10 分钟)**:probe_r15_deployment.py 复制一份改 `deterministic=False`(np 定种,`torch.set_num_threads(1)`),32 配对种子对照 kills/clvl/depth/DIVE reason 谱。
-- **对策方向**:考卷与训练同体制(采样或低温);`_win_begin` 清零 layer_clock;fuse 恢复动作改为"换动作"而非重复同一宏。
+### 3 · C3: argmax in exams / deployment is disconnected from the training sampling regime
+- **Strongest evidence**: `eval_assembled.py:1600` and `probe_r15_deployment.py` both use
+  `deterministic=True`; training entropy 0.96-1.07 nat, top-1 only 0.51-0.65. Same zip, same seeds: argmax
+  kills 23.6-30.5 vs sampled 39.3-51.0 (×1.6-2.2), DIVE descend 10% vs 60% (the latter matches the training
+  r13_dive_audit 636/1083), a2/a4/a8 wall bumps take 45-50% of decisions with no movement in 73-91% of
+  them, fuse window closures 52% vs 0.9%; 13/32 seeds burn ≥500 steps on L1 (26% of the total budget).
+  Side mechanism: after a DIVE stall, layer_clock is not reset in `_win_begin` (`options_env.py:750-801`),
+  so the next FARM window is exhausted again after a single decision (16/49).
+- **Impact**: high (at the evaluation layer). Half of the readings "3000-step growth ceiling clvl
+  1.5-1.7" and "cannot dive" are decoding artefacts; three audits agree; small effect on training itself
+  (2.6%).
+- **Discriminating probe (≤10 minutes)**: copy probe_r15_deployment.py with `deterministic=False` (np
+  seeded, `torch.set_num_threads(1)`), compare kills/clvl/depth/the spectrum of DIVE reasons on 32 paired
+  seeds.
+- **Direction of the fix**: exams in the same regime as training (sampling or low temperature); reset
+  layer_clock in `_win_begin`; make the fuse recovery action "switch action" instead of repeating the same
+  macro.
 
-### 第 4 位 · C4 死亡剥装伪影污染"决定性数据"
-- **最强证据**:`player.cpp:2691-2694` 单机被怪杀死 dropItems=true→InvBody 逐件 DeadItem、DropHalfPlayersGold。四份 deploy JSON:died ⇔ (AC=4 ∧ dmg=1 ∧ gold=50) 315/315 零例外;幸存者 AC 均 8.6–8.8(≥9 占 30–43%,最高 17)、dmg 6.3–7.0、gold 恒 100;长视野 8 局 AC 5.9 = 4 具尸体 AC4 与生者 7/7/7/10 的混合。六路审计一致。
-- **影响**:诊断层面决定性。"几乎零装备成长"约半数是伪影;"金币 60-80 无处花"实为从未拾取(无拾金动作)。战备门读活体 raw 不受影响。
-- **判别探针(1 分钟)**:对 r15-deploy3-*.json 按 died 分层重算 AC/hit_damage/gold;或探针改为记录 dead 翻转前一拍。
-- **对策方向**:所有局末指标改在死亡前一拍采样;报告按 died 分层 + 每千拍归一化。
+### 4 · C4: the death-stripping artefact contaminates the "decisive data"
+- **Strongest evidence**: `player.cpp:2691-2694`: in single player a death to a monster sets
+  dropItems=true → InvBody drops item by item as DeadItem, DropHalfPlayersGold. In the four deploy JSONs:
+  died ⇔ (AC=4 ∧ dmg=1 ∧ gold=50), 315/315 without exception; survivors average AC 8.6-8.8 (30-43% at ≥9,
+  highest 17), dmg 6.3-7.0, gold always 100; the long-horizon 8 episodes' AC of 5.9 = a mix of 4 corpses at
+  AC4 and survivors at 7/7/7/10. Six audits agree.
+- **Impact**: decisive at the diagnostic level. About half of "almost zero gear growth" is an artefact;
+  "60-80 gold with nowhere to spend" is actually gold that was never picked up (there is no pick-up-gold
+  action). The readiness gate reads live raw and is unaffected.
+- **Discriminating probe (1 minute)**: recompute AC/hit_damage/gold in r15-deploy3-*.json stratified by
+  died; or change the probe to record the step before dead flips.
+- **Direction of the fix**: sample every end-of-episode metric at the step before death; report stratified
+  by died + normalised per thousand steps.
 
-### 第 5 位 · C5 a10 探索宏 radius-12 边疆饱和 → 假榨干 → 被迫下楼送死
-- **最强证据**:`env.py:3232-3276, 3364-3369` BFS 限 25×25 窗、候选须≥5 格且不贴足迹±1,无候选返回 None→wait。贪心脚本三路独立复现:16 种子 11 个停摆(剩怪 8–79%),seed 2114000 在 2487 拍卡死时 61 活怪、全图 BFS 可达 58 只、最近闭门 59 步外;12000 拍杀数 = 3000 拍杀数(42=42)。正对照加全局 BFS 回退:4/6 停摆种子升到 82–101 杀、clvl3。OptionsEnv 下 w4 FARM 以 exhausted 收窗时 63% 怪存活,w5 被迫 DIVE hp15/78 死亡。
-- **⚠ 冲突需裁定**:审 3 在训练工人驱动下测得榨干触发时 a10 规划器 38/39 有命令、最近 frontier 中位 2 格,判定"视野饥饿不成立"。两者可同时为真:贪心脚本连续按 a10 会耗尽窗内候选而饱和;训练工人在 argmax 下不按 a10(仅 12%)、在采样下踱步清零钟(C6-进展太便宜)。**共同点:榨干信号与真实清场率无关**。
-- **影响**:受影响局(约 1/4–2/3 种子,体制依赖)农场收入砍半,并制造无薪下潜与 L2 死亡潮的直接触发。
-- **判别探针(≤10 分钟)**:对训练工人(采样体制)16 种子记录 `_plan_explore_step` 返回 None 的比率、当时活怪数与全图 BFS 可达活怪数;同时记录每次"新格"到既有足迹的切比雪夫距离中位(≤2 即"进展=踱步")。
-- **对策方向**:窗内无候选时回退 radius-112 全局 BFS 取最近未踏足格/活怪区的窗边航点(~40 行 Python);榨干判据改用击杀/伤害/远距新格,不认贴足迹的新格。
+### 5 · C5: frontier saturation of the a10 exploration macro at radius 12 → fake exhaustion → forced descent to death
+- **Strongest evidence**: `env.py:3232-3276, 3364-3369`: BFS is limited to a 25×25 window, candidates must be
+  ≥5 cells away and not within ±1 of the footprint, and no candidate returns None → wait. Three independent
+  reproductions with a greedy script: 11 of 16 seeds stall (8-79% of monsters left); seed 2114000 stuck at
+  step 2487 with 61 live monsters, 58 reachable by whole-map BFS, the nearest closed door 59 steps away;
+  kills at 12000 steps = kills at 3000 steps (42=42). Positive control with a global BFS fallback: 4 of 6
+  stalled seeds rise to 82-101 kills and clvl3. Under OptionsEnv, w4 FARM closed as exhausted with 63% of
+  monsters alive, and w5 was forced into DIVE and died at hp 15/78.
+- **⚠ Conflict to resolve**: audit 3, driving with the trained worker, measured that when exhaustion
+  triggered the a10 planner had a command 38/39 times, with a median distance of 2 cells to the nearest
+  frontier, and concluded that "vision starvation does not hold". Both can be true at once: a greedy script
+  pressing a10 continuously uses up the in-window candidates and saturates; the trained worker does not
+  press a10 under argmax (only 12%) and resets the clock by pacing under sampling (C6: progress is too
+  cheap). **Common ground: the exhaustion signal is unrelated to the real cleared share.**
+- **Impact**: in affected episodes (about 1/4 to 2/3 of seeds, depending on the regime) farm income is
+  halved, and it directly triggers unpaid dives and the wave of deaths on L2.
+- **Discriminating probe (≤10 minutes)**: for the trained worker (sampling regime) on 16 seeds, record the
+  rate at which `_plan_explore_step` returns None, the number of live monsters at that time and the number
+  of live monsters reachable by whole-map BFS; also record the median Chebyshev distance from each "new
+  cell" to the existing footprint (≤2 means "progress = pacing").
+- **Direction of the fix**: when the window has no candidate, fall back to a radius-112 global BFS and take
+  a waypoint on the window edge toward the nearest unvisited cell / live-monster area (~40 lines of
+  Python); base the exhaustion criterion on kills / damage / distant new cells, and do not count new cells
+  next to the footprint.
 
-### 第 6 位 · C6 时钟三件套:3000 拍局长 / FARM_SCENE_CAP=1800 / 进展定义
-- **最强证据**:L1 均 65–73 XP/杀、最佳贪心 15–18 杀/千拍 → 3000 拍上限≈41–58 杀≈2600–3500 XP,恰在 clvl2 与 clvl3(4620)之间;clvl3 首现≈6000 拍;工人幸存者 42–45 杀已达贪心上限 85%。采样体制 27 次榨干中 23 次为 cap 型,触发时清场率中位 0.31、仍 70–100 活怪;之后中位 193 拍下楼,24/32 死亡。反事实 cap=6000:死亡 24→8,但 kills/clvl 不变(39.3→41.5,clvl3 3/32→3/32)。30000 拍长视野照样 1800 拍就被赶下 L1 → "十倍预算无成长"失效。
-- **影响**:高。任何"先农后潜"课程在 3000 拍内数学上不可执行;cap 决定了"下楼即死"的比例;单放开 cap 不产生成长(需与 C5/C7 联动)。
-- **判别探针(已做 + 15 分钟)**:AUDIT_FARM_SCENE_CAP=6000 三列对照已在 scratchpad;补 8 种子 30000 拍同覆盖变量,看 clvl 是否仍停 2。
-- **对策方向**:局长≥6000 拍或阶段化 episode;cap 改按"清场比/击杀吞吐衰减"触发而非固定拍数;进展 = 击杀/伤害/拾取/远距新格。
+### 6 · C6: the clock trio: 3000-step episode / FARM_SCENE_CAP=1800 / the definition of progress
+- **Strongest evidence**: L1 averages 65-73 XP per kill, and the best greedy rate is 15-18 kills per
+  thousand steps → a 3000-step ceiling of ≈41-58 kills ≈2600-3500 XP, exactly between clvl2 and clvl3
+  (4620); clvl3 first appears at ≈6000 steps; the worker's survivors at 42-45 kills already reach 85% of the
+  greedy ceiling. Under sampling, 23 of 27 exhaustions are the cap type, with a median cleared share of
+  0.31 at trigger time and 70-100 live monsters still around; the worker then descends after a median of
+  193 steps, and 24/32 die. Counterfactual cap=6000: deaths 24→8, but kills/clvl unchanged (39.3→41.5,
+  clvl3 3/32→3/32). A 30000-step long horizon is still chased off L1 after 1800 steps → "no growth with ten
+  times the budget" is invalid as a finding.
+- **Impact**: high. Any "farm first, then dive" curriculum is mathematically impossible within 3000 steps;
+  the cap sets the share of "descend and die"; lifting the cap alone produces no growth (it has to go
+  together with C5/C7).
+- **Discriminating probe (done + 15 minutes)**: the three-column comparison with AUDIT_FARM_SCENE_CAP=6000
+  has been run (outputs not published); add 8 seeds at 30000 steps with the same override and see whether
+  clvl still stops at 2.
+- **Direction of the fix**: episode length ≥6000 steps or staged episodes; trigger the cap on "cleared share
+  / decay of kill throughput" rather than a fixed number of steps; progress = kills / damage / pick-ups /
+  distant new cells.
 
-### 第 7 位 · C7 血量经济零定价:HP/药瓶无价、a12 掩码、a13 无先验、深度乘数符号错误
-- **最强证据**:`env.py:4566-4711` _reward 无任何 HP/药瓶项;`--no-drink-sovereignty` 使 m[12]=False,反射仅 HP<50% 排水;先验只给 a14(2.5)/a11(2.0)。三组探针 41/41 死亡时 belt=0,39/41 本层地面仍有药;考卷死者 117/117、106/106 belt=0;a13 合法仅 8% 决策、采纳 11–20%、转化 6–33%。每杀失血 L1 1.6–2.8 vs L2 8.9,工资 ×1.25;盈亏平衡死亡风险 11.7%/杀 vs 实测 1.5% → "继续打"永远划算。审 4 反证:贪心脚本 4 种子 0 死亡、局末仍有药 → 死亡是行为性非引擎续航。训练腿内 deaths/ep 0.45→0.79 单调上升。
-- **影响**:高。67–74% 死亡把成长窗口截断在≈1400 拍;alive 局 xp 4035 vs died 2793;下潜后 L2 每瓶药只值 3 杀。
-- **判别探针(≤15 分钟)**:probe_r15_deployment 回调外套"囤药覆盖"(mask[13]∧hp≥50%→强制 13),arm C 24 种子对照基线死 17/24;死亡显著下降即证药瓶无价是 binding 条款。
-- **对策方向**:HP 差分/药瓶持有计价;a13 加 logit 先验;开放 a12 主权;深度乘数改乘净收益(扣 HP 成本)。
+### 7 · C7: the HP economy is priced at zero: HP / potions have no price, a12 is masked, a13 has no prior, and the depth multiplier has the wrong sign
+- **Strongest evidence**: `env.py:4566-4711` _reward has no HP or potion term; `--no-drink-sovereignty`
+  makes m[12]=False, and the reflex only drains below 50% HP; priors exist only for a14 (2.5) / a11 (2.0).
+  In three probe groups, 41/41 deaths happened at belt=0, and in 39/41 there were still potions on the
+  floor of the level; exam deaths 117/117 and 106/106 at belt=0; a13 is legal in only 8% of decisions,
+  adopted 11-20%, converted 6-33%. HP lost per kill: L1 1.6-2.8 vs L2 8.9, while the wage is ×1.25; the
+  break-even death risk is 11.7% per kill vs a measured 1.5% → "keep fighting" is always worth it. Audit 4's
+  counter-evidence: the greedy script had 0 deaths on 4 seeds, with potions left at the end → deaths are
+  behavioural, not a matter of engine sustain. The in-leg deaths per episode rise monotonically 0.45→0.79.
+- **Impact**: high. 67-74% of deaths cut the growth window at ≈1400 steps; alive episodes have xp 4035 vs
+  died 2793; after descending, each potion on L2 is worth only 3 kills.
+- **Discriminating probe (≤15 minutes)**: wrap the probe_r15_deployment callback with a "hoard potions
+  override" (mask[13] ∧ hp≥50% → force 13); arm C on 24 seeds against the baseline's 17/24 deaths; a
+  significant drop in deaths proves that unpriced potions are a binding clause.
+- **Direction of the fix**: price HP differences / potions held; add a logit prior for a13; open a12
+  autonomy; apply the depth multiplier to net income (after the HP cost).
 
-### 第 8 位 · C8 终局记账反向:timeout≡death、反躺平半价、幸存溢价为零
-- **最强证据**:`worker_env.py:1262-1265, 1377-1430` 末 140 拍无进展的幸存局按 terminal_death 计费(L1 −26 > L2 死亡 −18.8);sentinel 83/883 局、−2143.6;确定性幸存 7 局中 6 局中招,含最佳轨迹(81 杀 clvl3 L4);cap 命中后 layer_clock 钉在≥140 且不可解除,cap 后活到终局≡死亡。`env.py:4693-4705` 反躺平按决策步计数、击杀不清零,>300 后 farm 减半,专中不下楼硬磨 L1 的局(clvl3 需≈70 杀恰属此类)。
-- **影响**:中。29% 幸存局被扣≈11 杀收入;PPO 无梯度可推向生存;与 C7 叠加解释腿内死亡率上升。
-- **判别探针(≤20 分钟)**:audit_window_probe.py 已有 `timeout_wo_progress`/`exhausted_end` 字段联查超时局中 cap 命中占比(预期≈100%);或 9 分钟 smoke leg 把超时罚置 0 看 deaths/ep 斜率。
-- **对策方向**:超时罚与死亡罚解耦(活到终局≥0);反躺平按微拍计、击杀清零;幸存溢价显式计价。
+### 8 · C8: end-of-episode accounting runs backwards: timeout≡death, anti-idling at half pay, zero survival premium
+- **Strongest evidence**: `worker_env.py:1262-1265, 1377-1430`: surviving episodes with no progress in the
+  last 140 steps are charged as terminal_death (L1 −26 > an L2 death −18.8); sentinel 83/883 episodes,
+  −2143.6; 6 of 7 deterministic survivors are hit, including the best trajectory (81 kills, clvl3, L4);
+  after the cap hits, layer_clock is pinned at ≥140 and cannot be released, so surviving to the end after
+  the cap ≡ death. `env.py:4693-4705`: anti-idling counts decision steps, is not reset by kills, and halves
+  farm after >300, which hits exactly the episodes that grind L1 without descending (clvl3 needs ≈70 kills,
+  squarely in this class).
+- **Impact**: medium. 29% of surviving episodes lose ≈11 kills' worth of income; PPO has no gradient pushing
+  toward survival; together with C7 it explains the rising in-leg death rate.
+- **Discriminating probe (≤20 minutes)**: audit_window_probe.py already has the fields
+  `timeout_wo_progress`/`exhausted_end`; cross-check the share of timed-out episodes that hit the cap
+  (expected ≈100%); or run a 9-minute smoke leg with the timeout penalty set to 0 and look at the slope of
+  deaths per episode.
+- **Direction of the fix**: decouple the timeout penalty from the death penalty (surviving to the end ≥0);
+  count anti-idling in micro-steps and reset it on kills; price a survival premium explicitly.
 
-**未入 Top 8 但需登记**:C9 装备通道(掉率 1–3.6%/杀、Rags 300–700 拍碎裂、无商店/不捡金、E1 AC:dmg≈1:21)——事实高置信,但对 L1→L2 门只是 C1 的子项(AC15 是彩票);C10 接近塑形低于噪声底 3–4 个数量级(a1–a8≈均匀噪声)——C3 撞墙环的根,需回归验证;C11 协议统计病(死亡截尾中位局长 455–1440 拍、37/128 致死种子、门 B 锚反生存)——改报告口径即可;C12 爆炸桶封死出生口袋 1/128——种子池剔除。
+**Not in the top 8 but registered**: C9 the gear channel (drop rate 1-3.6% per kill, Rags break in 300-700
+steps, no shops / no gold pick-up, E1 AC:dmg ≈1:21): high-confidence facts, but for the L1→L2 gate only a
+sub-item of C1 (AC15 is a lottery); C10 approach shaping 3-4 orders of magnitude below the noise floor
+(a1-a8 ≈ uniform noise): the root of C3's wall-bump loops, needs regression verification; C11 statistical
+diseases of the protocol (death censoring with median episode length 455-1440 steps, 37/128 lethal seeds,
+the gate B anchor works against survival): fixed by changing the reporting definitions; C12 an explosive
+barrel seals the spawn pocket in 1/128 seeds: drop the seed from the pool.
 
 ---
 
-## 三、已排除嫌疑清单(七路交叉确认)
+## 3. Suspects ruled out (cross-confirmed by the seven audits)
 
-**引擎与桥接层**
-- XP 授予链:逐杀 XP = monstdat × (1+0.1Δlvl) 精确入账,zero_xp_kills=0,第 27 杀 2007 XP 准时升级
-- 多人 XP 上限 / 难度倍率 / whoHit 缺口 / Experience.tsv 篡改 / ValidatePlayer 夹断
-- 属性点黑洞:AutoSpendStatPoints 每 Step 尾执行,statpts 恒 0,HP 与公式逐位吻合
-- 光照(IsTileLit)在 headless 正常;掉落未关闭(41%×26%);a9/a10/a11/a12/a13/a14 宏本体均可执行,原生回执 accepts=1
-- a11 寻路:radius-112 全图 BFS,128/128 种子楼梯宽松可达,请求 16344/执行 16341
-- 武器/盾牌耐久在 3000 拍内不断裂(仅胸/头轻甲会碎,见 C9)
-- 引擎续航:贪心脚本 4 种子 0 死亡、局末有药 → 死亡是行为性
+**Engine and bridge layer**
+- XP award chain: per-kill XP = monstdat × (1+0.1Δlvl), booked exactly; zero_xp_kills=0; the 27th kill at
+  2007 XP levelled up on time
+- Multiplayer XP cap / difficulty multiplier / whoHit gap / Experience.tsv tampering / ValidatePlayer
+  clamping
+- Stat-point black hole: AutoSpendStatPoints runs at the end of every Step, statpts is always 0, and HP
+  matches the formula bit for bit
+- Lighting (IsTileLit) works headless; drops are not disabled (41%×26%); the a9/a10/a11/a12/a13/a14 macros
+  themselves all execute, native receipt accepts=1
+- a11 pathfinding: radius-112 whole-map BFS, stairs loosely reachable on 128/128 seeds, 16344 requests /
+  16341 executions
+- Weapon/shield durability does not break within 3000 steps (only light chest/head armour breaks, see C9)
+- Engine sustain: the greedy script had 0 deaths on 4 seeds with potions left at the end → deaths are
+  behavioural
 
-**窗口法与掩码层**
-- a10 剧情掩码锁门:progression_targets L1–L4 恒空,5065 窗零 handoff
-- 跨层足迹污染:换 scene 时全部清零
-- DIVE 掩码因楼梯未探明而非法:触发器导出不看照明
-- TAU_CAP 37.8% 命中截断信用:窗界对 PPO 非终止(done=False + bootstrap)
-- protected_walk 铁栅:只封楼梯相邻格
-- levelup 收窗打断战斗:live 窗工资连续,无货币效应
-- RESUPPLY 窗影响:0 窗被选
-- 工人看不见时钟/scene 预算:wrapper_scalars 含 layer_clock/exhausted/scene_fraction
+**Window rules and mask layer**
+- The a10 quest mask locking doors: progression_targets L1-L4 always empty, zero handoffs in 5065 windows
+- Footprint contamination across levels: everything is cleared on a scene change
+- DIVE mask illegal because the stairs are unexplored: the trigger export ignores lighting
+- TAU_CAP truncating credit in 37.8% of cases: window boundaries are not terminal for PPO (done=False +
+  bootstrap)
+- The protected_walk barrier: it only blocks cells next to stairs
+- Level-up window closures interrupting fights: live-window wages are continuous, no monetary effect
+- Effect of RESUPPLY windows: 0 windows chosen
+- The worker cannot see the clock / scene budget: wrapper_scalars include layer_clock/exhausted/
+  scene_fraction
 
-**奖励与训练层**
-- E1 装备定价过低(实为单次过大,12≈12 杀)
-- 接近塑形量级主导决策(±1–6/局,无法主导;但见 C10 反面)
-- xp 0.01/点比例失衡
-- ent_coef/target_kl 夹死探索:熵 0.96–1.07 nat,KL 早停 17/160
-- lr/训练太短学不动:参数位移 19–30%
-- separate-root-context-critic-v2 副作用:EV 0.93–0.95
-- actor 看不见装备机会:p(a14|合法) 已 0.46
-- a14 先验被掩码卡死:合法时命中 55–60%
-- 价值函数崩坏 / Adam 状态污染 / 蒸馏锚定拉回
-- 上一代教义动作直方畸形:采样下不畸形,畸形出现在 argmax
+**Reward and training layer**
+- E1 gear priced too low (actually too large per event, 12 ≈ 12 kills)
+- Approach shaping dominating decisions in magnitude (±1-6 per episode, cannot dominate; but see C10 for the
+  opposite)
+- The xp ratio of 0.01 per point out of balance
+- ent_coef/target_kl choking exploration: entropy 0.96-1.07 nat, KL early stop 17/160
+- lr / training too short to learn: parameter displacement 19-30%
+- Side effects of separate-root-context-critic-v2: EV 0.93-0.95
+- The actor cannot see gear opportunities: p(a14|legal) already 0.46
+- The a14 prior blocked by the mask: 55-60% hit rate when legal
+- Value function collapse / Adam state contamination / distillation anchoring pulling back
+- A deformed action histogram inherited from the previous generation's doctrine: not deformed under
+  sampling; the deformation appears under argmax
 
-**协议层**
-- 种子池/地图偏置:训练 uint31 全域,考卷同分布保留段
-- 训练与考卷局长不一致:两侧均 3000
-- 死亡后 clvl/max_hp 被清零:未被污染(仅 AC/dmg/gold 被污染)
-- raw monsters reachable=0 表示不可达:实为不可见
-
----
-
-## 四、因果耦合图
-
-**主链(XP 不涨)**:
-C1 门槛不可能 ← C6 3000 拍上限 clvl2 ← {C5 a10 饱和砍半可达花名册, C6 cap 在 31% 清场时赶人, C7 死亡截断在 1400 拍}
-→ 即便修好 C5/C6/C7,C1 仍是常数 0;反之只改 C1 而不动 C6,3000 拍内也到不了 clvl3。**C1 与 C6 必须同时改。**
-
-**主链(被迫下潜→死亡)**:
-C2 逃生口死代码 → 榨干掩码是唯一通道 → 榨干触发器在两体制下分别是 {采样:C6 cap 1800;argmax:C3 假 140 钟 + 时钟继承;贪心/部分种子:C5 a10 None} → 三者都与真实清场率无关 → clvl2 工人在 L2 每杀失血 8.9(C7 符号错误) → 死亡 → C4 尸检读数 → "零装备成长"误诊 → R15 把根因定在成长引擎。
-
-**C5 与 C6-进展定义的表面矛盾**:审 1/4/6 说 a10 饱和返回 None(太早榨干),审 3 说踱步清零钟(永不榨干)。两者是同一缺陷的两面——"进展"与"边疆"都用足迹±1 定义,既能被踱步白嫖,也能被墙外怪饿死。统一修法是把两者都改成击杀/远距/全局 BFS 口径。
-
-**C3 → C8**:argmax 极限环(a11↔a13 振荡、BFS None→wait→fuse)烧掉预算后落入末 140 拍无进展 → 按死亡收费;采样体制几乎不触发。C10(方向键未学)是 C3 撞墙环的根。
-
-**C7 ↔ C8**:HP 无价 + 超时≡死亡 + 反躺平半价三者同向——都告诉工人"活着不值钱、磨 L1 不划算",与腿内死亡率 0.45→0.79 单调上升相关(因果需干预实验)。
-
-**C4 与全部**:不是致因,但它是主席"决定性数据"的数据基础,必须先纠正再重判其他各条。
+**Protocol layer**
+- Seed pool / map bias: training uses the whole uint31 range, exams use a reserved range of the same
+  distribution
+- Different episode lengths in training and exams: both sides use 3000
+- clvl/max_hp reset to zero after death: not contaminated (only AC/dmg/gold are)
+- raw monsters reachable=0 meaning unreachable: it actually means invisible
 
 ---
 
-## 五、给主席的通俗结论(≤300 字)
+## 4. Causal coupling graph
 
-五层之外最可能漏掉的是:**问题不在工人,在尺子和门**。第一,战备表 L2 行的 HP90 按战士加点等价于 4 级(8040 经验),而 L1 整层怪清光也只有 6–9 千经验——门槛在算术上对任何策略都关着,636 次拒付是必然常数。第二,"清场 25% 放行"的逃生口读的是只含活怪的名单,永远为假;所以工人只能靠榨干旗下楼,而榨干旗与真实清场率无关。第三,"AC 5–7、零装备成长、金币无处花"的决定性数据是尸体读数(死亡时引擎剥光装备、金币减半),且考卷用 argmax 而训练用采样,击杀被低估一半、下楼成功率被低估六倍。
+**Main chain (XP does not grow)**:
+C1 impossible threshold ← C6 3000-step ceiling at clvl2 ← {C5 a10 saturation halves the reachable roster,
+C6 the cap chases the worker away at 31% cleared, C7 deaths cut episodes at 1400 steps}
+→ even if C5/C6/C7 are fixed, C1 remains a constant 0; conversely, changing only C1 without C6 still does not
+reach clvl3 within 3000 steps. **C1 and C6 must be changed together.**
 
-先验证三件事:
-1. 战备表算术(5 分钟):调用 readiness_power_ratio 注入 clvl3/HP86 看是否 <1;对比 L1 经验池与 8040。
-2. 按存活分层重算四份部署 JSON + 32 种子采样 vs argmax 配对(15 分钟)。
-3. 逃生口死代码复现 + 训练工人下 a10 返回 None 与踱步进展的比率(15 分钟)。
+**Main chain (forced descent → death)**:
+C2 escape hatch is dead code → the exhaustion mask is the only way → the exhaustion trigger differs by
+regime {sampling: C6 cap 1800; argmax: C3 fake 140 clock + clock inheritance; greedy / some seeds: C5 a10
+None} → all three are unrelated to the real cleared share → a clvl2 worker loses 8.9 HP per kill on L2 (C7
+wrong sign) → death → C4 post-mortem readings → "zero gear growth" misdiagnosis → R15 placed the root cause
+in the growth engine.
 
-三者若坐实,R16 首要不是再训工人,而是改门槛口径、改榨干/清场判据、改评测体制。
+**The apparent contradiction between C5 and C6's definition of progress**: audits 1/4/6 say a10 saturates
+and returns None (exhaustion too early), audit 3 says pacing resets the clock (exhaustion never comes). They
+are two sides of one defect: both "progress" and "frontier" are defined by the footprint ±1, so pacing can
+free-ride on it and monsters behind walls can starve it. The unified fix is to switch both to a kills /
+distance / global-BFS definition.
+
+**C3 → C8**: argmax limit cycles (a11↔a13 oscillation, BFS None→wait→fuse) burn the budget and then fall into
+"no progress in the last 140 steps" → charged as death; the sampling regime hardly ever triggers it. C10
+(movement keys never learned) is the root of C3's wall-bump loops.
+
+**C7 ↔ C8**: unpriced HP + timeout≡death + anti-idling at half pay all point the same way, telling the
+worker that "staying alive is worth nothing and grinding L1 does not pay", which correlates with the in-leg
+death rate rising monotonically 0.45→0.79 (causation needs an intervention experiment).
+
+**C4 and everything**: not a cause, but it underlies the "decisive data" of the R15 verdict and must be
+corrected before the other items are re-judged.
+
+---
+
+## 5. Plain-language conclusion (≤300 words)
+
+What is most likely missing beyond the five layers: **the problem is not the worker but the ruler and the
+gate**. First, under the warrior's stat allocation, HP90 in the L2 row of the readiness table is equivalent
+to level 4 (8040 XP), while clearing every monster on L1 yields only 6-9 thousand XP: the threshold is
+arithmetically closed to any policy, and the 636 refusals are an inevitable constant. Second, the "release
+at 25% cleared" escape hatch reads a roster that contains only live monsters and is always false; so the
+worker can go down only through the exhaustion flag, and the exhaustion flag is unrelated to the real
+cleared share. Third, the decisive data "AC 5-7, zero gear growth, gold with nowhere to spend" are corpse
+readings (on death the engine strips the gear and halves the gold), and exams use argmax while training
+samples, so kills are underestimated by half and the descent success rate by a factor of six.
+
+Verify three things first:
+1. The readiness-table arithmetic (5 minutes): call readiness_power_ratio with clvl3/HP86 and check that it
+   is <1; compare the L1 XP pool with 8040.
+2. Recompute the four deployment JSONs stratified by survival + a 32-seed sampling vs argmax pairing (15
+   minutes).
+3. Reproduce the dead-code escape hatch + the rate at which a10 returns None and progress comes from pacing
+   under the trained worker (15 minutes).
+
+If all three are confirmed, R16's first priority is not to retrain the worker but to change the threshold
+definitions, the exhaustion/clearing criteria and the evaluation regime.

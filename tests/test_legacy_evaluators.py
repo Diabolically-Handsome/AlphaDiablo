@@ -1,4 +1,4 @@
-"""旧评估入口的快照、资源回收与原子排行榜契约。"""
+"""Snapshot, resource-cleanup and atomic-leaderboard contracts of the legacy evaluation entry points."""
 
 from __future__ import annotations
 
@@ -187,14 +187,14 @@ class LegacyEvaluatorTests(unittest.TestCase):
 
     def test_standalone_evaluators_reject_preloaded_or_wrong_bridge(self):
         with mock.patch.dict(sys.modules, {"_diablogym": object()}):
-            with self.assertRaisesRegex(RuntimeError, "未预载.*新进程"):
+            with self.assertRaisesRegex(RuntimeError, "fresh process that has not preloaded"):
                 standard.require_fresh_native_runtime("audit")
 
         wrong = types.ModuleType("_diablogym")
         wrong.__file__ = "/wrong/_diablogym.so"
         contract = _contract("native-path")
         with mock.patch.dict(sys.modules, {"_diablogym": wrong}):
-            with self.assertRaisesRegex(RuntimeError, "实际加载 bridge 路径"):
+            with self.assertRaisesRegex(RuntimeError, "actually loaded bridge path"):
                 standard.verify_loaded_native_runtime(contract)
 
     def test_checkpoint_kind_hash_and_load_share_one_snapshot(self):
@@ -214,7 +214,7 @@ class LegacyEvaluatorTests(unittest.TestCase):
             checkpoint.write_bytes(original)
             standard.verify_checkpoint_identity(checkpoint, digest)
             checkpoint.write_bytes(b"replaced after evaluation")
-            with self.assertRaisesRegex(RuntimeError, "checkpoint 发生变化"):
+            with self.assertRaisesRegex(RuntimeError, "checkpoint changed"):
                 standard.verify_checkpoint_identity(checkpoint, digest)
 
         seen = []
@@ -327,7 +327,7 @@ class LegacyEvaluatorTests(unittest.TestCase):
             legacy = "# legacy\n\n| run | score |\n|---|---|\n| alpha | 1 |\n"
             board.write_text(legacy)
             before = board.read_bytes()
-            with self.assertRaisesRegex(ValueError, "旧榜只读"):
+            with self.assertRaisesRegex(ValueError, "old boards are read-only"):
                 standard.ensure_leaderboard_compatible(
                     board, contract, initial_text=header)
             self.assertEqual(board.read_bytes(), before)
@@ -340,7 +340,7 @@ class LegacyEvaluatorTests(unittest.TestCase):
                     mock.patch.object(standard, "verify_checkpoint_identity"):
                 standard.upsert_leaderboard_rows(
                     board, {"alpha": row2}, contract=contract, initial_text=header)
-                # 同一行的幂等重放不会生成重复项或重写文件。
+                # An idempotent replay of the same row creates no duplicate and does not rewrite the file.
                 stable = board.read_bytes()
                 standard.upsert_leaderboard_rows(
                     board, {"alpha": row2}, contract=contract, initial_text=header)
@@ -350,7 +350,7 @@ class LegacyEvaluatorTests(unittest.TestCase):
                 model_path="/frozen/a.zip", model_sha256="1" * 64, mode="ppo")
             with mock.patch.object(standard, "verify_standalone_contract"), \
                     mock.patch.object(standard, "verify_checkpoint_identity"):
-                with self.assertRaisesRegex(ValueError, "拒绝静默覆盖"):
+                with self.assertRaisesRegex(ValueError, "refusing to silently overwrite"):
                     standard.upsert_leaderboard_rows(
                         board, {"alpha": conflicting}, contract=contract,
                         initial_text=header)
@@ -363,14 +363,14 @@ class LegacyEvaluatorTests(unittest.TestCase):
 
             drifted = _contract("other-runtime")
             stable = board.read_bytes()
-            with self.assertRaisesRegex(ValueError, "旧榜只读"):
+            with self.assertRaisesRegex(ValueError, "old boards are read-only"):
                 standard.ensure_leaderboard_compatible(
                     board, drifted, initial_text=header)
             self.assertEqual(board.read_bytes(), stable)
 
             tampered = board.read_text().replace("| alpha | 2 |", "| alpha | 999 |")
             board.write_text(tampered)
-            with self.assertRaisesRegex(ValueError, "可见行"):
+            with self.assertRaisesRegex(ValueError, "visible row"):
                 standard.ensure_leaderboard_compatible(
                     board, contract, initial_text=header)
             board.write_bytes(stable)
@@ -378,7 +378,7 @@ class LegacyEvaluatorTests(unittest.TestCase):
             header_tampered = board.read_text().replace("| run | score |",
                                                         "| run | other metric |")
             board.write_text(header_tampered)
-            with self.assertRaisesRegex(ValueError, "表头/列协议"):
+            with self.assertRaisesRegex(ValueError, "header/column protocol"):
                 standard.ensure_leaderboard_compatible(
                     board, contract, initial_text=header)
             board.write_bytes(stable)
@@ -443,11 +443,11 @@ class LegacyEvaluatorTests(unittest.TestCase):
             row = standard.model_leaderboard_row(
                 "| alpha | 1 |", row_key="alpha", contract=contract,
                 model_path=str(model), model_sha256=digest, mode="ppo")
-            # 更换发生在 evaluate() 的第一次复验之后、榜单 commit 之前。
+            # The swap happens after evaluate()'s first re-check and before the leaderboard commit.
             model.write_bytes(b"replacement")
             board = root / "board.md"
             with mock.patch.object(standard, "verify_standalone_contract"):
-                with self.assertRaisesRegex(RuntimeError, "checkpoint 发生变化"):
+                with self.assertRaisesRegex(RuntimeError, "checkpoint changed"):
                     standard.upsert_leaderboard_rows(
                         board, {"alpha": row}, contract=contract,
                         initial_text=header)
@@ -463,7 +463,7 @@ class LegacyEvaluatorTests(unittest.TestCase):
                     mock.patch.object(standard, "main_contract", return_value=contract), \
                     mock.patch.object(standard, "evaluate") as evaluate_model, \
                     mock.patch.object(sys, "argv", ["evaluate.py", "/tmp/run/model"]):
-                with self.assertRaisesRegex(ValueError, "旧榜只读"):
+                with self.assertRaisesRegex(ValueError, "old boards are read-only"):
                     standard.main()
             evaluate_model.assert_not_called()
 
@@ -532,7 +532,7 @@ class LegacyEvaluatorTests(unittest.TestCase):
         self.assertEqual(env.seen, [probe.DIVE])
         self.assertEqual(row["ret"], 1.0)
 
-        with self.assertRaisesRegex(ValueError, "动作掩码全假"):
+        with self.assertRaisesRegex(ValueError, "action mask is all False"):
             probe.run_policy(
                 HandoffEnv([False, False, False]),
                 lambda _env, _mask: probe.FARM,
@@ -576,8 +576,8 @@ class LegacyEvaluatorTests(unittest.TestCase):
             existing = root / "existing.json"
             existing.write_text("historical result")
             for output, message in (
-                    (existing, "拒绝覆写"),
-                    (root / "board.md", "不能覆盖当前协议排行榜")):
+                    (existing, "refusing to overwrite"),
+                    (root / "board.md", "cannot overwrite the current protocol leaderboard")):
                 stderr = io.StringIO()
                 with self.subTest(output=output), \
                         mock.patch.object(probe, "LB", root / "board.md"), \
@@ -710,7 +710,7 @@ class LegacyEvaluatorTests(unittest.TestCase):
     def test_oracle_rejects_duplicate_semantic_seed(self):
         document = _oracle()
         document["arms"]["rush"].append(document["arms"]["rush"][0])
-        with self.assertRaisesRegex(ValueError, "重复 seed"):
+        with self.assertRaisesRegex(ValueError, "duplicate seed"):
             probe.validate_oracle_rush(document)
 
     def test_probe_rejects_duplicate_key_oracle_before_environment_setup(self):

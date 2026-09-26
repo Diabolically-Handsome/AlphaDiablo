@@ -1,19 +1,19 @@
-"""内容案 E3 ④乙 辅助示范通路之自包含快速回归(PREREG-内容案-课⑤x④乙 E3/E7
-对应件;不启动引擎/训练产物)。
+"""Self-contained fast regression for the content-case E3 auxiliary demonstration path of course 4b (the E3/E7
+counterpart of PREREG-v33-content-case; no engine is started and no training output is needed).
 
-覆盖(E3 施工面逐字):
-- CLI 两旗解析与互不强制(单独给任一旗不强制对方;在位谓词 = λ_bc>0 ∧ demos);
-- λ_bc=0 之零侵入(不加载/不采样/不进损失图;λ=0 双模型 policy+optimizer
-  torch.equal,辅助分支实测零调用);
-- v2 demos 专用验证器(镜像断言按世代分别成文:masks 键/形状/dtype、v2 禁 11
-  允 12、标签-掩码一致)与 v1 面回归零破坏(v1 常量/验证器/加载器原封);
-- 12 类子集过滤与图纸数据面断言(12 类示范对 m[12]=True);
-- 辅助 CE 前向消费逐样本 masks(独 12 掩码 → CE 精确 0);
-- demo minibatch 专用 rng 流(E1③ 形制固定偏移派生、与 p_skip 流族/训练种子域
-  构造性不相交、在位/不在位两跑训练 RNG 状态轨迹逐点相等);
-- 12 头梯度非零(小模型 autograd 实测 + 真 train() 指纹:λ>0 行 12 必变、
-  λ=0 行 12 位级不变——反 P2 构造性零通路);
-- 锚教师/β/锚公式零触碰之源码钉(圈 3/圈 5 双引)。
+Covers (the E3 implementation surface, verbatim):
+- parsing of the two CLI flags, neither forcing the other (either flag alone does not force the other; active predicate = lambda_bc>0 and demos);
+- zero intrusion at lambda_bc=0 (nothing loaded, sampled or added to the loss graph; at lambda=0 the two models' policy+optimizer
+    are torch.equal, and the auxiliary branch is measured to be called zero times);
+- the dedicated v2 demos validator (mirror assertions written separately per generation: masks key/shape/dtype, v2 forbids 11
+    and allows 12, label-mask consistency) and zero breakage of the v1 surface (v1 constants/validator/loader untouched);
+- the class-12 subset filter and the blueprint data-surface assertion (class-12 demonstration pairs have m[12]=True);
+- the auxiliary CE forward pass consumes per-sample masks (a mask with only 12 closed -> CE exactly 0);
+- the dedicated rng stream for demo minibatches (derived at a fixed offset as in E1-3, constructively disjoint from the p_skip stream family
+    and the training-seed domain; the training RNG state trajectories of the active and inactive runs are equal point by point);
+- a non-zero gradient on head 12 (measured with autograd on a small model + a real train() fingerprint: with lambda>0 row 12 must change,
+    with lambda=0 row 12 stays bit-identical: against the P2 construction of a constructively dead path);
+- source pins that the anchor teacher / beta / anchor formula are untouched (design decisions 3 and 5).
 """
 
 from __future__ import annotations
@@ -160,7 +160,7 @@ def _write_v2_npz(path, n=8, labels=None, masks=None, obs_dim=298,
 
 def _write_final_holdout_marker(
         out_dir, generation, seeds, report):
-    """为已提交测试 bundle 写与生产 consumer 同构的 final one-shot 证据。"""
+    """Write final one-shot evidence for a committed test bundle, isomorphic to the production consumer."""
     marker, spec, pool_sha256 = train_ppo._bc_final_holdout_marker_path(
         out_dir, generation, seeds)
     provenance_keys = {
@@ -191,7 +191,7 @@ def _write_final_holdout_marker(
 
 
 def _write_v2_pass_bundle(path):
-    """构造足以通过生产 loader 的固定 384-episode 已提交 bundle。"""
+    """Build a fixed committed 384-episode bundle that passes the production loader."""
     episodes = np.asarray(_BC_V2_COLLECTION_EPISODES, dtype=np.int64)
     groups = np.repeat(episodes, 80)
     n = len(groups)
@@ -252,7 +252,7 @@ def _write_v2_pass_bundle(path):
         behavior, require_teacher_recall=False)
     if behavior_gate["verdict"] != "PASS":
         raise AssertionError(
-            f"测试 bundle 行为夹具未过生产门:{behavior_gate['reasons']}")
+            f"test bundle behaviour fixture failed the production gate: {behavior_gate['reasons']}")
     with th.no_grad():
         logits = train_ppo._policy_logits_from_sb3_state_dict(
             policy_sd, x[heldout])
@@ -352,7 +352,7 @@ def _write_v2_pass_bundle(path):
         path.parent, 2, _BC_V2_COLLECTION_EPISODES, report)
     if set(report) != set(train_ppo._BC_V2_PASS_KEYS):
         raise AssertionError(
-            "测试 bundle 回执键漂移:"
+            "test bundle receipt keys drifted:"
             f" missing={sorted(set(train_ppo._BC_V2_PASS_KEYS) - set(report))},"
             f" extra={sorted(set(report) - set(train_ppo._BC_V2_PASS_KEYS))}")
     path.with_name("bc_report_v2.json").write_text(json.dumps(report))
@@ -360,7 +360,7 @@ def _write_v2_pass_bundle(path):
 
 
 class TinyMasked15Env(gym.Env):
-    """免引擎 15 动作微环境(Discrete(15) 使"12 头"真实存在)。"""
+    """Engine-free 15-action micro-environment (Discrete(15) makes "head 12" really exist)."""
 
     observation_space = gym.spaces.Box(-np.inf, np.inf, shape=(4,),
                                        dtype=np.float32)
@@ -381,7 +381,7 @@ class TinyMasked15Env(gym.Env):
 
 
 class TinyMasked298Env(TinyMasked15Env):
-    """与正式 worker 同观测宽度，专测 legacy worker 兼容视图。"""
+    """Same observation width as the formal worker; tests the legacy worker compatibility view specifically."""
 
     observation_space = gym.spaces.Box(
         -np.inf, np.inf, shape=(298,), dtype=np.float32)
@@ -411,8 +411,8 @@ def _make_298_model(lam=0.0, seed=7):
 
 
 def _fill_buffer(model, seed=11):
-    # rollout 面 12 恒掩 → PPO 自身对 action_net 第 12 行零梯度(Adam 零梯度
-    # 零更新)——12 头位级变动只可能来自 ④乙 辅助通路(反 P2 指纹构造)。
+    # on the rollout side 12 is always masked -> PPO itself gives row 12 of action_net zero gradient (Adam: zero gradient,
+    # zero update); any bit-level change of head 12 can only come from the 4b auxiliary path (the anti-P2 fingerprint construction).
     rng = np.random.default_rng(seed)
     buf = model.rollout_buffer
     buf.reset()
@@ -432,7 +432,7 @@ def _fill_298_exposure_buffer(model, actions):
     """Populate only the rollout fields consumed by the a12 receipt audit."""
     actions = list(actions)
     if len(actions) != model.n_steps:
-        raise ValueError("actions 必须精确覆盖一个 rollout")
+        raise ValueError("actions must cover exactly one rollout")
     if model.ep_info_buffer is None:
         model._setup_learn(total_timesteps=model.n_steps)
     buf = model.rollout_buffer
@@ -474,7 +474,7 @@ def _tree_equal(a, b):
 
 
 def _tiny_policy_sd(*, collapse=False, anchor=False):
-    """2→1→1→15 的合法六张量；feature1 区分稀有 a12。"""
+    """A legal six-tensor set of 2->1->1->15; feature1 separates the rare a12."""
     sd = {
         "mlp_extractor.policy_net.0.weight":
             th.tensor([[0.0, 5.0]], dtype=th.float32),
@@ -500,7 +500,7 @@ def _tiny_policy_sd(*, collapse=False, anchor=False):
 
 
 def _contextual_anchor_sd():
-    """298→64→64→15 的 V28 形根锚；action9 为稳定非 a12 首选。"""
+    """A V28-shaped root anchor 298->64->64->15; action9 is the stable non-a12 first choice."""
     state = {
         "mlp_extractor.policy_net.0.weight":
             th.zeros((64, 298), dtype=th.float32),
@@ -520,7 +520,7 @@ def _contextual_anchor_sd():
 
 
 def _contextual_policy_sd(*, gate_bias=1.0, gate_coefficients=None):
-    """把测试根锚无损扩为 rev9 68 宽，并只设置五个门控参数。"""
+    """Widen the test root anchor losslessly to the rev9 68 width and set only the five gate parameters."""
     anchor = _contextual_anchor_sd()
     state = {
         "mlp_extractor.policy_net.0.weight":
@@ -558,7 +558,7 @@ def _contextual_policy_sd(*, gate_bias=1.0, gate_coefficients=None):
 
 
 def _feature297_sensitive_sd(template=None):
-    """策略方向只由 legacy exhausted feature297 决定：负→12，正→9。"""
+    """The policy direction is decided only by the legacy exhausted feature297: negative -> 12, positive -> 9."""
     if template is None:
         state = {
             "mlp_extractor.policy_net.0.weight":
@@ -631,8 +631,8 @@ def _publication_provenance(step=1024):
 
 
 def _behavior_fixture():
-    # 每局 1000 对、恰 1 个 a12；无论 rng(23) 留出哪一整局，行为门均可判。
-    # 至少 20 局，使固定 10% final holdout 含两局，能验证确定性可部署门。
+    # 1000 pairs per episode, exactly 1 a12; whichever whole episode rng(23) holds out, the behaviour gate can decide.
+    # At least 20 episodes, so the fixed 10% final holdout holds two episodes and the deterministic deployable gate can be checked.
     groups = np.repeat(np.arange(20, dtype=np.int64), 1000)
     n = len(groups)
     x = np.zeros((n, 298), dtype=np.float32)
@@ -651,7 +651,7 @@ def _behavior_fixture():
 
 
 class BcAuxActivationPredicateTests(unittest.TestCase):
-    """rev6:正式在位谓词由 graft+demos 构成，旧 λ 路只用于迁移报错。"""
+    """rev6: the formal active predicate is graft+demos; the old lambda path is only used for migration errors."""
 
     def test_predicate_truth_table(self):
         self.assertFalse(_bc_aux_active(_ns()))
@@ -669,7 +669,7 @@ class BcAuxActivationPredicateTests(unittest.TestCase):
             _ns(bc_aux_lambda=0.5, bc_aux_demos="demos.npz")))
 
     def test_structural_contract_keeps_zero_lambda_and_68_wide_actor(self):
-        # 历史常量仍可读以便旧合同给出精确迁移错误；结构路径必须 λ=0。
+        # The historical constant stays readable so old contracts get an exact migration error; the structural path requires lambda=0.
         self.assertEqual(_BC_AUX_MAIN_LAMBDA, 0.015625)
         self.assertEqual(_BC_AUX_OBJECTIVE_REVISION, 11)
         self.assertEqual(train_ppo._CONTRACT_REVISION, 26)
@@ -700,7 +700,7 @@ class BcAuxActivationPredicateTests(unittest.TestCase):
 
 
 class BcAuxLivenessPreflightTests(unittest.TestCase):
-    """环境点火前 aux 必要条件探针只消费 training split，失败不发布。"""
+    """The pre-launch aux precondition probe consumes only the training split and publishes nothing on failure."""
 
     @staticmethod
     def _raw_fixture():
@@ -723,7 +723,7 @@ class BcAuxLivenessPreflightTests(unittest.TestCase):
             "update_every": 1,
         })
 
-        # 不只测除法：隔离模型实际调用计数也须逐字等于计划。
+        # Not just the division: the isolated model's actual call count must also equal the plan exactly.
         model = _make_model(lam=0.015625, seed=83)
         x, y, groups, masks = self._raw_fixture()
         result = _simulate_bc_aux_liveness(
@@ -818,7 +818,7 @@ class BcAuxLivenessPreflightTests(unittest.TestCase):
 
 
 class LegacySceneClockCompatibilityTests(unittest.TestCase):
-    """旧 KING/root 只读恢复 v3 belt/exhausted，学生消费原始 v4 观测。"""
+    """The old KING/root recovers v3 belt/exhausted read-only; the student consumes the raw v4 observation."""
 
     def test_numpy_environment_and_torch_policy_decoders_are_identical(self):
         rng = np.random.default_rng(20260726)
@@ -934,7 +934,7 @@ class LegacySceneClockCompatibilityTests(unittest.TestCase):
 
 
 class StructuralAdapterAndKingFirewallTests(unittest.TestCase):
-    """与校准阈值无关的结构回归：无损扩宽、持久化及 KING 支持集。"""
+    """Structural regressions independent of the calibration threshold: lossless widening, persistence and the KING support set."""
 
     @staticmethod
     def _raw_actor_logits(model, obs):
@@ -977,7 +977,7 @@ class StructuralAdapterAndKingFirewallTests(unittest.TestCase):
         expected_bias = (
             model.policy.action_net.bias[action].detach().clone())
 
-        # continuation 不只要留住参数，还必须留住这五个参数的 Adam 动量。
+        # A continuation must keep not only the parameters but also the Adam moments of these five parameters.
         optimizer = model.policy.optimizer
         weight = model.policy.action_net.weight
         bias = model.policy.action_net.bias
@@ -1024,7 +1024,7 @@ class StructuralAdapterAndKingFirewallTests(unittest.TestCase):
             (68, 68))
         self.assertEqual(model.policy.action_net.weight.shape, (15, 68))
         self.assertEqual(spec, model._bc_aux_circuit_spec)
-        # 根锚有意保持旧 64 宽，不能随 live actor 扩宽而被覆写。
+        # The root anchor deliberately stays at the old 64 width and must not be overwritten when the live actor widens.
         self.assertEqual(root["action_net.weight"].shape, (15, 64))
         self.assertEqual(
             train_ppo._policy_head_sha256(model.bc_aux_root_anchor_sd),
@@ -1085,7 +1085,7 @@ class StructuralAdapterAndKingFirewallTests(unittest.TestCase):
                 root_sha)
             self.assertTrue(th.equal(
                 self._raw_actor_logits(loaded, obs), after))
-            # continuation 的幂等安装验证不能把现场上下文参数重置到初始化。
+            # The idempotent installation check of a continuation must not reset the live context parameters to their initialisation.
             self.assertEqual(
                 _expand_policy_with_bc_aux_circuit(loaded), spec)
             self.assertTrue(th.equal(
@@ -1128,7 +1128,7 @@ class StructuralAdapterAndKingFirewallTests(unittest.TestCase):
         self.addCleanup(model.get_env().close)
         _expand_policy_with_bc_aux_circuit(model)
         model._setup_learn(total_timesteps=model.n_steps)
-        with self.assertRaisesRegex(RuntimeError, "缺.*执行回执"):
+        with self.assertRaisesRegex(RuntimeError, "missing.*execution receipt"):
             model._update_info_buffer(
                 [{"requested_action": 12}], np.asarray([False]))
         self.assertEqual(model._bc_aux_pending_requested_a12, 0)
@@ -1192,7 +1192,7 @@ class StructuralAdapterAndKingFirewallTests(unittest.TestCase):
                         [info], np.asarray([False]))
                 with self.assertRaisesRegex(
                         RuntimeError,
-                        "buffer 请求(?:与原生执行回执不闭合|序列与执行回执错位)"):
+                        "buffer request(?:s do not close with the native execution receipts| sequence misaligned with the execution receipts)"):
                     model._record_bc_aux_rollout_exposure()
                 model.get_env().close()
 
@@ -1214,7 +1214,7 @@ class StructuralAdapterAndKingFirewallTests(unittest.TestCase):
             model._update_info_buffer([info], np.asarray([False]))
         with self.assertRaisesRegex(
                 RuntimeError,
-                "buffer 请求(?:与原生执行回执不闭合|序列与执行回执错位)"):
+                "buffer request(?:s do not close with the native execution receipts| sequence misaligned with the execution receipts)"):
             model._record_bc_aux_rollout_exposure()
 
     def test_exact_mixture_probability_and_noneligible_zero(self):
@@ -1261,7 +1261,7 @@ class StructuralAdapterAndKingFirewallTests(unittest.TestCase):
         columns = list(spec["gate_parameter_columns"])
         with th.no_grad():
             model.policy.action_net.weight[action, columns].zero_()
-            # feature8（怪物密度）相同 hp 带内即可把门推向两端。
+            # feature8 (monster density) alone, within the same hp band, can push the gate to either end.
             model.policy.action_net.weight[action, columns[1]] = 8.0
             model.policy.action_net.bias[action] = 0.0
         obs = th.zeros((2, 298), dtype=th.float32)
@@ -1365,7 +1365,7 @@ class StructuralAdapterAndKingFirewallTests(unittest.TestCase):
         obs = th.from_numpy(
             np.random.default_rng(409).standard_normal(
                 (16, 298)).astype(np.float32))
-        obs[:, 0] = 0.8  # 谓词外，纯旧 actor 更新。
+        obs[:, 0] = 0.8  # outside the predicate: a pure old-actor update.
         masks = th.ones((len(obs), 15), dtype=th.bool)
         masks[:, 11] = False
         before = model.policy.action_net.weight[9, :64].detach().clone()
@@ -1390,12 +1390,12 @@ class StructuralAdapterAndKingFirewallTests(unittest.TestCase):
         obs[:, 0] = 0.55
         masks = np.ones((3, 15), dtype=np.bool_)
         masks[:, 11] = False
-        with self.assertRaisesRegex(ValueError, "不得仅凭 68 宽猜测"):
+        with self.assertRaisesRegex(ValueError, "must not guess adapter semantics from the 68 width"):
             train_ppo._policy_logits_from_sb3_state_dict(
                 state, obs, action_masks=masks)
         wrong = json.loads(json.dumps(spec))
         wrong["probability_max"] = 0.25
-        with self.assertRaisesRegex(ValueError, "不得仅凭 68 宽猜测"):
+        with self.assertRaisesRegex(ValueError, "must not guess adapter semantics from the 68 width"):
             train_ppo._policy_logits_from_sb3_state_dict(
                 state, obs, action_masks=masks, circuit_spec=wrong)
         offline = train_ppo._policy_logits_from_sb3_state_dict(
@@ -1519,8 +1519,8 @@ class StructuralAdapterAndKingFirewallTests(unittest.TestCase):
                     model, x=x, y=y, episode_id=groups,
                     masks=masks, spec=spec)
 
-            # before/loss/after 三次都走真实 policy distribution；中间目标
-            # 是真实 log_prob(action12)，而非离线 logits 捷径。
+            # before/loss/after all go through the real policy distribution; the intermediate target
+            # is the real log_prob(action12), not an offline logits shortcut.
             self.assertGreaterEqual(get_distribution.call_count, 3)
             self.assertEqual(canary["optimizer_steps"], 1)
             self.assertGreater(canary["probability_12_delta"], 0.0)
@@ -1563,8 +1563,8 @@ class StructuralAdapterAndKingFirewallTests(unittest.TestCase):
         self.assertTrue(th.equal(
             model._bc_aux_anchor_probs[:, 14],
             th.zeros(32, dtype=th.float32)))
-        # 锚定后只扰动一个旧动作，保证 KL 分支确有非零训练信号；
-        # a14 的零梯度不能由“整个 KL 恰为零”伪造。
+        # After anchoring, perturb only one old action so the KL branch really has a non-zero training signal;
+        # a14's zero gradient must not be faked by "the whole KL happens to be zero".
         with th.no_grad():
             model.policy.action_net.bias[9] += 0.75
 
@@ -1689,7 +1689,7 @@ class StructuralAdapterAndKingFirewallTests(unittest.TestCase):
 
 
 class BcAuxBehaviorPublicationTests(unittest.TestCase):
-    """原始 held-out 行为硬门是 model_final 发布事务的一部分。"""
+    """The raw held-out behaviour hard gate is part of the model_final publication transaction."""
 
     def test_aux_training_split_is_episode_disjoint_from_final_gate(self):
         groups = np.repeat(np.arange(20, dtype=np.int64), 5)
@@ -1708,7 +1708,7 @@ class BcAuxBehaviorPublicationTests(unittest.TestCase):
         heldout = _bc_v2_holdout_indices(groups)
         training = _bc_v2_training_indices(groups)
         x = np.zeros((len(groups), 298), dtype=np.float32)
-        # 行号作为不可碰撞指纹；held-out 正例若泄漏会直接出现在 bank。
+        # Row numbers serve as a collision-free fingerprint; a leaked held-out positive would show up in the bank directly.
         x[:, 0] = np.arange(len(groups), dtype=np.float32)
         y = np.full(len(groups), 9, dtype=np.int64)
         y[training[::5]] = 12
@@ -1725,8 +1725,8 @@ class BcAuxBehaviorPublicationTests(unittest.TestCase):
         self.assertTrue((bank_y == 12).any())
         self.assertTrue((bank_y != 12).any())
         self.assertTrue(bank_masks[bank_y == 12, 12].all())
-        # feature297<0 且 m12=False 的后饮证据只负责闭合覆盖，
-        # 不得混进要求 m12=True 的 legacy 校准 bank。
+        # Post-drink evidence with feature297<0 and m12=False only closes coverage
+        # and must not be mixed into the legacy calibration bank, which requires m12=True.
         self.assertTrue(bank_masks[:, 12].all())
         self.assertFalse((bank_x[:, 297] < 0.0).any())
         self.assertFalse(np.isin(bank_x[:, 0], x[heldout, 0]).any())
@@ -1739,7 +1739,7 @@ class BcAuxBehaviorPublicationTests(unittest.TestCase):
         groups = np.repeat(np.arange(2, dtype=np.int64), 50)
         masks = np.ones((100, 15), dtype=bool)
         masks[:, 11] = False
-        masks[2:, 12] = False  # 97/99 negatives 对 a12 结构性不可达
+        masks[2:, 12] = False  # 97/99 negatives cannot reach a12 structurally
         metrics = bc_aux_behavior_metrics(
             _tiny_policy_sd(collapse=True), x, y, groups, masks,
             heldout_only=False)
@@ -1747,7 +1747,7 @@ class BcAuxBehaviorPublicationTests(unittest.TestCase):
         self.assertEqual(metrics["non_a12"], 1)
         self.assertEqual(metrics["fp"], 1)
         self.assertEqual(metrics["tn"], 0)
-        self.assertEqual(metrics["fpr_12"], 1.0)  # 禁被 99 稀释成约 .01
+        self.assertEqual(metrics["fpr_12"], 1.0)  # must not be diluted by 99 to about .01
 
     def test_published_receipt_binds_successful_model_bytes(self):
         x, y, groups, masks = _behavior_fixture()
@@ -1850,7 +1850,7 @@ class BcAuxBehaviorPublicationTests(unittest.TestCase):
             with mock.patch.object(
                     train_ppo, "_atomic_save_model") as save:
                 with self.assertRaisesRegex(
-                        ValueError, "探索证据硬门 FAIL"):
+                        ValueError, "exploration-evidence hard gate FAIL"):
                     _publish_model_final_with_bc_aux_gate(
                         model, final, x=x, y=y, episode_id=groups,
                         masks=masks, demos_sha256="a" * 64,
@@ -1999,14 +1999,14 @@ class BcAuxBehaviorPublicationTests(unittest.TestCase):
             final = pathlib.Path(d) / "model_final.zip"
             incomplete = _publication_provenance()
             incomplete.pop("manager_npz_sha256")
-            with self.assertRaisesRegex(ValueError, "谱系字段不完整"):
+            with self.assertRaisesRegex(ValueError, "lineage fields incomplete"):
                 _publish_model_final_with_bc_aux_gate(
                     model, final, x=x, y=y, episode_id=groups,
                     masks=masks, demos_sha256="a" * 64,
                     anchor_sd=anchor,
                     publication_provenance=incomplete)
             wrong_step = _publication_provenance(step=2048)
-            with self.assertRaisesRegex(ValueError, "步数不闭合"):
+            with self.assertRaisesRegex(ValueError, "step counts do not close"):
                 _publish_model_final_with_bc_aux_gate(
                     model, final, x=x, y=y, episode_id=groups,
                     masks=masks, demos_sha256="a" * 64,
@@ -2014,7 +2014,7 @@ class BcAuxBehaviorPublicationTests(unittest.TestCase):
                     publication_provenance=wrong_step)
             no_preflight = _publication_provenance()
             no_preflight["bc_aux_liveness_preflight_sha256"] = None
-            with self.assertRaisesRegex(ValueError, "preflight_sha256 非法"):
+            with self.assertRaisesRegex(ValueError, "preflight_sha256 invalid"):
                 _publish_model_final_with_bc_aux_gate(
                     model, final, x=x, y=y, episode_id=groups,
                     masks=masks, demos_sha256="a" * 64,
@@ -2022,7 +2022,7 @@ class BcAuxBehaviorPublicationTests(unittest.TestCase):
                     publication_provenance=no_preflight)
             record_only = _publication_provenance()
             record_only["calib_record_only"] = True
-            with self.assertRaisesRegex(ValueError, "禁止 calib_record_only"):
+            with self.assertRaisesRegex(ValueError, "forbids calib_record_only"):
                 _publish_model_final_with_bc_aux_gate(
                     model, final, x=x, y=y, episode_id=groups,
                     masks=masks, demos_sha256="a" * 64,
@@ -2163,7 +2163,7 @@ class BcAuxBehaviorPublicationTests(unittest.TestCase):
 
     def test_fail_receipt_refuses_model_publish(self):
         x, y, groups, masks = _behavior_fixture()
-        # rev10 允许 PPO 不把 a12 变成 argmax，但仍拒绝破坏根策略的候选。
+        # rev10 allows PPO not to make a12 the argmax, but still rejects candidates that break the root policy.
         unsafe = _contextual_policy_sd(
             gate_bias=_bc_aux_circuit_spec()["initial_gate_bias"])
         unsafe["action_net.bias"][0] = 20.0
@@ -2173,7 +2173,7 @@ class BcAuxBehaviorPublicationTests(unittest.TestCase):
             final = pathlib.Path(d) / "model_final.zip"
             with mock.patch.object(
                     train_ppo, "_atomic_save_model") as save:
-                with self.assertRaisesRegex(ValueError, "拒绝发布 model_final"):
+                with self.assertRaisesRegex(ValueError, "refusing to publish model_final"):
                     _publish_model_final_with_bc_aux_gate(
                         model, final, x=x, y=y, episode_id=groups,
                         masks=masks, demos_sha256="a" * 64,
@@ -2192,7 +2192,7 @@ class BcAuxBehaviorPublicationTests(unittest.TestCase):
 
 
 class BcAuxDemoValidatorTests(unittest.TestCase):
-    """E3②:v2 demos 专用验证器(镜像断言按世代分别成文)。"""
+    """E3-2: the dedicated v2 demos validator (mirror assertions written separately per generation)."""
 
     def _tmp(self):
         directory = tempfile.TemporaryDirectory()
@@ -2211,7 +2211,7 @@ class BcAuxDemoValidatorTests(unittest.TestCase):
         np.testing.assert_array_equal(ly, y)
         np.testing.assert_array_equal(lep, ep)
         np.testing.assert_array_equal(lmasks, masks)
-        self.assertIn(12, ly)                       # v2 允 12
+        self.assertIn(12, ly)                       # v2 allows 12
 
     def test_v2_pass_bundle_requires_final_holdout_marker(self):
         p = self._tmp() / "demos.npz"
@@ -2220,16 +2220,16 @@ class BcAuxDemoValidatorTests(unittest.TestCase):
             p.parent, 2, _BC_V2_COLLECTION_EPISODES)
         marker.unlink()
         with self.assertRaisesRegex(
-                ValueError, "one-shot marker 缺失/不可读"):
+                ValueError, "one-shot marker missing/unreadable"):
             _load_bc_aux_demos_v2(
                 p, expected_manager_sha256=CANONICAL_MANAGER_SHA)
 
     def test_v2_final_holdout_marker_tamper_is_rejected(self):
         for mutation, message in (
-            ("pool", "pool/时间/消费阶段身份不闭合"),
-            ("marker_schema", "pool/时间/消费阶段身份不闭合"),
-            ("provenance", "provenance 与 PASS report 不一致"),
-            ("extra", "字段/schema 不精确"),
+            ("pool", "pool/time/consumption-stage identity does not close"),
+            ("marker_schema", "pool/time/consumption-stage identity does not close"),
+            ("provenance", "provenance disagrees with the PASS report"),
+            ("extra", "fields/schema not exact"),
         ):
             with self.subTest(mutation=mutation):
                 base = self._tmp() / mutation
@@ -2267,7 +2267,7 @@ class BcAuxDemoValidatorTests(unittest.TestCase):
         report["final_holdout_marker_sha256"] = "0" * 64
         report_path.write_text(json.dumps(report))
         with self.assertRaisesRegex(
-                ValueError, "PASS report 未精确绑定 final pool/marker"):
+                ValueError, "PASS report not exactly bound to the final pool/marker"):
             _load_bc_aux_demos_v2(
                 p, expected_manager_sha256=CANONICAL_MANAGER_SHA)
 
@@ -2282,7 +2282,7 @@ class BcAuxDemoValidatorTests(unittest.TestCase):
         calibration["fit_episodes"] -= 1
         calibration["validation_episodes_excluded"] += 1
         report_path.write_text(json.dumps(report))
-        with self.assertRaisesRegex(ValueError, "三域确定性切分不一致"):
+        with self.assertRaisesRegex(ValueError, "three-domain deterministic split inconsistent"):
             _load_bc_aux_demos_v2(
                 p, expected_manager_sha256=CANONICAL_MANAGER_SHA)
 
@@ -2306,8 +2306,8 @@ class BcAuxDemoValidatorTests(unittest.TestCase):
             report_path.write_text(json.dumps(report))
             with self.assertRaisesRegex(
                     ValueError,
-                    "fit (计数|指标)未绑定现场策略|"
-                    "fit_metrics\\..*必须是数值"):
+                    "fit (counts|metrics) not bound to the live policy|"
+                    "fit_metrics\\..*must be numeric"):
                 _load_bc_aux_demos_v2(
                     p, expected_manager_sha256=CANONICAL_MANAGER_SHA)
 
@@ -2329,13 +2329,13 @@ class BcAuxDemoValidatorTests(unittest.TestCase):
                     (train_ppo._A12_LEGAL_NEGATIVE_PROBABILITY_MEAN_MAX
                      if key.endswith("_mean")
                      else train_ppo._A12_LEGAL_NEGATIVE_PROBABILITY_MAX))
-                # 仍是有限、[0,1] 且不超门的伪值，也必须因不等于现场
-                # 六张量重算而拒绝，不能只做 schema/range 检查。
+                # A fake value that is still finite, in [0,1] and within the gate must also be rejected because it does not equal
+                # the recomputation from the live six tensors; a schema/range check alone is not enough.
                 report["a12_calibration"]["fit_metrics"][key] = (
                     original * 0.5)
                 report_path.write_text(json.dumps(report))
                 with self.assertRaisesRegex(
-                        ValueError, "fit 指标未绑定现场策略"):
+                        ValueError, "fit metrics not bound to the live policy"):
                     _load_bc_aux_demos_v2(
                         p, expected_manager_sha256=CANONICAL_MANAGER_SHA)
 
@@ -2345,8 +2345,8 @@ class BcAuxDemoValidatorTests(unittest.TestCase):
         policy = th.load(
             p.with_name("policy_sd.pt"),
             map_location="cpu", weights_only=True)
-        # 提高到刚越过 max 概率线，但仍远低于竞争动作：
-        # argmax/FPR 继续为零，只有概率安全门能抓住。
+        # Raised just past the max probability line, but still far below the competing action:
+        # argmax/FPR stay at zero, and only the probability safety gate can catch it.
         policy["action_net.bias"][12] = 3.1
         fit, _ = train_ppo._bc_v2_fit_validation_indices(ep)
         behavior = bc_aux_behavior_metrics(
@@ -2374,7 +2374,7 @@ class BcAuxDemoValidatorTests(unittest.TestCase):
             )
         }
         with self.assertRaisesRegex(
-                ValueError, "现场 fit 安全门未过"):
+                ValueError, "live fit safety gate not passed"):
             train_ppo._validate_bc_v2_calibration_receipt(
                 report, policy, x, y, ep, masks)
 
@@ -2385,17 +2385,17 @@ class BcAuxDemoValidatorTests(unittest.TestCase):
         report = json.loads(report_path.read_text())
         report.pop("a12_calibration")
         report_path.write_text(json.dumps(report))
-        with self.assertRaisesRegex(ValueError, "字段/schema 不精确"):
+        with self.assertRaisesRegex(ValueError, "fields/schema not exact"):
             _load_bc_aux_demos_v2(
                 p, expected_manager_sha256=CANONICAL_MANAGER_SHA)
 
     def test_bundle_manager_must_match_actual_training_manager(self):
         p = self._tmp() / "demos.npz"
         _write_v2_pass_bundle(p)
-        with self.assertRaisesRegex(ValueError, "经理分布.*不一致"):
+        with self.assertRaisesRegex(ValueError, "manager distribution disagrees"):
             _load_bc_aux_demos_v2(
                 p, expected_manager_sha256="0" * 64)
-        # 同一 bundle 对其真实采集经理仍可通过，证明不是硬编码拒绝非空输入。
+        # The same bundle still passes against its real collection manager, showing that non-empty input is not rejected by hard-coding.
         loaded = _load_bc_aux_demos_v2(
             p, expected_manager_sha256=CANONICAL_MANAGER_SHA)
         self.assertEqual(loaded[-1], hashlib.sha256(p.read_bytes()).hexdigest())
@@ -2403,7 +2403,7 @@ class BcAuxDemoValidatorTests(unittest.TestCase):
     def test_embedded_metadata_without_pass_report_is_rejected(self):
         p = self._tmp() / "demos.npz"
         _write_v2_npz(p)
-        with self.assertRaisesRegex(ValueError, "PASS 回执缺失"):
+        with self.assertRaisesRegex(ValueError, "PASS receipt missing"):
             _load_bc_aux_demos_v2(
                 p, expected_manager_sha256=CANONICAL_MANAGER_SHA)
 
@@ -2415,20 +2415,20 @@ class BcAuxDemoValidatorTests(unittest.TestCase):
         report = json.loads(report_path.read_text())
         report["data_gate"] = "RUNNING"
         report_path.write_text(json.dumps(report))
-        with self.assertRaisesRegex(ValueError, "未通过"):
+        with self.assertRaisesRegex(ValueError, "did not pass"):
             _load_bc_aux_demos_v2(
                 p, expected_manager_sha256=CANONICAL_MANAGER_SHA)
 
         _write_v2_pass_bundle(p)
         with open(p, "ab") as stream:
             stream.write(b"tamper")
-        with self.assertRaisesRegex(ValueError, "未绑定现场 demos"):
+        with self.assertRaisesRegex(ValueError, "not bound to the live demos"):
             _load_bc_aux_demos_v2(
                 p, expected_manager_sha256=CANONICAL_MANAGER_SHA)
 
         _write_v2_pass_bundle(p)
         (base / "policy_sd.pt").write_bytes(b"tampered-policy")
-        with self.assertRaisesRegex(ValueError, "未绑定现场 policy"):
+        with self.assertRaisesRegex(ValueError, "not bound to the live policy"):
             _load_bc_aux_demos_v2(
                 p, expected_manager_sha256=CANONICAL_MANAGER_SHA)
 
@@ -2463,15 +2463,15 @@ class BcAuxDemoValidatorTests(unittest.TestCase):
         report = json.loads(report_path.read_text())
         report["policy_sha256"] = hashlib.sha256(
             policy.read_bytes()).hexdigest()
-        # 攻击者同时伪造“读数来自该权重”，但仍把 gate 字段写成 PASS；
-        # loader 必须以现场重算 gate 为准。
+        # The attacker also forges "the readings come from these weights" and still writes PASS into the gate fields;
+        # the loader must go by the gate recomputed live.
         report["a12_behavior"] = collapsed
         report["a12_behavior_gate"] = {"verdict": "PASS"}
         report_path.write_text(json.dumps(report))
         with self.assertRaisesRegex(
                 ValueError,
-                "a12_calibration bias_12 未绑定|"
-                "held_out_top1.*重算不一致|现场权重重算.*未 PASS"):
+                "a12_calibration bias_12 not bound|"
+                "held_out_top1.*recomputation|live-weights recomputed.*did not PASS"):
             _load_bc_aux_demos_v2(
                 p, expected_manager_sha256=CANONICAL_MANAGER_SHA)
 
@@ -2483,7 +2483,7 @@ class BcAuxDemoValidatorTests(unittest.TestCase):
         report = json.loads(report_path.read_text())
         report["a12_behavior"]["tp"] += 1
         report_path.write_text(json.dumps(report))
-        with self.assertRaisesRegex(ValueError, "a12_behavior.*重算不一致"):
+        with self.assertRaisesRegex(ValueError, "a12_behavior.*recomputation"):
             _load_bc_aux_demos_v2(
                 p, expected_manager_sha256=CANONICAL_MANAGER_SHA)
 
@@ -2505,7 +2505,7 @@ class BcAuxDemoValidatorTests(unittest.TestCase):
             report["policy_sha256"] = hashlib.sha256(
                 policy.read_bytes()).hexdigest()
             report_path.write_text(json.dumps(report))
-            with self.assertRaisesRegex(ValueError, "形制/有限性异常"):
+            with self.assertRaisesRegex(ValueError, "shape/finiteness invalid"):
                 _load_bc_aux_demos_v2(
                     p, expected_manager_sha256=CANONICAL_MANAGER_SHA)
 
@@ -2528,7 +2528,7 @@ class BcAuxDemoValidatorTests(unittest.TestCase):
         _write_v2_npz(
             stale,
             protocol_version=np.asarray(PROTOCOL_VERSION - 1, dtype=np.int64))
-        with self.assertRaisesRegex(ValueError, "协议过期"):
+        with self.assertRaisesRegex(ValueError, "protocol outdated"):
             _parse_bc_aux_demos_v2(stale)
         forged = base / "forged.npz"
         _write_v2_npz(forged, generator_sha256=np.asarray("0" * 64))
@@ -2545,55 +2545,55 @@ class BcAuxDemoValidatorTests(unittest.TestCase):
             _parse_bc_aux_demos_v2(p)
 
     def test_generation_conditioned_forbidden_labels(self):
-        # v2 禁 11 允 12(守卫面不弱化;v1 禁 (11,12) 系 bc_worker 面原封)
+        # v2 forbids 11 and allows 12 (the guard surface is not weakened; v1's ban on (11,12) is the bc_worker surface, untouched)
         p = self._tmp() / "demos.npz"
         _write_v2_npz(p, labels=[9, 11] * 4)
-        with self.assertRaisesRegex(ValueError, "禁采动作 11"):
+        with self.assertRaisesRegex(ValueError, "forbidden action 11"):
             _parse_bc_aux_demos_v2(p)
 
     def test_label_out_of_range_rejected(self):
         p = self._tmp() / "demos.npz"
         _write_v2_npz(p, labels=[9, 15] * 4)
-        with self.assertRaisesRegex(ValueError, "标签越界"):
+        with self.assertRaisesRegex(ValueError, "labels out of range"):
             _parse_bc_aux_demos_v2(p)
 
     def test_masks_shape_and_dtype_rejected(self):
         base = self._tmp()
         p14 = base / "d14.npz"
         _write_v2_npz(p14, masks=np.ones((8, 14), dtype=bool))
-        with self.assertRaisesRegex(ValueError, "masks 形状/dtype"):
+        with self.assertRaisesRegex(ValueError, "masks shape/dtype"):
             _parse_bc_aux_demos_v2(p14)
         pint = base / "dint.npz"
         _write_v2_npz(pint, masks=np.ones((8, 15), dtype=np.int8))
-        with self.assertRaisesRegex(ValueError, "masks 形状/dtype"):
+        with self.assertRaisesRegex(ValueError, "masks shape/dtype"):
             _parse_bc_aux_demos_v2(pint)
 
     def test_label_masked_by_own_mask_rejected(self):
         p = self._tmp() / "demos.npz"
         masks = np.ones((8, 15), dtype=bool)
-        masks[0, 12] = False                        # 第 0 行标签 12 被自身掩码禁止
+        masks[0, 12] = False                        # row 0's label 12 is forbidden by its own mask
         _write_v2_npz(p, masks=masks)
-        with self.assertRaisesRegex(ValueError, "on-manifold 破缺"):
+        with self.assertRaisesRegex(ValueError, "on-manifold broken"):
             _parse_bc_aux_demos_v2(p)
 
     def test_obs_shape_dtype_and_episode_diversity_mirrored(self):
         base = self._tmp()
         p297 = base / "d297.npz"
         _write_v2_npz(p297, obs_dim=297)
-        with self.assertRaisesRegex(ValueError, "数组形状异常"):
+        with self.assertRaisesRegex(ValueError, "array shapes invalid"):
             _parse_bc_aux_demos_v2(p297)
         p64 = base / "d64.npz"
         _write_v2_npz(p64, x_dtype=np.float64)
-        with self.assertRaisesRegex(ValueError, "dtype 异常"):
+        with self.assertRaisesRegex(ValueError, "dtype invalid"):
             _parse_bc_aux_demos_v2(p64)
         pep = base / "dep.npz"
         _write_v2_npz(pep, episode_ids=[0] * 8)
-        with self.assertRaisesRegex(ValueError, "独立局数"):
+        with self.assertRaisesRegex(ValueError, "independent episode count"):
             _parse_bc_aux_demos_v2(pep)
 
 
 class BcAuxSubsetFilterTests(unittest.TestCase):
-    """rev8:正例/合法负例入 bank；负闩+m12=False 只作覆盖证据。"""
+    """rev8: positives and legal negatives enter the bank; negative latch + m12=False is coverage evidence only."""
 
     def test_filter_keeps_positives_and_hard_negatives(self):
         x = np.zeros((6, 298), dtype=np.float32)
@@ -2613,11 +2613,11 @@ class BcAuxSubsetFilterTests(unittest.TestCase):
     def test_filter_fails_loud_without_class12(self):
         x = np.zeros((3, 298), dtype=np.float32)
         y = np.asarray([9, 10, 13], dtype=np.int64)
-        with self.assertRaisesRegex(ValueError, "没有 12 类示范对"):
+        with self.assertRaisesRegex(ValueError, "no class-12 demo pairs"):
             _filter_bc_aux_demo_pairs(x, y, np.ones((3, 15), dtype=bool))
 
     def test_filter_asserts_m12_true_on_class12_pairs(self):
-        # 图纸字面(G0-2b/E7):全部 12 类示范对断言 m[12]=True。
+        # Blueprint literal (G0-2b/E7): every class-12 demonstration pair asserts m[12]=True.
         x = np.zeros((2, 298), dtype=np.float32)
         y = np.asarray([12, 12], dtype=np.int64)
         masks = np.ones((2, 15), dtype=bool)
@@ -2638,7 +2638,7 @@ class BcAuxSubsetFilterTests(unittest.TestCase):
         x[:, 0] = [0.55, 0.55, 0.8, 0.8]
         y = np.asarray([12, 9, 10, 13], dtype=np.int64)
         masks = np.ones((4, 15), dtype=bool)
-        with self.assertRaisesRegex(ValueError, "可见后饮关闩证据"):
+        with self.assertRaisesRegex(ValueError, "visible post-drink latch closes"):
             _filter_bc_aux_demo_pairs(x, y, masks)
 
     def test_post_drink_evidence_requires_negative_latch_and_closed_mask(self):
@@ -2646,15 +2646,15 @@ class BcAuxSubsetFilterTests(unittest.TestCase):
         x[:, 0] = [0.55, 0.55, 0.55, 0.8, 0.8]
         y = np.asarray([12, 9, 10, 9, 13], dtype=np.int64)
         masks = np.ones((5, 15), dtype=bool)
-        # 单有负闩但 m12 仍开、或单有关闭 m12 但闩非负，都不能算后饮证据。
+        # A negative latch with m12 still open, or a closed m12 with a non-negative latch, does not count as post-drink evidence.
         x[1, 297] = -1.5
         masks[2, 12] = False
-        with self.assertRaisesRegex(ValueError, "可见后饮关闩证据"):
+        with self.assertRaisesRegex(ValueError, "visible post-drink latch closes"):
             _filter_bc_aux_demo_pairs(x, y, masks)
 
 
 class BcAuxRngTests(unittest.TestCase):
-    """E3③:demo minibatch 专用流,播种规则同 E1③ 形制(固定偏移确定性派生)。"""
+    """E3-3: dedicated stream for demo minibatches, seeded as in E1-3 (deterministic derivation at a fixed offset)."""
 
     def test_fixed_offset_derivation_is_deterministic(self):
         self.assertEqual(
@@ -2667,8 +2667,8 @@ class BcAuxRngTests(unittest.TestCase):
         self.assertNotEqual(a, c)
 
     def test_stream_disjoint_from_training_and_p_skip_families(self):
-        # 偏移移出 [0, 2**32) 训练种子域;与 E1 p_skip 流族 (seed+rank)+2**33+26
-        # 之偏移差 ≥ 2**33 >> rank,构造性不相交(种子级同流即同序列,故查种子)。
+        # The offset moves out of the [0, 2**32) training-seed domain; its offset from the E1 p_skip stream family (seed+rank)+2**33+26
+        # differs by >= 2**33 >> rank, so they are constructively disjoint (same seed means same sequence, so the seeds are checked).
         self.assertGreaterEqual(_BC_AUX_SEED_OFFSET, 2**32)
         self.assertGreaterEqual(abs(_BC_AUX_SEED_OFFSET - _P_SKIP_SEED_OFFSET),
                                 2**33)
@@ -2765,7 +2765,7 @@ class BcAuxRngTests(unittest.TestCase):
 
 
 class BcAuxTrainLoopTests(unittest.TestCase):
-    """E3①④⑤:辅助 CE 通路(免引擎缩样,TinyMasked15Env + DummyVecEnv)。"""
+    """E3-1/4/5: the auxiliary CE path (engine-free scaled-down run, TinyMasked15Env + DummyVecEnv)."""
 
     def _model(self, lam=0.0, seed=7):
         model = _make_model(lam=lam, seed=seed)
@@ -2782,17 +2782,17 @@ class BcAuxTrainLoopTests(unittest.TestCase):
         model = self._model()
         x, y, masks = _demo_bank()
         bad = masks.copy()
-        bad[0, 12] = False                          # 标签 12 被自身掩码禁止
-        with self.assertRaisesRegex(ValueError, "掩码禁止"):
+        bad[0, 12] = False                          # label 12 is forbidden by its own mask
+        with self.assertRaisesRegex(ValueError, "forbidden by their own mask"):
             model.mount_bc_aux_demos(x, y, bad, rng=derive_bc_aux_rng(4))
-        with self.assertRaisesRegex(ValueError, "示范观测形状"):
+        with self.assertRaisesRegex(ValueError, "demo observation shape"):
             model.mount_bc_aux_demos(x[:, :3], y, masks, derive_bc_aux_rng(4))
-        with self.assertRaisesRegex(ValueError, "掩码形状"):
+        with self.assertRaisesRegex(ValueError, "mask shape"):
             model.mount_bc_aux_demos(x, y, masks[:, :14], derive_bc_aux_rng(4))
-        with self.assertRaisesRegex(ValueError, "标签"):
+        with self.assertRaisesRegex(ValueError, "labels"):
             model.mount_bc_aux_demos(x, y.astype(np.float32), masks,
                                      derive_bc_aux_rng(4))
-        with self.assertRaisesRegex(ValueError, "专用 np.random.Generator"):
+        with self.assertRaisesRegex(ValueError, "dedicated np.random.Generator"):
             model.mount_bc_aux_demos(x, y, masks, rng=None)
 
     def test_resume_mount_uses_persistent_root_not_current_leg_start(self):
@@ -2806,7 +2806,7 @@ class BcAuxTrainLoopTests(unittest.TestCase):
             th.where(mask_t, root_logits,
                      th.full_like(root_logits, -1e8)), dim=-1)
         with th.no_grad():
-            # 模拟上一腿已经发生的显著漂移；persistent root 字段仍是首次根。
+            # Simulate significant drift that already happened in the previous leg; the persistent root fields are still the first root.
             model.policy.action_net.bias[12] += 30.0
             current = model.policy.get_distribution(
                 th.as_tensor(x), action_masks=mask_t)
@@ -2825,16 +2825,16 @@ class BcAuxTrainLoopTests(unittest.TestCase):
             model._bc_aux_anchor_probs.cpu(), current_probs.cpu()))
 
     def test_lambda_positive_without_bank_fails_loud(self):
-        # 反 P2:λ>0 而池未挂载不得静默空转(镜像 β>0 无教师条款)。
+        # anti-P2: lambda>0 with no pool mounted must not idle silently (mirrors the beta>0-without-teacher clause).
         model = self._model(lam=0.015625)
         model._setup_learn(total_timesteps=8)
         _fill_buffer(model)
-        with self.assertRaisesRegex(RuntimeError, "示范池未挂载"):
+        with self.assertRaisesRegex(RuntimeError, "demo pool is not mounted"):
             model.train()
 
     def test_zero_lambda_is_zero_intrusion(self):
-        # λ=0:辅助分支零调用、专用流零消耗、policy+optimizer 与"池不在位"
-        # 双胞胎逐张量 torch.equal(G0-2a 张量级恒等之免引擎缩样)。
+        # lambda=0: auxiliary branch called zero times, dedicated stream not consumed, policy+optimizer equal tensor by tensor
+        # to the "pool absent" twin under torch.equal (engine-free scaled-down version of the G0-2a tensor-level identity).
         calls = []
         snapshots = []
         for mounted in (True, False):
@@ -2862,7 +2862,7 @@ class BcAuxTrainLoopTests(unittest.TestCase):
         self.assertTrue(_tree_equal(optim_a, optim_b))
 
     def test_12_head_gradient_nonzero_via_autograd(self):
-        # G0-2b 单测先立件:autograd 实测辅助 CE 对 action_net 第 12 行梯度非零。
+        # G0-2b unit test set up first: autograd measures a non-zero gradient of the auxiliary CE on row 12 of action_net.
         model = self._model(lam=0.015625)
         model.mount_bc_aux_demos(*_demo_bank(), rng=derive_bc_aux_rng(1))
         ce = model._bc_aux_ce_loss()
@@ -2872,11 +2872,11 @@ class BcAuxTrainLoopTests(unittest.TestCase):
         self.assertNotEqual(float(grad_b[12]), 0.0)
 
     def test_12_head_train_fingerprint_lambda_gated(self):
-        # 真 train() 指纹:rollout 面 12 恒掩时,PPO 自身对 12 头仍有 O(1e-10)
-        # 级残留梯度——sb3_contrib MaskableCategorical 之 _original_logits 系
-        # 未掩 logsumexp 归一化后逻辑值,掩前归一化项对 raw logit 12 留有
-        # softmax_unmasked_12 微通道(施工实测呈报件,详交接单)。故指纹取
-        # 数量级分离而非位级冻结:λ>0 之行 12 位移须比 λ=0 残留位移大 ≥1e2 倍。
+        # Real train() fingerprint: with 12 always masked on the rollout side, PPO itself still leaves an O(1e-10)
+        # residual gradient on head 12: sb3_contrib MaskableCategorical's _original_logits are the logits after an unmasked
+        # logsumexp normalisation, and the pre-mask normalisation term leaves a softmax_unmasked_12 micro-channel on raw logit 12
+        # (measured during implementation). So the fingerprint uses an order-of-magnitude separation instead of a bit-level freeze:
+        # with lambda>0 the displacement of row 12 must be >= 1e2 times the residual displacement at lambda=0.
         deltas = {}
         for lam in (0.015625, 0.0):
             model = self._model(lam=lam)
@@ -2887,18 +2887,18 @@ class BcAuxTrainLoopTests(unittest.TestCase):
             model.train()
             after = model.policy.action_net.weight.detach()
             deltas[lam] = float((after[12] - before[12]).abs().sum())
-            self.assertFalse(th.equal(before[9], after[9]))   # 其余头照常在学
+            self.assertFalse(th.equal(before[9], after[9]))   # the other heads keep learning as usual
             if lam > 0:
                 self.assertIsInstance(model._last_bc_aux_ce, float)
             else:
                 self.assertIsNone(model._last_bc_aux_ce)
-        self.assertLess(deltas[0.0], 1e-7)          # λ=0:仅掩码归一化残留
-        self.assertGreater(deltas[0.015625], 1e-5)  # λ>0:辅助通路真实到达 12 头
+        self.assertLess(deltas[0.0], 1e-7)          # lambda=0: only the mask-normalisation residual
+        self.assertGreater(deltas[0.015625], 1e-5)  # lambda>0: the auxiliary path really reaches head 12
         self.assertGreater(deltas[0.015625], 1e2 * deltas[0.0])
 
     def test_aux_forward_consumes_per_sample_masks(self):
-        # rev2 全 bank 要求 m12=True；正例仅开 12、负例开 9/12 的可辨识
-        # 花纹与全开掩码应产生不同校准损失，证明逐样本 masks 真被消费。
+        # rev2's full bank requires m12=True; the distinguishable pattern of positives opening only 12 and negatives opening 9/12
+        # should give a different calibration loss from all-open masks, proving that per-sample masks are really consumed.
         model = self._model(lam=0.015625)
         x, y, _ = _demo_bank()
         structured = np.zeros((len(y), 15), dtype=bool)
@@ -2930,7 +2930,7 @@ class BcAuxTrainLoopTests(unittest.TestCase):
             _fill_buffer(model, seed=seed)
             model.train()
         self.assertEqual(_BC_AUX_UPDATE_EVERY, 1)
-        self.assertEqual(calls, 2)  # 两次 train()，不是 n_epochs×minibatches
+        self.assertEqual(calls, 2)  # two train() calls, not n_epochs x minibatches
 
     def test_gcal_peek_does_not_consume_the_dedicated_aux_batch(self):
         model = self._model(lam=0.015625, seed=12)
@@ -2955,7 +2955,7 @@ class BcAuxTrainLoopTests(unittest.TestCase):
             np.testing.assert_array_equal(
                 model._bc_aux_permutations[key], value)
 
-        # 恢复后的真实独立步应消费恰好这一批，而非 G-CAL 后的第二批。
+        # After recovery the real independent step should consume exactly this batch, not the second batch after G-CAL.
         actual = model._apply_bc_aux_step()
         self.assertTrue(th.isfinite(actual))
         self.assertNotEqual(
@@ -3001,7 +3001,7 @@ class BcAuxTrainLoopTests(unittest.TestCase):
             model.calib_out = str(pathlib.Path(d) / "calib.jsonl")
             model.mount_bc_aux_demos(
                 *_demo_bank(n=64), rng=derive_bc_aux_rng(23))
-            # anchor 已在 mount 冻结；随后构造“m12 合法便总喝”的坍缩。
+            # the anchor is frozen at mount; then build the collapse "always drink whenever m12 is legal".
             with th.no_grad():
                 model.policy.action_net.bias[12] += 30.0
             aux = model._bc_aux_ce_loss()
@@ -3087,7 +3087,7 @@ class BcAuxTrainLoopTests(unittest.TestCase):
         start = model._bc_aux_rollout_monitor()
         self.assertFalse(start["tripped"])
         self.assertFalse(start["lower_recall_gate_applied"])
-        # 起点 recall 无论高低都不能作为中途停训理由。
+        # The starting recall, high or low, can never be a reason to stop training midway.
         self.assertFalse(any("recall" in reason
                              for reason in start["trip_reasons"]))
         with th.no_grad():
@@ -3100,8 +3100,8 @@ class BcAuxTrainLoopTests(unittest.TestCase):
             for reason in collapsed["trip_reasons"]))
 
     def test_dedicated_rng_stream_zero_contamination(self):
-        # E3③/G0-2b 缩样:在位(λ>0+池挂载)/不在位两跑,训练 RNG(torch 全局 +
-        # numpy 全局)状态轨迹逐点相等;专用流自身实被消费。
+        # E3-3/G0-2b scaled down: active (lambda>0 + pool mounted) and inactive runs; the training RNG (torch global +
+        # numpy global) state trajectories are equal point by point; the dedicated stream itself is really consumed.
         trajectories = []
         consumed_states = []
         for mounted in (True, False):
@@ -3129,7 +3129,7 @@ class BcAuxTrainLoopTests(unittest.TestCase):
 
 
 class BcAuxCliTests(unittest.TestCase):
-    """E3②/E7:CLI 旗解析、互不强制、fail-loud(子进程,引擎零点火)。"""
+    """E3-2/E7: CLI flag parsing, neither flag forcing the other, fail-loud (subprocess, the engine is never started)."""
 
     def _tmp(self):
         directory = tempfile.TemporaryDirectory()
@@ -3141,10 +3141,10 @@ class BcAuxCliTests(unittest.TestCase):
     def _worker_argv(self, base, *aux):
         manager = base / "manager.npz"
         if not manager.exists():
-            # active aux 路径现在必须把 bundle 的采集经理与训练经理逐字对账。
+            # The active aux path must now reconcile the bundle's collection manager with the training manager verbatim.
             manager.write_bytes(CANONICAL_MANAGER.read_bytes())
-        # 普通 Worker 必须显式声明 legacy policy view；结构化 A12 则必须
-        # 保留 raw protocol-v4 gate，因此二者不能共携。
+        # An ordinary Worker must declare the legacy policy view explicitly; a structured A12 must
+        # keep the raw protocol-v4 gate, so the two cannot be carried together.
         observation_flags = (
             () if "--bc-aux-graft" in aux
             else ("--legacy-worker-policy-observation-view",)
@@ -3152,7 +3152,7 @@ class BcAuxCliTests(unittest.TestCase):
         return ("--worker", "--algo", "mppo", "--gamma", "1.0",
                 "--max-steps", "3000", "--manager-npz", str(manager),
                 "--seed", "7000", *observation_flags,
-                *aux)                               # 7000 撞探针段:安全终止哨
+                *aux)                               # 7000 collides with the probe range: a safe termination sentinel
 
     @staticmethod
     def _formal_aux_flags():
@@ -3177,15 +3177,15 @@ class BcAuxCliTests(unittest.TestCase):
     def test_negative_lambda_fails_loud(self):
         run = _run_cli("--bc-aux-lambda=-0.5")
         self.assertNotEqual(run.returncode, 0)
-        self.assertIn("--bc-aux-lambda 必须是有限非负数", run.stderr)
+        self.assertIn("--bc-aux-lambda must be a finite non-negative number", run.stderr)
 
     def test_lambda_alone_does_not_force_demos(self):
-        # λ 单独在位 → 通路不在位,无耦合报错;推进至下游种子纪律闸即证
+        # lambda alone active -> the path is inactive, no coupling error; reaching the downstream seed-discipline gate proves it
         run = _run_cli(*self._worker_argv(self._tmp(),
                                           "--bc-aux-lambda", "0.015625"))
         self.assertNotEqual(run.returncode, 0)
-        self.assertIn("种子纪律", run.stderr)
-        self.assertNotIn("④乙", run.stderr)
+        self.assertIn("seed discipline", run.stderr)
+        self.assertNotIn("4B", run.stderr)
 
     def test_explicit_bc_pool_seeds_and_rank_overlap_are_rejected(self):
         for seed in (
@@ -3195,30 +3195,30 @@ class BcAuxCliTests(unittest.TestCase):
             argv[argv.index("--seed") + 1] = str(seed)
             run = _run_cli(*argv)
             self.assertNotEqual(run.returncode, 0, seed)
-            self.assertIn("种子纪律", run.stderr)
+            self.assertIn("seed discipline", run.stderr)
 
-        # 首 rank 自身安全也不够；seed+任一真实 env rank 撞池同样必须拒绝。
+        # The first rank being safe is not enough; seed + any real env rank colliding with a pool must also be rejected.
         argv = list(self._worker_argv(self._tmp()))
         argv[argv.index("--seed") + 1] = "1999"
         argv.extend(("--num-envs", "2"))
         run = _run_cli(*argv)
         self.assertNotEqual(run.returncode, 0)
-        self.assertIn("种子纪律", run.stderr)
+        self.assertIn("seed discipline", run.stderr)
 
     def test_demos_alone_does_not_force_lambda_and_is_not_loaded(self):
-        # demos 单独在位(路径故意不存在)→ 不在位即不加载、连存在性都不查(零侵入)
+        # demos alone active (path deliberately missing) -> inactive means not loaded, not even checked for existence (zero intrusion)
         run = _run_cli(*self._worker_argv(
             self._tmp(), "--bc-aux-demos", "/definitely/missing/demos.npz"))
         self.assertNotEqual(run.returncode, 0)
-        self.assertIn("种子纪律", run.stderr)
-        self.assertNotIn("④乙", run.stderr)
+        self.assertIn("seed discipline", run.stderr)
+        self.assertNotIn("4B", run.stderr)
 
     def test_active_path_requires_worker_mppo(self):
         run = _run_cli("--worker", "--bc-aux-lambda", "0",
                        "--bc-aux-graft",
                        "--bc-aux-demos", "/missing/demos.npz")
         self.assertNotEqual(run.returncode, 0)
-        self.assertIn("只适用于 --worker --algo mppo", run.stderr)
+        self.assertIn("only applies to --worker --algo mppo", run.stderr)
 
     def test_active_path_missing_file_fails_loud(self):
         run = _run_cli(*self._worker_argv(
@@ -3227,7 +3227,7 @@ class BcAuxCliTests(unittest.TestCase):
             "--bc-aux-demos", "/definitely/missing/demos.npz",
             *self._formal_aux_flags()))
         self.assertNotEqual(run.returncode, 0)
-        self.assertIn("不存在", run.stderr)
+        self.assertIn("does not exist", run.stderr)
 
     def test_active_path_rejects_v1_shaped_npz(self):
         base = self._tmp()
@@ -3252,8 +3252,8 @@ class BcAuxCliTests(unittest.TestCase):
             "--bc-aux-demos", str(v2),
             *self._formal_aux_flags()))
         self.assertNotEqual(run.returncode, 0)
-        self.assertIn("种子纪律", run.stderr)        # 辅助面已全过,倒在安全哨
-        self.assertNotIn("④乙", run.stderr)
+        self.assertIn("seed discipline", run.stderr)        # the auxiliary surface passed completely; stopped at the safety sentinel
+        self.assertNotIn("4B", run.stderr)
 
     def test_active_path_requires_armed_calibration_and_liveness(self):
         base = self._tmp()
@@ -3275,11 +3275,11 @@ class BcAuxCliTests(unittest.TestCase):
             base, *common, "--bc-aux-liveness-preflight",
             "--calib-record-only"))
         self.assertNotEqual(record_only.returncode, 0)
-        self.assertIn("禁止 --calib-record-only", record_only.stderr)
+        self.assertIn("--calib-record-only may not bypass", record_only.stderr)
 
 
 class V1SurfaceRegressionTests(unittest.TestCase):
-    """E3②:v1 面(:61 schema 常量/canonical 验证器/加载器)回归零破坏。"""
+    """E3-2: zero breakage of the v1 surface (the :61 schema constant / canonical validator / loader)."""
 
     def test_v1_constants_untouched(self):
         self.assertEqual(_BC_REPORT_SCHEMA_VERSION, 1)
@@ -3295,7 +3295,7 @@ class V1SurfaceRegressionTests(unittest.TestCase):
         })
 
     def test_v1_loader_accepts_v1_npz_and_v2_validator_rejects_it(self):
-        # 世代分账:同一 v1 形制文件——v1 加载器照常受理,v2 验证器 fail-loud。
+        # Per-generation accounting: the same v1-shaped file is accepted by the v1 loader as usual, and the v2 validator fails loud.
         with tempfile.TemporaryDirectory() as directory:
             p = pathlib.Path(directory) / "demos.npz"
             x = np.zeros((6, 298), dtype=np.float32)
@@ -3313,7 +3313,7 @@ class V1SurfaceRegressionTests(unittest.TestCase):
 
 
 class AnchorZeroTouchSourcePins(unittest.TestCase):
-    """rev6 源码钉：KING 条件支持与结构化 graft 必须接进正式路径。"""
+    """rev6 source pins: KING conditional support and the structural graft must be wired into the formal path."""
 
     def test_leashed_king_excludes_a12_and_circuit_is_step_firewalled(self):
         src = LEASHED_PPO.read_text()

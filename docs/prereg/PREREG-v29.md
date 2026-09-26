@@ -1,127 +1,141 @@
-# v29「经理再教育」预注册文档(终稿,面板两镜头 15 项落地后冻结;判决附录在尾)
+# v29 "manager re-education": pre-registration (final text, frozen after the panel's two lenses and 15 items were implemented; the verdict appendix is at the end)
 
-**考题**:深度经济可学吗?神之一手报告(docs/FORENSICS-神之一手.md)已验:
-8×N 下楼奖金全谱系兑现率 ≈0,系冻结 v22-H(对脚本工人学的,40k 决策)几乎
-不选 DIVE;而 v28-leg1 工人的战中囤药+驻窗深耕让 DIVE 在 5 张新图上 4 胜——
-**梯子已架好,缺一个敢下楼的经理。**
-**唯一处方:对新班底(v28-leg1)重训经理。** 两臂 = 同处方预算内对照
-(常规熵 vs 高熵探索;v25 已证微调臂系毒药 −18.3,永不再设)。
-铁律照 v25:环境侧零改动;金种子全案至多一次;对照值引存档。
-总设计师核准:2026-07-11 夜("那今晚就开经理再教育吧")。
+**The question**: can the depth economy be learned? The winning-moves report
+([FORENSICS-winning-moves](../forensics/FORENSICS-winning-moves.md)) already verified that the payout rate of the 8xN
+descent bonus is ~0 across the whole lineage, because the frozen v22-H (trained against the script worker, 40k
+decisions) almost never chooses DIVE; while the v28-leg1 worker's in-fight potion hoarding + deep farming inside the
+window makes DIVE win on 4 of 5 new maps: **the ladder is in place; what is missing is a manager willing to go
+downstairs.** **The single prescription: retrain the manager on the new crew (v28-leg1).** Two arms = a control within
+the same prescription's budget (normal entropy vs high-entropy exploration; v25 proved the fine-tuning arm is poison,
+-18.3, and it is never set again). Hard rules as in v25: zero changes on the environment side; the gold seeds at most
+once in the whole case; control values cited from archives. Launch decision: 2026-07-11.
 
-## D1 班底与仪器(零新代码路径)
+## D1 Cast and instruments (zero new code paths)
 
-- 工人 = **v28-worker-leg1**(冻结):zip = 满 32 = 112.4 档案之本尊;
-  policy.npz 发车日导出,**parity 0/1000**。
-- **锚 = v28-G3-leg1.json(112.4 逐种子,sha16 = 6fc6a44c7862424a 钉死,
-  发车断言)**——现任 v22-H × 同一工人的满 32,换届对照的天然参考行。
-- **G-A0(发车闸)**:npz 工人 + 默认 v22-h 经理满 32 逐种子 ≡ 锚
-  (ret±0.01 / died / mode_seq),失配 STOP 人工重锚。兼证 npz 保真 + 仪器未坏。
-- 工具零新增(v25 全套在库:--worker-npz 子进程 numpy 工人、--options 守护
-  断言、export_manager_npz parity、eval_assembled --manager-npz)。
+- Worker = **v28-worker-leg1** (frozen): the zip = the model itself behind the full-32 = 112.4 archive; policy.npz
+  exported on launch day, **parity 0/1000**.
+- **Anchor = v28-G3-leg1.json (112.4 per seed, sha16 = 6fc6a44c7862424a pinned, asserted at launch)**: the full 32 of
+  the incumbent v22-H x the same worker, the natural reference row for a succession comparison.
+- **G-A0 (launch gate)**: npz worker + the default v22-h manager on the full 32, per seed == the anchor (ret+/-0.01 /
+  died / mode_seq); a mismatch STOPs for a manual re-anchor. It also proves npz fidelity + an unbroken instrument.
+- Zero new tools (the full v25 set is in the repo: the --worker-npz subprocess numpy worker, the --options guard
+  assertions, export_manager_npz parity, eval_assembled --manager-npz).
 
-## D2 选举配方与预算
+## D2 Election recipe and budget
 
-共用:`--options --algo mppo --gamma 1.0 --max-steps 3000 --n-steps 64
+Shared: `--options --algo mppo --gamma 1.0 --max-steps 3000 --n-steps 64
 --num-envs 4 --total-steps 160000 --worker-npz <v28 npz>`
-(**4× v22-H 自身预算**;时钟锚:27.5 决策/s 系 leg7 工人实测,leg1 工人
-拍/窗 +16%(19.4 对 16.7,两 G3 档案实算),折算 ≈23-24 决策/s ≈ **112 分钟/臂**,
-两臂串行 ≈ 3.8h;训练 timeout 4h/臂,余量 ≥2×——面板校准)。
+(**4x v22-H's own budget**; clock anchor: 27.5 decisions/s was measured with the leg7 worker, the leg1 worker has
++16% beats/window (19.4 vs 16.7, computed from the two G3 archives), which converts to ~23-24 decisions/s ~ **112
+minutes/arm**, two arms in series ~3.8h; training timeout 4h/arm, slack >=2x; panel calibration).
 
-- **M-fresh**:lr 3e-4,ent 0.02,--seed 22(v22-H 原配方最近复刻)。
-- **M-explore**:lr 3e-4,ent 0.08,--seed 24(高熵臂:深度经济需要试出
-  DIVE 的期望值,熵是两臂间唯一变量)。
-- R29.2 判词口径 = "常规熵配方 vs 高熵配方"整体对比,禁止归因到 ent 之外。
+- **M-fresh**: lr 3e-4, ent 0.02, --seed 22 (the closest replica of the original v22-H recipe).
+- **M-explore**: lr 3e-4, ent 0.08, --seed 24 (the high-entropy arm: the depth economy needs trying out the expected
+  value of DIVE; entropy is the single variable between the two arms).
+- The R29.2 verdict definition = a whole-recipe comparison of "normal-entropy recipe vs high-entropy recipe";
+  attribution to anything other than ent is forbidden.
 
-**克隆差异表(run_v25_election.py → run_v29_relection.py)**:
-① 班底/锚全换(上节);锚 sha 发车断言;② M-warm 臂与 warm-sd 导出段物理
-删除;③ FLOOR_REPRO 85→**103.4**(=0.92×112.4,沿 v25 比例先例);
-④ 标签 v29-*;exam() 拒覆写 + 半截 .void 轮转 + 评测日志留档(v28 条款);
-⑤ 配对一律**按 seed 键 join + 种子集合断言**(v28 修正,弃 v25 行位配对);
-⑥ 运维护栏(v28 全套 + 面板补强):顶层异常兜底 DRIVER_EXCEPTION +
-NEEDS_ATTENTION、训练臂 timeout 4h/评测 30 分钟(超时按崩溃落账,**击杀含
-进程组**——SubprocVecEnv 孙进程防孤儿)、preflight(锚 sha/工人在位/目标
-档案不存在含 v29-golden);**步数达标闸以 model_final.zip 的 num_timesteps
-为唯一计步源并精确断言 =160000**(160000 整除 256 无量子化余量,status
-节流计数必滞后十几步——面板 blocker;v25 系 40192 超采侥幸);评测日志
-时间戳留档(重考不覆写首考尸检);驱动重启协议照 v28 残余#0;
-⑦ GOLDEN_AUTHORIZED 事件带金评命令原文(含 --manager-npz)+ 双 sha;
-⑧ 满 32 事件新增深度仪表:depth≥2 种子数、DIVE/局、下楼奖金兑现/局。
+**Clone difference table (run_v25_election.py -> run_v29_relection.py)**:
+(1) cast/anchor fully replaced (previous section); anchor sha asserted at launch; (2) the M-warm arm and the warm-sd
+export stage are physically removed; (3) FLOOR_REPRO 85 -> **103.4** (=0.92x112.4, following the v25 ratio
+precedent); (4) tags v29-*; exam() refuses to overwrite + half-written .void rotation + evaluation logs archived (v28
+clause); (5) pairing always **joins on the seed key + a seed-set assertion** (the v28 fix, dropping v25's row-position
+pairing); (6) operational guard rails (the full v28 set + panel reinforcements): top-level exception catch-all
+DRIVER_EXCEPTION + NEEDS_ATTENTION, training arm timeout 4h/evaluation 30 minutes (timeouts booked as crashes, **the
+kill includes the process group**: keeps SubprocVecEnv grandchildren from being orphaned), preflight (anchor sha/worker
+in place/target archives including v29-golden absent); **the step-target gate uses the num_timesteps of
+model_final.zip as the single step-count source and asserts exactly =160000** (160000 is divisible by 256 with no
+quantization slack, and the throttled status count always lags by a dozen or so steps: a panel blocker; v25's 40192
+over-sampling was lucky); timestamped evaluation logs archived (a retake does not overwrite the first exam's autopsy);
+the driver restart protocol follows v28 residual #0; (7) the GOLDEN_AUTHORIZED event carries the exact gold-evaluation
+command (with --manager-npz) + both shas; (8) full-32 events gain depth instrumentation: seeds with depth>=2,
+DIVE/episode, descent bonus paid/episode.
 
-## D3 裁决与发射
+## D3 Verdict and launch
 
-1. **提前放弃闸**:双臂 16 种子(7000-7015)均 <75 → "训练失败,换届命题
-   未考"(免满 32)。
-2. 两臂皆满 32(7000-7031);**资格逐臂判定**(死 ≤6 ∧ 非作废 ∧ 哨兵闸,
-   或双归因放行);**胜者 = 过资格臂中满 32 均值最高者**(±0.05 平分 →
-   死数少者 → 仍平取 M-fresh);均值更高的臂被资格拦截 → substitution 事件
-   入册、由过资格臂递补并照常走全梯(含发射);**双臂皆不过资格 → 无胜者档**
-   ("双臂资格失败,命题未答(功效外)",深度仪表仅 record 不作副判)。
-3. **复现地板**:胜者 <103.9(=0.9239×112.4,**严格沿 v25 比例 85/92**,
-   面板勘误)→ "重训未复现参考水平,换届命题未考"。
-4. **发射线(配对判据,对 112.4 锚逐种子)**:均差 ≥+4 且赢 ≥18/32 且
-   死 ≤6 且哨兵(descend ≤2.04% / cap <5% / override <3% 为闸、≥8% 作废;
-   τ̄ 只记;DIVE >1/局 时仅 override 触线走双归因,且 DIVE >1/局 ∧ 死 >6
-   → run 作废,v25 条款原封)。**双归因裁定先于开牌**:经双归因放行的
-   GOLDEN_AUTHORIZED 强制携带"先裁后烧"旗,人工回写 dual_attr_ruling
-   事件后方可手启金评。
-5. **不发射档(穷尽;资格失败已由 D3-2 无胜者/递补覆盖,胜者必过资格)**:
-   均差 ≥+4 且赢 <18 → **"均值增益而宽度未达——点估增益,不烧牌"**(v28
-   补档);均差 ∈[+2,+4) → 探针级改进不烧牌;<+2 → "现任连任,再教育无
-   增益(功效限定)"。后两档判词强制携带配对赢数,赢 ≥14/32 时附"宽度移动
-   注记(不改判档)"——v28 附录宽度补档指令的本案落地形式。
-6. **金牌(若发射)**:单臂一次,组装体 = 胜者经理 npz × v28-leg1 工人;
-   P 线对王座 97.2(v28 口径,**按序判定**,GOLDEN_AUTHORIZED 事件随附
-   P 线速查表供开牌者当场对表):死 >6 回退;金 ≥101.2 且死 ≤4 → **P29-登基**;
-   ∈(97.2,101.2) 且死 ≤4 → 点估增益王座不动;>97.2 且死 5-6 → 持平(安全性
-   限定);∈[93.9,97.2] → 持平;<93.9 → 回退。金池开牌史:实际已开 v22/v23/v24
-   三次,本案若发射为第 4 次(勘误口径),固定池偏置随判词。
-7. **深度副判(考题主指标,科学结论不动王座;三档穷尽)**:胜者满 32 的
-   depth≥2 种子数 ≥12 且 DIVE/局 ∈[0.5,3] 且死 ≤6 → 判"**深度经济已学**"
-   (即使不发射);depth≥2 ≤7(基线)→ 判"再教育未解锁深度";**其余一切
-   组合(含 depth2 达线而 DIVE 超带/死超线)→ 带外档,判词携带落档原因,
-   入册不叙事**。副判判词强制尾注"王座与 Mark-I 认定另按 D3-6 与 ROADMAP
-   条款"(防不发射之夜被叙事成完全体已成——面板条款)。**Mark-I 认定线
-   (王座耦合)= 深度副判"已学" ∧ P29-登基**,ROADMAP 同步。
+1. **Early abandonment gate**: both arms' 16-seed (7000-7015) means <75 -> "training failed, the succession
+   proposition was not examined" (full 32 skipped).
+2. Both arms take the full 32 (7000-7031); **eligibility is judged per arm** (deaths <=6 and not void and the sentinel
+   gates, or let through by dual attribution); **winner = the highest full-32 mean among the eligible arms** (a +/-0.05
+   tie -> fewer deaths -> still tied, take M-fresh); if the arm with the higher mean is blocked by eligibility, a
+   substitution event is recorded and the eligible arm takes its place and goes down the full ladder as usual
+   (including launch); **both arms ineligible -> the no-winner tier** ("both arms ineligible, proposition unanswered
+   (outside statistical power)"; the depth instrumentation is recorded only, with no side verdict).
+3. **Reproduction floor**: winner <103.9 (=0.9239x112.4, **strictly following the v25 ratio 85/92**, the panel's
+   correction) -> "retraining did not reproduce the reference level, the succession proposition was not examined".
+4. **Launch line (paired criterion, per seed against the 112.4 anchor)**: mean diff >=+4 and wins >=18/32 and deaths
+   <=6 and the sentinels (descend <=2.04% / cap <5% / override <3% are gates, >=8% voids; tau-bar recorded only; with
+   DIVE >1/episode only an override crossing takes the dual attribution, and DIVE >1/episode and deaths >6 -> run
+   void, the v25 clause unchanged). **The dual-attribution decision comes before the opening**: a GOLDEN_AUTHORIZED let
+   through by dual attribution must carry a "decide first, then spend" flag, and the gold-standard evaluation may be
+   launched manually only after a dual_attr_ruling event is written back by hand.
+5. **No-launch tiers (exhaustive; eligibility failures are already covered by the no-winner/substitution of D3-2, so
+   the winner is always eligible)**: mean diff >=+4 and wins <18 -> **"mean gain but width not reached: a
+   point-estimate gain, does not spend the gold run"** (the tier added after v28); mean diff in [+2,+4) -> a
+   probe-level improvement, does not spend the gold run; <+2 -> "the incumbent stays, re-education brings no gain
+   (power-limited)". The last two tiers must carry the paired win count, and with wins >=14/32 they add a "width-shift
+   note (the tier does not change)": the form this case gives to the width-tier instruction of the v28 appendix.
+6. **Gold standard (if launched)**: single arm, once, assembled agent = the winner's manager npz x the v28-leg1
+   worker; P lines against the throne 97.2 (v28 definition, **decided in order**, the GOLDEN_AUTHORIZED event carries a
+   P-line quick reference so the opener can check it on the spot): deaths >6 revert; gold >=101.2 and deaths <=4 ->
+   **P29 takes the throne**; in (97.2,101.2) and deaths <=4 -> point-estimate gain, the throne does not move; >97.2 and
+   deaths 5-6 -> tie (safety qualified); in [93.9,97.2] -> tie; <93.9 -> revert. Gold-pool opening history: actually
+   opened three times so far, v22/v23/v24; if this case launches it is the 4th (corrected definition), and the
+   fixed-pool bias goes with the verdict.
+7. **Depth side verdict (the main metric of the question; a scientific conclusion that does not move the throne; three
+   exhaustive tiers)**: the winner's full-32 seeds with depth>=2 >=12 and DIVE/episode in [0.5,3] and deaths <=6 ->
+   "**depth economy learned**" (even without a launch); depth>=2 <=7 (baseline) -> "re-education did not unlock depth";
+   **every other combination (including depth2 on the line with DIVE outside the band/deaths over the line) -> the
+   out-of-band tier; the verdict carries the reason and it is recorded without narrative**. The side verdict must end
+   with the note "the throne and Mark-I determinations follow D3-6 and the roadmap clause
+   ([docs/design/ROADMAP-course-plan.md](../design/ROADMAP-course-plan.md))" (guarding against a no-launch run being
+   narrated as the complete system being done; a panel clause). **Mark-I determination line (coupled to the throne) =
+   depth side verdict "learned" and P29 takes the throne**, synchronized with the roadmap
+   ([docs/design/ROADMAP-course-plan.md](../design/ROADMAP-course-plan.md)).
 
-## R 线
+## R lines
 
-| # | 预测 | 数字 |
+| # | Prediction | Number |
 |---|---|---|
-| R29.1 | 胜者满 32 | ∈[95,125],点 112(追平现任即不俗) |
-| R29.2 | 配对(explore−fresh,满 32 同种子) | ∈[−10,+15],点 +4 |
-| R29.3 | **深度线**:胜者 depth≥2 种子数 | 基线 7;∈[6,22],点 12 |
-| R29.4 | 胜者 DIVE/局 | 基线 0.31;∈[0.2,3],点 1.0 |
-| R29.5 | 金牌(若发射) | ∈[98,120],点 108 |
-| R29.6 | 下楼奖金兑现/局(record;**按终局深度重构,系实付下界**——回升/回城轨迹低估,工具冻结如实注册) | 基线 1.75(=8×7/32);点 4 |
+| R29.1 | winner full 32 | in [95,125], point 112 (matching the incumbent is already respectable) |
+| R29.2 | paired (explore-fresh, full 32, same seeds) | in [-10,+15], point +4 |
+| R29.3 | **depth line**: the winner's seeds with depth>=2 | baseline 7; in [6,22], point 12 |
+| R29.4 | the winner's DIVE/episode | baseline 0.31; in [0.2,3], point 1.0 |
+| R29.5 | gold (if launched) | in [98,120], point 108 |
+| R29.6 | descent bonus paid/episode (recorded; **reconstructed from the final depth, so it is a lower bound of what was actually paid**: trajectories that climb back/return to town are underestimated; the tool is frozen, registered as is) | baseline 1.75 (=8x7/32); point 4 |
 
-判词纪律:携带 depth 分布、DIVE 份额、下楼奖金兑现、对锚配对赢数(宽度)、
-mode_seq 摘要、farm τ̄、seed 7023 空转案复查(record)、入窗分布混杂注记继承。
+Verdict discipline: carry the depth distribution, DIVE share, descent bonus paid, paired wins against the anchor
+(width), a mode_seq summary, the farm tau-bar, a re-check of the seed-7023 idling case (recorded), and the inherited
+entry-distribution confound note.
 
-## 残余不确定性
+## Residual uncertainty
 
-1. 两臂只差 ent,归因受限;lr/seed 混杂已消(同 lr,seed 22/24 系复刻惯例)。
-2. 高熵臂乱按风险由 R4 作废线与 override 闸覆盖。
-3. 4× 预算的经理对探针池无过拟合通道(训练种子拒采段照旧,评测池从未进训练)。
-4. 锚 112.4 系 16<full32 的反向档案(v28 独例),对它配对的赢数线 18/32
-   较历版更严——如实注册,不降线。
-5. 工人冻结、环境零改动;经理观测/掩码/奖励原封(下楼奖金本就归经理账)。
-6. **胜者系 max-of-2 顺序统计量**,R29.1 与发射线一类错误率相应放大(≈×2);
-   判词强制携带两臂原始满 32 数字与 r29_2 配对差(面板注记纪律)。
-7. **机制镜头未收卷**(API 中断,如实入册):其审查项(经理训练通路/守护
-   断言/种子邻域/G-A0 npz 等价/OOD 风险)由条款、统计两镜头 pass-notes 与
-   v25 先例(G-A0 32/32、种子断言、npz parity 0/1000)覆盖;4× 预算下
-   lr 无日程的平台化风险由放弃闸与地板条款兜底。
+1. The two arms differ only in ent, so attribution is limited; the lr/seed confound is removed (same lr; seeds 22/24
+   follow the replica convention).
+2. The risk of the high-entropy arm pressing keys at random is covered by the R4 void line and the override gate.
+3. A manager with 4x the budget has no overfitting channel to the probe pool (the training seed rejection ranges stay
+   as before; the evaluation pool never entered training).
+4. The anchor 112.4 is a reversed archive with 16 < full32 (the only v28 case), so the win line of 18/32 paired against
+   it is stricter than in earlier versions; registered as is, the line is not lowered.
+5. The worker is frozen and the environment unchanged; the manager's observation/mask/reward are unchanged (the descent
+   bonus always belonged to the manager's ledger).
+6. **The winner is a max-of-2 order statistic**, so the type-I error rates of R29.1 and the launch line are inflated
+   accordingly (~x2); the verdict must carry both arms' raw full-32 numbers and the r29_2 paired difference (panel note
+   discipline).
+7. **The mechanism lens did not complete** (recorded as is): its review items (the manager training path/guard
+   assertions/seed neighbourhoods/G-A0 npz equivalence/OOD risk) are covered by the pass notes of the clause and
+   statistics lenses and the v25 precedent (G-A0 32/32, seed assertions, npz parity 0/1000); the plateau risk of an lr
+   without a schedule at 4x budget is backstopped by the abandonment gate and the floor clause.
 
-*终稿冻结:2026-07-11 深夜。批评者面板(条款/统计两镜头收卷:2 blocker/
-2 major/11 minor 全落地;机制镜头中断入册)+ 驱动同步修订;
-commit 时间戳即公证。*
+*Final text frozen: 2026-07-11. Critic panel (the clause and statistics lenses completed: 2 blocker/2 major/11 minor
+all implemented; the interruption of the mechanism lens is recorded) + synchronized driver revision; the commit
+timestamp is the notarization.*
 
-## 附录:判决记录(2026-07-12 02:18:12 落账,值夜代录)
+## Appendix: verdict record (booked 2026-07-12)
 
-G-A0 32/32;fresh 88.7min(nt_zip=160000/status=159988,步数闸 blocker 实战
-首开)/ explore 105min。满 32:fresh 140.3 死3(depth2=15, dive=0.69,
-bonus=4.25)/ explore 149.0 死8(depth2=21, dive=1.44, depth_median=2.0,
-bonus=5.75)→ 作废线毙,**递补条款首夜实弹,fresh 加冕**;r29_2=+8.7。
-**发射:+27.86 / 赢 17/32(差一颗)→ 点估增益档,不烧牌,王座五连任;
-深度副判:已学。** R 对账与处方候选见 DESIGN.md v29 章。金池零接触。
+G-A0 32/32; fresh 88.7 min (nt_zip=160000/status=159988, the first live use of the step-gate blocker fix) / explore
+105 min. Full 32: fresh 140.3, 3 deaths (depth2=15, dive=0.69, bonus=4.25) / explore 149.0, 8 deaths (depth2=21,
+dive=1.44, depth_median=2.0, bonus=5.75) -> killed by the void line, **the first live use of the substitution clause,
+fresh is crowned**; r29_2=+8.7. **Launch: +27.86 / 17/32 wins (one short) -> the point-estimate gain tier, the gold
+run not spent, the throne stays for the fifth time; depth side verdict: learned.** The R reconciliation and candidate
+prescriptions are in the v29 chapter of DESIGN.md. Zero contact with the gold pool.

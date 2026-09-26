@@ -1,36 +1,36 @@
-# completion-l2-v1：可靠完成优先的时间合同
+# completion-l2-v1: a time contract that puts reliable completion first
 
-此版本把训练中的真实时间边界与已经完成的宽时间评测对齐。目标仍是正常发育和可靠推进；微拍用于真实记账和有限计算预算。它不增加按时间扣费的奖励，也不把预算耗尽等同死亡或通关。
+This version aligns the real time boundaries in training with the wide-time evaluation that has already been completed. The goal is still normal character growth and reliable progress; micro ticks are used for honest bookkeeping and a finite compute budget. It adds no time-based reward penalty, and it does not treat budget exhaustion as death or as a clear.
 
-## 生效条件与身份
+## Activation and identity
 
-显式传 `--worker-time-protocol completion-l2-v1`；默认 `legacy` 保留历史行为及合同字段。首批仅支持 `earned-dive-suffix-v1`、`l2-town-v1/full/sustain-v6`、原动作15维及 `dual-v4-asymmetric-v3` 观测13012维。新版本不是原认证模型的替换。
+Pass `--worker-time-protocol completion-l2-v1` explicitly; the default `legacy` keeps the historical behaviour and contract fields. The first batch supports only `earned-dive-suffix-v1`, `l2-town-v1/full/sustain-v6`, the original 15-action space and the `dual-v4-asymmetric-v3` observation (13,012 dims). The new version does not replace the original certified model.
 
-| 项目 | completion-l2-v1 |
+| Item | completion-l2-v1 |
 |---|---:|
-| 原观测余时分母 / `--max-steps` | 6000 |
-| 首次抵达普通L2的物理期限 | 12000真实微拍 |
-| 第一次实际抵层后的累计观察时间 | 1800真实微拍 |
-| 拾金命令窗口 | 900真实微拍 |
-| 补给总行程 | 3000真实微拍 |
-| FARM场景累计预算 | 3600真实微拍 |
+| Original remaining-time observation denominator / `--max-steps` | 6000 |
+| Physical deadline for first reaching an ordinary L2 | 12000 real micro ticks |
+| Cumulative observation time after the first actual arrival | 1800 real micro ticks |
+| Gold-pickup command window | 900 real micro ticks |
+| Total resupply trip | 3000 real micro ticks |
+| FARM scene cumulative budget | 3600 real micro ticks |
 
-完整数值单一来源是 `python/diablogym/completion_clock.py` 的不可变配方。训练合同额外绑定 `worker_time_protocol`、`worker_time_recipe` 及实现身份；普通resume不能跨时间协议，即使允许环境重启或优化器重置。跨协议需有独立、可核验的初始化回执。
+The single source of all values is the immutable recipe in `python/diablogym/completion_clock.py`. The training contract additionally binds `worker_time_protocol`, `worker_time_recipe` and the implementation identity; an ordinary resume cannot cross time protocols, even when an environment restart or optimizer reset is allowed. Crossing protocols needs a separate, verifiable initialization receipt.
 
-## 实际时钟与边界
+## Actual clock and boundaries
 
-每局执行原来的正常开局；进入L1后正式微拍从0记起，继承的起始城镇导航仍计入墙时。只消费引擎已经产生的逐拍 `engine_level/is_set_level`，不另查询、移动或重置引擎。任务场景不算普通L2。
+Every game runs the original normal start; formal micro ticks count from 0 once L1 is entered, and the inherited initial town navigation still counts toward wall time. Only the per-tick `engine_level/is_set_level` the engine already produces is consumed; the engine is not queried, moved or reset in addition. Quest scenes do not count as an ordinary L2.
 
-首次实际普通L2抵层必须携带原生 `accepted/pretransition_ready` 回执；物理截止设为 `首次抵层拍+1800`。早抵层可能缩短12000的旧上限，恰好第12000拍抵层则可延至13800。任务出入或再次返回L2不能重复续时。实际死亡、真实补给终局及既有终局规则仍优先，不为了凑满窗口强行继续。
+The first actual arrival on an ordinary L2 must carry the native `accepted/pretransition_ready` receipt; the physical deadline is set to `first arrival tick + 1800`. An early arrival can shorten the old 12000 limit, and an arrival exactly at tick 12000 extends it to 13800. Entering/leaving quests or returning to L2 again cannot extend the time again. Actual death, a real resupply terminal and the existing terminal rules still take precedence; the game is not forced to continue to fill the window.
 
-动态期限在外部观察回调及本步终局判定之前发布。普通动作已提交的换层/走格动画按更新后的物理期限结清，资源命令原有更紧的局部预算保留；没有额外策略决策或不计费动作。到期时已有的idle安全截断、busy终局规则保持。
+The dynamic deadline is published before the external observation callback and this step's terminal check. A level change/walk animation already committed by an ordinary action settles against the updated physical deadline, and resource commands keep their original tighter local budgets; there are no extra policy decisions or unbilled actions. At the deadline the existing idle safe truncation and busy terminal rules stay as they are.
 
-R16前缀仍有独立的每环境终身尝试/真实微拍上限。活跃前缀的物理截止不能被抵层回调扩大；未交权便意外进入L2是工程错误，立即停止并记录已发生的原生拍和未完整结账窗口，不能伪装为完整前缀或成功。正常交权释放前缀期限后，当前完整游戏时钟继续，不重置金钱、角色、探索或FARM预算。
+The R16 prefix still has its own per-environment lifetime attempt/real micro-tick limits. An active prefix's physical deadline cannot be extended by the arrival callback; reaching L2 unexpectedly before the hand-over is an engineering error, which stops immediately and records the native ticks already spent and the incompletely settled window; it cannot pose as a complete prefix or as a success. After a normal hand-over releases the prefix deadline, the current full game clock continues, without resetting gold, character, exploration or the FARM budget.
 
-## 兼容与结论限制
+## Compatibility and limits of the conclusions
 
-观测分母保留6000，因此超过6000后余时特征饱和为零；此限制在合同中显式记录。新数据可以包含这一段，不能宣称模型输入增加了新的长期规划信息。当前也没有更改动作含义、强制a11、增加目标进度奖励或调整GAE参数。
+The observation denominator stays at 6000, so the remaining-time feature saturates at zero beyond 6000; this limitation is recorded explicitly in the contract. New data may include that segment, but it cannot be claimed that the model input gained new long-horizon planning information. Currently the action meanings are not changed, a11 is not forced, no target-progress reward is added and the GAE parameters are not adjusted.
 
-`sustain-v6`仍描述原来的真实购物/维修算法，新的时间配方独立覆盖其450/1500历史预算，服务遥测报告实际900/3000及时间协议名。没有采用“优先更高AC”的防护实验候选。
+`sustain-v6` still describes the original real shopping/repair algorithm; the new time recipe separately overrides its historical 450/1500 budgets, and the service telemetry reports the actual 900/3000 and the time protocol name. The "prefer higher AC" protection experiment candidate was not adopted.
 
-工程重放、初始化参数一致及训练质量检查分别提供各自证据；这些均不等于稳定下楼或通关。效果仍需报告全部种子的真实抵层、完整随访、死亡、未达标和未完成结果。L2目前是课程边界，逐层通向L7及最终L16的目标保持。
+Engineering replay, identical initialization parameters and training quality checks each provide their own evidence; none of them equals stable descending or a clear. Effects still need reporting of all seeds' real arrivals, complete follow-up, deaths, unmet criteria and unfinished results. L2 is currently the course boundary; the goal of going level by level to L7 and finally L16 stands.

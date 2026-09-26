@@ -1,16 +1,16 @@
-# R18-B 训练臂关门报告(2026-09-08,主刀;运行 `r18-arm-a-loot-4`)
+# R18-B training-arm gates report (2026-09-08; run `r18-arm-a-loot-4`)
 
-## 〇、结论(先看这里;13:1x 第二版,含临时考卷、复合形态与 a11 回放)
+## 0. Conclusion (read this first; second version, with the provisional exams, the composite form and the a11 replay)
 
-- **训练**:`r18-arm-a-loot-4` 1 048 576 步、1052 局,12:41 正常收尾并发布 `model_candidate.zip`(sha 20adb0df…),保险丝未触发。训练局深度直方 {'0': 16, '1': 221, '2': 594, '3': 163, '4': 56, '5': 1, '6': 1}(三层+ 221 局);托管过门 1145/1270,兑现 20377 / 罚没 26248(R16 一程 244/244 未兑现;这一程托管**第一次大规模兑现**)。
-- **闸 D**(身份)过:对 r9 认证工人 D1 0.650924 / D2 0.211894;对父代 D1 0.837778 / D2 0.511321(阈 <0.99)。
-- **闸 A–C**(考卷):正式工具**结构性拒绝**本谱系(weights-only 热启动无 critic 预热回执;主树未改,见 §三 与修正案三草案)。镜像根临时结果(修正分支,§七):A 不过 / B 过 / C 不过(魔鬼卷 a/b 死亡 53/44 对锚 41/31,UCB95 24.53/24.75;M29 卷回报比 0.947/0.8622,击杀比 0.7844/0.7509)——**待主席裁定是否采信**。
-- **闸 E,学习者独自部署**(§四):存活 17 vs 20(救 7/丢 10,UCB95 +0.203);一层死亡 **25 vs 7**,二层到达 10 vs 34;前缀 42/48 不同(报告不裁)。读法:学习窗只在二层以上、一层由冻结父代代打,学习者从未拿到一层数据,但共享权重在变——**一层能力退化**,独自部署在一层就垮。主-1 之「过」(风险率 0.141)是曝光假象(二层拍数 21k 对 86k),主-2、主-3 不过。
-- **复合形态 v0,父代打前缀、学习者自首次到达二层接手**(§八;前缀 48/48 与对照逐位相同,故配对干净):存活 19 vs 20(救 3/丢 4,UCB95 +0.111);二层风险率 **0.1358 vs 0.222**(二层死亡 11 vs 19,二层拍数 81003 vs 85578,曝光相近——主-1 过,且是真的);三层到达 **15 vs 4**,2→3 下楼 23 vs 5,四层 1 vs 0;三层死亡 10 vs 2,三层到达者存活 4/15 对 2/4;二层击杀 418 vs 894,clvl≥4 17 vs 25——主-2、主-3 不过。
-- **F 机制指标**(§九,回放 45/48 与记录行逐位相同):二层 DIVE 窗内 a11 按下率 **13.9% vs 2.4%**,离楼梯 ≤5 格时 **24.1% vs 2.9%**;二层访问以下楼结束 7/17 对 5/85。
-- **一句话**:R18-B 把「下楼」教会了(托管兑现、a11 率 ×6、三层到达 ×4),没教会「下楼后活着」——死亡从二层搬到三层,总存活持平;这正是冻结件 §一 预告的可辨结局之一(反假设一的方向:深度 +、三层存活率 27% 对 50%)。另一个独立发现:earned-dive-suffix 工人不能独自部署(一层退化),部署形态必须是复合的,或训练里加一层保持。
+- **Training**: `r18-arm-a-loot-4` ran 1 048 576 steps and 1052 games, finished normally and published `model_candidate.zip` (sha 20adb0df…); the fuse did not trigger. Depth histogram of the training games {'0': 16, '1': 221, '2': 594, '3': 163, '4': 56, '5': 1, '6': 1} (221 games reached level 3+); escrow gate passed 1145/1270, vested 20377 / forfeited 26248 (one R16 run: 244/244 never vested; in this run escrow **vested at scale for the first time**).
+- **Gate D** (identity) passes: against the r9 certified worker D1 0.650924 / D2 0.211894; against the parent D1 0.837778 / D2 0.511321 (threshold <0.99).
+- **Gates A–C** (exams): the formal tool **structurally refuses** this lineage (a weights-only warm start has no critic warm-up receipts; the main tree is unchanged, see §3 and the draft of amendment 3). Provisional results in the mirror root (corrected branch, §7): A fails / B passes / C fails (demon volumes a/b deaths 53/44 vs anchor 41/31, UCB95 24.53/24.75; M29 volumes return ratio 0.947/0.8622, kill ratio 0.7844/0.7509); **whether to accept them is still to be decided**.
+- **Gate E, the learner deployed alone** (§4): survival 17 vs 20 (saved 7/lost 10, UCB95 +0.203); level-1 deaths **25 vs 7**, level-2 arrivals 10 vs 34; the prefix differs in 42/48 (reported, not judged). Reading: learning windows are only on level 2 and above and level 1 is played by the frozen parent, so the learner never got level-1 data, yet the shared weights change: **level-1 ability regresses**, and deployed alone it collapses on level 1. The "pass" of Primary-1 (hazard 0.141) is an exposure artefact (level-2 ticks 21k vs 86k); Primary-2 and Primary-3 fail.
+- **Composite form v0: the parent plays the prefix, the learner takes over from the first arrival on level 2** (§8; the prefix is bit-identical to the control in 48/48, so the pairing is clean): survival 19 vs 20 (saved 3/lost 4, UCB95 +0.111); level-2 hazard **0.1358 vs 0.222** (level-2 deaths 11 vs 19, level-2 ticks 81003 vs 85578, similar exposure: Primary-1 passes, and genuinely so); level-3 arrivals **15 vs 4**, 2→3 descents 23 vs 5, level 4 1 vs 0; level-3 deaths 10 vs 2, survivors among level-3 arrivals 4/15 vs 2/4; level-2 kills 418 vs 894, clvl≥4 17 vs 25: Primary-2 and Primary-3 fail.
+- **F mechanism metrics** (§9; the replay is identical to the recorded rows in 45/48): a11 press rate in level-2 DIVE windows **13.9% vs 2.4%**, within 5 tiles of the stairs **24.1% vs 2.9%**; level-2 visits ending in a descent 7/17 vs 5/85.
+- **In one sentence**: R18-B taught "descending" (escrow vested, a11 rate ×6, level-3 arrivals ×4) but not "staying alive after descending": deaths moved from level 2 to level 3 and total survival stayed flat; this is exactly one of the distinguishable outcomes announced in §1 of the frozen file (in the direction of counter-hypothesis one: depth up, level-3 survival rate 27% vs 50%). A separate finding: the earned-dive-suffix worker cannot be deployed alone (level-1 regression); the deployment form must be composite, or training must add level-1 retention.
 
-## 一、训练侧(运行目录审计)
+## 1. Training side (run directory audit)
 
 ```
 {
@@ -134,7 +134,7 @@
 }
 ```
 
-## 二、闸 D 身份探针(r13-gateD-v1,零种子消耗)
+## 2. Gate D identity probe (r13-gateD-v1, no seeds consumed)
 
 ```
 {
@@ -165,58 +165,58 @@
 }
 ```
 
-## 三、闸 A–C 考卷(六卷 r17-anchor 对照,考卷协议 3000 拍旧形态、协议关)
+## 3. Gates A–C exams (six r17-anchor control volumes, exam protocol in the old 3000-tick form, protocol off)
 
-正式工具尝试(`train/eval_assembled.py`,已认证字节):六卷全部被拒。
+Formal tool attempt (`train/eval_assembled.py`, certified bytes): all six volumes refused.
 ```
 {
- "xdevil-a": "eval_contract.EvalContractError: asymmetric Worker checkpoint 尚未完成可部署 actor 训练，或不在完整 PPO 更新边界:{'num_timesteps': 1048576, 'last_completed_rollout': 1048576, 'ppo_optimizer_steps': 27023, 'warmup_start': None, 'warmup_until': None, 'warmup_expected_rollouts': 0, 'warmup_completed_rollouts': 0, 'warmup_optimizer_steps': 0, 'actor_optimizer_steps': 27023}",
- "xdevil-b": "eval_contract.EvalContractError: asymmetric Worker checkpoint 尚未完成可部署 actor 训练，或不在完整 PPO 更新边界:{'num_timesteps': 1048576, 'last_completed_rollout': 1048576, 'ppo_optimizer_steps': 27023, 'warmup_start': None, 'warmup_until': None, 'warmup_expected_rollouts': 0, 'warmup_completed_rollouts': 0, 'warmup_optimizer_steps': 0, 'actor_optimizer_steps': 27023}",
- "xm29-a": "eval_contract.EvalContractError: asymmetric Worker checkpoint 尚未完成可部署 actor 训练，或不在完整 PPO 更新边界:{'num_timesteps': 1048576, 'last_completed_rollout': 1048576, 'ppo_optimizer_steps': 27023, 'warmup_start': None, 'warmup_until': None, 'warmup_expected_rollouts': 0, 'warmup_completed_rollouts': 0, 'warmup_optimizer_steps': 0, 'actor_optimizer_steps': 27023}",
- "xm29-b": "eval_contract.EvalContractError: asymmetric Worker checkpoint 尚未完成可部署 actor 训练，或不在完整 PPO 更新边界:{'num_timesteps': 1048576, 'last_completed_rollout': 1048576, 'ppo_optimizer_steps': 27023, 'warmup_start': None, 'warmup_until': None, 'warmup_expected_rollouts': 0, 'warmup_completed_rollouts': 0, 'warmup_optimizer_steps': 0, 'actor_optimizer_steps': 27023}",
- "xm29full-a": "eval_contract.EvalContractError: asymmetric Worker checkpoint 尚未完成可部署 actor 训练，或不在完整 PPO 更新边界:{'num_timesteps': 1048576, 'last_completed_rollout': 1048576, 'ppo_optimizer_steps': 27023, 'warmup_start': None, 'warmup_until': None, 'warmup_expected_rollouts': 0, 'warmup_completed_rollouts': 0, 'warmup_optimizer_steps': 0, 'actor_optimizer_steps': 27023}",
- "xm29full-b": "eval_contract.EvalContractError: asymmetric Worker checkpoint 尚未完成可部署 actor 训练，或不在完整 PPO 更新边界:{'num_timesteps': 1048576, 'last_completed_rollout': 1048576, 'ppo_optimizer_steps': 27023, 'warmup_start': None, 'warmup_until': None, 'warmup_expected_rollouts': 0, 'warmup_completed_rollouts': 0, 'warmup_optimizer_steps': 0, 'actor_optimizer_steps': 27023}"
+ "xdevil-a": "eval_contract.EvalContractError: asymmetric Worker checkpoint has not completed deployable actor training, or is not at a complete PPO update boundary:{'num_timesteps': 1048576, 'last_completed_rollout': 1048576, 'ppo_optimizer_steps': 27023, 'warmup_start': None, 'warmup_until': None, 'warmup_expected_rollouts': 0, 'warmup_completed_rollouts': 0, 'warmup_optimizer_steps': 0, 'actor_optimizer_steps': 27023}",
+ "xdevil-b": "eval_contract.EvalContractError: asymmetric Worker checkpoint has not completed deployable actor training, or is not at a complete PPO update boundary:{'num_timesteps': 1048576, 'last_completed_rollout': 1048576, 'ppo_optimizer_steps': 27023, 'warmup_start': None, 'warmup_until': None, 'warmup_expected_rollouts': 0, 'warmup_completed_rollouts': 0, 'warmup_optimizer_steps': 0, 'actor_optimizer_steps': 27023}",
+ "xm29-a": "eval_contract.EvalContractError: asymmetric Worker checkpoint has not completed deployable actor training, or is not at a complete PPO update boundary:{'num_timesteps': 1048576, 'last_completed_rollout': 1048576, 'ppo_optimizer_steps': 27023, 'warmup_start': None, 'warmup_until': None, 'warmup_expected_rollouts': 0, 'warmup_completed_rollouts': 0, 'warmup_optimizer_steps': 0, 'actor_optimizer_steps': 27023}",
+ "xm29-b": "eval_contract.EvalContractError: asymmetric Worker checkpoint has not completed deployable actor training, or is not at a complete PPO update boundary:{'num_timesteps': 1048576, 'last_completed_rollout': 1048576, 'ppo_optimizer_steps': 27023, 'warmup_start': None, 'warmup_until': None, 'warmup_expected_rollouts': 0, 'warmup_completed_rollouts': 0, 'warmup_optimizer_steps': 0, 'actor_optimizer_steps': 27023}",
+ "xm29full-a": "eval_contract.EvalContractError: asymmetric Worker checkpoint has not completed deployable actor training, or is not at a complete PPO update boundary:{'num_timesteps': 1048576, 'last_completed_rollout': 1048576, 'ppo_optimizer_steps': 27023, 'warmup_start': None, 'warmup_until': None, 'warmup_expected_rollouts': 0, 'warmup_completed_rollouts': 0, 'warmup_optimizer_steps': 0, 'actor_optimizer_steps': 27023}",
+ "xm29full-b": "eval_contract.EvalContractError: asymmetric Worker checkpoint has not completed deployable actor training, or is not at a complete PPO update boundary:{'num_timesteps': 1048576, 'last_completed_rollout': 1048576, 'ppo_optimizer_steps': 27023, 'warmup_start': None, 'warmup_until': None, 'warmup_expected_rollouts': 0, 'warmup_completed_rollouts': 0, 'warmup_optimizer_steps': 0, 'actor_optimizer_steps': 27023}"
 }
 ```
 
-**根因**:`_validate_asymmetric_worker_runtime_state` 要求 critic 预热回执(warmup_start/until、预期 rollout 数、`_critic_warmup_completed`);
-本谱系是 schema/2 weights-only 热启动(继承父代 actor+critic,无预热期),这些字段恒为 None/0——B6 冒烟的正式发布件同样被拒(11:3x 复核)。
-训练侧的发布谓词(`train_ppo` `publication_eligible`)对该谱系另有分支(继承回执有效 + actor 步数 > 0),考卷没有对应分支。
-**未改动**主树任何文件。临时做法:镜像根 `~/r17_work/r18/gates/exam-root`(python/ + train/*.py 副本,build → 现役桥),
-只在副本的该函数加继承谱系分支(与发布谓词同判据),六卷在副本上投射;行数据生成路径与正式工具逐位相同(校验只决定加载与否)。
-**采信与否、以及是否以预注册修正案三把该分支正式并入考卷工具(需重认证),由主席裁定。**
+**Root cause**: `_validate_asymmetric_worker_runtime_state` requires critic warm-up receipts (warmup_start/until, the expected rollout count, `_critic_warmup_completed`);
+this lineage is a schema/2 weights-only warm start (inheriting the parent's actor+critic, no warm-up period), so these fields are always None/0; the formal published file of the B6 smoke was refused as well (re-checked).
+The training side's publication predicate (`train_ppo` `publication_eligible`) has a separate branch for this lineage (valid inheritance receipt + actor steps > 0); the exam tool has no corresponding branch.
+**No file** of the main tree was changed. Provisional approach: a mirror root in a local work directory (not published; copies of python/ + train/*.py, with build pointing at the incumbent bridge),
+with the inherited-lineage branch added only to that function in the copies (the same criterion as the publication predicate), and the six volumes projected on the copies; the row-data generation path is bit-identical to the formal tool (the check only decides whether to load).
+**Whether to accept this, and whether to merge the branch into the exam tool formally through pre-registration amendment 3 (which needs re-certification), is still to be decided.**
 
 ```
 {
  "xdevil-a": {
   "rc": 1,
-  "out": "/home/user/r17_work/r18/gates/exam-root/train/runs/eval-assembled/r18-arm-a-loot-4-xdevil-a.json",
-  "last_line": "eval_contract.EvalContractError: asymmetric Worker checkpoint 尚未完成可部署 actor 训练，或不在完整 PPO 更新边界:{'num_timesteps': 1048576, 'last_completed_rollout': 1048576, 'ppo_optimizer_steps': 27023, 'warmup_start': None, 'warmup_until': None, 'warmup_expected_rollouts': 0, 'warmup_completed_rollouts': 0, 'warmup_optimizer_steps': 0, 'actor_optimizer_steps': 27023}"
+  "out": "$GATES_DIR/exam-root/train/runs/eval-assembled/r18-arm-a-loot-4-xdevil-a.json",
+  "last_line": "eval_contract.EvalContractError: asymmetric Worker checkpoint has not completed deployable actor training, or is not at a complete PPO update boundary:{'num_timesteps': 1048576, 'last_completed_rollout': 1048576, 'ppo_optimizer_steps': 27023, 'warmup_start': None, 'warmup_until': None, 'warmup_expected_rollouts': 0, 'warmup_completed_rollouts': 0, 'warmup_optimizer_steps': 0, 'actor_optimizer_steps': 27023}"
  },
  "xdevil-b": {
   "rc": 1,
-  "out": "/home/user/r17_work/r18/gates/exam-root/train/runs/eval-assembled/r18-arm-a-loot-4-xdevil-b.json",
-  "last_line": "eval_contract.EvalContractError: asymmetric Worker checkpoint 尚未完成可部署 actor 训练，或不在完整 PPO 更新边界:{'num_timesteps': 1048576, 'last_completed_rollout': 1048576, 'ppo_optimizer_steps': 27023, 'warmup_start': None, 'warmup_until': None, 'warmup_expected_rollouts': 0, 'warmup_completed_rollouts': 0, 'warmup_optimizer_steps': 0, 'actor_optimizer_steps': 27023}"
+  "out": "$GATES_DIR/exam-root/train/runs/eval-assembled/r18-arm-a-loot-4-xdevil-b.json",
+  "last_line": "eval_contract.EvalContractError: asymmetric Worker checkpoint has not completed deployable actor training, or is not at a complete PPO update boundary:{'num_timesteps': 1048576, 'last_completed_rollout': 1048576, 'ppo_optimizer_steps': 27023, 'warmup_start': None, 'warmup_until': None, 'warmup_expected_rollouts': 0, 'warmup_completed_rollouts': 0, 'warmup_optimizer_steps': 0, 'actor_optimizer_steps': 27023}"
  },
  "xm29-a": {
   "rc": 1,
-  "out": "/home/user/r17_work/r18/gates/exam-root/train/runs/eval-assembled/r18-arm-a-loot-4-xm29-a.json",
-  "last_line": "eval_contract.EvalContractError: asymmetric Worker checkpoint 尚未完成可部署 actor 训练，或不在完整 PPO 更新边界:{'num_timesteps': 1048576, 'last_completed_rollout': 1048576, 'ppo_optimizer_steps': 27023, 'warmup_start': None, 'warmup_until': None, 'warmup_expected_rollouts': 0, 'warmup_completed_rollouts': 0, 'warmup_optimizer_steps': 0, 'actor_optimizer_steps': 27023}"
+  "out": "$GATES_DIR/exam-root/train/runs/eval-assembled/r18-arm-a-loot-4-xm29-a.json",
+  "last_line": "eval_contract.EvalContractError: asymmetric Worker checkpoint has not completed deployable actor training, or is not at a complete PPO update boundary:{'num_timesteps': 1048576, 'last_completed_rollout': 1048576, 'ppo_optimizer_steps': 27023, 'warmup_start': None, 'warmup_until': None, 'warmup_expected_rollouts': 0, 'warmup_completed_rollouts': 0, 'warmup_optimizer_steps': 0, 'actor_optimizer_steps': 27023}"
  },
  "xm29-b": {
   "rc": 1,
-  "out": "/home/user/r17_work/r18/gates/exam-root/train/runs/eval-assembled/r18-arm-a-loot-4-xm29-b.json",
-  "last_line": "eval_contract.EvalContractError: asymmetric Worker checkpoint 尚未完成可部署 actor 训练，或不在完整 PPO 更新边界:{'num_timesteps': 1048576, 'last_completed_rollout': 1048576, 'ppo_optimizer_steps': 27023, 'warmup_start': None, 'warmup_until': None, 'warmup_expected_rollouts': 0, 'warmup_completed_rollouts': 0, 'warmup_optimizer_steps': 0, 'actor_optimizer_steps': 27023}"
+  "out": "$GATES_DIR/exam-root/train/runs/eval-assembled/r18-arm-a-loot-4-xm29-b.json",
+  "last_line": "eval_contract.EvalContractError: asymmetric Worker checkpoint has not completed deployable actor training, or is not at a complete PPO update boundary:{'num_timesteps': 1048576, 'last_completed_rollout': 1048576, 'ppo_optimizer_steps': 27023, 'warmup_start': None, 'warmup_until': None, 'warmup_expected_rollouts': 0, 'warmup_completed_rollouts': 0, 'warmup_optimizer_steps': 0, 'actor_optimizer_steps': 27023}"
  },
  "xm29full-a": {
   "rc": 1,
-  "out": "/home/user/r17_work/r18/gates/exam-root/train/runs/eval-assembled/r18-arm-a-loot-4-xm29full-a.json",
-  "last_line": "eval_contract.EvalContractError: asymmetric Worker checkpoint 尚未完成可部署 actor 训练，或不在完整 PPO 更新边界:{'num_timesteps': 1048576, 'last_completed_rollout': 1048576, 'ppo_optimizer_steps': 27023, 'warmup_start': None, 'warmup_until': None, 'warmup_expected_rollouts': 0, 'warmup_completed_rollouts': 0, 'warmup_optimizer_steps': 0, 'actor_optimizer_steps': 27023}"
+  "out": "$GATES_DIR/exam-root/train/runs/eval-assembled/r18-arm-a-loot-4-xm29full-a.json",
+  "last_line": "eval_contract.EvalContractError: asymmetric Worker checkpoint has not completed deployable actor training, or is not at a complete PPO update boundary:{'num_timesteps': 1048576, 'last_completed_rollout': 1048576, 'ppo_optimizer_steps': 27023, 'warmup_start': None, 'warmup_until': None, 'warmup_expected_rollouts': 0, 'warmup_completed_rollouts': 0, 'warmup_optimizer_steps': 0, 'actor_optimizer_steps': 27023}"
  },
  "xm29full-b": {
   "rc": 1,
-  "out": "/home/user/r17_work/r18/gates/exam-root/train/runs/eval-assembled/r18-arm-a-loot-4-xm29full-b.json",
-  "last_line": "eval_contract.EvalContractError: asymmetric Worker checkpoint 尚未完成可部署 actor 训练，或不在完整 PPO 更新边界:{'num_timesteps': 1048576, 'last_completed_rollout': 1048576, 'ppo_optimizer_steps': 27023, 'warmup_start': None, 'warmup_until': None, 'warmup_expected_rollouts': 0, 'warmup_completed_rollouts': 0, 'warmup_optimizer_steps': 0, 'actor_optimizer_steps': 27023}"
+  "out": "$GATES_DIR/exam-root/train/runs/eval-assembled/r18-arm-a-loot-4-xm29full-b.json",
+  "last_line": "eval_contract.EvalContractError: asymmetric Worker checkpoint has not completed deployable actor training, or is not at a complete PPO update boundary:{'num_timesteps': 1048576, 'last_completed_rollout': 1048576, 'ppo_optimizer_steps': 27023, 'warmup_start': None, 'warmup_until': None, 'warmup_expected_rollouts': 0, 'warmup_completed_rollouts': 0, 'warmup_optimizer_steps': 0, 'actor_optimizer_steps': 27023}"
  }
 }
 ```
@@ -225,11 +225,11 @@
 null
 ```
 
-## 四、闸 E 配对部署复测(48 种子 2_133,v1 世界覆盖,探针 r17-deployment-v3-r18m2)
+## 4. Gate E paired deployment re-test (48 seeds of 2_133, v1-world coverage, probe r17-deployment-v3-r18m2)
 
-对照行:`ctl-v1-world-193557.json` rows_sha_v3 0e5a1acd2fb2c07c…(与台账一致);本臂 rows_sha_v3 34c0a4c349235d00…;RuntimeError 0。
+Control row: `ctl-v1-world-193557.json` (not published) rows_sha_v3 0e5a1acd2fb2c07c… (matches the ledger); this arm rows_sha_v3 34c0a4c349235d00…; RuntimeError 0.
 
-| 指标 | 训练臂 | 对照(7e31dc54) |
+| Metric | Training arm | Control (7e31dc54) |
 |---|---|---|
 | alive | 17 | 20 |
 | l2 | 10 | 34 |
@@ -267,7 +267,7 @@ null
 | windows_dive | 611 | 710 |
 | windows_forced_dive | 533 | 593 |
 
-判据:
+Criteria:
 ```
 {
  "main1_hazard_le_0.7x": {
@@ -360,47 +360,47 @@ null
 }
 ```
 
-## 五、机制子指标(F)
+## 5. Mechanism sub-metrics (F)
 
-- 部署形态(上表):DIVE 窗总数/下楼窗数、下楼触发直方、撤退次数与撤退中死亡、清扫/鉴定/买武器计数、金币;
-- 训练形态(§一):`r13_dive_audit` 末行的 dive_live_descends / a11 请求与执行 / 托管兑现与罚没金额,`r17_descend_gate` 的过门数与托管总额;
-- 未做:DIVE 窗内 a11 按下率与离楼梯 ≤5 格时的 a11 率需回放驱动(`run_r18x_l2geom.py` 目前把工人写死为父代),留待下一步。
+- Deployment form (table above): total DIVE windows/descending windows, descent-trigger histogram, retreat count and deaths during retreats, sweep/identify/weapon-purchase counts, gold;
+- Training form (§1): dive_live_descends / a11 requests and executions / escrow vested and forfeited amounts in the last `r13_dive_audit` row, and the gate passes and escrow total of `r17_descend_gate`;
+- Not done: the a11 press rate in DIVE windows and the a11 rate within 5 tiles of the stairs need the replay driver (`run_r18x_l2geom.py`, not published, currently hard-codes the worker as the parent); left for the next step.
 
-## 六、身份
+## 6. Identities
 
 ```
 {
- "worker": "/home/user/AlphaDiablo/diablogym/train/runs/r18-arm-a-loot-4/model_candidate.zip",
+ "worker": "train/runs/r18-arm-a-loot-4/model_candidate.zip",
  "worker_sha256": "20adb0dfcdaed4cf5e10cf71f8fe5a387daf1073a43e1559b765ca759926ae47",
  "worker_kind": "model_candidate.zip (published)",
  "prereg": "r18-B-PREREG-FROZEN-20260907.md + amendments 1-2",
  "control_row": "0e5a1acd2fb2c07cd27eb72f9ecc574322e72f362ef0376b692376d9a99be886",
  "probe": "r17-deployment-v3-r18m2",
- "gates_dir": "/home/user/r17_work/r18/gates",
+ "gates_dir": "$GATES_DIR (a local work directory, not published)",
  "eval_assembled_main_sha256": "73c2bae7a8edcaf428c0400b805a556ec80156353a95c9ce7e90cb474b23b8ee"
 }
 ```
 
-## 七、闸 A–C 临时结果(镜像根,修正后的继承谱系分支;不是裁定)
+## 7. Provisional results of gates A–C (mirror root, corrected inherited-lineage branch; not a verdict)
 
-第一次临时投射(12:43)分支调用 `model._assert_critic_migration_contract()`,考卷在 `require_published=False` 路径加载的是纯 `MaskablePPO`,AttributeError 被吞、六卷仍拒;12:5x 改为内联判据(预热字段全空 + `validate_inherited_runtime` + actor 步数 > 0 + 完整 PPO 边界)后通过。补丁全文见 `r18-B-PREREG-AMENDMENT-3-DRAFT-20260908.md` §三。
+The first provisional projection had the branch call `model._assert_critic_migration_contract()`; the exam tool loads a plain `MaskablePPO` on the `require_published=False` path, so the AttributeError was swallowed and all six volumes were still refused; after switching to the inlined criterion (all warm-up fields empty + `validate_inherited_runtime` + actor steps > 0 + complete PPO boundary) they passed. The full patch is in §3 of [`r18-B-PREREG-AMENDMENT-3-DRAFT-20260908.md`](r18-B-PREREG-AMENDMENT-3-DRAFT-20260908.md).
 
-| 卷 | 训练臂 | r17-anchor(r9 认证工人) | 闸 |
+| Volume | Training arm | r17-anchor (r9 certified worker) | Gate |
 |---|---|---|---|
-| xdevil-a | 死亡 53/128,回报 108.55,L3 0 | 死亡 41/128,回报 140.47,L3 1 | A:救 23/丢 35,UCB95 24.53 → 不过;B:深度Δ 0.148,LCB 0.08 → 过 |
-| xm29-a | 回报 147.3,击杀 49.7,死亡 96 | 回报 155.54,击杀 63.3,死亡 47 | C:回报比 0.947,击杀比 0.7844 → 不过 |
-| xm29full-a(信息) | 回报 115.8,击杀 51.5,死亡 49,L3 0 | 回报 147.24,击杀 65.6,死亡 31,L3 0 | — |
-| xdevil-b | 死亡 44/128,回报 120.4,L3 1 | 死亡 31/128,回报 150.15,L3 0 | A:救 19/丢 32,UCB95 24.75 → 不过;B:深度Δ 0.164,LCB 0.104 → 过 |
-| xm29-b | 回报 144.28,击杀 49.0,死亡 99 | 回报 167.33,击杀 65.3,死亡 45 | C:回报比 0.8622,击杀比 0.7509 → 不过 |
-| xm29full-b(信息) | 回报 110.07,击杀 49.6,死亡 54,L3 0 | 回报 157.57,击杀 69.6,死亡 26,L3 0 | — |
+| xdevil-a | deaths 53/128, return 108.55, L3 0 | deaths 41/128, return 140.47, L3 1 | A: saved 23/lost 35, UCB95 24.53 → fail; B: depth Δ 0.148, LCB 0.08 → pass |
+| xm29-a | return 147.3, kills 49.7, deaths 96 | return 155.54, kills 63.3, deaths 47 | C: return ratio 0.947, kill ratio 0.7844 → fail |
+| xm29full-a (info) | return 115.8, kills 51.5, deaths 49, L3 0 | return 147.24, kills 65.6, deaths 31, L3 0 | — |
+| xdevil-b | deaths 44/128, return 120.4, L3 1 | deaths 31/128, return 150.15, L3 0 | A: saved 19/lost 32, UCB95 24.75 → fail; B: depth Δ 0.164, LCB 0.104 → pass |
+| xm29-b | return 144.28, kills 49.0, deaths 99 | return 167.33, kills 65.3, deaths 45 | C: return ratio 0.8622, kill ratio 0.7509 → fail |
+| xm29full-b (info) | return 110.07, kills 49.6, deaths 54, L3 0 | return 157.57, kills 69.6, deaths 26, L3 0 | — |
 
-六卷行 sha16:{'xdevil-a': '353f5633d62f5e7e', 'xm29-a': 'eb29f94e19a7fde7', 'xm29full-a': '6362cfbf3e88abbe', 'xdevil-b': '92f08599130435ec', 'xm29-b': 'b2493bd80d8ec388', 'xm29full-b': 'a7b6d2fef68f848c'};结果文件 `~/r17_work/r18/gates/ABC-PROVISIONAL.json`;台账 `R18_B_GATES_ABC_PROVISIONAL`。
+Row sha16 of the six volumes: {'xdevil-a': '353f5633d62f5e7e', 'xm29-a': 'eb29f94e19a7fde7', 'xm29full-a': '6362cfbf3e88abbe', 'xdevil-b': '92f08599130435ec', 'xm29-b': 'b2493bd80d8ec388', 'xm29full-b': 'a7b6d2fef68f848c'}; results file `ABC-PROVISIONAL.json` (local, not published); ledger `R18_B_GATES_ABC_PROVISIONAL`.
 
-## 八、复合形态 v0:父代打一层前缀,学习者自首次到达主二层接手(诊断,`gates/probe_composite.py`,探针版本串加 `-composite-v0`)
+## 8. Composite form v0: the parent plays the level-1 prefix, the learner takes over from the first arrival on main level 2 (diagnostic; `gates/probe_composite.py`, not published; probe version string with `-composite-v0` appended)
 
-交接规则 v0 = 首次站上主二层(训练里的交接是一层上「七条件合格 DIVE 窗」开窗时,略早于此;正式化时应对齐)。前缀与对照逐位相同 48/48;交接 33 局,交接拍中位 7430;RuntimeError 0;rows_sha_v3 ebc12b350247e980…。
+Hand-over rule v0 = first standing on main level 2 (in training the hand-over happens when a "seven-condition qualifying DIVE window" opens on level 1, slightly earlier; the two should be aligned when this is formalized). The prefix is bit-identical to the control in 48/48; 33 games handed over, median hand-over tick 7430; RuntimeError 0; rows_sha_v3 ebc12b350247e980….
 
-| 指标 | 复合 v0 | 对照(7e31dc54) |
+| Metric | Composite v0 | Control (7e31dc54) |
 |---|---|---|
 | alive | 19 | 20 |
 | l2 | 34 | 34 |
@@ -430,9 +430,9 @@ null
 | descents_2_to_3 | 23 | 5 |
 | descent_trigger_hist | {'fallback': 96, 'coach_ready': 89, 'const_dive': 14} | {'fallback': 101, 'coach_ready': 86, 'const_dive': 4} |
 
-交接后子集(同 33 粒种子,对照取同种子):存活 11 vs 12;三层到达 15 vs 4;二层死亡 11 vs 19;死亡层直方 {'3': 10, '2': 11, '4': 1} vs {'2': 19, '3': 2};交接后拍数中位 5048。
+Post-hand-over subset (the same 33 seeds, control on the same seeds): survival 11 vs 12; level-3 arrivals 15 vs 4; level-2 deaths 11 vs 19; death-level histogram {'3': 10, '2': 11, '4': 1} vs {'2': 19, '3': 2}; median ticks after the hand-over 5048.
 
-判据:
+Criteria:
 ```
 {
  "main1_hazard_le_0.7x": {
@@ -482,11 +482,11 @@ null
 }
 ```
 
-## 九、F 回放:a11 机制指标(`gates/run_l2geom_worker.py`,回放驱动的工人参数化副本;诊断)
+## 9. F replay: a11 mechanism metrics (`gates/run_l2geom_worker.py`, not published: a worker-parameterized copy of the replay driver; diagnostic)
 
-回放与探针记录行的身份核对:训练臂 45/48 相同(不同:[2133018, 2133025, 2133031]),对照 45/48 相同(不同:[2133005, 2133013, 2133047])——R18-X 当夜对无新法世界是 48/48;新三法世界下回放驱动有约 6% 种子分岔,数字按「指示性」读。
+Identity check of the replay against the probe's recorded rows: training arm 45/48 identical (different: [2133018, 2133025, 2133031]), control 45/48 identical (different: [2133005, 2133013, 2133047]); for R18-X the world without the new rules gave 48/48; in the world with the three new rules the replay driver diverges on about 6% of seeds, so the numbers are indicative.
 
-| 指标(主二层) | 训练臂(独自部署) | 对照 |
+| Metric (main level 2) | Training arm (deployed alone) | Control |
 |---|---|---|
 | l2_visits | 17 | 85 |
 | l2_visit_exit_hist | {'descend': 7, 'death': 3, 'ascend': 5, 'end': 2} | {'ascend': 52, 'death': 19, 'end': 9, 'descend': 5} |
@@ -501,10 +501,10 @@ null
 | episodes_descending_from_l2 | 5 | 4 |
 | dive_action_hist | {'0': 22, '1': 59, '2': 74, '3': 131, '4': 287, '5': 234, '6': 23, '7': 570, '8': 141, '9': 179, '10': 447, '11': 352, '12': 2, '13': 10, '14': 1} | {'0': 177, '1': 684, '2': 1307, '3': 1631, '4': 1423, '5': 253, '6': 408, '7': 398, '8': 291, '9': 2160, '10': 1897, '11': 261, '12': 17, '13': 77, '14': 28} |
 
-## 十、主刀读法与待裁定事项
+## 10. Reading and items to be decided
 
-1. **假设 H-B 的判决**:三条主判据在干净配对(复合 v0)下 主-1 过、主-2 不过、主-3 不过;深度指标「三层到达升、三层到达者存活率降、总存活持平」——不是「只学会苟活」,也不是「什么都没学」,而是**学会下楼、未学会三层生存**。
-2. **一层退化**是独立于 H-B 的工程发现:earned-dive-suffix 让学习者对一层零数据,共享权重漂移后一层崩(独自部署一层死亡 25/48)。两条路:部署形态正式复合化(交接规则与训练对齐,需新预注册与探针版本),或训练侧加「一层保持」(混入一层窗 / 对父代的 KL 锚)。
-3. **考卷工具**对 weights-only 谱系的准入(修正案三草案):是否冻结并入并重认证;临时 A–C 数字是否采信。
-4. **下一臂的方向不是更多步数**:三层入口的战备门(三层战备表、三层撤退法、「下楼后先活着」的托管尺)与三层死因图鉴(可用回放的伤害归因)。
-5. 处女池 2_116–119、2_126–128 今日零接触;2_133 为配对池(本臂 + 复合 v0 各一行,已登记)。
+1. **Verdict on hypothesis H-B**: under the clean pairing (composite v0) Primary-1 passes, Primary-2 fails and Primary-3 fails; the depth metrics show "more level-3 arrivals, a lower survival rate among them, flat total survival": not "only learned to hang on" and not "learned nothing", but **learned to descend without learning to survive on level 3**.
+2. **Level-1 regression** is an engineering finding independent of H-B: earned-dive-suffix gives the learner zero level-1 data, and once the shared weights drift, level 1 collapses (deployed alone: 25/48 deaths on level 1). Two ways out: make the composite deployment form formal (hand-over rule aligned with training; needs a new pre-registration and probe version), or add "level-1 retention" in training (mixing in level-1 windows / a KL anchor to the parent).
+3. **Exam tool** admission of the weights-only lineage (draft amendment 3): whether to freeze, merge and re-certify; whether to accept the provisional A–C numbers.
+4. **The direction of the next arm is not more steps**: a readiness gate at the level-3 entrance (a level-3 readiness table, a level-3 retreat rule, an escrow ruler for "stay alive after descending") and a catalogue of level-3 causes of death (damage attribution from replays).
+5. The virgin pools 2_116–119 and 2_126–128 were untouched in this round; 2_133 is the paired pool (one row each for this arm and composite v0, registered).

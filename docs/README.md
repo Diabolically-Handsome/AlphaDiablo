@@ -1,60 +1,75 @@
-# 文档目录
+# Documentation index
 
-2026-09-23 整理后，文档按用途分到下面这些目录。
+Since the reorganisation of 2026-09-23 the documents are grouped by purpose:
 
-| 目录 | 内容 |
+| Folder | Contents |
 |---|---|
-| [`design/`](design/) | 设计笔记。主文档是 [`design/DESIGN.md`](design/DESIGN.md)（二十轮迭代、十七课教训） |
-| [`prereg/`](prereg/) | 各案预注册（`PREREG-*.md`，v23 到 R9、B1、G1、E-fix、定锚/重锚） |
-| [`forensics/`](forensics/) | 法证、尸检和档案审计报告 |
-| [`protocol/`](protocol/) | R19–R21 的协议规格，案级驱动器的值守细则 `OPS-launcher.md`，以及从 README 移来的 R7/R8 时期协议说明 [`PROTOCOL-V4-NOTES.md`](protocol/PROTOCOL-V4-NOTES.md) |
-| [`rounds/`](rounds/) | R9–R19 的轮次文书：预注册、发车令、判决书、探针报告、评审记录；另有 2026-09-24 选项脑第 9 轮考试的报告 [`round9-exam.md`](rounds/round9-exam.md)（英文）、逐局统计 [`round9-exam-results.json`](rounds/round9-exam-results.json) 和海报图 `round9-media/`。选项脑的轮次编号和 R9–R19 战役无关 |
-| [`archive/`](archive/) | 内部备忘，以及 [`REDACTIONS-2026-09-23.md`](archive/REDACTIONS-2026-09-23.md)（本次去除个人信息的记录） |
-| [`assets/`](assets/) | 图表和基线档，代码按路径读取，不要搬动 |
-| [`milestones/`](milestones/) | 里程碑证据包，由各自的 `manifest.json` 和 `verify.py` 封存，内容不能改动 |
+| [`design/`](design/) | Design notes. The main document is [`design/DESIGN.md`](design/DESIGN.md) (twenty iterations, seventeen lessons); also the course plan [`ROADMAP-course-plan.md`](design/ROADMAP-course-plan.md) (2026-07-11) and the design memo [`DESIGN-gear-and-potion-autonomy.md`](design/DESIGN-gear-and-potion-autonomy.md) |
+| [`prereg/`](prereg/) | Per-case pre-registrations (`PREREG-*.md`: v23 to v33, the R1/R2 re-anchoring cases, R7 to R9, B1, G1 and E-fix) |
+| [`forensics/`](forensics/) | Forensic, autopsy and archive-audit reports |
+| [`protocol/`](protocol/) | Protocol specifications for R19-R21, the operator notes for the case driver [`OPS-launcher.md`](protocol/OPS-launcher.md), and the R7/R8-era protocol notes moved out of the README, [`PROTOCOL-V4-NOTES.md`](protocol/PROTOCOL-V4-NOTES.md) |
+| [`rounds/`](rounds/) | Round papers for R9-R19: pre-registrations, verdicts, probe reports and reviews; the R9, R10 and R12 launch records ([R9](rounds/r9-LAUNCH-RECORD-20260823.md), [R10](rounds/r10-LAUNCH-RECORD-20260827.md), [R12](rounds/r12-LAUNCH-RECORD-20260830.md)), the [R11 notes](rounds/r11-NOTES-20260828.md) and the [R18-B launch evidence](rounds/r18-B-LAUNCH-EVIDENCE-20260907.md). Also the report of the option brain's round-9 exam of 2026-09-24, [`round9-exam.md`](rounds/round9-exam.md), with per-game statistics [`round9-exam-results.json`](rounds/round9-exam-results.json) and poster images in `round9-media/`. The option brain's round numbers are unrelated to the R9-R19 campaigns |
+| [`assets/`](assets/) | Charts and baseline files; code reads them by path, so do not move them |
+| [`milestones/`](milestones/) | Milestone evidence packages, each sealed by its `manifest.json` + `verify.py`; their contents must not change |
 
-## 旧路径怎么换算
+Patches 0002 and 0003 were proposed upstream as DevilutionX PR #8606.
 
-2026-09-23 之前写成的文书正文里用的是旧路径。这些历史文书是原样搬过来的，因为很多文书的 SHA-256
-被别的文书或台账记录过，改了就对不上。唯一的例外是本机路径里的用户名：`docs/` 下有 17 份文书把用户名文件夹换成了 `user`，
-其余字节不变，新旧 SHA-256 见 [`archive/REDACTIONS-2026-09-23.md`](archive/REDACTIONS-2026-09-23.md)。按下表把旧路径换成新路径：
+## Translation
 
-| 旧路径 | 新路径 |
+Documents were translated to English in September 2026; some internal notes were not published.
+
+## Path placeholders
+
+On 2026-09-23 local folder names in paths were replaced with neutral placeholders in model zip metadata, the r2
+evaluation archives, the leaderboard provenance markers and 25 text files; SHA-256 values recorded before that
+date for those files refer to the earlier bytes. The model cards and drivers give the earlier and current
+digests of the models and archives.
+
+## Old paths
+
+Documents written before 2026-09-23 may cite paths in their old form. Map them as follows:
+
+| Old path | Current path |
 |---|---|
 | `docs/PREREG-*.md` | `docs/prereg/` |
-| `docs/DESIGN.md`、`docs/DESIGN-*.md` | `docs/design/` |
-| `docs/FORENSICS-*.md`、`docs/AUTOPSY-*.md`、`docs/AUDIT-*.md` | `docs/forensics/` |
-| `docs/*-R19.md`、`docs/*-R20.md`、`docs/*-R21.md`、`docs/RESOURCE-PROTOCOL-L2.md`、`docs/OPS-launcher.md` | `docs/protocol/` |
-| `docs/呈报-内容案发车审阅.md`、`docs/COURT-wf_5fa772de.md`、`docs/UPSTREAM-PR-候选清单.md`、`docs/ROADMAP-完全体.md`、`docs/OPS-windows-feasibility.md` | `docs/archive/` |
-| `train/runs/r*.md`（轮次文书） | `docs/rounds/` |
+| `docs/DESIGN.md`, `docs/DESIGN-*.md`, `docs/ROADMAP-*.md` | `docs/design/` |
+| `docs/FORENSICS-*.md`, `docs/AUTOPSY-*.md`, `docs/AUDIT-*.md` | `docs/forensics/` |
+| `docs/*-R19.md`, `docs/*-R20.md`, `docs/*-R21.md`, `docs/RESOURCE-PROTOCOL-L2.md`, `docs/OPS-launcher.md` | `docs/protocol/` |
+| `train/runs/r*.md` (round papers) | `docs/rounds/` |
 
-代码、README、MODEL_CARD 和 `design/DESIGN.md` 里的路径已经改成新路径。
+Paths in the code, the README, the model cards and `design/DESIGN.md` already use the current paths.
 
-下面 10 份草稿和对应的 FROZEN 版逐字节相同，已经删掉。文书里提到草稿时，看同一轮的 FROZEN 版：
-`r10-PREREG-DRAFT-v0.1-20260827`、`r12-PREREG-DRAFT-v0.1-20260830`、`r13-PREREG-DRAFT-v0.1-20260830`、
-`r17-PREREG-DRAFT-20260906`、`r18-A-PREREG-20260906`、`r18-B-PREREG-DRAFT-20260907`、`r18-C-PREREG-20260907`、
-`r18-DE-PREREG-20260907`、`r18-F-PREREG-20260907`、`r18-G-PREREG-20260907`。
+Files with non-English names were renamed during the English pass.
 
-## 不在主干上的文件
+## Removed drafts
 
-下面这些 2026-09-23 起不在主干上。它们还在 git 历史里，最后一次出现在提交 `c1ffced`
-（标签 `skeleton-king-first-kill-20260921`）。文书里引用它们的地方，例如 `r13_ledger.jsonl` 的行号，请到那个提交里查。
+The following drafts were identical to the FROZEN version of the same round and were removed; where a document
+mentions one of them, read the FROZEN version: `r10-PREREG-DRAFT-v0.1-20260827`, `r12-PREREG-DRAFT-v0.1-20260830`,
+`r13-PREREG-DRAFT-v0.1-20260830`, `r17-PREREG-DRAFT-20260906`, `r18-A-PREREG-20260906`,
+`r18-B-PREREG-DRAFT-20260907`, `r18-C-PREREG-20260907`, `r18-DE-PREREG-20260907`, `r18-F-PREREG-20260907`,
+`r18-G-PREREG-20260907` (all byte-identical), and `r16-PREREG-DRAFT-20260901` (identical to
+[`r16-PREREG-FROZEN-20260902.md`](rounds/r16-PREREG-FROZEN-20260902.md) except two header lines).
 
-- 运行日志（`*.log`）和原始运行输出：`train/runs/r10-staging/r17-0/` 下的原始 JSON（包括 `r17-0-summary.json`），
-  `train/runs/r10-staging/` 下 8 份探针汇总 `*-SUMMARY.json`，`train/runs/eval-assembled/` 里代码不读的 40 份原始评测档案，
-  `train/runs/probe-gear-value/` 的探针输出。
-- 原始事件台账：`train/runs/r10-staging/` 下的 r10、r12、r13 三本总账，
-  `train/models/v24-worker-leg7/gate_ledger.jsonl`，`train/models/v23-worker-1M/sentinel.jsonl`。
-- 两份值班和交接日志：仓库根目录的 2026-07 值班日志，`train/runs/r17-0-HANDOFF-20260902.md`。
-- 只跑过一次的脚本：`train/runs/r10-staging/` 下 48 个，`train/` 下 8 个，`tests/` 下 3 个没人调用的探针。
+## Not in the repository
 
-`train/runs/` 下仍然入库的少量文件，都是代码或测试要读的回执，或者是人写的报告：
+These categories are not kept in the repository; citations of them in the documents (for example ledger line
+numbers) are historical references:
 
-- 6 份评测锚档：`eval-assembled/` 下的 4 份 `r2-*.json`、`v24-G3-leg7.json` 和 `v26-G3-leg6.json`（v25 到 v32 的驱动和
-  `tests/test_active_reference_contracts.py` 会读）；
-- `probe-zeroflip/report.json`（`run_v32_sovereign.py` 会读）；
-- `recal-g1/` 和 `v32/` 的 `gate_ledger.jsonl`（`run_v33_content.py` 的 W-PIN 和 `tests/test_content_case_driver.py` 会读）；
-- `r10-staging/probe_r17_deployment.py`（`tests/test_resource_protocol.py` 会读），以及它记录源码指纹时要读的
-  `r10-staging/probe_r15_deployment.py`；
-- `r10-staging/r16-deploy-arm.json`（`probe_r17_deployment.py` 做逐位回归时比对的部署行）；
-- 人写的报告：`r10-staging/r11-SEEDS.md` 和 `r10-staging/r17-0/G0-0a-REPORT.md`。
+- run logs and raw run outputs;
+- raw event ledgers, including the gate ledgers of the recal-g1 and v32 cases;
+- internal memos, launch orders not listed above, superseded drafts and implementer probe reports;
+- one-off scripts.
+
+## What remains under `train/runs/`
+
+The few files still tracked under `train/runs/` are receipts that code or tests read:
+
+- the 6 evaluation anchors in `eval-assembled/`: the four `r2-*.json`, `v24-G3-leg7.json` and `v26-G3-leg6.json`
+  (read by the v25 to v32 drivers and `tests/test_active_reference_contracts.py`);
+- [`probe-zeroflip/report.json`](../train/runs/probe-zeroflip/report.json) (read by `run_v32_sovereign.py`);
+- [`r10-staging/probe_r17_deployment.py`](../train/runs/r10-staging/probe_r17_deployment.py) (read by
+  `tests/test_resource_protocol.py`) and
+  [`r10-staging/probe_r15_deployment.py`](../train/runs/r10-staging/probe_r15_deployment.py), which it reads to
+  record a source fingerprint;
+- [`r10-staging/r16-deploy-arm.json`](../train/runs/r10-staging/r16-deploy-arm.json), the R16 deployment rows that
+  the `probe_r17_deployment.py` regression compares against.

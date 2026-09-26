@@ -1,137 +1,154 @@
-# v30「工人接力」预注册文档(终稿,面板三镜头 33 项落地后冻结;判决附录在尾)
+# v30 "worker relay": pre-registration (final text, frozen after the panel's three lenses and 33 items were implemented; the verdict appendix is at the end)
 
-**考题**:冠军工人的深层短板可修吗?验尸:M29-fresh 治下三张死图(7006/7011/
-7027)全部死在 depth≥2 的工人执勤 FARM 窗,同一工人 v22-H 治下 32 图 0 死;
-a13 囤药 39.7%→26.6% 坍缩——分布外退化。**140.3 系统的短板已从经理换成工人。**
-**唯一处方:M29-fresh(冻结)治下重训 v28-leg1;双臂唯一变量 = 皮筋教师**
-(king 静态自锚 = 锚随王走首实弹 / bc 老教师对照)。
-**裁量记录**:方向法庭(docs/COURT-wf_5fa772de.md)排序 A>B>C;总设计师
-2026-07-12 凌晨裁定 B 先行("A 被 B 拖后腿");A 复赛权一次性条款移入 ROADMAP。
+**The question**: can the champion worker's weakness at depth be fixed? Autopsy: under M29-fresh the three death maps
+(7006/7011/7027) all died in FARM windows staffed by the worker at depth>=2, while the same worker under v22-H had 0
+deaths over 32 maps; a13 potion hoarding collapsed 39.7%->26.6%: an out-of-distribution degradation. **The weak spot
+of the 140.3 system has moved from the manager to the worker.** **The single prescription: retrain v28-leg1 under
+M29-fresh (frozen); the single variable between the two arms = the leash teacher** (king static self-anchor = the
+first live test of "the anchor follows the king" / the old bc teacher as control).
+**Decision record**: the direction review (not published) ranked A>B>C; on 2026-07-12 B was chosen to go first; the
+one-time A-rematch clause moved to [docs/design/ROADMAP-course-plan.md](../design/ROADMAP-course-plan.md).
 
-## D1 班底、身份链与闸
+## D1 Cast, identity chain and gates
 
-- 经理 = M29-fresh npz(sha **894413884d04adfd**);工人起点 = v28-leg1 zip
-  (sha **2f7bc9dd810956c3**,num_timesteps **=3,497,984** 发车断言)。
-- **身份链三闩(面板 blocker)**:① king 锚 sd 由驱动双参显式导出到稳定路径
-  runs/v30/king_anchor_sd.pt,导出即记 sha;② train_ppo `--teacher-override`
-  经 **load kwargs** 注入(data 之后 _setup_model 之前,一次建对),载后断言
-  teacher_path 一致 + 教师形状 298→15,config 回执 teacher/manager 双 sha;
-  ③ 驱动 G-KL-W 过闸后与逐腿发车前均断言 sd sha 未漂移。
-- **G-KL-W(仅 king 臂)**:check_teacher_parity.py——教师前向对 v28-leg1
-  policy.npz(sha **976b6c05edaa0a32**)1000 obs argmax 0 失配;obs 口径写死
-  `np.random.default_rng(0).standard_normal((1000,298)).float32`。**bc 臂不做
-  此闸**(BC 教师对王分歧 ~30-40% 系科学背景),代之以 BC sd 在位断言 +
-  发车日 sha 入账(面板 major:闸逐臂定义)。build_teacher 按键名摘取、
-  价值头无声忽略——面板实弹验证 0/1000,max|Δlogit|≈1.5e-6。
-- **G-A0W**:发车日实跑 32 种子(tag v30-GA0W,拒覆写),逐种子
-  ret±0.01/died/mode_seq ≡ v29-mfresh-full32.json(sha **08633101c010a297**);
-  "免费"仅指基线侧免评。发射锚 v28-G3-leg1.json(sha **6fc6a44c7862424a**)
-  同为 preflight 断言。
-- 每腿 teacher-override 显式重传(幂等;zip 驮带系冗余通道不依赖);config
-  回执 manager_npz+sha(train 侧改动,与 --teacher-override 同批入册)。
-- 腿种子:**king = 301_000+1_000×(k−1);bc = 305_000+1_000×(k−1)**(单一
-  定义点;与 101xxx/281xxx/22/24/7000/9000 段零交叠)。
-- 干层锚哨兵标签源恒为 BC demos(L1/旧经理分布)——king 臂读数不解释为
-  锚漂移、不与 v28 带比对(判词纪律)。
+- Manager = M29-fresh npz (sha **894413884d04adfd**); worker start = the v28-leg1 zip (sha **2f7bc9dd810956c3**,
+  num_timesteps **=3,497,984** asserted at launch).
+- **Three identity-chain latches (panel blocker)**: (1) the king anchor sd is exported explicitly by the driver with
+  two arguments to a stable path runs/v30/king_anchor_sd.pt, and its sha is recorded on export; (2) train_ppo
+  `--teacher-override` is injected via **load kwargs** (after data and before _setup_model, built right the first
+  time); after loading, assert that teacher_path matches + the teacher shape is 298->15, and the config receipt
+  carries both the teacher and manager shas; (3) the driver asserts that the sd sha has not drifted after passing
+  G-KL-W and before every leg launch.
+- **G-KL-W (king arm only)**: check_teacher_parity.py: the teacher forward vs the v28-leg1 policy.npz (sha
+  **976b6c05edaa0a32**), 0 argmax mismatches over 1000 obs; the obs definition is fixed as
+  `np.random.default_rng(0).standard_normal((1000,298)).float32`. **The bc arm does not run this gate** (the BC
+  teacher's ~30-40% divergence from the king is scientific background); instead, the BC sd is asserted in place + its
+  launch-day sha is booked (panel major: gates are defined per arm). build_teacher picks by key name and silently
+  ignores the value head: verified live by the panel, 0/1000, max|delta logit| ~1.5e-6.
+- **G-A0W**: a live 32-seed run on launch day (tag v30-GA0W, refuses to overwrite), per seed ret+/-0.01/died/mode_seq
+  == v29-mfresh-full32.json (sha **08633101c010a297**); "free" only means the baseline side needs no evaluation. The
+  launch anchor v28-G3-leg1.json (sha **6fc6a44c7862424a**) is also asserted in preflight.
+- teacher-override is passed again explicitly on every leg (idempotent; the copy carried inside the zip is a redundant
+  channel that is not relied on); the config receipt carries manager_npz + sha (a train-side change, recorded together
+  with --teacher-override).
+- Leg seeds: **king = 301_000+1_000x(k-1); bc = 305_000+1_000x(k-1)** (single point of definition; zero overlap with
+  the 101xxx/281xxx/22/24/7000/9000 ranges).
+- The label source of the dry-level anchor sentinel is always the BC demos (L1/old-manager distribution): the king
+  arm's readings are not interpreted as anchor drift and are not compared against the v28 band (verdict discipline).
 
-## D2 配方、时钟与护栏
+## D2 Recipe, clock and guard rails
 
-- 各臂 **2 腿 × 499,712**(= 244×2048,量子 = n_steps×num_envs,弃 256 表述);
-  腿末闸:zip num_timesteps == nt_chain+leg_steps(动态期望,烧步从腿 2 扣)。
-- 训练 cmd 逐字冻结:`--worker --algo mppo --gamma 1.0 --max-steps 3000
-  --num-envs 4 --n-steps 512 --lr 3e-4 --ent-coef 0.005 --seed <seed_k>
-  --total-steps <leg> --distill-beta 0.015625 --teacher-sd <BC_SD> --skip-dry
-  --manager-npz <M29 npz> --resume-from <prev> --calib-probes
-  nt_chain+250k,nt_chain+450k --calib-record-only [king: --teacher-override]`
-  (封-5 的对手是克隆漂移不是新经理;G-CAL 只记不裁照 v28,probes_ok 每腿闸)。
-- **评测一律 --manager-npz(面板 blocker)**:腿考/满 32/金评命令原文注册,
-  eval_assembled 默认回落 v22-H 系已知陷阱,逐次显式传参。
-- **绊线(面板 blocker 钉死)**:同位基线 = v29-mfresh-s16.json 的 **147.0**
-  (16 种子、M29 组装、同起点工人;preflight 断言);**单腿 score16 <
-  0.85×147.0 = 124.95 → 该臂止训**(首腿即适用;臂间独立;被绊臂以最后一条
-  干净收官腿为终腿应考)。硬绊 62.8(历版灾难地板)保留。
-- **白天航班时钟重标(面板 major)**:健全收官线 4h/腿;超时击杀 4.5h/腿
-  (>4.4h 慢机前科);墙钟 >2h 记 SLOW_MACHINE + NEEDS_ATTENTION 不裁;
-  总程最坏 ~18h 照常续跑,金牌本就手启不受窗限。
-- **G-绿洲 v30 口径(面板 major)**:dry>0 → STOP(skip_dry 真不变量);
-  **ff_dry==0 → 记录 + NEEDS_ATTENTION 不裁**(M29 分布下开腿合法形态,
-  v22-H 标定出身注记)。
-- 崩溃互锁/重试 4 次自护/进场清桌/评测时间戳日志/进程组击杀/顶层异常兜底/
-  重启协议照 v28 残余#0(.void 轮转 + runs/v30-* 目录归档 + restart 事件)。
-- **训练信号稀释如实注册**:M29 DIVE 0.69/局,L2 窗占比预估 15-25%,
-  "学不动"系合法结局(D3-2 具名档,面板 major 落地)。
+- Each arm **2 legs x 499,712** (= 244x2048, quantum = n_steps x num_envs, dropping the 256 wording); end-of-leg gate:
+  zip num_timesteps == nt_chain+leg_steps (a dynamic expectation, burned steps deducted from leg 2).
+- The training cmd frozen verbatim: `--worker --algo mppo --gamma 1.0 --max-steps 3000 --num-envs 4 --n-steps 512
+  --lr 3e-4 --ent-coef 0.005 --seed <seed_k> --total-steps <leg> --distill-beta 0.015625 --teacher-sd <BC_SD>
+  --skip-dry --manager-npz <M29 npz> --resume-from <prev> --calib-probes nt_chain+250k,nt_chain+450k
+  --calib-record-only [king: --teacher-override]` (the opponent of seal-5 is clone drift, not a new manager; G-CAL is
+  recorded only, not judged, as in v28, with the probes_ok gate on every leg).
+- **Every evaluation uses --manager-npz (panel blocker)**: the leg exam/full 32/gold-evaluation commands are
+  registered verbatim; eval_assembled falling back to v22-H by default is a known trap, so the argument is passed
+  explicitly every time.
+- **Trip line (pinned by a panel blocker)**: the same-position baseline = **147.0** of v29-mfresh-s16.json (16 seeds,
+  M29 assembly, the same starting worker; asserted in preflight); **a single leg with score16 < 0.85x147.0 = 124.95 ->
+  that arm stops training** (applies from the first leg; arms are independent; a tripped arm takes the exam with its
+  last clean-close leg as the final leg). The hard trip 62.8 (the historical disaster floor) is kept.
+- **Clock recalibration (panel major)**: sanity close line 4h/leg; timeout kill 4.5h/leg (a >4.4h slow-machine
+  record exists); wall clock >2h records SLOW_MACHINE + NEEDS_ATTENTION without a verdict; a worst case of ~18h in
+  total keeps running as usual; the gold standard is launched manually anyway and is not bound by a window.
+- **The v30 G-oasis definition (panel major)**: dry>0 -> STOP (the true skip_dry invariant); **ff_dry==0 -> recorded +
+  NEEDS_ATTENTION, not judged** (a legal leg-opening form under the M29 distribution, with a note that it originates
+  from the v22-H calibration).
+- Crash interlock/4-retry self-protection/clearing the table on entry/timestamped evaluation logs/process-group
+  kill/top-level exception catch-all/restart protocol as in v28 residual #0 (.void rotation + archiving the runs/v30-*
+  directories + a restart event).
+- **Training-signal dilution registered as is**: M29 DIVE 0.69/episode, L2 windows estimated at 15-25%; "can't learn"
+  is a legitimate outcome (the named tier of D3-2, a panel major implemented).
 
-## D3 裁决(按序:资格 → 科学主判 → 地板 → 先决 → 发射)
+## D3 Verdict (in order: eligibility -> scientific main verdict -> floor -> prerequisite -> launch)
 
-1. **资格/胜者/递补**:哨兵闸 = **v29 qual_of 逐字**(descend≤2.04% ∧ cap<5%
-   ∧ override<3%,≥8% 作废,DIVE>1∧死>6 作废,双归因放行 + dual_attr_ruling
-   先裁后烧;**τ̄ 只记**——v28 τ̄ 带会误杀 140.3 基线分布本身,面板 major);
-   胜者 = 过资格臂中满 32 均值最高(±0.05→死少→king);递补/无胜者档照 v29。
-2. **科学主判(锚 = 140.3;四档按序,穷尽)**:
-   ① **接力有效** = depth2 种子数 ≥12(曝露守护,防逃课式通过——面板 major)
-   ∧ **depth≥2 死数 ≤1** ∧ 对 140.3 配对均差 ≥+2;
-   ② **接力无效** = depth≥2 死数 ≥3 ∧ 配对 <0;
-   ③ **信号稀释/学不动档(命题未判定)** = depth≥2 死数 ∈{2,3} ∧ |配对|<2
-   ——判词携带 L2 曝露数/a13 份额(D2 稀释条款闭环);
-   ④ 带外(depth2<12 时标注"曝露塌缩")——判词强制携带
-   (depth≥2死数, 对140.3均差, 死数) 三元组与落档原因。
-   **机器口径**:depth≥2 死数 = 满 32 rows 中 died∧depth≥2 行数(死亡收局
-   ⇒ 终局深度=死亡深度;基线 3 = 同口径读 140.3 档案:7006/7011/7027)。
-   科学主判与发射/王座/Mark-I **互不改写**(防叙事合流尾注,面板 major)。
-3. **复现地板(独立闸)**:胜者满 32 < **129.1(=0.92×140.3,谱系比例先例)**
-   → "重训未复现起点水平",发射流程终止,科学主判照常入册(双向都算答案)。
-4. **发射(锚 = 112.4 现任组装体,法庭合规裁定)**:配对均差 ≥+4 ∧ 赢 ≥18/32
-   ∧ 资格(已由 D3-1 保证)∧ **先决:对 140.3 配对均差 ≥+2**(面板 blocker:
-   存量 +27.86/17 赢近饱和发射线,零学习发射概率 ~30-40%,先决抬至与科学
-   "有效"同线后压至 ~10-15%,发射叙事与科学叙事自动对齐)∧ **深层死伤合取:
-   depth≥2 死数 ≤3(不劣于基线)**。
-5. **不发射穷尽表(按序;每档携带四元组 (对112.4均差, 赢数, 对140.3均差,
-   d2死数),赢≥14 附宽度移动注记)**:① 对140.3 <+2 → 新证据不足/存量垫烧
-   拦截档;② d2死数 >3 → 深层死伤未改善拦截档;③ ≥+4 ∧ 赢<18 → 点估增益档;
-   ④ ∈[+2,+4) → 探针级;⑤ <+2 → 现任组装体连任。
-6. **金牌(若发射)**:胜者工人 × M29-fresh npz,金池史上第 4 次实开,命令
-   原文注册(--manager-npz 必传);P 线对 97.2 照 v29 D3-6 按序 + 速查表随
-   GOLDEN 事件。**Mark-I = 科学主判"有效" ∧ v29 D3-7 三条件在胜者满 32
-   (7000-7031)复判"已学" ∧ P30-登基**;金评档案深度仪表另 record 不入认定。
-7. **多重比较台账(只记不裁,披露式校正)**:同池 18/32 线第 4 次挑战者开奖
-   (11→16→17→本案),P(赢≥18|p=.5)≈43% 注记 + 本案发射线新增证据量
-   (先决 + d2 合取)随判词。
+1. **Eligibility/winner/substitution**: sentinel gate = **v29 qual_of verbatim** (descend<=2.04% and cap<5% and
+   override<3%, >=8% voids, DIVE>1 and deaths>6 voids, dual attribution lets through + dual_attr_ruling decide first,
+   then spend; **tau-bar recorded only**: the v28 tau-bar band would wrongly kill the 140.3 baseline distribution
+   itself, a panel major); winner = the highest full-32 mean among eligible arms (+/-0.05 -> fewer deaths -> king);
+   substitution/no-winner tiers as in v29.
+2. **Scientific main verdict (anchor = 140.3; four tiers in order, exhaustive)**:
+   (1) **relay valid** = seeds with depth2 >=12 (exposure guard, against passing by skipping class; a panel major)
+   and **deaths at depth>=2 <=1** and paired mean difference against 140.3 >=+2;
+   (2) **relay invalid** = deaths at depth>=2 >=3 and paired <0;
+   (3) **signal diluted / can't-learn tier (proposition undetermined)** = deaths at depth>=2 in {2,3} and |paired|<2;
+   the verdict carries the L2 exposure count/a13 share (closing the loop of the D2 dilution clause);
+   (4) out of band (labelled "exposure collapse" when depth2<12): the verdict must carry the triple (deaths at
+   depth>=2, mean diff against 140.3, deaths) and the reason.
+   **Machine definition**: deaths at depth>=2 = the number of rows in the full-32 rows with died and depth>=2 (a death
+   ends the episode => the final depth = the depth of death; baseline 3 = the same definition read from the 140.3
+   archive: 7006/7011/7027). The scientific main verdict and launch/throne/Mark-I **never rewrite each other**
+   (footnote against narrative merging, a panel major).
+3. **Reproduction floor (an independent gate)**: winner full 32 < **129.1 (=0.92x140.3, the lineage-ratio
+   precedent)** -> "retraining did not reproduce the starting level", the launch flow ends, and the scientific main
+   verdict is recorded as usual (both directions count as answers).
+4. **Launch (anchor = 112.4, the incumbent assembled agent, per the anchor-compliance rule (D3))**: paired mean
+   difference >=+4 and wins >=18/32 and eligibility (already guaranteed by D3-1) and **prerequisite: paired mean
+   difference against 140.3 >=+2** (panel blocker: the existing stock's +27.86/17 wins nearly saturates the launch line,
+   so the launch probability with zero learning is ~30-40%; raising the prerequisite to the same line as scientific
+   "valid" cuts it to ~10-15%, and the launch narrative and the scientific narrative align automatically) and **the
+   deep-level casualty conjunction: deaths at depth>=2 <=3 (no worse than the baseline)**.
+5. **Exhaustive no-launch table (in order; each tier carries the quadruple (mean diff vs 112.4, wins, mean diff vs
+   140.3, d2 deaths); wins >=14 add the width-shift note)**: (1) vs 140.3 <+2 -> the insufficient-new-evidence /
+   stock-padding block tier; (2) d2 deaths >3 -> the deep-level-casualties-not-improved block tier; (3) >=+4 and wins
+   <18 -> the point-estimate gain tier; (4) in [+2,+4) -> probe level; (5) <+2 -> the incumbent assembled agent stays.
+6. **Gold standard (if launched)**: winner worker x M29-fresh npz, the 4th actual opening in the gold pool's history,
+   the command registered verbatim (--manager-npz mandatory); the P lines against 97.2 follow v29 D3-6 in order + the
+   quick reference goes with the GOLDEN event. **Mark-I = scientific main verdict "valid" and the three conditions of
+   v29 D3-7 re-judged as "learned" on the winner's full 32 (7000-7031) and P30 takes the throne**; the depth
+   instrumentation of the gold archive is recorded separately and does not enter the determination.
+7. **Multiple-comparison ledger (recorded only, not judged; a disclosure-style correction)**: the 4th challenger draw
+   on the same-pool 18/32 line (11->16->17->this case); the P(wins>=18|p=.5)~43% note + the amount of new evidence added
+   to this case's launch line (prerequisite + d2 conjunction) go with the verdict.
 
-## R 线
+## R lines
 
-| # | 预测 | 数字 |
+| # | Prediction | Number |
 |---|---|---|
-| R30.1 | 胜者满 32 | ∈[115,170],点 142 |
-| R30.2 | 胜者 depth≥2 死数(科学主指标) | 基线 3;∈[0,4],点 1 |
-| R30.3 | 对 140.3 配对均差 | ∈[−10,+15],点 +3 |
-| R30.4 | 对 112.4 配对赢数 | ∈[14,24],点 19 |
-| R30.5 | 胜者 a13 份额(record;**对账零点 = 0.266 同经理口径**,0.397 仅历史参照;点 0.36 = 预测囤药回弹) | ∈[0.24,0.44] |
-| R30.6 | king−bc 满 32 配对(自锚 vs 老锚) | ∈[−8,+15],点 +5;**判读规则:配对赢数强制随行,\|均差\|<2 判"方向未判定";两臂腿数不等时携带同腿位对照并注明预算混杂** |
-| R30.7 | 金牌(若发射) | ∈[100,130],点 112 |
+| R30.1 | winner full 32 | in [115,170], point 142 |
+| R30.2 | the winner's deaths at depth>=2 (the main scientific metric) | baseline 3; in [0,4], point 1 |
+| R30.3 | paired mean difference against 140.3 | in [-10,+15], point +3 |
+| R30.4 | paired wins against 112.4 | in [14,24], point 19 |
+| R30.5 | the winner's a13 share (recorded; **reconciliation zero = 0.266, same-manager definition**, 0.397 is a historical reference only; point 0.36 = predicted rebound in potion hoarding) | in [0.24,0.44] |
+| R30.6 | king-bc full-32 paired (self-anchor vs old anchor) | in [-8,+15], point +5; **reading rule: the paired win count must accompany it, \|mean diff\|<2 is read as "direction undetermined"; if the two arms have different leg counts, carry a same-leg-position comparison and note the budget confound** |
+| R30.7 | gold (if launched) | in [100,130], point 112 |
 
-判词纪律:携带 depth 分布、depth≥2 逐种子死亡表、a13/a9/a10 配比、DIVE/局、
-下楼奖金兑现(终局深度重构系下界)、双锚逐种子配对、台账、法庭裁量记录、
-干层锚标签源注记、mode_seq 摘要。
+Verdict discipline: carry the depth distribution, a per-seed death table at depth>=2, the a13/a9/a10 mix, DIVE per
+episode, the descent bonus paid (reconstructed from the final depth, a lower bound), per-seed pairing against both
+anchors, the ledger, the direction-review record, the note on the dry-level anchor label source, and a mode_seq
+summary.
 
-## 残余不确定性
+## Residual uncertainty
 
-1. 自锚在 OOD 状态的拉力方向(法庭 major)——R30.6 即首个测量。
-2. 宽度双刃(重训解冻 17 赢图 + 8 平局;v28-leg3 尸体在册)——绊线 + 先决兜底。
-3. 训练信号稀释(D2/D3-2③ 闭环);explore 治下训练因作废身份不采,取舍入册。
-4. 经理耦合反噬(depth2 曝露漂移)——科学"有效"档已绑 ≥12 曝露守护。
-5. 死因归因 n=11(工人归因 Fisher p≈0.5;深度×死亡 p≈0.002)——本战即干预检验。
-6. 胜者 max-of-2;两臂教师与种子段皆异,归因限于"锚机制整体对比"。
-7. BC 教师 sd 无历史 sha 锚,发车日 sha 入账(诚实缺口)。
+1. The direction of the self-anchor's pull in OOD states (direction-review major finding): R30.6 is the first
+   measurement.
+2. Width is double-edged (retraining unfreezes 17 winning maps + 8 ties; the v28-leg3 corpse is on record): the trip
+   line + the prerequisite are the backstop.
+3. Training-signal dilution (closing the loop of D2/D3-2 tier 3); training under explore is not used because of its
+   void status; the trade-off is recorded.
+4. Manager coupling backfiring (drift in depth2 exposure): the scientific "valid" tier is already bound to the >=12
+   exposure guard.
+5. Attribution of the causes of death, n=11 (worker attribution Fisher p~0.5; depth x death p~0.002): this campaign is
+   the interventional test.
+6. The winner is a max-of-2; the two arms differ in teacher and seed range, so attribution is limited to "a whole
+   comparison of the anchor mechanisms".
+7. The BC teacher sd has no historical sha anchor; its launch-day sha is booked (an honest gap).
 
-*终稿冻结:2026-07-12 晨。面板三镜头 33 项(5 blocker/15 major/13 minor)
-全落地,含两项实弹验证(build_teacher 键名摘取 0/1000、SB3 load kwargs 时序);
-commit 时间戳即公证。*
+*Final text frozen: 2026-07-12. All 33 items of the panel's three lenses (5 blocker/15 major/13 minor) implemented,
+including two live verifications (build_teacher picking by key name 0/1000, the timing of SB3 load kwargs); the commit
+timestamp is the notarization.*
 
-## 附录:判决记录(2026-07-12 06:37:26 落账;06:32 驱动尸检与重启在账)
+## Appendix: verdict record (booked 2026-07-12; the driver autopsy and restart are on the ledger)
 
-king 132.1/死7/d2死7/a13 49.2%(资格拦截)→ bc 递补 65.9/死1/a13 4.7%
-→ 未及地板 129.1,**不发射,王座六连任**;科学主判(胜者口径)带外/曝露
-塌缩,判词携带双臂仪表。**R30.6 = +66.2/赢22:锚随王走首实弹压倒性胜出;
-BC 锚两腿抹除神之一手(39.7%→4.7%),久系则缚第三案。** 深层死伤 3→7
-恶化:FARM 窗重训非深层生存处方,课②③④升格关键路径。金池零接触。
-细节见 DESIGN.md v30 章;驱动热修与续跑器 commit 607ef8f。
+king 132.1/7 deaths/7 d2 deaths/a13 49.2% (blocked by eligibility) -> bc substitutes at 65.9/1 death/a13 4.7% ->
+below the floor 129.1, **no launch, the throne stays for the sixth time**; scientific main verdict (winner definition)
+out of band/exposure collapse, with both arms' instrumentation carried by the verdict. **R30.6 = +66.2/22 wins: the
+first live test of "the anchor follows the king" wins overwhelmingly; the BC anchor erased the winning moves within two
+legs (39.7%->4.7%), the third case of "a long tether binds".** Deep-level casualties worsened 3->7: retraining FARM
+windows is not a prescription for deep-level survival, and courses 2/3/4 are promoted to the critical path. Zero
+contact with the gold pool. Details in the v30 chapter of DESIGN.md; the driver hotfix is in train/run_v30_relay.py
+(metrics) and the resume runner is train/run_v30_verdict.py.

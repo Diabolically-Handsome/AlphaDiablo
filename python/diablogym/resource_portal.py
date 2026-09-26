@@ -25,8 +25,8 @@ keeps its three words):
 
 The town SHOPPING itself is not duplicated here: the outbound leg hands control
 back with ``("complete",)`` the moment the pair is in town, and the ordinary
-``ResourceService`` runs its own phases.  See ``docs`` in
-``r17_work/r18/patch_portal_env.py`` for the one place that needs a change: the
+``ResourceService`` runs its own phases.  See the notes in
+a local patch script (not published) for the one place that needs a change: the
 town service's ``return`` phase walks to the cathedral stairs, which would throw
 away the depth the portal just preserved, so the coach has to close it there and
 hand the return leg to this script.
@@ -252,11 +252,11 @@ class PortalService:
         return self.danger_reason(raw)
 
     def danger_reason(self, raw):
-        """R18-B5 (2026-09-07) 复核修正:只有这三条危险条款(与 RetreatPolicy
-        同法同阈)才是"死亡等价"的点火理由;脚下已有一扇门(portal_standing)
-        与城里的买卷轴/回程跑腿都不是。原先它们内联在 trigger_reason 的尾部,
-        于是工人侧的托管罚没无法只问危险而不问跑腿;抽成一份后阈值仍只存在
-        一处,trigger_reason 的行为逐位不变。"""
+        """R18-B5 (2026-09-07) review correction: only these three danger clauses (same rule and thresholds
+        as RetreatPolicy) are "death-equivalent" reasons to fire; a door already underfoot (portal_standing)
+        and the in-town scroll purchase/return errand are not. They used to be inlined at the end of trigger_reason,
+        so the worker-side escrow forfeit could not ask about danger without asking about the errand; after extracting
+        them the thresholds still live in one place, and trigger_reason's behaviour is unchanged bit for bit."""
         hp, max_hp = int(raw.get("hp", 0)), max(1, int(raw.get("max_hp", 1)))
         if hp <= 0:
             return None

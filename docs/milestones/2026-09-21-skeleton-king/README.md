@@ -4,8 +4,8 @@
 96/96 HP, with 13 healing potions remaining.** Native King kills = 1, quest
 completed = true, hero dead = false. The run stopped immediately at that point.
 
-Recorded September 21, 2026, 20:11 Toronto / September 22, 00:11 UTC.
-[中文说明](README.zh-CN.md) · [Machine-readable result](result.json)
+Recorded September 22, 2026, 00:11 UTC.
+[中文](README.zh-CN.md) · [Machine-readable result](result.json)
 
 ## Watch
 
@@ -58,7 +58,7 @@ ticks to finish the death animation, collect the crown or continue afterward.
 
 ## Who controlled what
 
-The high-level strategist was the Codex assistant in the project task, not a
+The high-level strategist was an OpenAI Codex agent, not a
 fine-tuned local manager. It selected goals, routes, preparation, equipment,
 stat allocation, retreats and explicit healing interventions using visible
 state and explored-map memory. The historical opening used **1,624 Ministral 3

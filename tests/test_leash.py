@@ -1,7 +1,7 @@
-"""v24 G-KL 长程人工闸门:A 焊死端 / B 零化端 / C 教师保真。
+"""v24 G-KL long-running manual gate: A welded end / B zeroed end / C teacher fidelity.
 
-前置是按当前协议重建的 bc-worker/policy_sd.pt。无需训练产物的 beta、mask、
-G-CAL 即时停止和零 beta 回归都在 test_training_core.py 中由 CI 独立覆盖。
+The precondition is bc-worker/policy_sd.pt rebuilt under the current protocol. beta, mask, G-CAL immediate stop and the
+zero-beta regression, which need no training output, are covered independently in CI by test_training_core.py.
 """
 import pathlib
 import sys
@@ -13,7 +13,7 @@ import torch as th
 
 if __name__ != "__main__":
     raise unittest.SkipTest(
-        "test_leash.py 是需显式执行的长程人工闸门，不在 unittest discovery 中运行")
+        "test_leash.py is a long-running manual gate that must be run explicitly; it does not run under unittest discovery")
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "python"))
@@ -27,10 +27,10 @@ from bc_worker import split_by_episode
 SD = ROOT / "train" / "runs" / "bc-worker" / "policy_sd.pt"
 NPZ = ROOT / "train" / "models" / "v22-h-manager" / "policy.npz"
 if not SD.is_file() or not NPZ.is_file():
-    print("SKIP: test_leash.py 是 BC 重建后的长程人工闸门；当前缺少训练产物")
+    print("SKIP: test_leash.py is a long-running manual gate for after the BC rebuild; the training outputs are missing")
     raise SystemExit(0)
 
-# ---------- 训练入口边界回归 ----------
+# ---------- training entry-point boundary regressions ----------
 assert _select_batch_size(512, 4) == 256
 tail_safe = _select_batch_size(257, 1)
 assert 257 % tail_safe != 1, tail_safe
@@ -41,11 +41,11 @@ assert not set(groups[tr]).intersection(groups[ho])
 try:
     _validate_bc_report(SD, "data_gate")
 except ValueError as exc:
-    print(f"SKIP: BC 产物不满足当前协议，先重跑 train/bc_worker.py: {exc}")
+    print(f"SKIP: the BC outputs do not satisfy the current protocol; rerun train/bc_worker.py first: {exc}")
     raise SystemExit(0) from None
-print("训练入口 PASS:batch 无 singleton 尾批;装备位 293;BC held-out 整局隔离")
+print("training entry PASS: no singleton tail batch; gear slot 293; BC held-out split by whole episode")
 
-# ---------- G-KL-C:教师保真(torch ≡ numpy 载荷) ----------
+# ---------- G-KL-C: teacher fidelity (torch == numpy payload) ----------
 from eval_assembled import np_policy_from_sd
 
 teacher = build_teacher(str(SD))
@@ -64,9 +64,9 @@ for _ in range(1000):
     maxd = max(maxd, float(np.abs(lt - ln).max()))
     mism += int(lt.argmax() != ln.argmax())
 assert maxd < 1e-4 and mism == 0, (maxd, mism)
-print(f"G-KL-C PASS: 教师 6 张量 allclose;1000 obs logits 最大差 {maxd:.2e},argmax 失配 0")
+print(f"G-KL-C PASS: 6 teacher tensors allclose; max logit difference over 1000 obs {maxd:.2e}, argmax mismatches 0")
 
-# ---------- 掩位贡献恰为 0(钉死 HUGE_NEG 语义) ----------
+# ---------- masked positions contribute exactly 0 (pins the HUGE_NEG semantics) ----------
 obs_b = th.from_numpy(rng.standard_normal((64, 298)).astype(np.float32))
 mask_b = th.ones(64, 15, dtype=th.bool)
 mask_b[:, 11] = False
@@ -79,9 +79,9 @@ fake_logp = th.full((64, 15), HUGE_NEG)
 contrib = t_probs * fake_logp
 assert (contrib[:, 11] == 0).all() and (contrib[:, 12] == 0).all()
 assert th.isfinite((-(t_probs * fake_logp).sum(-1))).all()
-print("G-KL-A.掩位 PASS: 教师掩位概率精确 0,0×(-1e8)=0,CE 有限")
+print("G-KL-A.mask PASS: teacher probability at masked positions is exactly 0, 0x(-1e8)=0, CE finite")
 
-# ---------- 共用小环境(一进程一引擎:DummyVecEnv 单 env) ----------
+# ---------- shared small environment (one engine per process: DummyVecEnv with a single env) ----------
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.vec_env import DummyVecEnv
 
@@ -93,7 +93,7 @@ def mk():
 
 venv = DummyVecEnv([mk])
 
-# ---------- G-KL-B:零化端(β=0 单次 train() 与原版逐位等价) ----------
+# ---------- G-KL-B: zeroed end (a single beta=0 train() is bit-identical to the original) ----------
 from sb3_contrib import MaskablePPO
 
 def fill_buffer(model, seed):
@@ -114,7 +114,7 @@ kw = dict(n_steps=64, batch_size=64, gamma=1.0, ent_coef=0.005, seed=7,
           device="cpu", verbose=0)
 m_leash = LeashedMaskablePPO("MlpPolicy", venv, distill_beta=0.0, **kw)
 m_plain = MaskablePPO("MlpPolicy", venv, **kw)
-m_plain.policy.load_state_dict(m_leash.policy.state_dict())  # 权重逐位对齐
+m_plain.policy.load_state_dict(m_leash.policy.state_dict())  # weights aligned bit for bit
 for m in (m_leash, m_plain):
     m._setup_learn(total_timesteps=64)
     fill_buffer(m, seed=11)
@@ -122,36 +122,36 @@ th.manual_seed(99); np.random.seed(99); m_leash.train()
 th.manual_seed(99); np.random.seed(99); m_plain.train()
 for (k1, p1), (k2, p2) in zip(m_leash.policy.state_dict().items(),
                               m_plain.policy.state_dict().items()):
-    assert k1 == k2 and th.allclose(p1, p2, atol=1e-7), f"β=0 不等价: {k1}"
-print("G-KL-B PASS: β=0 单次 train() 更新后全参数与原版 MaskablePPO 逐位一致")
+    assert k1 == k2 and th.allclose(p1, p2, atol=1e-7), f"beta=0 not equivalent: {k1}"
+print("G-KL-B PASS: after one beta=0 train() update all parameters match the original MaskablePPO bit for bit")
 
-# ---------- fail-loud:β>0 无教师必须炸 ----------
+# ---------- fail-loud: beta>0 without a teacher must raise ----------
 m_bad = LeashedMaskablePPO("MlpPolicy", venv, distill_beta=1.0, teacher_path=None, **kw)
 m_bad._setup_learn(total_timesteps=64)
 fill_buffer(m_bad, seed=12)
 try:
     m_bad.train()
-    raise SystemExit("fail-loud FAIL: β>0 无教师竟未拒绝")
+    raise SystemExit("fail-loud FAIL: beta>0 without a teacher was not rejected")
 except RuntimeError:
-    print("G-KL.fail-loud PASS: β>0 无教师显式拒绝")
+    print("G-KL.fail-loud PASS: beta>0 without a teacher is rejected explicitly")
 
-# ---------- 非法 β / 全无效 mask / 冻结期空梯度探针 ----------
+# ---------- illegal beta / all-invalid mask / empty-gradient probe during the freeze ----------
 try:
     LeashedMaskablePPO("MlpPolicy", venv, distill_beta=-0.1, **kw)
-    raise SystemExit("negative-beta FAIL:负 β 竟未拒绝")
+    raise SystemExit("negative-beta FAIL: a negative beta was not rejected")
 except ValueError:
     pass
 m_guard = LeashedMaskablePPO("MlpPolicy", venv, distill_beta=1.0,
                              teacher_path=str(SD), **kw)
 try:
     m_guard._teacher_probs(obs_b[:2], th.zeros(2, 15, dtype=th.bool))
-    raise SystemExit("all-false-mask FAIL:全 False mask 竟未拒绝")
+    raise SystemExit("all-false-mask FAIL: an all-False mask was not rejected")
 except ValueError:
     pass
 m_guard._calib_probe(th.tensor(0.0), th.tensor(0.0), 0.0)
-print("Leash 防护 PASS:负 β/全 False mask 拒绝;空梯度探针记 0 不崩溃")
+print("Leash guards PASS: negative beta / all-False mask rejected; the empty-gradient probe records 0 without crashing")
 
-# ---------- 主动 G-CAL 裁决后不得再更新当前 minibatch ----------
+# ---------- after an active G-CAL verdict the current minibatch must not update ----------
 with tempfile.TemporaryDirectory() as td:
     m_trip = LeashedMaskablePPO(
         "MlpPolicy", venv, distill_beta=1.0, teacher_path=str(SD),
@@ -162,15 +162,15 @@ with tempfile.TemporaryDirectory() as td:
     m_trip.train()
     assert m_trip._calib_tripped
     assert all(th.equal(before[k], v) for k, v in m_trip.policy.state_dict().items())
-print("G-CAL immediate-stop PASS:裁决 minibatch 未产生权重更新")
+print("G-CAL immediate-stop PASS: the verdict minibatch produced no weight update")
 
-# ---------- G-KL-A:焊死端(随机初始化 + β=100,30k 步收敛到教师) ----------
+# ---------- G-KL-A: welded end (random init + beta=100, converges to the teacher in 30k steps) ----------
 mA = LeashedMaskablePPO("MlpPolicy", venv, distill_beta=100.0, teacher_path=str(SD),
                         n_steps=512, batch_size=256, gamma=1.0, ent_coef=0.005,
                         seed=13, device="cpu", verbose=0)
 mA.learn(total_timesteps=30_000, progress_bar=False)
-assert mA._last_distill_ce < 0.05, f"CE 未焊死: {mA._last_distill_ce}"
-# 2000 个真实 rollout 态上 argmax 一致率
+assert mA._last_distill_ce < 0.05, f"CE not welded: {mA._last_distill_ce}"
+# argmax agreement rate on 2000 real rollout states
 env1 = WorkerWindowEnv(
     str(NPZ), max_steps=3000, rng_seed=77, seed_scope="replay")
 obs, _ = env1.reset()
@@ -187,9 +187,9 @@ while tot < 2000:
     if term or trunc:
         obs, _ = env1.reset()
 rate = agree / tot
-assert rate >= 0.99, f"焊死端一致率 {rate:.4f} < 0.99"
-print(f"G-KL-A PASS: β=100 随机起跑 30k 步,CE={mA._last_distill_ce:.4f},"
-      f"2000 态 argmax 一致率 {rate:.4f}")
+assert rate >= 0.99, f"welded-end agreement rate {rate:.4f} < 0.99"
+print(f"G-KL-A PASS: beta=100 from random init, 30k steps, CE={mA._last_distill_ce:.4f}, "
+      f"argmax agreement rate over 2000 states {rate:.4f}")
 
 venv.close()
 print("G-KL ALL PASS")

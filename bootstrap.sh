@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
-# AlphaDiablo 开发环境一键引导脚本
-# 用途:从零(或增量)重建 DevilutionX 无头开发环境并跑通冒烟测试。
-# 幂等可重复执行;上游 clone 放在系统临时目录(铁律 #3:不进项目文件夹、不开仓库)。
+# AlphaDiablo one-step development environment bootstrap script
+# Purpose: rebuild the headless DevilutionX dev environment from scratch (or incrementally) and pass the smoke test.
+# Idempotent and safe to rerun; the upstream clone lives in the system temp directory (rule #3: not in the project folder, no new repository).
 #
-# 用法:  ./bootstrap.sh
-# 产出:  $DEV_DIR/build/devilutionx.app        游戏本体(原生 Apple Silicon)
-#         $DEV_DIR/build/timedemo_test          无头确定性回放测试(环境健康探针)
+# Usage:   ./bootstrap.sh
+# Output:  $DEV_DIR/build/devilutionx.app        the game itself (native Apple Silicon)
+#          $DEV_DIR/build/timedemo_test          headless deterministic replay test (environment health probe)
 #
-# 前置(本机已满足,重装机时脚本会自动补):
-#   - Homebrew;游戏数据 MPQ 已在 ~/Library/Application Support/diasurgical/devilution/
+# Prerequisites (already met on this machine; on a fresh install the script adds them automatically):
+#   - Homebrew; the game data MPQ is already in ~/Library/Application Support/diasurgical/devilution/
 set -euo pipefail
 
 if [ "$(uname -s)" = "Darwin" ]; then
@@ -20,17 +20,17 @@ else
   JOBS="$(nproc)"
 fi
 DEV_DIR="${TMPDIR:-/tmp}/alphadiablo-dev/devilutionX"
-# 钉死的上游引擎版本 —— 排行榜与全部测试基线所用的构建源。
-# 升级引擎是有意识的决定:改这个 SHA,然后重跑金标准评估、重建排行榜。
+# Pinned upstream engine version — the build source for the leaderboard and all test baselines.
+# Upgrading the engine is a deliberate decision: change this SHA, then rerun the gold-standard evaluation and rebuild the leaderboard.
 ENGINE_REF="${DEVILUTIONX_REF:-34c4cfc2e733240ac717f23bba2def887c793008}"
 
-echo "==> [1/5] 检查游戏数据 ($DATA_DIR)"
+echo "==> [1/5] Checking game data ($DATA_DIR)"
 ls "$DATA_DIR/DIABDAT.MPQ" >/dev/null 2>&1 \
   || ls "$DATA_DIR/diabdat.mpq" >/dev/null 2>&1 \
   || ls "$DATA_DIR/spawn.mpq" >/dev/null 2>&1 \
-  || { echo "错误:缺少 DIABDAT.MPQ/diabdat.mpq/spawn.mpq,先准备数据文件"; exit 1; }
+  || { echo "Error: missing DIABDAT.MPQ/diabdat.mpq/spawn.mpq; prepare the data file first"; exit 1; }
 
-echo "==> [2/5] 获取上游源码 @ ${ENGINE_REF:0:12} -> $DEV_DIR"
+echo "==> [2/5] Fetching upstream source @ ${ENGINE_REF:0:12} -> $DEV_DIR"
 if [ ! -d "$DEV_DIR/.git" ]; then
   mkdir -p "$DEV_DIR"
   git -C "$DEV_DIR" init -q
@@ -40,43 +40,43 @@ if ! git -C "$DEV_DIR" rev-parse --quiet --verify "$ENGINE_REF^{commit}" >/dev/n
   git -C "$DEV_DIR" fetch --depth 1 origin "$ENGINE_REF"
 fi
 if [ "${BOOTSTRAP_CLEAN:-0}" = "1" ]; then
-  # 上游位于专用系统临时 clone；显式恢复模式才丢弃已跟踪/未跟踪源码漂移。
-  # git clean 不加 -x，保留 .gitignore 中的大型 build 缓存。
+  # Upstream lives in a dedicated system temp clone; only the explicit recovery mode discards tracked/untracked source drift.
+  # git clean runs without -x, so the large build caches listed in .gitignore are kept.
   git -C "$DEV_DIR" reset --hard -q "$ENGINE_REF"
   git -C "$DEV_DIR" clean -fd
 elif [ "$(git -C "$DEV_DIR" rev-parse HEAD 2>/dev/null || true)" != "$ENGINE_REF" ]; then
-  # 换版本时丢弃工作区改动对齐过去(补丁由 build.sh 幂等重涂);
-  # 已在钉死版本上则不动工作区,免得每次都触发全量重编译
+  # When switching versions, discard working-tree changes to realign (build.sh reapplies the patches idempotently);
+  # if already on the pinned version, leave the working tree alone so every run does not trigger a full rebuild
   git -C "$DEV_DIR" reset --hard -q "$ENGINE_REF"
 fi
 
-echo "==> [3/5] 系统依赖"
+echo "==> [3/5] System dependencies"
 if [ "$(uname -s)" = "Darwin" ]; then
-  brew bundle install --file="$DEV_DIR/Brewfile" || echo "(个别包锁冲突可忽略,下一步编译会兜底验证)"
+  brew bundle install --file="$DEV_DIR/Brewfile" || echo "(occasional package lock conflicts can be ignored; the next build step serves as a fallback check)"
 else
-  # Linux(WSL2/Ubuntu):依赖经 apt 预装(cmake g++ ninja libsdl2-dev libsodium-dev
-  # libpng-dev libbz2-dev libfmt-dev gettext);缺失时下一步编译会兜底报错
+  # Linux (WSL2/Ubuntu): dependencies are preinstalled via apt (cmake g++ ninja libsdl2-dev libsodium-dev
+  # libpng-dev libbz2-dev libfmt-dev gettext); if any are missing, the next build step will fail with an error
   for tool in cmake g++ msgfmt; do
-    command -v "$tool" >/dev/null || { echo "缺少 $tool,先 apt 安装构建依赖"; exit 1; }
+    command -v "$tool" >/dev/null || { echo "Missing $tool; install the build dependencies with apt first"; exit 1; }
   done
 fi
 
-# CI 模式:只负责 clone + 依赖,引擎编译统一交给 build.sh(免得同一引擎编两遍)
+# CI mode: only clone + dependencies; the engine build is left entirely to build.sh (so the same engine is not compiled twice)
 if [ "${BOOTSTRAP_CLONE_ONLY:-0}" = "1" ]; then
-  echo "✅ clone-only 模式:源码就位 @ ${ENGINE_REF:0:12},跳过引擎编译与冒烟"
+  echo "✅ clone-only mode: source ready @ ${ENGINE_REF:0:12}; skipping engine build and smoke test"
   exit 0
 fi
 
-echo "==> [4/5] 编译 devilutionx + timedemo_test(注意:不要用 make all,macOS 上测试资源目标必失败)"
+echo "==> [4/5] Building devilutionx + timedemo_test (note: do not use make all; the test asset targets always fail on macOS)"
 cmake -S "$DEV_DIR" -B "$DEV_DIR/build" -DCMAKE_BUILD_TYPE=Release
 cmake --build "$DEV_DIR/build" -j "$JOBS" --target devilutionx
 cmake --build "$DEV_DIR/build" -j "$JOBS" --target timedemo_test
 
-echo "==> [5/5] 冒烟测试:无头确定性回放"
+echo "==> [5/5] Smoke test: headless deterministic replay"
 "$DEV_DIR/build/timedemo_test"
 
 echo ""
-echo "✅ 环境就绪"
-echo "   引擎:   $DEV_DIR/build/devilutionx.app"
-echo "   试玩:   open '$DEV_DIR/build/devilutionx.app'   (GUI,完整版数据)"
+echo "✅ Environment ready"
+echo "   Engine: $DEV_DIR/build/devilutionx.app"
+echo "   Play:   open '$DEV_DIR/build/devilutionx.app'   (GUI, full game data)"
 echo "   Python: source \"$(dirname "$0")/.venv/bin/activate\"   (torch/gymnasium/SB3)"

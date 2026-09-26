@@ -1,104 +1,104 @@
-"""DiabloGymEnv —— Gymnasium 包装(v0:结构化向量观测 + 离散动作)。
+"""DiabloGymEnv: Gymnasium wrapper (v0: structured vector observation + discrete actions).
 
-观测向量(float32,长度 12 + K*4 + 2*(2R+1)² + 9,R=5 时共 295):
+Observation vector (float32, length 12 + K*4 + 2*(2R+1)² + 9; 295 when R=5):
   [hp/maxhp, mana/maxmana, xp(log1p/10), gold/1000, char_level/50,
    dungeon_level/16, player_x/112, player_y/112,
-   可见可达怪数/50, 最近可见可达怪距离/30(无怪=1),
-   下一项必需主线目标方向 dx/56, dy/56(普通层即下行楼梯;无则 0,0)]
-  + K 个最近可见可达怪物的 (dx/20, dy/20, hp/max_hp, 1存在标志)
-  + 11×11 局部地图两通道(可走性、可见可达怪物占位)——run4 教训:没有空间感知,
-    奖励再好也是"盲人拿完美账本"(隔墙锁定、穿墙塑形、找不到房门)
-  + [腰带治疗药数/8 + 空槽数/128,
-     最近可见可达地面治疗药 dx/20, dy/20(截断至 ±1), 存在标志]
-    (v4 在原 belt scalar 内无歧义编码两个 0..8 整数域：治疗药仍占 1/8
-    主刻度，空槽只占其下 1/16 子刻度，最大扰动 0.0625。由此喝药/捡药
-    的全部资源前置条件均可观测，而不改变 295 维 shape)
-  + [护甲值/50(截断至 1), 最近可见可达整套战力升级装备 dx/20,
-     dy/20(截断至 ±1), 存在标志]
-    (存在标志由原生 PlanGearUpgrade 生成：候选先鉴定并模拟占用槽替换、
-    双戒指选择及单/双手切换；只有替换后整套保守战力严格增长才为 1)
-  + [min(2, 角色等级/max(1,地牢层数))/2]——v19 强弱仪表
+   visible reachable monster count/50, distance to the nearest visible reachable monster/30 (no monster = 1),
+   direction dx/56, dy/56 to the next required main-quest target (the down stairs on ordinary levels; 0,0 if none)]
+  + (dx/20, dy/20, hp/max_hp, 1 presence flag) of the K nearest visible reachable monsters
+  + 11×11 local map, two channels (walkability, visible reachable monster occupancy); run4 lesson: without spatial awareness
+    even a perfect reward is "a blind man with a perfect ledger" (locking on through walls, shaping through walls, never finding the door)
+  + [belt heal potions/8 + free slots/128,
+     nearest visible reachable floor heal potion dx/20, dy/20 (clipped to ±1), presence flag]
+    (v4 encodes two 0..8 integer domains unambiguously inside the original belt scalar: heal potions keep the 1/8
+    main scale and free slots only take the 1/16 sub-scale below it, max perturbation 0.0625. This makes every resource
+    precondition of drinking/potion pickup observable without changing the 295-dim shape)
+  + [armor class/50 (clipped to 1), nearest visible reachable whole-set combat upgrade dx/20,
+     dy/20 (clipped to ±1), presence flag]
+    (the presence flag comes from native PlanGearUpgrade: candidates are identified first, then the occupied-slot replacement,
+    dual-ring choice and one-/two-hand switch are simulated; it is 1 only if the whole set's conservative combat power strictly increases)
+  + [min(2, character level/max(1, dungeon level))/2]: the v19 strength gauge
 
-动作(Discrete(15)):
-  0      明确等待:取消遗留寻路/追击/destAction；攻击动画立即中止，已提交的
-         单格移动在本次 step 的计费 settle 拍内自然收尾，但不会继续上一
-         动作的长路径或重复攻击(v4)
-  1-8    朝八方向走一格(寻路)
-  9      交战宏:锁定最近的可见可达怪物持续追击,直到它死/自己死/换层/
-         超时(≤10 拍)
-         (v2 教训:单拍攻击会被下一个走位动作打断,策略学不会"坚持进攻")
-  10     探索宏:若存在通关必需剧情目标则 fail-closed 等待/交还经理，
-         绝不代替 action11 越权推进；否则走向 25×25 视野内最近的
-         "可走且未踏足"边疆点;发现猎物
-         (最近怪 ≤6 格)立即交还控制权;顺路开启通往新区域的普通闭门，
-         无边疆时也可处理挡路桶，但绝不踩任何上/下楼 trigger
-         (run5 教训:出生区无可达怪时,反应式策略不会"换个房间找")
-  11     主线推进宏(v11+):优先完成法杖台/法杖/L15 任务入口/Vile 书与
-         法阵/L16 机关的严格白名单,无待办时再走下行或任务返回触发点。
-         与探索宏不同,发现猎物**不**打断——这是策略主动选择的撤离/换层键
-         (困局的逃生舱 + 清层后的下一章按钮);12 拍后控制权自然归还。
-         (v10 教训:困局是死的 0,多给时间没用——得给一扇门)
-  12     喝药键(v12):腰带有治疗类药水就喝一瓶(引擎手柄快捷键同路),
-         没有则为空拍。v12 曾刻意不把腰带药数放进观测(保 286 维历代
-         可复评),结果 99.5% 的按键落在空腰带上(教训十一"瓶盲"),
-         v13 起腰带药数与最近地面药方向入观测。
-  13     捡药宏(v13):沿观测绑定的 radius-12 固定快照逐个走 4 向安全步，
-         遇普通门先在相邻格开启；必须精确站到目标格才提交原生拾取，原生
-         再校验物品身份与腰带容量。无目标/无空槽或安全路径不完整则等待。
-  14     捡装备宏(v14):使用同一逐步安全路径走向 PlanGearUpgrade 认可的
-         严格整套升级；精确到位后原生重验物品身份与换装计划，复制身体槽
-         并原子替换（含占用槽、武器/盾牌、双戒指与双手切换）。CalcPlrInv
-         后若保守整套战力未严格增长则完整回滚；不走 AutoEquip 的背包回退。
+Actions (Discrete(15)):
+  0      explicit wait: cancels leftover pathing/chase/destAction; an attack animation stops immediately, a committed
+         single-tile move finishes naturally within this step's billed settle ticks, but the previous
+         action's long path or repeated attack does not continue (v4)
+  1-8    walk one tile in one of eight directions (pathing)
+  9      engage macro: lock onto the nearest visible reachable monster and keep chasing it until it dies/we die/the level changes/
+         timeout (≤10 ticks)
+         (v2 lesson: a single-tick attack is interrupted by the next move action, so the policy never learns to "keep attacking")
+  10     explore macro: if a story target required for completion exists, fail closed by waiting/handing back to the manager,
+         never overstepping action11 to push forward; otherwise walk to the nearest "walkable and not yet visited"
+         frontier point within the 25×25 view; on spotting prey
+         (nearest monster ≤6 tiles) hand control back immediately; opens ordinary closed doors to new areas on the way,
+         and may deal with a blocking barrel when there is no frontier, but never steps on any up/down trigger
+         (run5 lesson: when no monster is reachable from the spawn area, a reactive policy never "tries another room")
+  11     main-quest progress macro (v11+): first completes the strict allowlist of staff stand/staff/L15 quest entrance/Vile books and
+         pentagram/L16 mechanism, then walks to the down or quest-return trigger when nothing is pending.
+         Unlike the explore macro, spotting prey does **not** interrupt it: this is the policy's deliberate withdraw/level-change key
+         (the escape hatch from a dead end + the next-chapter button after clearing a level); control returns naturally after 12 ticks.
+         (v10 lesson: a dead end is a dead 0, and more time does not help; it needs a door)
+  12     drink key (v12): drinks one healing potion if the belt has one (same path as the engine's gamepad shortcut),
+         otherwise an empty tick. v12 deliberately kept the belt potion count out of the observation (to keep all 286-dim generations
+         re-evaluable), and 99.5% of presses landed on an empty belt (lesson 11, "bottle blindness");
+         since v13 the belt potion count and the nearest floor potion direction are in the observation.
+  13     potion pickup macro (v13): walks 4-direction safe steps one by one along the radius-12 fixed snapshot bound to the observation,
+         opening an ordinary door from the adjacent tile first; native pickup is committed only when standing exactly on the target tile, and
+         native code re-checks the item identity and belt capacity. Waits if there is no target/no free slot or the safe path is incomplete.
+  14     gear pickup macro (v14): walks the same step-by-step safe path toward the strict whole-set upgrade approved by
+         PlanGearUpgrade; once exactly in place, native code re-validates the item identity and swap plan, copies the body slots
+         and replaces atomically (including occupied slots, weapon/shield, dual rings and one-/two-hand switching). If after CalcPlrInv
+         the conservative whole-set combat power has not strictly increased, it rolls back completely; it never uses AutoEquip's backpack fallback.
 
-动作掩码与路径安全:
-  action_masks 只动态约束 9/12/13/14：9 要有 radius-12 快照内可见且局部
-  可接敌的编码怪；12 要有腰带治疗药且确实掉血；13 要有腰带空槽和有效
-  治疗药目标；14 要有有效整套升级目标。其余键保持合法。掩码只消灭确定性
-  空按，不承诺宏能避开之后发生的动态阻挡、受击或时间上限。
-  dual Worker 执行生成观测时安装的同一快照；旧 295/298 视图只在 mask/step
-  边界抓取只读快照。控制器只用该 radius-12 视图规划 4 向相邻步，hazard、
-  explosive softwall 与受保护剧情格一律不可穿；物品宏还要求路径完整抵达
-  精确目标格，禁止把原生近距离命令当作跨危险格的二次寻路捷径。
+Action masks and path safety:
+  action_masks only constrains 9/12/13/14 dynamically: 9 needs an encoded monster that is visible in the radius-12 snapshot and locally
+  engageable; 12 needs a belt heal potion and actual missing HP; 13 needs a free belt slot and a valid
+  heal potion target; 14 needs a valid whole-set upgrade target. The other keys stay legal. Masks only remove deterministic
+  empty presses and do not promise that a macro avoids later dynamic blocking, hits taken or the time limit.
+  The dual Worker executes the same snapshot installed when the observation was generated; the old 295/298 views only take a read-only snapshot
+  at the mask/step boundary. The controller plans 4-direction adjacent steps only from that radius-12 view; hazards,
+  explosive softwalls and protected story tiles are never crossed; item macros also require the path to reach the
+  exact target tile completely, and must not use a native short-range command as a second pathing shortcut across a dangerous tile.
 
-决策边界(v4):除死亡/胜利/总步数边界外，step 返回时玩家必须处于
-PM_STAND，且 future==tile、walkpath/destAction 均为空。结清走格、受击等
-隐藏动画所用的 engine beats 全部计入 micro steps、奖励差分和 Options τ；
-295/298/303 维观测因而无需加入不可见的执行态，也不会发生“同一 tile、
-不同 pending 命令”这一类状态别名。若 max_steps 恰在动画中耗尽，不能越
-预算结算；该边界 fail-closed 为 terminal 并禁止价值 bootstrap。只有 idle
-的 max_steps 边界才是标准 truncation。
+Decision boundary (v4): except at death/victory/total-step boundaries, when step returns the player must be in
+PM_STAND, with future==tile and walkpath/destAction empty. The engine beats used to settle walking, hits taken and other
+hidden animations all count toward micro steps, the reward difference and Options τ;
+the 295/298/303-dim observations therefore need no invisible execution state, and no state aliasing of the kind "same tile,
+different pending command" can occur. If max_steps runs out exactly during an animation, it cannot settle
+beyond the budget; that boundary fails closed as terminal and forbids value bootstrapping. Only an idle
+max_steps boundary is a standard truncation.
 
-action9/10 是可恢复的有记忆控制器：失败目标轮转、粘性 frontier 与已踏足
-集合属于宏的内部调度状态，不是策略可选择的另一种动作；它们不得改变
-action mask，且失败表耗尽后必须开启下一轮，不能永久删除合法目标。形式上，
-若把 15 个键当作完全原子的 flat-MDP 动作，这些调度表（连同游戏未观测区域）
-仍是部分可观测状态；严格展开会需要目标方向及探索地图新通道并使旧 295 维
-权重失效。当前接口把它们明确归入 option controller，只把会改变经理 mask
-或 FARM 收窗时刻的 wrapper 交权钟/预算计数直接放入 298/303 维策略观测；
-“下一格是否首次踏足”仍随探索控制器的 visited map 属于这项明确的部分可观测
-抽象，而不是伪称能由 295 维完整重建。
+action9/10 are recoverable controllers with memory: failed-target rotation, the sticky frontier and the visited
+set are internal scheduling state of the macro, not another action the policy can choose; they must not change the
+action mask, and once the failure table is exhausted a new round must start instead of deleting legal targets permanently. Formally,
+if the 15 keys were treated as fully atomic flat-MDP actions, these scheduling tables (together with unobserved parts of the game)
+would still be partially observable state; a strict expansion would need target directions and a new exploration-map channel, invalidating the old 295-dim
+weights. The current interface explicitly assigns them to the option controller, and puts only the wrapper hand-back clock/budget counters
+that change the manager mask or the FARM window-closing time directly into the 298/303-dim policy observation;
+"is the next tile visited for the first time" remains, through the explore controller's visited map, part of this explicit partially observable
+abstraction, and is not claimed to be fully reconstructible from the 295 dims.
 
-奖励(v4,状态势函数守恒):
+Reward (v4, state-potential conserving):
   +Φ(q_before)-Φ(q_after), Φ(q)=0.75q-0.125q²
-                                              q 为怪物本 lifetime 已付最低
-                                              HP/maxHP；只为新最低血线付一次，
-                                              回血重打不重复。满血到 0 的伤害
-                                              塑形恒为 0.625，不随切刀、settle
-                                              拍数或攻击节奏改变
-  +1.0 * Δmonster_kill_total                  原生单调击杀总账；宏内生成又死亡、
-                                              或击杀后同拍换场景也不会漏记
-  +0.01 * ΔXP                                  真实目标(升级)
-  +8.0  * Δ地牢层                               扁平模式；深度阶梯模式对跨过的
-                                              每个 N→N+1 结算 8N
-  +min(1, max(0, Δgear_utility)/4096)          武器伤害、命中、AC、抗性、
-                                              格挡、词缀与耐久共用原生整套
-                                              uint32 总账；只奖增长，负 Δ 不罚
-  +0.005 * 固定存活目标的 player-only 接近差   走远时可为负
-  -0.002  同场景请求 action0 等待
-  -0.002  同场景原生未执行的任意非零请求        已真实执行但原地的攻击/喝药/
-                                              拾取操作不收这笔固定罚分
-  -2.0 死亡(死亡阶梯模式为 -8×当前层)  +10.0 通关
-  历史教训:v0 的掉血惩罚→面壁塌缩;v1 的"怪贴脸也计分"→站桩钓鱼。
+                                              q is the lowest HP/maxHP already paid for in this
+                                              monster's lifetime; paid once per new low, no repeat
+                                              for healing and re-hitting. Damage shaping from full
+                                              to 0 is always 0.625, regardless of cuts, settle
+                                              ticks or attack rhythm
+  +1.0 * Δmonster_kill_total                  native monotone kill ledger; monsters spawned and killed within
+                                              a macro, or a scene change in the kill tick, are never missed
+  +0.01 * ΔXP                                  the real goal (leveling)
+  +8.0  * Δdungeon level                       flat mode; depth-ladder mode settles 8N for each
+                                              N→N+1 crossed
+  +min(1, max(0, Δgear_utility)/4096)          weapon damage, to-hit, AC, resistances,
+                                              blocking, affixes and durability share the native whole-set
+                                              uint32 ledger; only increases are rewarded, a negative Δ is not penalized
+  +0.005 * player-only approach difference to a fixed live target   may be negative when walking away
+  -0.002  same-scene request for the action0 wait
+  -0.002  any non-zero request not executed natively in the same scene   attacks/drinks/pickups that really executed
+                                              but stayed in place do not pay this fixed penalty
+  -2.0 death (-8×current level in death-ladder mode)  +10.0 victory
+  Historical lessons: v0's HP-loss penalty -> collapse into facing the wall; v1's "score even with a monster in your face" -> standing still and fishing.
 """
 
 from __future__ import annotations
@@ -119,22 +119,22 @@ import numpy as np
 from . import bridge, nav
 from .controller_wire import *  # noqa: F403 - single schema source, re-exported
 
-# 八方向(等距地牢的 tile 坐标系)
+# Eight directions (tile coordinates of the isometric dungeon)
 _DIRS = [(0, -1), (1, -1), (1, 0), (1, 1), (0, 1), (-1, 1), (-1, 0), (-1, -1)]
 _K_MONSTERS = 8
-_MAP_RADIUS = 5  # 11×11 局部地图
+_MAP_RADIUS = 5  # 11×11 local map
 
-# 换层奖金单价(_reward 的 Δ地牢层项;v23 起为具名常量——工人工资剥薪
-# 需要在包装器侧按同一公式反算,数字只许存在一份)
+# Unit price of the level-change bonus (the Δdungeon-level term of _reward; a named constant since v23, because worker wage stripping
+# must invert it on the wrapper side with the same formula, and the number may exist in only one place)
 DESCEND_UNIT = 8.0
 GEAR_COMBAT_UTILITY_REWARD_SCALE = 4096.0
 GEAR_COMBAT_UTILITY_REWARD_CAP = 1.0
 STALL_ACTION_REWARD = -0.002
-# R18-B5 (2026-09-07) 复核修正:a10 全图寻怪的作用域词汇表。原先这个元组只
-# 以字面量活在 env.py 的构造器里,而训练/评测侧各自抄了一份;将来引擎添一个
-# 作用域,训练世界就说不出被测世界能跑的那条法,却没有任何一卷会报警。
-# 部署侧(env.py/worker_env.py)自本版起只认这一份;train/ 侧不引 diablogym
-# (eval_contract 是纯 stdlib 契约模块),由新测试卷逐处比对字面量。
+# R18-B5 (2026-09-07) review correction: the scope vocabulary of the a10 whole-map monster hunt. This tuple used to
+# live only as a literal in env.py's constructor, while the training/evaluation side each kept a copy; if the engine added a
+# scope, the training world could not express a law the tested world can run, and no test would raise an alarm.
+# From this version the deployment side (env.py/worker_env.py) recognizes only this copy; the train/ side does not import diablogym
+# (eval_contract is a pure-stdlib contract module), and a new test compares the literals site by site.
 HUNT_SCOPES = ("all", "l1-only")
 
 
@@ -154,16 +154,16 @@ TERMINAL_DEATH_REWARD_SPEC = TerminalDeathRewardSpec(
 
 @dataclass(frozen=True)
 class RewardEconomy:
-    """R10 经济法案:全部工资常量的单一真源(v1=历史逐位不变)。
+    """R10 economy act: the single source of truth for all wage constants (v1 = history unchanged bit for bit).
 
-    v2(R10 深度经济,主席批文 2026-08-27,记账全额归经理):
-      - A 下楼奖金:descend_unit 上调(仍按 v17 递进公式 8×N 结构,换单价);
-      - B 深度乘数:farm 收入(xp+击杀)×(1+kill_depth_beta×(d-1));
-      - C 主席版死亡罚金:flat + c0×gamma^(d-1),随深度递减(拧反 v1 的
-        ladder 递增恐惧项);
-      - D 反躺平:同层滞留超 idle_threshold_steps 后 farm 收入 ×idle_factor
-        (抵达新的本局最深层即重置);
-      - E1 装备重定价:scale 降 / cap 升,一次真实升级≈数只怪。
+    v2 (R10 depth economy, approved 2026-08-27; all bookings go to the manager):
+      - A descend bonus: descend_unit raised (still the v17 progressive 8×N structure, with a new unit price);
+      - B depth multiplier: farm income (xp + kills) × (1 + kill_depth_beta × (d-1));
+      - C revised death penalty: flat + c0×gamma^(d-1), decreasing with depth (reversing v1's
+        ladder of increasing fear);
+      - D anti-idling: after staying on the same level beyond idle_threshold_steps, farm income × idle_factor
+        (reset on reaching a new deepest level of the episode);
+      - E1 gear repricing: scale down / cap up, one real upgrade ≈ several monsters.
     """
 
     name: str
@@ -177,16 +177,16 @@ class RewardEconomy:
     gear_cap: float
     idle_threshold_steps: int
     idle_kill_factor: float
-    # R11 主席版杀怪锁:>0 时,下楼奖金记入"未解锁"托管;该层击杀满
-    # 此数解锁;死于解锁前全额罚没(gamma=1.0 下与到账托管数学等价)。
-    # 0 = 关闭(v1/v2 语义不变)。
+    # R11 kill lock: when >0 the descend bonus is booked into an "unvested" escrow; it vests once this many kills
+    # are made on that level; dying before vesting forfeits all of it (mathematically equal to vested escrow at gamma=1.0).
+    # 0 = off (v1/v2 semantics unchanged).
     descend_vest_kills: int
-    # R16 修宪(C8,2026-09-01)反躺平重定义,两个默认关字段:
-    #   idle_counts_micro_beats: D 条款 idle 钟按底层微拍(self._steps 增量)
-    #     计数,而非按 _reward 调用次数(=决策/宏)计数;
-    #   idle_reset_on_kill: 本决策发生原生击杀即把 idle 钟清零(先按清零前
-    #     的钟结算本决策的 farm 乘数,再清零;新最深层清零照旧)。
-    # v1/v2/v3/v3b 均取默认 False → 旧行为逐位不变。
+    # R16 amendment (C8, 2026-09-01) redefines anti-idling with two fields that default to off:
+    #   idle_counts_micro_beats: the clause-D idle clock counts engine micro beats (increments of self._steps)
+    #     instead of _reward calls (= decisions/macros);
+    #   idle_reset_on_kill: a native kill in this decision resets the idle clock (this decision's farm multiplier is settled
+    #     with the clock before the reset, then it is reset; reaching a new deepest level still resets it).
+    # v1/v2/v3/v3b all take the default False -> old behaviour unchanged bit for bit.
     idle_counts_micro_beats: bool = False
     idle_reset_on_kill: bool = False
 
@@ -208,9 +208,9 @@ REWARD_ECONOMY_V1 = RewardEconomy(
 
 REWARD_ECONOMY_V2 = RewardEconomy(
     name="v2",
-    # rev2(G0 校准 2026-08-27):rev1 探针 DIVE-FARM=-29.3 未翻符——
-    # B 乘数无差别肥了守旧派。下楼奖 24→48、beta 0.5→0.25、
-    # 反躺平 900→300 步。终值以冻结预注册为准。
+    # rev2 (G0 calibration 2026-08-27): the rev1 probe DIVE-FARM=-29.3 did not flip sign;
+    # the B multiplier fattened the conservatives indiscriminately. Descend bonus 24->48, beta 0.5->0.25,
+    # anti-idling 900->300 steps. The frozen pre-registration holds the final values.
     descend_unit=48.0,
     kill_depth_beta=0.25,
     death_flat=2.0,
@@ -224,8 +224,8 @@ REWARD_ECONOMY_V2 = RewardEconomy(
     descend_vest_kills=0,
 )
 
-# R11 试跑版(2026-08-28 深夜主席令「今晚先试跑一轮」):v2 + 杀怪锁 K=3。
-# 单变量纪律:除 vest_kills 外与 v2 逐字相同,便于明晨干净归因。
+# R11 trial version (2026-08-28, a first trial round): v2 + kill lock K=3.
+# Single-variable discipline: identical to v2 except vest_kills, for clean attribution.
 REWARD_ECONOMY_V3 = RewardEconomy(
     name="v3",
     descend_unit=48.0,
@@ -241,7 +241,7 @@ REWARD_ECONOMY_V3 = RewardEconomy(
     descend_vest_kills=3,
 )
 
-# R11 试跑二(二分搜索:K=3 端点证伪潜行,退一格):v3 仅改 vest_kills=1。
+# R11 trial two (bisection: the K=3 end point refuted sneaking, step back one notch): v3 changes only vest_kills=1.
 REWARD_ECONOMY_V3B = RewardEconomy(
     name="v3b",
     descend_unit=48.0,
@@ -257,10 +257,10 @@ REWARD_ECONOMY_V3B = RewardEconomy(
     descend_vest_kills=1,
 )
 
-# R16 修宪 v4(C8 判词:v2 的 D 条款按决策计数、只在新最深层清零、击杀不
-# 清零,>300 后 farm 收入减半——专打在本层磨等级的轨迹)。v4 = v2 全部参数
-# (dataclasses.replace 保证逐字段同源)+ 反躺平重定义:idle 钟按底层微拍
-# 计数且击杀发生即清零。v2 本身一字不动。
+# R16 amendment v4 (C8 verdict: v2's clause D counts by decision, resets only at a new deepest level, does not reset
+# on kills, and halves farm income after >300, which hits exactly the trajectories grinding levels on the current floor). v4 = all v2 parameters
+# (dataclasses.replace guarantees field-by-field identity) + redefined anti-idling: the idle clock counts engine micro beats
+# and resets on any kill. v2 itself is untouched.
 REWARD_ECONOMY_V4 = dataclasses.replace(
     REWARD_ECONOMY_V2,
     name="v4",
@@ -281,17 +281,17 @@ def gear_combat_utility_value(raw, label: str) -> int:
     """Validate and return the native whole-loadout uint32 utility."""
     if "gear_combat_utility" not in raw:
         raise RuntimeError(
-            f"{label} 缺少原生 gear_combat_utility")
+            f"{label} is missing native gear_combat_utility")
     value = raw["gear_combat_utility"]
     if isinstance(value, (bool, np.bool_)):
         raise RuntimeError(
-            f"{label}.gear_combat_utility 必须是非负整数")
+            f"{label}.gear_combat_utility must be a non-negative integer")
     try:
         integer = int(value)
         numeric = float(value)
     except (TypeError, ValueError, OverflowError) as exc:
         raise RuntimeError(
-            f"{label}.gear_combat_utility 必须是非负整数") from exc
+            f"{label}.gear_combat_utility must be a non-negative integer") from exc
     if (
         not math.isfinite(numeric)
         or numeric != float(integer)
@@ -299,7 +299,7 @@ def gear_combat_utility_value(raw, label: str) -> int:
         or integer > 0xFFFFFFFF
     ):
         raise RuntimeError(
-            f"{label}.gear_combat_utility 必须是 uint32")
+            f"{label}.gear_combat_utility must be a uint32")
     return integer
 
 
@@ -307,10 +307,10 @@ def gear_upgrade_reward_delta_component(delta: int) -> float:
     """Bounded shaping for one causally attributed native utility increase."""
     if isinstance(delta, (bool, np.bool_)) or not isinstance(
             delta, (int, np.integer)):
-        raise RuntimeError("gear utility delta 必须是非负整数")
+        raise RuntimeError("gear utility delta must be a non-negative integer")
     delta = int(delta)
     if not 0 <= delta <= 0xFFFFFFFF:
-        raise RuntimeError("gear utility delta 必须是 uint32")
+        raise RuntimeError("gear utility delta must be a uint32")
     return min(
         GEAR_COMBAT_UTILITY_REWARD_CAP,
         float(delta) / GEAR_COMBAT_UTILITY_REWARD_SCALE,
@@ -427,33 +427,33 @@ def terminal_death_reward_component(
     component across a frozen manager/script boundary.  No XP, combat,
     movement, progression, or victory credit is included.
 
-    economy=v1(默认)逐位复现历史行为;economy=v2 时死亡罚金改为主席版
-    递减函数 flat + c0×gamma^(max(d,1)-1),death_ladder 分支被 v2 覆盖。
+    economy=v1 (default) reproduces historical behaviour bit for bit; with economy=v2 the death penalty becomes the revised
+    decreasing function flat + c0×gamma^(max(d,1)-1), and the death_ladder branch is overridden by v2.
     """
     if not isinstance(dead, (bool, np.bool_)):
-        raise TypeError(f"dead 必须是 bool，收到 {dead!r}")
+        raise TypeError(f"dead must be a bool, got {dead!r}")
     if not dead:
         return 0.0
     if not isinstance(death_ladder, (bool, np.bool_)):
         raise TypeError(
-            f"death_ladder 必须是 bool，收到 {death_ladder!r}")
+            f"death_ladder must be a bool, got {death_ladder!r}")
     if isinstance(dungeon_level, (bool, np.bool_)):
         raise ValueError(
-            f"死亡终局 dungeon_level 必须是非负整数，收到 {dungeon_level!r}")
+            f"terminal-death dungeon_level must be a non-negative integer, got {dungeon_level!r}")
     try:
         depth = int(dungeon_level)
         numeric_depth = float(dungeon_level)
     except (TypeError, ValueError, OverflowError) as exc:
         raise ValueError(
-            f"死亡终局 dungeon_level 必须是非负整数，收到 {dungeon_level!r}"
+            f"terminal-death dungeon_level must be a non-negative integer, got {dungeon_level!r}"
         ) from exc
     if (not math.isfinite(numeric_depth)
             or numeric_depth != float(depth)
             or depth < 0):
         raise ValueError(
-            f"死亡终局 dungeon_level 必须是非负整数，收到 {dungeon_level!r}")
+            f"terminal-death dungeon_level must be a non-negative integer, got {dungeon_level!r}")
     if not economy.death_uses_ladder_spec:
-        # v2 主席版:一层死罚最重,越深越轻(2026-08-27 批文)。
+        # v2 revised version: dying on level 1 costs the most, less the deeper (approved 2026-08-27).
         cost = economy.death_flat + (
             economy.death_c0
             * (economy.death_gamma ** (max(depth, 1) - 1)))
@@ -479,7 +479,7 @@ _TEMP_SAVE_REGISTRY_LOCK = (
 
 
 def _scene_identity(raw) -> tuple[int, bool, int]:
-    """主线深度相同的任务副本仍是另一张地图，不能跨图做差分。"""
+    """A quest set-level with the same main-line depth is still a different map; no difference may be taken across maps."""
     depth = int(raw["dungeon_level"])
     is_set = bool(raw.get("is_set_level", False))
     set_id = int(raw.get("set_level_id", 0)) if is_set else 0
@@ -565,11 +565,11 @@ def _cleanup_stale_temp_save_dirs_locked(base: pathlib.Path) -> int:
 
 
 def _cleanup_stale_temp_save_dirs(root: pathlib.Path | None = None) -> int:
-    """回收被 SIGKILL 遗留、且已没有进程持锁的新式 scratch 目录。
+    """Reclaim new-style scratch directories left behind by SIGKILL that no process holds a lock on any more.
 
-    v2 的创建/清理由全局事务锁串行化，因此可回收崩溃留下的无 marker
-    半成品；旧版本没有这项所有权证据，宁可保留也不猜。flock 由内核在
-    进程死亡时释放，因此 PID 复用不会导致误删或漏删。
+    v2 creation/cleanup is serialized by a global transaction lock, so half-built directories without a marker left by a crash
+    can be reclaimed; older versions have no such ownership evidence, so they are kept rather than guessed. flock is released by the
+    kernel when the process dies, so PID reuse cannot cause wrong or missed deletions.
     """
     base = (pathlib.Path(root) if root is not None
             else pathlib.Path(tempfile.gettempdir()))
@@ -602,21 +602,21 @@ def _create_locked_temp_save_dir():
 class DiabloGymEnv(gym.Env):
     metadata = {"render_modes": []}
 
-    # R10 经济法案的类级默认:v1 = 历史逐位不变。既有测试/法证脚本常以
-    # __new__ 裸构造实例直呼 _reward,类级默认保证该路径永远落在 v1;
-    # 正常 __init__ 会按入参覆写实例属性。
+    # Class-level defaults of the R10 economy act: v1 = history unchanged bit for bit. Existing tests/forensic scripts often
+    # build a bare instance via __new__ and call _reward directly; class-level defaults keep that path on v1 forever;
+    # the normal __init__ overwrites the instance attributes from its arguments.
     reward_economy = REWARD_ECONOMY_V1
     _econ_steps_on_level = 0
-    _econ_idle_prev_steps = 0  # R16 v4:上次 _reward 时的 self._steps(微拍计数用)
+    _econ_idle_prev_steps = 0  # R16 v4: self._steps at the last _reward (for micro-beat counting)
     _econ_episode_max_depth = 0
     _econ_unvested = 0.0
     _econ_kills_on_floor = 0
     _econ_prev_epkills = 0
 
-    # DevilutionX 是进程内全局单例，不是可重入的多实例引擎。同一
-    # 进程可以顺序复用多个 wrapper，但不能交错 step；多环境必须用
-    # SubprocVecEnv 之类的多进程方案。在这里显式记账，把静默串状态
-    # 变成响亮的异常。
+    # DevilutionX is an in-process global singleton, not a re-entrant multi-instance engine. The same
+    # process may reuse several wrappers sequentially, but must not interleave their steps; multiple environments need
+    # a multi-process scheme such as SubprocVecEnv. Keeping explicit books here turns silent state crosstalk
+    # into a loud exception.
     _engine_initialized = False
     _engine_pid: int | None = None
     _engine_config: tuple[str, str, str, int] | None = None
@@ -642,13 +642,13 @@ class DiabloGymEnv(gym.Env):
 
     @classmethod
     def _after_fork_child(cls) -> None:
-        """子进程不得析构父进程仍在使用的 scratch 或原生引擎。"""
+        """A child process must not destroy the scratch directory or native engine still used by the parent."""
         directory, cls._temp_save_dir = cls._temp_save_dir, None
         owner, cls._temp_save_lock = cls._temp_save_lock, None
         if directory is not None:
             finalizer = getattr(directory, "_finalizer", None)
             if finalizer is not None and finalizer.alive:
-                finalizer.detach()  # 只取消子进程副本；不能 rmtree 父进程目录
+                finalizer.detach()  # only cancels the child's copy; must not rmtree the parent's directory
         if owner is not None:
             owner.close()
 
@@ -703,7 +703,7 @@ class DiabloGymEnv(gym.Env):
                 or not self._resource_preserve_equipment_readiness):
             raise ValueError("loot economy requires l2-town-v1/full with ordinary armor and equipment preservation")
         self._resource_loot_economy = resource_loot_economy
-        # R17.1 ruling 3: readiness law (veto-v1 = R18-R23 native veto, bit-identical;
+        # R17.1 readiness rule 3: readiness law (veto-v1 = R18-R23 native veto, bit-identical;
         # coach-v03 = six-condition coach + accounted forced descents).
         from .resource_protocol import validate_readiness_law
         self.resource_readiness_law = validate_readiness_law(
@@ -735,7 +735,7 @@ class DiabloGymEnv(gym.Env):
         # lives on the class (DiabloGymEnv._sweep_object_channel, declared with
         # the other process-singleton state above); zeroing it per instance is
         # what made a fresh sweep-off env skip the turn-off call.
-        # R18-H identify-v1 (2026-09-07) 凯恩鉴定: the Cain identify leg of the
+        # R18-H identify-v1 (2026-09-07) Cain identify: the Cain identify leg of the
         # loot economy's town trip (default off = byte-identical).
         from .resource_identify import validate_identify_env
         self.resource_identify = validate_identify_env(
@@ -781,58 +781,58 @@ class DiabloGymEnv(gym.Env):
         self._resource_transition_receipts = []
         self._resource_reward_depth_before = 0
         self._resource_step_bonus = 0.0
-        # R16 修宪(2026-09-01)两把默认关的开关,默认值下代码路径逐位不变:
-        #   explore_global_fallback(C5):a10 在 25×25 窗内无边疆/软墙候选时,
-        #     不再直接 wait,而是全图 BFS 找最近的未踏足可达格或存活怪占位
-        #     格,取其路径落在窗内的最远局部可达前缀点作本次 frontier;
-        #   progress_far_tiles(C6):>0 时只有与既有"进展锚点"切比雪夫距离
-        #     ≥ 该值的新格才推进 exploration_progress(踱步不算),0 = 旧法
-        #     (任何首次踏足格都算)。
+        # R16 amendment (2026-09-01): two switches that default to off; with the defaults the code path is unchanged bit for bit:
+        #   explore_global_fallback (C5): when a10 finds no frontier/softwall candidate in the 25×25 window,
+        #     instead of waiting it runs a whole-map BFS to the nearest unvisited reachable tile or live-monster
+        #     tile and takes the farthest locally reachable prefix point of that path inside the window as this frontier;
+        #   progress_far_tiles (C6): when >0, only new tiles at Chebyshev distance >= this value from the existing
+        #     "progress anchors" advance exploration_progress (pacing does not count); 0 = the old rule
+        #     (any first-visited tile counts).
         if not isinstance(explore_global_fallback, (bool, np.bool_)):
             raise TypeError(
-                "explore_global_fallback 必须是 bool，收到 "
+                "explore_global_fallback must be a bool, got "
                 f"{explore_global_fallback!r}")
         self._explore_global_fallback = bool(explore_global_fallback)
         if (isinstance(progress_far_tiles, bool)
                 or not isinstance(progress_far_tiles, (int, np.integer))
                 or int(progress_far_tiles) < 0):
             raise ValueError(
-                "progress_far_tiles 必须是非负整数(0=旧法)，收到 "
+                "progress_far_tiles must be a non-negative integer (0 = old rule), got "
                 f"{progress_far_tiles!r}")
         self._progress_far_tiles = int(progress_far_tiles)
-        # R16 C5 附加变体(默认关,探针发现 fallback 单独几乎不触发):a10 在
-        # 25×25 窗内没有任何可见怪时,不等局部边疆耗尽,直接全图 BFS 朝最近
-        # 存活怪(含隔墙/未照亮的)推进(仍只取窗内航点、走既有逐步走格
-        # 机制);全图无可达怪才回到局部边疆探索。
+        # R16 C5 extra variant (default off; a probe found the fallback alone almost never fires): when a10 sees
+        # no visible monster in the 25×25 window, it does not wait for the local frontier to run out but runs a whole-map BFS
+        # toward the nearest live monster (including ones behind walls/unlit) (still taking only in-window waypoints and using the
+        # existing step-by-step walking); only when no monster on the map is reachable does it return to local frontier exploration.
         if not isinstance(explore_global_hunt, (bool, np.bool_)):
             raise TypeError(
-                "explore_global_hunt 必须是 bool，收到 "
+                "explore_global_hunt must be a bool, got "
                 f"{explore_global_hunt!r}")
         self._explore_global_hunt = bool(explore_global_hunt)
         if (isinstance(ticks_per_step, bool)
                 or not isinstance(ticks_per_step, (int, np.integer))
                 or int(ticks_per_step) <= 0):
-            raise ValueError(f"ticks_per_step 必须是正整数，收到 {ticks_per_step!r}")
+            raise ValueError(f"ticks_per_step must be a positive integer, got {ticks_per_step!r}")
         if (isinstance(max_steps, bool)
                 or not isinstance(max_steps, (int, np.integer))
                 or int(max_steps) <= 0):
-            raise ValueError(f"max_steps 必须是正整数，收到 {max_steps!r}")
+            raise ValueError(f"max_steps must be a positive integer, got {max_steps!r}")
         if (isinstance(hero_class, bool)
                 or not isinstance(hero_class, (int, np.integer))
                 or int(hero_class) != 0):
             raise ValueError(
-                "当前动作/自动加点契约只支持 hero_class=0(战士)；"
-                f"收到 {hero_class!r}")
+                "the current action/auto stat-allocation contract only supports hero_class=0 (Warrior); "
+                f"got {hero_class!r}")
         if not isinstance(controller_snapshot_enabled, (bool, np.bool_)):
             raise TypeError(
-                "controller_snapshot_enabled 必须是 bool，收到 "
+                "controller_snapshot_enabled must be a bool, got "
                 f"{controller_snapshot_enabled!r}")
-        # E-fix 修 A(甲形态):避怪规划"成功但踏不上楼梯"时按秩比较提升
-        # 宽容规划(_macro_progression 同款既有立法);False = 旧行为端点,
-        # 系对照腿/旧档案位级重放专用。
+        # E-fix A (form 1): when monster-avoiding planning "succeeds but cannot step onto the stairs", promote the
+        # lenient planner by rank comparison (the same existing rule as _macro_progression); False = the old-behaviour end point,
+        # used only for control legs/bit-level replay of old archives.
         if not isinstance(descend_fallback_promotion, (bool, np.bool_)):
             raise TypeError(
-                "descend_fallback_promotion 必须是 bool，收到 "
+                "descend_fallback_promotion must be a bool, got "
                 f"{descend_fallback_promotion!r}")
         self._descend_fallback_promotion = bool(descend_fallback_promotion)
 
@@ -848,13 +848,13 @@ class DiabloGymEnv(gym.Env):
             cls._atfork_registered = True
         if cls._engine_initialized and cls._engine_pid != pid:
             raise RuntimeError(
-                "DiabloGym 引擎已在父进程初始化，不能 fork 后复用；"
-                "fork 子进程只能立即 exec/os._exit，多环境训练请使用 spawn")
+                "the DiabloGym engine was already initialized in the parent process and cannot be reused after fork; "
+                "a fork child may only exec/os._exit immediately; use spawn for multi-environment training")
 
-        # bridge.init() 是一个长 C++ 调用，SIGINT 可能恰在它成功返回、
-        # Python 尚未来得及写三个 class 属性时转成 KeyboardInterrupt。
-        # 原生配置是提交事实源；每次构造都先据此修复可能被异步异常撕裂的
-        # Python 账本，不能误删原生仍在使用的临时存档目录。
+        # bridge.init() is a long C++ call; SIGINT may turn into KeyboardInterrupt exactly after it returns successfully
+        # but before Python has written the three class attributes.
+        # The native configuration is the committed source of truth; every construction first uses it to repair a Python
+        # ledger possibly torn by an async exception, and must not delete the scratch save directory native code still uses.
         native_config = bridge.engine_config()
         if native_config is not None:
             recovered = (str(native_config[0]), str(native_config[1]),
@@ -864,34 +864,34 @@ class DiabloGymEnv(gym.Env):
             cls._engine_initialized = True
         elif cls._engine_initialized:
             raise RuntimeError(
-                "DiabloGym Python/原生单例账本不一致：Python 标为已初始化，"
-                "原生桥却未初始化")
+                "DiabloGym Python/native singleton ledgers disagree: Python marks it initialized, "
+                "but the native bridge is not initialized")
         if cls._engine_initialized:
             if cls._engine_config is None:
-                raise RuntimeError("DiabloGym 引擎单例状态损坏: 已初始化但配置缺失")
+                raise RuntimeError("DiabloGym engine singleton state corrupt: initialized but configuration missing")
             _, old_saves, _, _ = cls._engine_config
             requested_save = (str(pathlib.Path(save_dir).expanduser().resolve())
                               if save_dir is not None else old_saves)
             requested = (assets, requested_save, data, int(hero_class))
             if requested != cls._engine_config:
                 raise RuntimeError(
-                    "DevilutionX 是进程内单例，不能用不同的 assets/save/data/"
-                    f"hero_class 重复初始化；已有={cls._engine_config!r}, 请求={requested!r}")
+                    "DevilutionX is an in-process singleton and cannot be re-initialized with a different assets/save/data/"
+                    f"hero_class; existing={cls._engine_config!r}, requested={requested!r}")
             saves = old_saves
         else:
             if save_dir is not None:
                 saves = str(pathlib.Path(save_dir).expanduser().resolve())
             else:
-                # 存档 scratch 要活到进程内引擎退出，但不应像
-                # mkdtemp 那样在每次多进程训练结束后永久遗留磁盘垃圾。
+                # The save scratch must live until the in-process engine exits, but should not, like
+                # mkdtemp, leave permanent disk garbage behind after every multi-process training run.
                 cls._temp_save_dir, cls._temp_save_lock = _create_locked_temp_save_dir()
                 saves = cls._temp_save_dir.name
             try:
                 bridge.init(assets_dir=assets, save_dir=saves, data_dir=data,
                             hero_class=int(hero_class))
             except BaseException:
-                # 若异步异常发生在原生提交之后，保留 native 与 scratch，
-                # 并把 Python 账本补齐；只有原生确实未提交时才回滚磁盘。
+                # If the async exception happens after the native commit, keep native and scratch
+                # and complete the Python ledger; roll back the disk only if native really did not commit.
                 committed = bridge.engine_config()
                 if committed is not None:
                     cls._engine_config = (
@@ -908,36 +908,36 @@ class DiabloGymEnv(gym.Env):
                 raise
             cls._engine_config = (assets, saves, data, int(hero_class))
             cls._engine_pid = pid
-            # 提交位必须最后写：若 SIGINT 落在配置/PID 两次赋值之间，下一次
-            # 构造会从原生 engine_config 恢复；反过来先置 True 会把缺失 PID
-            # 误判成 fork，甚至进不到恢复逻辑。
+            # The commit bit must be written last: if SIGINT lands between the config/PID assignments, the next
+            # construction recovers from native engine_config; setting True first would instead misread the missing PID
+            # as a fork and never even reach the recovery logic.
             cls._engine_initialized = True
 
         self.ticks_per_step = int(ticks_per_step)
         self.max_steps = int(max_steps)
         self.start_in_dungeon = start_in_dungeon
         self.include_raw = include_raw
-        # v17 深水区:下楼奖金层数递进(N→N+1 付 8×N;False = v6-v16 的扁平 8.0,
-        # 旧章金标准的世界规则不动)
+        # v17 deep water: the descend bonus grows with depth (N->N+1 pays 8×N; False = the flat 8.0 of v6-v16,
+        # leaving the world rules of the old gold standard untouched)
         self.descend_ladder = descend_ladder
-        # v18:死亡成本与阶梯同步定价(死在 N 层罚 8×N;False = 恒 -2.0)。
-        # 教训十六:阶梯 8/16/24 对上死亡 -2,冲刺期望值稳赚(+5.8),
-        # "活着抵达"必须在拍卖行里赢过"摸到深度"
+        # v18: death cost priced in step with the ladder (dying on level N costs 8×N; False = constant -2.0).
+        # Lesson 16: a ladder of 8/16/24 against a death cost of -2 makes sprinting a sure win in expectation (+5.8);
+        # "arriving alive" must outbid "touching the depth"
         self.death_ladder = death_ladder
-        # R10 经济法案:v1 = 全部历史常量逐位不变(默认);v2 = 深度经济
-        # (A/B/C/D/E1,主席批文 2026-08-27)。字符串入口,单一真源在
-        # REWARD_ECONOMIES。
+        # R10 economy act: v1 = all historical constants unchanged bit for bit (default); v2 = depth economy
+        # (A/B/C/D/E1, approved 2026-08-27). String entry point; the single source of truth is
+        # REWARD_ECONOMIES.
         if reward_economy not in REWARD_ECONOMIES:
             raise ValueError(
-                f"reward_economy 必须是 {sorted(REWARD_ECONOMIES)},"
-                f" 收到 {reward_economy!r}")
+                f"reward_economy must be one of {sorted(REWARD_ECONOMIES)},"
+                f" got {reward_economy!r}")
         self.reward_economy = REWARD_ECONOMIES[reward_economy]
-        # D 条款状态:同层滞留步数与本局最深层(reset 时清零)。
+        # Clause-D state: steps spent on the same level and the deepest level of this episode (cleared on reset).
         self._econ_steps_on_level = 0
         self._econ_episode_max_depth = 0
-        # 旧 295/298 视图不消费 controller wire，默认不为每个决策额外抓取
-        # 25×25 地图，也不要求旧 raw 具备新协议字段。dual Worker 在 wrapper
-        # 构造时显式开启；宏动作仍会在按键边界做一次局部、非缓存快照。
+        # The old 295/298 views do not consume the controller wire; by default no extra 25×25 map is fetched
+        # per decision, and old raw data need not carry the new protocol fields. The dual Worker enables it explicitly
+        # when the wrapper is constructed; macro actions still take one local, uncached snapshot at the key-press boundary.
         self._controller_snapshot_enabled = bool(
             controller_snapshot_enabled)
         side = 2 * _MAP_RADIUS + 1
@@ -945,7 +945,7 @@ class DiabloGymEnv(gym.Env):
         self.observation_space = gym.spaces.Box(
             low=-np.inf, high=np.inf,
             shape=(12 + _K_MONSTERS * 4 + 2 * side * side + 9,), dtype=np.float32,
-        )  # +9 = v13 药 4 维 + v14 装备 4 维 + v19 强弱仪表 1 维
+        )  # +9 = v13 potions 4 dims + v14 gear 4 dims + v19 strength gauge 1 dim
         self._token = object()
         self._raw = None
         self._native_generation: int | None = None
@@ -955,25 +955,25 @@ class DiabloGymEnv(gym.Env):
         self._ep_kills = 0
         self._ep_start_xp = 0
         self._visited: set[tuple[int, int]] = set()
-        # 单局单调探索进展钟：任一动作首次踏入新格或 action10 真正打开
-        # 一处软墙各加 1。Options FARM 用前后差重置“无进展”钟，避免
-        # teacher(action10) 与 learned worker(方向键/追击) 使用两套终止
-        # 语义。换场景不回绕，reset 才归零。
+        # Per-episode monotone exploration progress clock: +1 whenever any action first steps on a new tile or action10 really
+        # opens a softwall. Options FARM resets its "no progress" clock from the difference, so that
+        # teacher (action10) and learned worker (direction keys/chase) do not use two sets of termination
+        # semantics. It does not wrap on scene changes; only reset zeroes it.
         self._exploration_progress = 0
         self._softwalls_opened = 0
-        # action10 的边疆目标必须跨宏保持。若每 12 拍都按“离当前位置
-        # 最近”重选，迷宫分叉会形成稳定 2-cycle：走向 A 后 B 更近，
-        # 走向 B 后 A 又更近，尚有大量房间却最终报 exhausted。
+        # action10's frontier target must persist across macros. If every 12 ticks it re-picked "the one nearest to the
+        # current position", maze forks would form a stable 2-cycle: after walking toward A, B is nearer;
+        # after walking toward B, A is nearer again, and it would finally report exhausted with many rooms left.
         self._explore_target: tuple[int, int] | None = None
         self._explore_blocked_targets: set[tuple[int, int]] = set()
-        # v4:原生 FindPath 的 reachable 是一张瞬时几何快照；怪物/玩家
-        # 动画、动态占位仍可能让某个目标在实际追击中无进展。记住本场景
-        # 已证失败的目标，使下一次 action9 优先轮转，而不是永远被稳定的
-        # ActiveMonsters/id 顺序吸回同一个等距目标。
+        # v4: native FindPath's reachable is an instantaneous geometric snapshot; monster/player
+        # animations and dynamic occupancy can still leave a target without progress during an actual chase. Remember the
+        # targets proven to fail in this scene, so the next action9 rotates first instead of always being pulled back by the
+        # stable ActiveMonsters/id order to the same equidistant target.
         self._engage_blocked_keys: set[tuple[int, int, int]] = set()
-        # v4:每个怪物 lifetime 本场景已经付过钱的最低血线。键是
-        # (active slot, rndItemSeed hi, lo)，不能只用会被运行时刷怪复用
-        # 的 slot id；值为 (lowest_hp, denominator_max_hp)。
+        # v4: the lowest HP line already paid for in this scene during each monster's lifetime. The key is
+        # (active slot, rndItemSeed hi, lo), not just the slot id, which runtime spawns can reuse;
+        # the value is (lowest_hp, denominator_max_hp).
         self._combat_hp_floor: dict[
             tuple[int, int, int], tuple[int, int]
         ] = {}
@@ -1030,21 +1030,21 @@ class DiabloGymEnv(gym.Env):
         if (DiabloGymEnv._engine_initialized
                 and DiabloGymEnv._engine_pid != os.getpid()):
             raise RuntimeError(
-                "禁止在 fork 子进程 reset 父进程已初始化的 DevilutionX；"
-                "多环境训练必须使用 spawn")
+                "resetting a DevilutionX instance initialized by the parent process in a fork child is forbidden; "
+                "multi-environment training must use spawn")
         super().reset(seed=seed)
-        # R10 经济 v2 的 D 条款状态按局清零(v1 下为无害恒零)。
+        # Clause-D state of R10 economy v2 is cleared per episode (harmlessly always zero under v1).
         self._econ_steps_on_level = 0
-        self._econ_idle_prev_steps = 0  # R16 v4 微拍基线(仅 v4 读取)
+        self._econ_idle_prev_steps = 0  # R16 v4 micro-beat baseline (read only by v4)
         self._econ_episode_max_depth = 0
-        # R11 杀怪锁状态按局清零。
+        # R11 kill-lock state is cleared per episode.
         self._econ_unvested = 0.0
         self._econ_kills_on_floor = 0
         self._econ_prev_epkills = 0
         actual_seed = seed if seed is not None else int(self.np_random.integers(2**31))
         actual_seed = int(actual_seed)
         if not 0 <= actual_seed <= np.iinfo(np.uint32).max:
-            raise ValueError(f"seed 必须在 uint32 范围 [0, 2**32-1] 内，收到 {actual_seed}")
+            raise ValueError(f"seed must be within the uint32 range [0, 2**32-1], got {actual_seed}")
         try:
             DiabloGymEnv._active_token = self._token
             self._configure_native_resource_protocol()
@@ -1052,7 +1052,7 @@ class DiabloGymEnv(gym.Env):
             self._validate_native_resource_flags(self._raw)
             self._native_generation = int(bridge.episode_generation())
             if self.start_in_dungeon:
-                # 城镇布局固定,脚本化走到教堂楼梯(约 500-900 tick,~0.05s)
+                # The town layout is fixed; walk to the cathedral stairs by script (about 500-900 ticks, ~0.05 s)
                 if getattr(self, "resource_preserve_equipment_readiness", False):
                     self._raw = nav.descend_to_dungeon(
                         bridge, raw_validator=self._validate_native_resource_flags)
@@ -1062,15 +1062,15 @@ class DiabloGymEnv(gym.Env):
             if self._native_monster_kill_delta(
                     self._raw, self._raw) is None:
                 raise RuntimeError(
-                    "当前原生桥缺少 monster_kill_total；"
-                    "无法完整统计宏内 spawn→death")
+                    "the current native bridge lacks monster_kill_total; "
+                    "spawn->death within a macro cannot be counted completely")
             self._steps = 0
             self._episode_seed = actual_seed
             self._episode_ended = False
             self._ep_kills = 0
             self._ep_start_xp = int(self._raw["xp"])
             self._visited = {(self._raw["player_x"], self._raw["player_y"])}
-            # R16 C6 进展锚点与足迹同源起步(仅 progress_far_tiles>0 时读取)。
+            # R16 C6 progress anchors start from the same source as the footprints (read only when progress_far_tiles>0).
             self._resource_actual_microsteps = 0
             self._aggro_cap_fired = 0
             self._engagement_decisions = 0
@@ -1097,8 +1097,8 @@ class DiabloGymEnv(gym.Env):
             obs = self._vectorize(self._raw)
             info = self._info(self._raw)
         except BaseException:
-            # 导航/观测构造也是 reset 事务的一部分；中途失败时不得
-            # 留下一个看似可 step 的半初始化 episode。
+            # Navigation/observation construction is also part of the reset transaction; a failure midway must not
+            # leave a half-initialized episode that looks steppable.
             try:
                 bridge.end_game()
             except Exception:
@@ -1121,10 +1121,10 @@ class DiabloGymEnv(gym.Env):
 
     @staticmethod
     def _policy_monsters(raw) -> list[dict]:
-        """策略可消费的怪物子集；全层 monsters 仍留给奖励/击杀账。
+        """The monster subset the policy may consume; the full-level monsters remain for the reward/kill ledger.
 
-        缺 visible/reachable 的分支只服务旧的纯 Python 合成 fixture；
-        v4 原生 raw 始终显式提供两字段。
+        The branch without visible/reachable only serves old pure-Python synthetic fixtures;
+        v4 native raw always provides both fields explicitly.
         """
         return [
             m for m in raw.get("monsters", ())
@@ -1134,7 +1134,7 @@ class DiabloGymEnv(gym.Env):
     @staticmethod
     def _policy_floor_items(raw, flag: str) -> list[dict]:
         if flag not in {"heal", "gear"}:
-            raise ValueError(f"未知地面物品策略标志: {flag!r}")
+            raise ValueError(f"unknown floor-item policy flag: {flag!r}")
         return [
             it for it in raw.get("floor_items", ())
             if bool(it.get(flag))
@@ -1146,8 +1146,8 @@ class DiabloGymEnv(gym.Env):
     def _belt_free_slots(raw) -> int:
         if "belt_free_slots" in raw:
             return max(0, int(raw["belt_free_slots"]))
-        # 仅兼容 protocol-v3 合成 fixture/旧桥的近似；v4 原生字段
-        # 才能区分“2 瓶药+6 件其他腰带物品”和“2 瓶药+6 个空格”。
+        # Only an approximation for compatibility with protocol-v3 synthetic fixtures/old bridges; only the v4 native field
+        # can tell "2 potions + 6 other belt items" from "2 potions + 6 empty slots".
         return max(0, 8 - int(raw.get("belt_heals", 0)))
 
     @staticmethod
@@ -1161,11 +1161,11 @@ class DiabloGymEnv(gym.Env):
 
     @classmethod
     def _belt_observation_scalar(cls, raw) -> float:
-        """在既有一个 scalar 中无歧义公开治疗药数与真实空槽数。
+        """Publish the heal potion count and the real free-slot count unambiguously in the one existing scalar.
 
-        heals/free 都是原生腰带的 0..8 整数。heals 使用历史 1/8 主刻度，
-        free 使用 1/128 子刻度，因此相邻 heals 桶之间仍留有 1/16 间隔；
-        旧策略输入最多只偏移 8/128=0.0625，shape 与旧主刻度不变。
+        heals/free are both 0..8 integers of the native belt. heals uses the historical 1/8 main scale,
+        free uses a 1/128 sub-scale, so adjacent heals buckets still keep a 1/16 gap;
+        old policy inputs shift by at most 8/128=0.0625, and the shape and old main scale are unchanged.
         """
         heals = min(8, max(0, int(raw.get("belt_heals", 0))))
         free = min(8, cls._belt_free_slots(raw))
@@ -1178,38 +1178,38 @@ class DiabloGymEnv(gym.Env):
             frozen = tuple(int(value) for value in values)
         except (TypeError, ValueError, OverflowError) as exc:
             raise RuntimeError(
-                f"controller snapshot {name} 通道不可整数化") from exc
+                f"controller snapshot {name} channel cannot be converted to integers") from exc
         if len(frozen) != expected or any(value not in (0, 1) for value in frozen):
             raise RuntimeError(
-                f"controller snapshot {name} 必须是 {expected} 个 0/1，"
-                f"收到 len={len(frozen)}")
+                f"controller snapshot {name} must be {expected} values of 0/1, "
+                f"got len={len(frozen)}")
         return frozen
 
     @staticmethod
     def _controller_uint(value, *, name: str, bits: int) -> int:
         if isinstance(value, (bool, np.bool_)):
             raise RuntimeError(
-                f"controller snapshot {name} 必须是 uint{bits} 整数")
+                f"controller snapshot {name} must be uint{bits} integers")
         try:
             integer = int(value)
             numeric = float(value)
         except (TypeError, ValueError, OverflowError) as exc:
             raise RuntimeError(
-                f"controller snapshot {name} 必须是 uint{bits} 整数") from exc
+                f"controller snapshot {name} must be uint{bits} integers") from exc
         if (
             not math.isfinite(numeric)
             or numeric != float(integer)
             or not 0 <= integer < (1 << bits)
         ):
             raise RuntimeError(
-                f"controller snapshot {name} 必须是 uint{bits} 整数")
+                f"controller snapshot {name} must be uint{bits} integers")
         return integer
 
     @classmethod
     def _monster_generation_key(cls, monster) -> tuple[int, int, int]:
         """Stable native monster lifetime key, never serialized to policy."""
         if not isinstance(monster, dict):
-            raise RuntimeError("monster generation 需要 dict")
+            raise RuntimeError("monster generation needs a dict")
         monster_id = cls._controller_uint(
             monster.get("id"), name="monster.id", bits=16)
         seed_hi = cls._controller_uint(
@@ -1228,20 +1228,20 @@ class DiabloGymEnv(gym.Env):
     def _controller_int32_words(value, *, name: str) -> tuple[float, float]:
         if isinstance(value, (bool, np.bool_)):
             raise RuntimeError(
-                f"controller snapshot {name} 必须是 int32 整数")
+                f"controller snapshot {name} must be an int32 integer")
         try:
             integer = int(value)
             numeric = float(value)
         except (TypeError, ValueError, OverflowError) as exc:
             raise RuntimeError(
-                f"controller snapshot {name} 必须是 int32 整数") from exc
+                f"controller snapshot {name} must be an int32 integer") from exc
         if (
             not math.isfinite(numeric)
             or numeric != float(integer)
             or not -(1 << 31) <= integer < (1 << 32)
         ):
             raise RuntimeError(
-                f"controller snapshot {name} 必须落在 32-bit word 范围")
+                f"controller snapshot {name} must fit in a 32-bit word")
         unsigned = integer & 0xFFFFFFFF
         return (
             float((unsigned >> 16) & 0xFFFF) / 65536.0,
@@ -1274,7 +1274,7 @@ class DiabloGymEnv(gym.Env):
         def active_id(item) -> int:
             if "active_id" not in item:
                 raise RuntimeError(
-                    f"controller snapshot {flag} 目标缺少 active_id")
+                    f"controller snapshot {flag} target is missing active_id")
             return DiabloGymEnv._controller_uint(
                 item["active_id"], name=f"{flag}.active_id", bits=7)
 
@@ -1295,7 +1295,7 @@ class DiabloGymEnv(gym.Env):
         for field in ("seed_hi", "seed_lo", "create_info", "base_id"):
             if field not in target:
                 raise RuntimeError(
-                    f"controller snapshot {flag} 目标缺少 {field}")
+                    f"controller snapshot {flag} target is missing {field}")
             identity[field] = DiabloGymEnv._controller_uint(
                 target[field],
                 name=f"{flag}.{field}",
@@ -1304,12 +1304,12 @@ class DiabloGymEnv(gym.Env):
         if flag == "heal":
             if "heal_kind" not in target:
                 raise RuntimeError(
-                    "controller snapshot heal 目标缺少 heal_kind")
+                    "controller snapshot heal target is missing heal_kind")
             heal_kind = DiabloGymEnv._controller_uint(
                 target["heal_kind"], name="heal.heal_kind", bits=3)
             if not 1 <= heal_kind <= CONTROLLER_SNAPSHOT_INSTANT_HEAL_KINDS:
                 raise RuntimeError(
-                    "controller snapshot heal_kind 必须是 [1,4] 整数")
+                    "controller snapshot heal_kind must be an integer in [1,4]")
             gear_quantities: tuple[float, ...] = ()
             effect_flags = 0
             dam_ac_flags = 0
@@ -1320,7 +1320,7 @@ class DiabloGymEnv(gym.Env):
             ]
             if missing:
                 raise RuntimeError(
-                    "controller snapshot gear 目标缺字段:"
+                    "controller snapshot gear target is missing fields: "
                     + ",".join(missing))
             bool_fields = {
                 "identified", "effects_active", "stat_usable"}
@@ -1337,7 +1337,7 @@ class DiabloGymEnv(gym.Env):
             )
             if not all(math.isfinite(value) for value in gear_quantities):
                 raise RuntimeError(
-                    "controller snapshot gear 精确量含 NaN/Inf")
+                    "controller snapshot gear exact values contain NaN/Inf")
             effect_flags = DiabloGymEnv._controller_uint(
                 target.get("effect_flags"),
                 name="gear.effect_flags",
@@ -1366,7 +1366,7 @@ class DiabloGymEnv(gym.Env):
     def _capture_controller_snapshot(self, raw) -> _ControllerSnapshot:
         """Read the radius-12 controller state exactly once at a decision edge."""
         if not isinstance(raw, dict):
-            raise RuntimeError("controller snapshot 需要 active native raw")
+            raise RuntimeError("controller snapshot needs active native raw")
         radius = CONTROLLER_SNAPSHOT_RADIUS
         side = CONTROLLER_SNAPSHOT_SIDE
         local_map = bridge.local_map(radius=radius)
@@ -1396,9 +1396,9 @@ class DiabloGymEnv(gym.Env):
                 and abs(int(point[1]) - py) <= radius
             )
 
-        # planner 与 wire 必须消费完全同一片 25×25 事实。若保留窗外一格
-        # 的 visited/protected halo，near_visited 膨胀或门的 unseen-side
-        # 判定会让 radius13 历史改变 radius12 边缘动作，却不出现在观测。
+        # planner and wire must consume exactly the same 25×25 facts. Keeping a one-tile visited/protected halo
+        # outside the window would let near_visited inflation or the door unseen-side check make radius-13 history
+        # change radius-12 edge actions without appearing in the observation.
         protected = frozenset(
             (int(x), int(y))
             for x, y in self._explore_protected_tiles(raw)
@@ -1428,13 +1428,13 @@ class DiabloGymEnv(gym.Env):
         raw_monsters = raw.get("monsters")
         if not isinstance(raw_monsters, (list, tuple)):
             raise RuntimeError(
-                "controller snapshot 缺少原生 monsters 列表")
+                "controller snapshot is missing the native monsters list")
         visible_local_monsters: list[dict] = []
         for monster_index, monster in enumerate(raw_monsters):
             if not isinstance(monster, dict):
                 raise RuntimeError(
                     "controller snapshot monsters"
-                    f"[{monster_index}] 必须是 dict")
+                    f"[{monster_index}] must be a dict")
             missing_identity = [
                 field for field in (
                     "id", "x", "y", "hp", "max_hp",
@@ -1446,7 +1446,7 @@ class DiabloGymEnv(gym.Env):
             if missing_identity:
                 raise RuntimeError(
                     "controller snapshot monsters"
-                    f"[{monster_index}] 缺字段:"
+                    f"[{monster_index}] missing fields: "
                     + ",".join(missing_identity))
             # Hidden/native-inactive monsters may remain in the immutable raw
             # collision snapshot for macro planning, but neither identity nor
@@ -1564,7 +1564,7 @@ class DiabloGymEnv(gym.Env):
             if missing_dynamics:
                 raise RuntimeError(
                     "controller snapshot monster"
-                    f"[{monster_id}] 缺动态战斗字段:"
+                    f"[{monster_id}] missing dynamic combat fields: "
                     + ",".join(missing_dynamics))
             dynamic_quantities_list = list(
                 (
@@ -1591,7 +1591,7 @@ class DiabloGymEnv(gym.Env):
             ):
                 raise RuntimeError(
                     "controller snapshot monster"
-                    f"[{monster_id}] 动态战斗量含 NaN/Inf")
+                    f"[{monster_id}] dynamic combat values contain NaN/Inf")
             combat_flags = self._controller_uint(
                 monster.get("combat_flags"),
                 name=f"monster[{monster_id}].combat_flags",
@@ -1675,7 +1675,7 @@ class DiabloGymEnv(gym.Env):
         raw_missiles = raw.get("missiles")
         if not isinstance(raw_missiles, (list, tuple)):
             raise RuntimeError(
-                "controller snapshot 缺少原生 missiles 列表")
+                "controller snapshot is missing the native missiles list")
         missile_required = (
             CONTROLLER_SNAPSHOT_MISSILE_DIRECT_FIELDS
             + CONTROLLER_SNAPSHOT_MISSILE_INT32_FIELDS
@@ -1718,21 +1718,21 @@ class DiabloGymEnv(gym.Env):
         for missile_index, missile in enumerate(raw_missiles):
             if not isinstance(missile, dict):
                 raise RuntimeError(
-                    f"controller snapshot missiles[{missile_index}] 必须是 dict")
+                    f"controller snapshot missiles[{missile_index}] must be a dict")
             missing = [
                 field for field in missile_required
                 if field not in missile
             ]
             if missing:
                 raise RuntimeError(
-                    f"controller snapshot missiles[{missile_index}] 缺字段:"
+                    f"controller snapshot missiles[{missile_index}] missing fields: "
                     + ",".join(missing))
             try:
                 tile_dx = int(missile["tile_dx"])
                 tile_dy = int(missile["tile_dy"])
             except (TypeError, ValueError, OverflowError) as exc:
                 raise RuntimeError(
-                    "controller snapshot missile tile offset 非整数") from exc
+                    "controller snapshot missile tile offset is not an integer") from exc
             if abs(tile_dx) > radius or abs(tile_dy) > radius:
                 continue
             if not bool(missile["visible"]):
@@ -1785,7 +1785,7 @@ class DiabloGymEnv(gym.Env):
                 or not all(math.isfinite(value) for value in quantities)
             ):
                 raise RuntimeError(
-                    "controller snapshot missile slot 形状/有限性异常")
+                    "controller snapshot missile slot has an abnormal shape/finiteness")
             missile_slots.append(_ControllerMissile(tuple(quantities)))
 
         overflow_hostile = [
@@ -1828,14 +1828,14 @@ class DiabloGymEnv(gym.Env):
 
         if "belt_slot_kinds" not in raw:
             raise RuntimeError(
-                "controller snapshot 缺少原生 belt_slot_kinds；"
-                "不能混淆腰带 empty/other 或猜测 action12 消耗顺序")
+                "controller snapshot is missing native belt_slot_kinds; "
+                "cannot confuse belt empty/other or guess the action12 consumption order")
         try:
             belt_slot_kinds = tuple(
                 int(kind) for kind in raw["belt_slot_kinds"])
         except (TypeError, ValueError, OverflowError) as exc:
             raise RuntimeError(
-                "controller snapshot belt_slot_kinds 不可整数化") from exc
+                "controller snapshot belt_slot_kinds cannot be converted to integers") from exc
         if (
             len(belt_slot_kinds) != CONTROLLER_SNAPSHOT_BELT_SLOTS
             or any(
@@ -1844,7 +1844,7 @@ class DiabloGymEnv(gym.Env):
             )
         ):
             raise RuntimeError(
-                "controller snapshot belt_slot_kinds 必须是 8 个 [0,5] 整数")
+                "controller snapshot belt_slot_kinds must be 8 integers in [0,5]")
 
         missing_exact = [
             field for field in CONTROLLER_SNAPSHOT_EXACT_FIELDS
@@ -1852,7 +1852,7 @@ class DiabloGymEnv(gym.Env):
         ]
         if missing_exact:
             raise RuntimeError(
-                "controller snapshot 缺少 player/scene/quest 精确量:"
+                "controller snapshot is missing player/scene/quest exact values: "
                 + ",".join(missing_exact))
         exact_quantities = tuple(
             (
@@ -1868,7 +1868,7 @@ class DiabloGymEnv(gym.Env):
             )
         )
         if not all(math.isfinite(value) for value in exact_quantities):
-            raise RuntimeError("controller snapshot player/scene/quest 精确量含 NaN/Inf")
+            raise RuntimeError("controller snapshot player/scene/quest exact values contain NaN/Inf")
 
         missing_combat = [
             field for field in CONTROLLER_SNAPSHOT_COMBAT_FIELDS
@@ -1876,7 +1876,7 @@ class DiabloGymEnv(gym.Env):
         ]
         if missing_combat:
             raise RuntimeError(
-                "controller snapshot 缺少当前有效战斗量:"
+                "controller snapshot is missing currently effective combat values: "
                 + ",".join(missing_combat))
         combat_quantities = tuple(
             (
@@ -1891,7 +1891,7 @@ class DiabloGymEnv(gym.Env):
         )
         if not all(math.isfinite(value) for value in combat_quantities):
             raise RuntimeError(
-                "controller snapshot 当前有效战斗量含 NaN/Inf")
+                "controller snapshot currently effective combat values contain NaN/Inf")
         combat_effect_flags = self._controller_uint(
             raw.get("item_effect_flags"),
             name="item_effect_flags",
@@ -1909,7 +1909,7 @@ class DiabloGymEnv(gym.Env):
             or len(equipped_items) != CONTROLLER_SNAPSHOT_EQUIPPED_SLOTS
         ):
             raise RuntimeError(
-                "controller snapshot equipped_items 必须恰有 7 个槽位")
+                "controller snapshot equipped_items must have exactly 7 slots")
         equipped_quantities_list: list[float] = []
         equipped_bool_fields = {
             "identified", "effects_active", "stat_usable"}
@@ -1917,7 +1917,7 @@ class DiabloGymEnv(gym.Env):
             if not isinstance(item, dict):
                 raise RuntimeError(
                     "controller snapshot equipped_items"
-                    f"[{slot_index}] 必须是 dict")
+                    f"[{slot_index}] must be a dict")
             missing = [
                 field for field in (
                     ("present",)
@@ -1929,7 +1929,7 @@ class DiabloGymEnv(gym.Env):
             if missing:
                 raise RuntimeError(
                     "controller snapshot equipped_items"
-                    f"[{slot_index}] 缺字段:" + ",".join(missing))
+                    f"[{slot_index}] missing fields: " + ",".join(missing))
             equipped_quantities_list.append(
                 1.0 if bool(item["present"]) else 0.0)
             equipped_quantities_list.extend(
@@ -1970,7 +1970,7 @@ class DiabloGymEnv(gym.Env):
                 math.isfinite(value) for value in equipped_quantities)
         ):
             raise RuntimeError(
-                "controller snapshot equipped_items 精确量形状/有限性异常")
+                "controller snapshot equipped_items exact values have an abnormal shape/finiteness")
         sticky = getattr(self, "_explore_target", None)
         sticky_target = (
             (int(sticky[0]), int(sticky[1]))
@@ -2035,8 +2035,8 @@ class DiabloGymEnv(gym.Env):
             or snapshot.scene != _scene_identity(raw)
         ):
             raise RuntimeError(
-                "controller snapshot 未安装或已过期；"
-                "观测/掩码读取不得隐式抓取另一张地图")
+                "controller snapshot not installed or expired; "
+                "observation/mask reads must not implicitly fetch another map")
         return snapshot
 
     def controller_snapshot_vector(self) -> np.ndarray:
@@ -2170,32 +2170,32 @@ class DiabloGymEnv(gym.Env):
             or not np.isfinite(result).all()
         ):
             raise RuntimeError(
-                "controller snapshot wire 形状/有限性漂移:"
+                "controller snapshot wire shape/finiteness drift: "
                 f"shape={result.shape},finite={np.isfinite(result).all()}")
         return result
 
     @property
     def exploration_progress(self) -> int:
-        """本局首次踏足格 + action10 已打开软墙的单调计数。"""
+        """Monotone count of first-visited tiles this episode + softwalls opened by action10."""
         return int(self._exploration_progress)
 
     @property
     def softwalls_opened(self) -> int:
-        """本局由 action10 实际打开的 closed door / blocking barrel 数。"""
+        """Number of closed doors / blocking barrels actually opened by action10 this episode."""
         return int(self._softwalls_opened)
 
     def action_masks(self) -> np.ndarray:
-        """v4 无效动作掩码(MaskablePPO 协议方法)。
+        """v4 invalid-action mask (MaskablePPO protocol method).
 
-        9 只在 radius-12 快照内存在可见且局部可接敌的已编码怪物时合法；
-        每行另行公开原生 reachable，不能把两种可达性混为一个事实。
-        12 要求腰带有治疗药且当前确实掉血；13 要求有腰带空槽和快照内
-        有效治疗药目标；14 要求快照内存在 PlanGearUpgrade 认可的严格
-        整套升级。其余动作保持合法。掩码消灭确定性空按，但不承诺宏在
-        动态怪物阻挡、受击或时间上限内必然完成。
+        9 is legal only when the radius-12 snapshot holds an encoded monster that is visible and locally engageable;
+        each row also publishes native reachable separately, and the two kinds of reachability must not be merged into one fact.
+        12 requires a belt heal potion and actual missing HP; 13 requires a free belt slot and a valid
+        heal potion target in the snapshot; 14 requires a strict whole-set upgrade approved by PlanGearUpgrade
+        in the snapshot. Other actions stay legal. The mask removes deterministic empty presses, but does not promise that a macro
+        necessarily finishes despite dynamic monster blocking, hits taken or the time limit.
 
-        这是 protocol-v4 的行为语义断点：旧策略即使动作/观测 shape 相同，
-        logits 也会被重新归一化，必须重新基线化，不能与 v3 排行榜混用。
+        This is a behavioural semantic break of protocol-v4: even with identical action/observation shapes, old policies
+        have their logits renormalized, must be re-baselined, and cannot be mixed with the v3 leaderboard.
         """
         self._ensure_active(allow_ended=True)
         mask, _nearest = self.controller_action_context()
@@ -2315,7 +2315,7 @@ class DiabloGymEnv(gym.Env):
                     preserve_equipment_readiness=True, loot_economy=True,
                     **({"identify": True} if getattr(self, "resource_identify", "off") != "off" else {}))
             elif advisory:
-                # R17.1 ruling-3 advisory law (optionally with the loot economy):
+                # R17.1 readiness-rule-3 advisory law (optionally with the loot economy):
                 # explicit full-keyword call, needs a bridge built after both.
                 bridge.configure_resource_protocol(enabled,
                     ordinary_armor_scope=(True if loot else getattr(
@@ -2641,7 +2641,7 @@ class DiabloGymEnv(gym.Env):
     def step(self, action: int, *, worker_authority: bool = False):
         self._ensure_active()
         if not self.action_space.contains(action):
-            raise ValueError(f"动作必须是 {self.action_space}中的整数，收到 {action!r}")
+            raise ValueError(f"action must be an integer in {self.action_space}, got {action!r}")
         prev = self._raw
         resource_command = getattr(self, "_resource_pending_command", None)
         resource_receipt = None
@@ -2672,9 +2672,9 @@ class DiabloGymEnv(gym.Env):
         controller_snapshot = None
         engage_target_generation_key = None
         if action in {9, 10, 13, 14}:
-            # dual Worker 必须执行它刚看到的已安装快照；旧 295/298
-            # 视图未公开 controller wire，按键边界局部抓取一次即可，且
-            # 不写入缓存，保持 action_masks/普通观测纯读和旧模式轻量。
+            # The dual Worker must execute the installed snapshot it just saw; the old 295/298
+            # views do not publish the controller wire, so one local fetch at the key-press boundary is enough, and
+            # it is not cached, keeping action_masks/ordinary observations pure reads and the old mode light.
             controller_snapshot = (
                 self._controller_snapshot_for(prev)
                 if getattr(self, "_controller_snapshot_enabled", False)
@@ -2708,20 +2708,20 @@ class DiabloGymEnv(gym.Env):
                 execution_audit=native_execution,
             )
         elif action == 12:
-            # 喝药本身不走网络命令层，必须先用 wait 栅栏取消上一动作可能
-            # 留下的追击；否则药水键的一拍仍会继续走路/攻击并吞掉其奖励。
+            # Drinking itself does not go through the network command layer, so a wait fence must first cancel any chase
+            # the previous action may have left; otherwise the potion key's tick would keep walking/attacking and swallow its reward.
             belt_before = int(prev.get("belt_heals", 0))
             bridge.act_wait()
             accepted_raw = bridge.act_drink()
             if not isinstance(
                     accepted_raw, (bool, np.bool_, int, np.integer)):
                 raise RuntimeError(
-                    "action12 原生回执必须是整数，收到 "
+                    "action12 native receipt must be an integer, got "
                     f"{accepted_raw!r}")
             accepted = int(accepted_raw)
             if accepted not in (0, belt_before):
                 raise RuntimeError(
-                    "action12 原生回执与请求前腰带数不一致:"
+                    "action12 native receipt disagrees with the pre-request belt count: "
                     f"accepted={accepted},before={belt_before}")
             self._raw = self._step_native()
             micro = 1
@@ -2778,9 +2778,9 @@ class DiabloGymEnv(gym.Env):
             dive_recovery_audit["attack_core_micro_steps"] = dive_recovery_audit["micro_steps"]
             dive_recovery_audit["core_micro_steps"] = self._resource_actual_microsteps - resource_clock_before
             dive_recovery_audit["core_after_microstep"] = self._resource_actual_microsteps
-        # 295 维策略观测不含 future/mode/path。所有非终局决策边界必须把
-        # 本动作已经提交的单格/硬直动画结清到 PM_STAND；这些 settle 拍
-        # 属于本动作，照常占用 max_steps、奖励差分及 Options 的 τ/时钟。
+        # The 295-dim policy observation has no future/mode/path. Every non-terminal decision boundary must settle
+        # the single-tile/hit-stun animation already committed by this action to PM_STAND; these settle ticks
+        # belong to this action and use up max_steps, the reward difference and the Options τ/clock as usual.
         if resource_command is None or resource_command[0] not in ("finish", "complete"):
             self._raw, micro = self._settle_to_idle(
                 self._raw,
@@ -2820,9 +2820,9 @@ class DiabloGymEnv(gym.Env):
                 authorized_retreat = previous_depth == 0 and new_depth >= 2
         if (self.start_in_dungeon and not authorized_retreat
                 and self._raw["dungeon_level"] < prev["dungeon_level"]):
-            # 未来若出现新的回城/向上传送路径，宁可终止训练也
-            # 不能把 depth=0 空耗轨迹静默喂给 PPO。原生触发层已封住
-            # 常见上楼与回城楼梯，这里是第二道 fail-closed 不变量。
+            # If a new town-return/upward teleport path ever appears, stopping training is preferable
+            # to silently feeding depth=0 wasted trajectories to PPO. The native trigger layer already blocks
+            # the usual up stairs and town-return stairs; this is the second fail-closed invariant.
             bad_transition = (prev["dungeon_level"], self._raw["dungeon_level"])
             try:
                 bridge.end_game()
@@ -2834,7 +2834,7 @@ class DiabloGymEnv(gym.Env):
                 self._episode_ended = True
                 self._engage_blocked_keys = set()
             raise RuntimeError(
-                f"DiabloGym 禁止地牢层级回退: {bad_transition[0]}→{bad_transition[1]}")
+                f"DiabloGym forbids dungeon level regression: {bad_transition[0]}→{bad_transition[1]}")
         self._steps += micro
         same_scene = _scene_identity(self._raw) == _scene_identity(prev)
         if not same_scene and getattr(self, "resource_protocol", "off") != "off":
@@ -2843,11 +2843,11 @@ class DiabloGymEnv(gym.Env):
             self._resource_scene_ledgers[_scene_identity(prev)] = {
                 name: getattr(self, name) for name in names}
         if not same_scene:
-            # 新主层或任务副本:足迹清零。不同地图共用同一坐标系,不清的话
-            # 探索宏会把旧图足迹当"已踏足",边疆逻辑整层失效；伤害最低
-            # 血线也必须换账本，怪物 id 只在单场景内有意义。
+            # New main level or quest set-level: clear the footprints. Different maps share one coordinate system; without clearing,
+            # the explore macro would treat the old map's footprints as "visited" and the frontier logic would fail for the whole level; the lowest-HP
+            # lines also need a new ledger, since monster ids only mean something within one scene.
             self._visited = set()
-            self._progress_anchors = set()  # R16 C6:锚点与足迹同场景清零
+            self._progress_anchors = set()  # R16 C6: anchors are cleared with the footprints per scene
             self._explore_target = None
             self._explore_blocked_targets = set()
             self._engage_blocked_keys = set()
@@ -2929,20 +2929,20 @@ class DiabloGymEnv(gym.Env):
         if resource_command is not None and resource_command[0] in ("finish", "complete"):
             reward = 0.0
             stall_cost_applied = False
-        # 奖励会推进 combat ledger；下一决策的候选账本必须在这之后冻结。
+        # The reward advances the combat ledger; the next decision's candidate ledger must be frozen after that.
         self._controller_snapshot = (
             self._capture_controller_snapshot(self._raw)
             if getattr(self, "_controller_snapshot_enabled", False)
             else None
         )
-        # SB3 会对每个 Gym ``truncated`` 的 terminal_observation 自动加入
-        # gamma*V(s_T)。若预算恰在走格/受击动画中耗尽，295 维观测却没有
-        # future/mode/path，价值网络看到的是一个与“可立即重新决策的 idle
-        # 状态”完全别名的 busy 状态；此时 bootstrap 会凭空假定玩家能跳过
-        # 已提交动画并立刻行动。不能越过 max_steps 偷结算动画，也不能把
-        # POMDP 状态冒充合法 TimeLimit 状态。因此把这一种表示层边界定义为
-        # fail-closed terminal；真正 idle 的时间上限仍是标准 truncation，
-        # 保留正确的 TimeLimit bootstrap。
+        # SB3 automatically adds gamma*V(s_T) for the terminal_observation of every Gym ``truncated``.
+        # If the budget runs out exactly during a walk/hit animation, the 295-dim observation has no
+        # future/mode/path, so the value network sees a busy state that fully aliases "an idle state that can
+        # decide again immediately"; bootstrapping would then assume out of nowhere that the player can skip
+        # the committed animation and act at once. The animation must not be settled secretly beyond max_steps, nor may a
+        # POMDP state pose as a legal TimeLimit state. So this one representation-level boundary is defined as a
+        # fail-closed terminal; a truly idle time limit remains a standard truncation,
+        # keeping the correct TimeLimit bootstrap.
         (terminated, truncated, budget_exhausted, decision_idle,
          unsettled_budget_terminal) = self._episode_boundary(
              self._raw, self._steps, self.max_steps)
@@ -3035,11 +3035,11 @@ class DiabloGymEnv(gym.Env):
         if time_info is not None:
             info["completion_time"] = time_info()
         if self.include_raw:
-            # info 属于调用方；不得把内部奖励/宏状态依赖的可变 raw
-            # 直接泄露出去，否则回调或调试代码修改 info["raw"] 会篡改下一拍奖励。
-            # 新协议会继续追加 list[dict]（equipped/missiles 等），因此不能
-            # 维护一个容易漏字段的白名单。只递归复制 Python 可变容器；
-            # 数字/字符串保持共享不可变对象，成本仍远低于复制原生状态。
+            # info belongs to the caller; the mutable raw that the internal reward/macro state depends on must not
+            # leak out directly, or callbacks or debug code modifying info["raw"] would tamper with the next tick's reward.
+            # New protocols keep appending list[dict] (equipped/missiles etc.), so an allowlist that easily misses fields
+            # cannot be maintained. Only Python mutable containers are copied recursively;
+            # numbers/strings stay shared immutable objects, and the cost is still far below copying native state.
             def clone_mutable(value):
                 if isinstance(value, dict):
                     return {
@@ -3062,26 +3062,26 @@ class DiabloGymEnv(gym.Env):
         if (DiabloGymEnv._engine_initialized
                 and DiabloGymEnv._engine_pid != os.getpid()):
             raise RuntimeError(
-                "禁止在 fork 子进程使用父进程已初始化的 DevilutionX；"
-                "多环境训练必须使用 spawn")
+                "using a DevilutionX instance initialized by the parent process in a fork child is forbidden; "
+                "multi-environment training must use spawn")
         if self._raw is None:
-            raise gym.error.ResetNeeded("step/action_masks 前必须先调用 reset()")
+            raise gym.error.ResetNeeded("reset() must be called before step/action_masks")
         if DiabloGymEnv._active_token is not self._token:
             raise RuntimeError(
-                "检测到同进程多个 DiabloGymEnv 交错使用；引擎是全局单例。"
-                "请顺序 reset/使用，或改用 SubprocVecEnv")
+                "multiple DiabloGymEnv instances interleaved in the same process; the engine is a global singleton. "
+                "Reset/use them sequentially, or use SubprocVecEnv instead")
         if int(bridge.episode_generation()) != self._native_generation:
             raise RuntimeError(
-                "引擎已被直接 bridge.reset() 或其他 wrapper 重置，"
-                "当前环境缓存已失效；请对本环境重新 reset()")
+                "the engine was reset directly by bridge.reset() or by another wrapper, "
+                "so this environment's cache is invalid; reset() this environment again")
         if self._episode_ended and not allow_ended:
-            raise gym.error.ResetNeeded("episode 已终止/截断，继续 step() 前必须 reset()")
+            raise gym.error.ResetNeeded("episode terminated/truncated; reset() is required before step() continues")
 
     def close(self):
         if (DiabloGymEnv._engine_initialized
                 and DiabloGymEnv._engine_pid != os.getpid()):
-            # 子进程继承的是父进程多线程引擎的一份不安全快照；绝不能
-            # 在这里进入 SDL/NetClose/Lua。OS 会回收子进程地址空间。
+            # The child inherits an unsafe snapshot of the parent's multi-threaded engine; it must never
+            # enter SDL/NetClose/Lua here. The OS reclaims the child's address space.
             if DiabloGymEnv._active_token is self._token:
                 DiabloGymEnv._active_token = None
             self._raw = None
@@ -3109,16 +3109,16 @@ class DiabloGymEnv(gym.Env):
         self._combat_hp_floor = {}
         self._controller_snapshot = None
 
-    # ---------- 内部 ----------
+    # ---------- internals ----------
 
     def _record_visit(self, pos) -> bool:
-        """登记真实落脚点；首次踏足同时推进 Options 的探索进展钟。
+        """Register the real footing; a first visit also advances the Options exploration progress clock.
 
-        R16 C6(progress_far_tiles>0):足迹登记不变,但只有与既有"进展锚点"
-        (起点 + 历次已计进展的格)切比雪夫距离 ≥ progress_far_tiles 的新格才
-        推进 exploration_progress,并自身成为新锚点。沿走廊直行每 far 格计
-        一次;在足迹附近踱步永远计不到。锚点若按"全部足迹"衡量,直行时脚
-        后跟永远距离 1,任何走动都计不到——故以锚点集而非足迹集作参照。
+        R16 C6 (progress_far_tiles>0): footprint registration is unchanged, but only new tiles at Chebyshev distance
+        >= progress_far_tiles from the existing "progress anchors" (the start + tiles already counted as progress)
+        advance exploration_progress and become new anchors themselves. Walking straight along a corridor counts once every
+        far tiles; pacing near the footprints never counts. If anchors were measured against "all footprints", the heel would
+        always be at distance 1 when walking straight and no movement would ever count, hence the anchor set rather than the footprint set as reference.
         """
         point = (int(pos[0]), int(pos[1]))
         if point in self._visited:
@@ -3174,7 +3174,7 @@ class DiabloGymEnv(gym.Env):
                 py,
                 1,
             )
-        raise RuntimeError(f"_apply_action 收到未知原子动作 {action}")
+        raise RuntimeError(f"_apply_action got unknown atomic action {action}")
 
     @staticmethod
     def _record_native_execution(
@@ -3190,36 +3190,36 @@ class DiabloGymEnv(gym.Env):
             accepted = int(result)
         else:
             raise RuntimeError(
-                f"{label} 原生执行回执必须是整数 0/1，"
-                f"收到 {result!r}")
+                f"{label} native execution receipt must be an integer 0/1, "
+                f"got {result!r}")
         if accepted not in (0, 1):
             raise RuntimeError(
-                f"{label} 原生执行回执必须是 0/1，收到 {accepted}")
+                f"{label} native execution receipt must be 0/1, got {accepted}")
         audit["attempts"] = int(audit.get("attempts", 0)) + 1
         audit["accepts"] = int(audit.get("accepts", 0)) + accepted
         return bool(accepted)
 
     def _wait_step(self):
-        """取消旧命令并消耗一个标准 micro-step；供无目标/不可达宏返回。"""
+        """Cancel old commands and spend one standard micro-step; used when a macro returns with no target/unreachable."""
         bridge.act_wait()
         raw = self._step_native()
         if (not raw.get("dead") and not raw.get("game_over") and not raw.get("victory")
                 and int(raw.get("dest_action", bridge.ACTION_NONE)) != bridge.ACTION_NONE):
             raise RuntimeError(
-                f"wait step 后仍有 destAction={raw.get('dest_action')}")
+                f"destAction={raw.get('dest_action')} still set after the wait step")
         if (not raw.get("dead") and not raw.get("game_over") and not raw.get("victory")
                 and int(raw.get("walkpath0", bridge.WALK_NONE)) != bridge.WALK_NONE):
             raise RuntimeError(
-                f"wait step 后仍有 walkpath0={raw.get('walkpath0')}")
+                f"walkpath0={raw.get('walkpath0')} still set after the wait step")
         return raw, 1
 
     @staticmethod
     def _finish_macro(raw, beats: int, start_scene):
-        """宏结束时先清路径/destAction；外层统一结算隐藏动画。
+        """At the end of a macro, clear the path/destAction first; the outer layer settles hidden animations uniformly.
 
-        wait 的 loopback FIFO 栅栏保证下一策略动作不再继承路径或攻击；
-        当前单格/受击动画所需的有成本拍由 ``_settle_to_idle`` 统一推进，
-        不在各宏里复制循环，也不免费消耗游戏时间。
+        wait's loopback FIFO fence guarantees that the next policy action inherits no path or attack;
+        the costed ticks needed by the current single-tile/hit animation are advanced uniformly by ``_settle_to_idle``,
+        not by a loop copied into each macro, and game time is never consumed for free.
         """
         if (raw.get("dead") or raw.get("game_over") or raw.get("victory")
                 or _scene_identity(raw) != start_scene):
@@ -3240,18 +3240,18 @@ class DiabloGymEnv(gym.Env):
         if (int(refreshed.get("dest_action", bridge.ACTION_NONE)) != bridge.ACTION_NONE
                 or int(refreshed.get("walkpath0", bridge.WALK_NONE)) != bridge.WALK_NONE):
             raise RuntimeError(
-                "宏返回前 wait 未清空原生命令状态: "
+                "wait did not clear the native command state before the macro returned: "
                 f"dest_action={refreshed.get('dest_action')}, "
                 f"walkpath0={refreshed.get('walkpath0')}")
         return refreshed, beats
 
     @staticmethod
     def _engage_distance(raw, monster) -> int:
-        """与 CMD_ATTACKID 完全同口径的追击距离（future→future）。
+        """Chase distance with exactly the same definition as CMD_ATTACKID (future->future).
 
-        player/monster 的 tile 会在一格走路动画开始时先改，而 future 是
-        引擎已经提交的终点。用 tile 比较会把一段合法的 8~10 tick 动画
-        误报为“原地不动”。
+        The player/monster tile changes first when a one-tile walk animation starts, whereas future is
+        the end point the engine has already committed. Comparing tiles would misreport a legal 8-10 tick animation
+        as "not moving".
         """
         px = int(raw.get("future_x", raw["player_x"]))
         py = int(raw.get("future_y", raw["player_y"]))
@@ -3267,10 +3267,10 @@ class DiabloGymEnv(gym.Env):
         allow_blocked_cycle: bool = False,
         candidate_keys: tuple[tuple[int, int, int], ...] | None = None,
     ):
-        """取最近且未证失败的目标；稳定 tie 用 id 打破，便于可复现审计。
+        """Take the nearest target not yet proven to fail; stable ties are broken by id, for reproducible audits.
 
-        同一宏内失败目标绝不重选。跨宏保留失败集合；只有当前所有候选都
-        已轮过一遍时才清一轮重试，避免单只动态怪永久失去可攻击性。
+        Failed targets are never re-picked within one macro. The failure set persists across macros; only when all current candidates
+        have been tried once is it cleared for another round, so that a single dynamic monster never permanently loses attackability.
         """
         excluded = exclude or set()
         policy_monsters = self._policy_monsters(raw)
@@ -3280,8 +3280,8 @@ class DiabloGymEnv(gym.Env):
                 if self._monster_generation_key(monster) not in excluded
             ]
         else:
-            # a9 的候选宇宙在策略观测时已固定。宏内只允许按该 canonical
-            # 顺序过滤死亡/失去可达性的成员，绝不把第 33 个怪物偷偷补进来。
+            # a9's candidate universe was fixed when the policy observed. Inside the macro only members that died/lost reachability
+            # may be filtered out in that canonical order; a 33rd monster must never be slipped in.
             by_key = {
                 self._monster_generation_key(monster): monster
                 for monster in policy_monsters
@@ -3308,8 +3308,8 @@ class DiabloGymEnv(gym.Env):
             if candidate_keys is None
             else set(candidate_keys)
         )
-        # 消失/离开可见可达集合的 generation 不能污染新生命周期；同一
-        # native slot id 被 spawn 复用时，rndItemSeed 会产生新 key。
+        # A generation that disappeared/left the visible-reachable set must not pollute a new lifetime; when the same
+        # native slot id is reused by a spawn, rndItemSeed produces a new key.
         self._engage_blocked_keys.intersection_update(policy_keys)
         for monster in candidates:
             if (
@@ -3325,7 +3325,7 @@ class DiabloGymEnv(gym.Env):
 
     @staticmethod
     def _movement_engine_busy(raw) -> bool:
-        """玩家仍在执行/排队走路；tile 暂停不代表动画或路径停了。"""
+        """The player is still executing/queuing a walk; a paused tile does not mean the animation or path has stopped."""
         walking_modes = {
             bridge.PM_WALK_NORTHWARDS,
             bridge.PM_WALK_SOUTHWARDS,
@@ -3342,7 +3342,7 @@ class DiabloGymEnv(gym.Env):
 
     @classmethod
     def _engage_engine_busy(cls, raw) -> bool:
-        """追击包已排队、仍在走一格或挥刀时，几何不变不等于卡死。"""
+        """With a chase packet queued, a tile still being walked or a swing in progress, unchanged geometry does not mean stuck."""
         return (
             cls._movement_engine_busy(raw)
             or int(raw.get("dest_action", bridge.ACTION_NONE))
@@ -3352,7 +3352,7 @@ class DiabloGymEnv(gym.Env):
 
     @staticmethod
     def _decision_idle(raw) -> bool:
-        """策略可观测边界：不存在任何未入 295 维向量的玩家执行态。"""
+        """Policy-observable boundary: no player execution state exists outside the 295-dim vector."""
         return (
             int(raw.get("player_mode", -1)) == bridge.PM_STAND
             and int(raw.get("dest_action", bridge.ACTION_NONE))
@@ -3367,10 +3367,10 @@ class DiabloGymEnv(gym.Env):
 
     @classmethod
     def _episode_boundary(cls, raw, steps: int, max_steps: int):
-        """分类原生终局、可 bootstrap 时限与不可观测的预算中断。
+        """Classify native terminal states, bootstrappable time limits and unobservable budget interruptions.
 
-        返回 ``(terminated, truncated, budget_exhausted, decision_idle,
-        unsettled_budget_terminal)``。后两种 Gym 边界严格互斥。
+        Returns ``(terminated, truncated, budget_exhausted, decision_idle,
+        unsettled_budget_terminal)``. The latter two Gym boundaries are strictly mutually exclusive.
         """
         native_terminated = bool(
             raw.get("dead") or raw.get("game_over") or raw.get("victory"))
@@ -3396,13 +3396,13 @@ class DiabloGymEnv(gym.Env):
         max_beats: int,
         start_scene,
     ):
-        """取消长命令并用有成本的 engine beats 结清隐藏动画。
+        """Cancel long commands and settle hidden animations with costed engine beats.
 
-        死亡/胜利立即交给外层终止逻辑；换 scene 后仍在新图继续结算，
-        保证 manager 的首个观测也为 idle。若总步数预算先耗尽，允许返回
-        busy raw，但同一次 ``step`` 会把它标成
-        ``unsettled_budget_terminal`` 而非可 bootstrap 的 truncation；
-        它既不会成为下一次策略决策输入，也不会被价值函数当作 idle 别名。
+        Death/victory is handed immediately to the outer termination logic; after a scene change settling continues on the new map,
+        so that the manager's first observation is also idle. If the total step budget runs out first, a busy raw may be
+        returned, but the same ``step`` marks it as
+        ``unsettled_budget_terminal`` instead of a bootstrappable truncation;
+        it never becomes the input of the next policy decision and is never taken by the value function as an idle alias.
         """
         beats = int(beats)
         max_beats = int(max_beats)
@@ -3440,9 +3440,9 @@ class DiabloGymEnv(gym.Env):
                     and self._resource_actual_microsteps >= self.max_steps)):
             return raw, beats
 
-        # ActWait 立即清 path/dest/攻击；已经提交的单格走路、受击/格挡
-        # 动画不能硬切，只能继续 game_loop。首次调用也是 FIFO 栅栏，保证
-        # 旧网络包不会在下一拍重新装回长命令。
+        # ActWait immediately clears path/dest/attack; an already committed single-tile walk or hit/block
+        # animation cannot be cut hard, only continued with game_loop. The first call is also a FIFO fence, so that
+        # old network packets cannot put a long command back on the next tick.
         settle_scene = _scene_identity(raw)
         bridge.act_wait()
         while (beats < settle_limit()
@@ -3460,8 +3460,8 @@ class DiabloGymEnv(gym.Env):
                         and self._resource_actual_microsteps >= self.max_steps)):
                 break
             if current_scene != settle_scene:
-                # 换图后的首个 manager/worker 观测同样必须是 idle；重新在
-                # 新场景落 FIFO 栅栏，继续结算而不是把 PM_NEWLVL 泄出去。
+                # The first manager/worker observation after a map change must also be idle; put a new FIFO fence down
+                # in the new scene and keep settling instead of leaking PM_NEWLVL.
                 settle_scene = current_scene
                 bridge.act_wait()
         return raw, beats
@@ -3518,13 +3518,13 @@ class DiabloGymEnv(gym.Env):
         controller_snapshot: _ControllerSnapshot | None = None,
         execution_audit: dict | None = None,
     ):
-        """追击一个可接敌目标；真停滞时在同一 action9 预算内轮换。
+        """Chase one engageable target; on a real stall, rotate within the same action9 budget.
 
-        战士的一格走路约需 8~10 engine tick，挥刀到伤害帧还会再用十余
-        tick。旧实现仅看两次 4-tick 采样的 tile/HP，恰在首刀伤害帧前
-        调用 ActWait 中止攻击，形成永久不掉血。现在只有引擎已经空闲且
-        连续两拍既未接近也未伤害才判停滞；pending attack、未完成走格与
-        PM_ATTACK 都是正在执行，不得提前取消。
+        A warrior's one-tile walk takes about 8-10 engine ticks, and a swing needs another ten-odd ticks to reach its damage
+        frame. The old implementation only looked at tile/HP in two 4-tick samples and called ActWait right before the first swing's
+        damage frame, aborting the attack and never dealing damage. Now it counts as a stall only when the engine is already idle and
+        two consecutive ticks neither approached nor damaged; a pending attack, an unfinished walk step and
+        PM_ATTACK are all in progress and must not be cancelled early.
         """
         snapshot = (
             controller_snapshot
@@ -3536,8 +3536,8 @@ class DiabloGymEnv(gym.Env):
         if candidate is None:
             return self._wait_step()
         if candidate.blocked:
-            # “全已轮过”这一事实已在 snapshot 每槽 blocked bit 中公开；
-            # action9 执行时原子开启下一轮，仍按 wire canonical 首项选择。
+            # The fact "all have been tried" is already published in each snapshot slot's blocked bit;
+            # action9 atomically starts the next round when it executes, still choosing the wire-canonical first entry.
             self._engage_blocked_keys.difference_update(
                 entry.generation_key for entry in candidates)
         tid = int(candidate.monster_id)
@@ -3674,8 +3674,8 @@ class DiabloGymEnv(gym.Env):
                 None,
             )
             if cur_target is None:
-                # 死亡/消失/slot 复用都是旧 generation 成功结束；新怪必须
-                # 等下一次策略观测，不能继承本宏的攻击。
+                # Death/disappearance/slot reuse all end the old generation successfully; a new monster must
+                # wait for the next policy observation and cannot inherit this macro's attack.
                 self._engage_blocked_keys.discard(target_key)
                 break
 
@@ -3692,13 +3692,13 @@ class DiabloGymEnv(gym.Env):
                 idle_stall = 0
                 self._engage_blocked_keys.discard(target_key)
             elif self._engage_engine_busy(raw):
-                # 动画/命令仍活跃；尤其不能在 PM_ATTACK 的伤害帧前止损。
+                # Animation/command still active; in particular, never cut losses before PM_ATTACK's damage frame.
                 idle_stall = 0
             else:
                 idle_stall += 1
 
-            # 固定快照路径不允许在宏中重规划/换目标；真 idle 连续无进展
-            # 就记失败并把控制权交还，由下一份观测重新决定。
+            # The fixed snapshot path allows no re-planning/target switch within the macro; true idle with no progress in a row
+            # records a failure and hands control back, and the next observation decides again.
             if idle_stall >= 2:
                 self._engage_blocked_keys.add(target_key)
                 break
@@ -3706,9 +3706,9 @@ class DiabloGymEnv(gym.Env):
             last_hp = cur_hp
             last_distance = cur_distance
 
-        # 已耗尽整个宏仍既没打掉血也没比目标起点更接近，下一 action9
-        # 优先尝试别的候选。正在执行的动画本次仍允许完整预算，绝不因
-        # 这项跨宏轮转规则提前 ActWait。
+        # Having used up the whole macro without dealing damage or getting closer than the target's starting point, the next action9
+        # tries other candidates first. An animation in progress still gets the full budget this time, and this cross-macro
+        # rotation rule never triggers an early ActWait.
         if (not raw.get("dead")
                 and _scene_identity(raw) == start_scene):
             surviving = next(
@@ -3726,7 +3726,7 @@ class DiabloGymEnv(gym.Env):
 
         return self._finish_macro(raw, beats, start_scene)
 
-    _EXPLORE_RADIUS = CONTROLLER_SNAPSHOT_RADIUS  # 25×25 固定控制快照
+    _EXPLORE_RADIUS = CONTROLLER_SNAPSHOT_RADIUS  # 25×25 fixed control snapshot
 
     _PROGRESSION_PRIORITY = {
         "lazarus_stand": 0,
@@ -3739,7 +3739,7 @@ class DiabloGymEnv(gym.Env):
 
     @staticmethod
     def _progression_present(raw, target) -> bool:
-        """坐标+种类是单场景内稳定身份；目标消失即本次交互已提交。"""
+        """Position + kind is a stable identity within one scene; the target disappearing means this interaction was committed."""
         return any(
             p.get("kind") == target.get("kind")
             and int(p.get("x", -1)) == int(target["x"])
@@ -3764,7 +3764,7 @@ class DiabloGymEnv(gym.Env):
             return (px, py) == (gx, gy)
         if action == "operate":
             return max(abs(px - tx), abs(py - ty)) <= 1
-        raise RuntimeError(f"未知剧情目标动作: {action!r}")
+        raise RuntimeError(f"unknown story-target action: {action!r}")
 
     @staticmethod
     def _issue_progression(
@@ -3796,16 +3796,16 @@ class DiabloGymEnv(gym.Env):
                 radius,
             )
         else:
-            raise RuntimeError(f"未知剧情目标动作: {action!r}")
+            raise RuntimeError(f"unknown story-target action: {action!r}")
         if not isinstance(result, (bool, np.bool_, int, np.integer)):
             raise RuntimeError(
-                "action11 progression 原生回执必须是整数 0/1，"
-                f"收到 {result!r}")
+                "action11 progression native receipt must be an integer 0/1, "
+                f"got {result!r}")
         accepted = int(result)
         if accepted not in (0, 1):
             raise RuntimeError(
-                "action11 progression 原生回执必须是 0/1，"
-                f"收到 {accepted}")
+                "action11 progression native receipt must be 0/1, "
+                f"got {accepted}")
         return accepted == 1
 
     def _macro_progression(
@@ -3814,11 +3814,11 @@ class DiabloGymEnv(gym.Env):
         *,
         execution_audit: dict | None = None,
     ):
-        """推进严格白名单中的下一项通关必需交互。
+        """Advance the next completion-required interaction on the strict allowlist.
 
-        仅 action 11 / DIVE 经理调用此宏；action 10 / FARM 在剧情态会
-        fail-closed 交还控制权，不能越权推进剧情。Vile 书要求精确站圈；
-        普通机关只要相邻。全局 BFS 仍只把门/桶当软墙，不传送、不穿墙。
+        Only action 11 / the DIVE manager calls this macro; action 10 / FARM fails closed and hands control back in
+        story state and may not push the story forward. Vile books require standing exactly in the circle;
+        ordinary mechanisms only need adjacency. The global BFS still treats only doors/barrels as softwalls; no teleporting, no walking through walls.
         """
         raw = self._raw
         targets = [dict(p) for p in raw.get("progression_targets", ())]
@@ -3829,7 +3829,7 @@ class DiabloGymEnv(gym.Env):
         for target in targets:
             required = {"kind", "action", "x", "y", "goal_x", "goal_y", "exact"}
             if set(target) != required:
-                raise RuntimeError(f"剧情目标 schema 异常: {target!r}")
+                raise RuntimeError(f"story target schema anomaly: {target!r}")
             ready = self._progression_ready(raw, target)
             path = [] if ready else self._plan_descend_path(
                 raw, int(target["goal_x"]), int(target["goal_y"]),
@@ -3857,9 +3857,9 @@ class DiabloGymEnv(gym.Env):
 
             remaining, reachable = assess(path)
             if not ready and not reachable:
-                # “避怪 BFS”即使只能走到怪物墙前也会返回一条 partial path，
-                # 不是 None。若只在 None 时回退，L16 会把真正可达的第二个
-                # switch 错判为远目标，反复走向另一扇尚未开放的墙。
+                # The "monster-avoiding BFS" returns a partial path even if it can only reach the wall of monsters,
+                # not None. If it fell back only on None, L16 would misjudge the truly reachable second
+                # switch as a far target and keep walking toward another wall that is not open yet.
                 fallback = self._plan_descend_path(
                     raw, int(target["goal_x"]), int(target["goal_y"]))
                 fallback_remaining, fallback_reachable = assess(fallback)
@@ -4060,12 +4060,12 @@ class DiabloGymEnv(gym.Env):
         blocked_softwalls: set[tuple[int, int]] | None = None,
         controller_snapshot: _ControllerSnapshot | None = None,
     ):
-        """为 action10 规划原有边疆点，或通向普通软墙的可达站位。
+        """Plan action10's original frontier point, or a reachable stance next to an ordinary softwall.
 
-        规划只穿当前 walkable 连通域；trigger 与剧情目标/goal 是硬禁区，
-        因而探索不会踩楼梯或借普通 operate 越过 DIVE 的剧情职权。8 步内
-        的普通闭门可在经过时优先处理；blocking barrel 只在连通域已经没有
-        未踏足边疆时兜底。已有边疆保持原 action10 的远路点连续寻路语义。
+        Planning only crosses the current walkable component; triggers and story targets/goals are hard no-go zones,
+        so exploration never steps on stairs or uses an ordinary operate to override DIVE's story authority. Ordinary
+        closed doors within 8 steps may be handled on the way first; a blocking barrel is only a fallback once the component
+        has no unvisited frontier left. With an existing frontier, action10 keeps its original far-waypoint continuous-pathing semantics.
         """
         snapshot = controller_snapshot
         if snapshot is not None:
@@ -4101,10 +4101,10 @@ class DiabloGymEnv(gym.Env):
             sticky = snapshot.sticky_target
         blocked = blocked_softwalls or set()
 
-        # 旧版仅按目标格自身 walkable + 几何距离挑边疆，可能选中五格外但
-        # 实际要绕 160 格迷宫才能抵达的地板；引擎 100 格路径上限拒绝后，
-        # 每次 action10 又会选同一格永久面壁。先在局部窗做保守 4 向连通域，
-        # 只把本次原生寻路确实可到的格作为候选。怪物占位与职权禁区不能穿过。
+        # The old version picked frontiers only by the target tile's own walkability + geometric distance, and could pick a floor tile
+        # five tiles away that actually needs a 160-tile maze detour; after the engine's 100-tile path cap refused it,
+        # every action10 picked the same tile again and faced the wall forever. First build a conservative 4-direction component in the
+        # local window, and use only tiles native pathing can really reach this time as candidates. Monster occupancy and authority no-go zones cannot be crossed.
         reachable = {(px, py)}
         depth = {(px, py): 0}
         queue = deque([(px, py)])
@@ -4135,7 +4135,7 @@ class DiabloGymEnv(gym.Env):
                 depth[(nx, ny)] = depth[(cx, cy)] + 1
                 queue.append((nx, ny))
 
-        # 候选:可走、离玩家 ≥5 格、且不在足迹邻域(±1)内的边疆点
+        # Candidates: walkable frontier points ≥5 tiles from the player and not within the footprint neighbourhood (±1)
         near_visited = visited | {
             (x + dx, y + dy) for x, y in visited for dx in (-1, 0, 1) for dy in (-1, 0, 1)
         }
@@ -4151,9 +4151,9 @@ class DiabloGymEnv(gym.Env):
                 else:
                     candidates.append(entry)
 
-        # 搜索当前连通域边界上真正连接另一块潜在空间的普通软墙。
-        # local_map["door"] 精确包含 closedDoor 或 solid breakable barrel；
-        # progression/trigger 坐标仍由 protected 双重排除。
+        # Search the boundary of the current component for ordinary softwalls that really connect to another potential space.
+        # local_map["door"] contains exactly closedDoor or a solid breakable barrel;
+        # progression/trigger coordinates are still doubly excluded by protected.
         softwall_candidates = []
         for dx in range(-r, r + 1):
             for dy in range(-r, r + 1):
@@ -4177,7 +4177,7 @@ class DiabloGymEnv(gym.Env):
                         has_unseen_side = True
                         continue
                     ni = local_index(*neighbor)
-                    # 怪物占位是动态的；地板本身存在便足以证明门后不是实墙。
+                    # Monster occupancy is dynamic; the floor itself existing is enough to prove there is no solid wall behind the door.
                     if (
                         not hazard[ni]
                         and not explosive_softwall[ni]
@@ -4199,8 +4199,8 @@ class DiabloGymEnv(gym.Env):
 
         chosen_softwall = None
         if softwall_candidates:
-            # 有普通边疆时只顺路处理 8 步内的真门；桶保留给连通域已经
-            # 完全无边疆时的最后软墙兜底，避免 FARM 沿途沉迷砸桶。
+            # With an ordinary frontier, only real doors within 8 steps are handled on the way; barrels are kept as the last softwall
+            # fallback for when the component has no frontier at all, so FARM does not get hooked on smashing barrels along the way.
             nearby_doors = [
                 entry for entry in softwall_candidates
                 if entry[0] == 0 and entry[1] <= 8
@@ -4215,18 +4215,18 @@ class DiabloGymEnv(gym.Env):
                 return ("approach", approach[0], approach[1])
             return ("open", door_x, door_y)
 
-        # frontier 失败记忆只负责“先轮换别的候选”，不能把动态占位造成的
-        # 一次失败永久升级成整场景黑名单。当前可用的未阻塞候选耗尽后，
-        # 原子开启下一轮并重试仍然可达/未踏足的目标；否则同一个 hidden
-        # set 会让完全相同的可见地图从“可探索”永久变成 wait。
+        # The frontier failure memory only means "rotate to other candidates first"; it must not turn one failure caused by dynamic
+        # occupancy into a permanent whole-scene blacklist. Once the current unblocked candidates are exhausted,
+        # atomically start the next round and retry targets that are still reachable/unvisited; otherwise the same hidden
+        # set would permanently turn an identical visible map from "explorable" into wait.
         if not candidates and retry_candidates:
             self._explore_blocked_targets.difference_update(
                 (tx, ty) for _, tx, ty in retry_candidates)
             candidates = retry_candidates
 
-        # 边疆目标跨 action10 保持，直到真正抵达/失效。不能在每个宏的
-        # 新当前位置上重做“最近点”贪心，否则分叉两侧会互相抢占最近名次，
-        # 形成 seed7002 实锤的 A↔B 永久往返。
+        # The frontier target persists across action10 until it is really reached/invalid. The "nearest point" greedy choice must not
+        # be redone from each macro's new current position, or the two sides of a fork would keep stealing the nearest rank,
+        # forming the permanent A<->B back-and-forth confirmed on seed7002.
         if sticky is not None:
             sticky = (int(sticky[0]), int(sticky[1]))
             if (sticky in protected
@@ -4237,11 +4237,11 @@ class DiabloGymEnv(gym.Env):
                 self._explore_target = None
             else:
                 return ("frontier", sticky[0], sticky[1])
-        # R16 C5 附加 hunt(默认关):窗内没有任何可见怪(隔墙/未照亮的怪不
-        # 算可见)时优先全图寻怪;窗内一旦有可见怪就交还局部逻辑/a9 掩码/反射
-        # (探针:以"无可接敌候选"为闸会在可见但暂不可接敌的怪旁 a9↔a10 振荡,
-        # seed7002 击杀 96→48;以"窗内无占位"为闸则隔墙暗怪把 hunt 锁死,
-        # seed9005 原地徘徊)。全图无可达存活怪(None)才落回局部边疆/回退。
+        # R16 C5 extra hunt (default off): when the window has no visible monster (monsters behind walls/unlit do not
+        # count as visible), prefer the whole-map monster hunt; as soon as a visible monster is in the window, hand back to local logic/the a9 mask/reflexes
+        # (probes: gating on "no engageable candidate" made a9<->a10 oscillate next to monsters visible but not yet engageable,
+        # seed7002 kills 96->48; gating on "no occupancy in the window" let dark monsters behind walls lock the hunt,
+        # seed9005 wandered in place). Only when no live monster on the map is reachable (None) does it fall back to local frontier/retreat.
         if getattr(self, "_explore_global_hunt", False) and self._hunt_allowed_here(raw):
             if snapshot is not None:
                 visible_in_window = any(snapshot.visible_monster)
@@ -4261,13 +4261,13 @@ class DiabloGymEnv(gym.Env):
                         if command[0] == "frontier" else None)
                     return command
         if candidates:
-            _, tx, ty = min(candidates)  # 最近的边疆点(便宜且稳)
+            _, tx, ty = min(candidates)  # nearest frontier point (cheap and stable)
             self._explore_target = (tx, ty)
             return ("frontier", tx, ty)
-        # R16 C5(默认关):窗内无候选时全图 BFS 回退,取通往最近的未踏足
-        # 可达格/存活怪占位格路径上、落在本窗内且局部可达的最远前缀点作为
-        # 本次 frontier(前缀被窗内软墙截断则改发 approach/open);随后交给
-        # 既有的逐步走格/粘性目标机制。仍无候选才返回 None。
+        # R16 C5 (default off): when the window has no candidate, fall back to a whole-map BFS and take the farthest prefix point,
+        # inside this window and locally reachable, of the path to the nearest unvisited reachable tile/live-monster tile as
+        # this frontier (if the prefix is cut by an in-window softwall, issue approach/open instead); then hand over to
+        # the existing step-by-step walking/sticky target mechanism. Returns None only if there is still no candidate.
         if getattr(self, "_explore_global_fallback", False):
             command = self._plan_explore_global_waypoint(
                 raw, px, py, reachable, blocked_targets)
@@ -4289,21 +4289,21 @@ class DiabloGymEnv(gym.Env):
         *,
         monsters_only: bool = False,
     ):
-        """R16 C5:全图 4 向 BFS(同 _plan_descend_path 的口径:关门视为可通,
-        hazard/explosive-softwall/trigger/剧情格为墙)找最近目标,返回一条
-        与局部规划同款的命令:("frontier", x, y) = 其路径在 25×25 窗内、且
-        属于本次局部 reachable 连通域的最远前缀点;若前缀被窗内软墙截断则
-        返回 ("approach", x, y) / ("open", x, y);无目标/无前缀返回 None。
+        """R16 C5: whole-map 4-direction BFS (same definition as _plan_descend_path: closed doors count as passable,
+        hazard/explosive-softwall/trigger/story tiles are walls) to the nearest target, returning a command
+        of the same kind as local planning: ("frontier", x, y) = the farthest prefix point of its path that lies inside the 25×25 window
+        and belongs to this local reachable component; if the prefix is cut by an in-window softwall,
+        returns ("approach", x, y) / ("open", x, y); returns None if there is no target/no prefix.
 
-        目标(BFS 首个弹出即最近):
-          - 存活怪占位格(radius-112 monster 通道,dMonster≠0);
-          - 窗外、未踏足且不在全局足迹 ±1 光环内的可走格。
-        窗内的可走未踏足格已由局部候选穷举(离玩家 <5 或在光环内的不算),
-        不再重复作为目标。怪物占位格只作目标不再扩展。整段无随机数。
-        monsters_only=True(hunt 变体)只把怪物占位格当目标。
-        前缀点若已在 blocked_targets 中则退到更近的前缀点;全部被阻塞时
-        与局部候选同款:清除这些阻塞记忆后仍取最远前缀点,避免同一可见
-        地图永久退化成 wait。
+        Targets (the first BFS pop is the nearest):
+          - live-monster tiles (radius-112 monster channel, dMonster≠0);
+          - walkable tiles outside the window that are unvisited and not within the ±1 halo of the global footprints.
+        Walkable unvisited tiles inside the window are already exhausted by the local candidates (those <5 from the player or inside the halo do not count),
+        and are not repeated as targets. Monster tiles are only targets and are not expanded. The whole routine uses no random numbers.
+        monsters_only=True (the hunt variant) treats only monster tiles as targets.
+        If a prefix point is already in blocked_targets, it falls back to a nearer prefix point; when all are blocked,
+        like the local candidates it clears these blocking memories and still takes the farthest prefix point, so that the same visible
+        map never permanently degrades into wait.
         """
         r = self._EXPLORE_RADIUS
         big = self._DESCEND_RADIUS
@@ -4365,10 +4365,10 @@ class DiabloGymEnv(gym.Env):
                 break
             prefix.append(point)
         if len(prefix) < len(path):
-            # 前缀被窗内软墙(普通闭门/非爆炸实心桶,BFS 视作可通)截断:改发
-            # 既有的 approach/open 命令交给 act_controller_operate,而不是把
-            # 航点停在软墙前一格——否则每次都选同一航点永久打转(seed7002
-            # hunt 实锤:桶前同一航点重复 25 次)。怪物堵门则仍走航点。
+            # The prefix is cut by an in-window softwall (an ordinary closed door/non-explosive solid barrel, passable for the BFS): issue
+            # the existing approach/open command for act_controller_operate instead of stopping the
+            # waypoint one tile before the softwall; otherwise the same waypoint is picked every time and it circles forever (confirmed on the seed7002
+            # hunt: the same waypoint before a barrel repeated 25 times). If monsters block the door, it still walks to the waypoint.
             blocker = path[len(prefix)]
             bi = idx(*blocker)
             if (abs(blocker[0] - px) <= r and abs(blocker[1] - py) <= r
@@ -4392,12 +4392,12 @@ class DiabloGymEnv(gym.Env):
         controller_snapshot: _ControllerSnapshot | None = None,
         execution_audit: dict | None = None,
     ):
-        """探索宏:只执行观测时 radius-12 快照选出的一个确定命令。
+        """Explore macro: executes only the one fixed command chosen by the radius-12 snapshot at observation time.
 
-        剧情推进是 a11/经理的专属职权；a10 在剧情态 fail-closed 为 wait。
-        普通探索绝不走上/下楼 trigger，也不操作 progression 坐标。门打开
-        或接近站位完成后立即交还策略，由下一份快照决定下一步，禁止同一
-        观测后的第二次 local_map 重规划。
+        Story progress is the exclusive authority of a11/the manager; in story state a10 fails closed to wait.
+        Ordinary exploration never walks onto up/down triggers and never operates progression coordinates. Once a door is opened
+        or the approach stance is reached, the policy gets control back immediately and the next snapshot decides the next step; a second
+        local_map re-plan after the same observation is forbidden.
         """
         if self._raw.get("progression_targets"):
             self._explore_target = None
@@ -4442,7 +4442,7 @@ class DiabloGymEnv(gym.Env):
             abs(int(raw["player_y"]) - int(command[2])),
         ) > 1:
             raise RuntimeError(
-                "controller snapshot 规划出非相邻 operate")
+                "controller snapshot planned a non-adjacent operate")
 
         pi = 0
         active_step: tuple[int, int] | None = None
@@ -4474,11 +4474,11 @@ class DiabloGymEnv(gym.Env):
                 nx, ny, is_softwall = path[pi]
                 if is_softwall:
                     raise RuntimeError(
-                        "action10 普通走路路径意外穿过未打开软墙")
+                        "action10 ordinary walking path unexpectedly crosses an unopened softwall")
                 if abs(nx - int(raw["player_x"])) + abs(
                         ny - int(raw["player_y"])) != 1:
                     raise RuntimeError(
-                        "controller snapshot 路径不是 4 向相邻步")
+                        "controller snapshot path is not 4-direction adjacent steps")
                 accepted = bridge.act_explore_walk(
                     nx,
                     ny,
@@ -4591,23 +4591,23 @@ class DiabloGymEnv(gym.Env):
             last_pos = pos
         return self._finish_macro(raw, beats, start_scene)
 
-    _DESCEND_RADIUS = 112  # 规划窗覆盖全图(地牢 112×112):有的层联通回廊会绕大圈,
-                           # 40 格窗曾在 seed 9005 上漏掉西侧绕行路线。每次按键只规划一次,
-                           # C++ 端一次调用出图,开销在毫秒级,换全局最优值得
+    _DESCEND_RADIUS = 112  # the planning window covers the whole map (dungeon 112×112): some levels' connecting corridors loop widely,
+                           # and a 40-tile window once missed the western detour on seed 9005. Each key press plans only once,
+                           # with one C++ call producing the map in milliseconds, so the global optimum is worth it
 
     def _plan_descend_path(self, raw, sx, sy, avoid_monsters: bool = False):
-        """全局窗 4 向 BFS(关着的门视为可通行),返回去往"可达且离楼梯最近的格"
-        的路径 [(x, y, 是否关门), ...](不含起点)。None = 可达域内没有比脚下
-        更接近楼梯的格子(真·被困)。4 向保证引擎寻路必然接受每段(斜穿墙角
-        引擎会拒绝);贪心"只挑更近的格"会死在凹形迷宫里,BFS 允许先绕远。
+        """Whole-window 4-direction BFS (closed doors count as passable); returns the path to "the reachable tile nearest the stairs"
+        as [(x, y, is_closed_door), ...] (without the start). None = no tile in the reachable region is closer to the stairs than
+        the current one (truly trapped). 4 directions guarantee the engine pathing accepts every segment (it refuses diagonal
+        cuts across wall corners); a greedy "only pick nearer tiles" dies in concave mazes, while BFS allows detours first.
 
-        火焰/酸池等 hazard 与 explosive-softwall 永远视为墙；``door``
-        同时包含普通门和 blocking barrels，不能把爆炸桶误当安全软墙。
+        Fire/acid pools and other hazards and explosive-softwalls are always walls; ``door``
+        includes both ordinary doors and blocking barrels, so an explosive barrel must never be mistaken for a safe softwall.
 
-        avoid_monsters=True 时把怪物占位格视为墙(v14 修复:引擎寻路拒绝穿怪,
-        规划器若怪物盲,遇到闲置怪堵走廊会陷入"重规划出同一条路"的失速死循环
-        ——9024 号种子的 1 血骷髅当场抓获;调用方应在返回 None 时退回
-        avoid_monsters=False 保底,行为最坏退化为旧版失速交还)。"""
+        With avoid_monsters=True monster tiles count as walls (v14 fix: engine pathing refuses to go through monsters,
+        and a monster-blind planner facing an idle monster blocking a corridor falls into a stalled loop of "re-planning the same path";
+        caught red-handed with a 1-HP skeleton on seed 9024; callers should fall back to
+        avoid_monsters=False when this returns None, so the worst case degrades to the old stall-and-hand-back)."""
         px, py = raw["player_x"], raw["player_y"]
         r = self._DESCEND_RADIUS
         side = 2 * r + 1
@@ -4638,7 +4638,7 @@ class DiabloGymEnv(gym.Env):
                 if not walk[i] and not door[i]:
                     continue
                 if mon is not None and mon[i]:
-                    continue  # 怪物占位=墙(引擎寻路拒绝穿怪;见 docstring)
+                    continue  # monster tile = wall (engine pathing refuses to go through monsters; see the docstring)
                 prev[(nx, ny)] = (cx, cy)
                 depth[(nx, ny)] = depth[(cx, cy)] + 1
                 d_stairs = max(abs(sx - nx), abs(sy - ny))
@@ -4857,15 +4857,15 @@ class DiabloGymEnv(gym.Env):
         *,
         execution_audit: dict | None = None,
     ):
-        """下楼宏:全局 BFS 规划一次,逐个 4 向相邻安全步走向下行楼梯。
+        """Descend macro: plan once with the global BFS, then walk to the down stairs in 4-direction adjacent safe steps one by one.
 
-        门只在已经相邻时操作；walk/operate 都使用原生受约束控制器入口，
-        禁止 CMD_WALKXY/CMD_OPOBJXY 在执行阶段另算最短路穿过 hazard。
-        地牢房间靠门连通,而关着的门在 walkable 通道里长得和墙一样，
-        因而路径仍必须显式携带门状态。
+        Doors are operated only when already adjacent; walk/operate both use the native constrained controller entry points,
+        forbidding CMD_WALKXY/CMD_OPOBJXY from computing a separate shortest path through hazards during execution.
+        Dungeon rooms connect through doors, and a closed door looks like a wall in the walkable channel,
+        so the path must still carry the door state explicitly.
 
-        发现猎物不打断(这是主动撤离键);换层/阵亡/持续失速提前结束;
-        12 拍耗尽自然归还控制权,下次按键重新规划。全程无随机数,确定性。
+        Spotting prey does not interrupt it (this is the deliberate withdraw key); a level change/death/persistent stall ends it early;
+        after 12 ticks control returns naturally and the next key press re-plans. Fully deterministic, no random numbers.
         """
         if self._raw.get("progression_targets"):
             return self._macro_progression(
@@ -4887,12 +4887,12 @@ class DiabloGymEnv(gym.Env):
         path = self._plan_descend_path(raw, sx, sy, avoid_monsters=True)
         if (getattr(self, "_descend_fallback_promotion", False)
                 and path is not None):
-            # E-fix 修 A:避怪 BFS 的口袋可达域会造出"原路返回更近"的
-            # partial path,与宽容规划形成确定性极限环(R8 seed 2122004:
-            # 6 窗 24 微步周期钉死原地)。与 _macro_progression 的既有
-            # 立法同款:避怪路径踏不上楼梯格时咨询宽容规划,终点严格
-            # 更近才提升;能踏上楼梯(remaining==0)时第二次 BFS 不发生,
-            # 行为逐位等旧。
+            # E-fix A: the pocket reachable region of the monster-avoiding BFS can produce a partial path where "going back is closer",
+            # forming a deterministic limit cycle with lenient planning (R8 seed 2122004:
+            # a 6-window, 24-micro-step cycle pinned in place). Same as the existing rule
+            # in _macro_progression: when the monster-avoiding path cannot reach the stairs tile, consult lenient planning, and promote it
+            # only if its end point is strictly closer; when the stairs can be reached (remaining==0) the second BFS does not happen,
+            # and the behaviour equals the old one bit for bit.
             def _remaining(candidate):
                 if not candidate:
                     return max(abs(sx - int(px)), abs(sy - int(py)))
@@ -4904,11 +4904,11 @@ class DiabloGymEnv(gym.Env):
                 if fallback is not None and _remaining(fallback) < remaining:
                     path = fallback
         if path is None:
-            path = self._plan_descend_path(raw, sx, sy)  # 怪物封死唯一通路:退回旧行为
+            path = self._plan_descend_path(raw, sx, sy)  # monsters seal the only route: fall back to the old behaviour
         if path is None:
-            return self._wait_step()  # 真被困:原地一拍,交还控制权
+            return self._wait_step()  # truly trapped: one tick in place, hand control back
 
-        pi = 0            # 路径消费指针
+        pi = 0            # path consumption pointer
         target = None     # (kind, x, y, path_index)
         center_x, center_y = int(px), int(py)
         stall = 0
@@ -4934,7 +4934,7 @@ class DiabloGymEnv(gym.Env):
                         execution_audit=execution_audit)
             if target is None:
                 if pi >= len(path):
-                    break  # 路径走完(最近可达格≠楼梯时会发生),交还控制权
+                    break  # path finished (happens when the nearest reachable tile is not the stairs); hand control back
                 j = pi
                 target = (
                     ("open", path[j][0], path[j][1], j)
@@ -4971,16 +4971,16 @@ class DiabloGymEnv(gym.Env):
             if _scene_identity(raw) == start_scene:
                 self._record_visit(pos)
             if raw["dead"] or _scene_identity(raw) != start_scene:
-                break  # 换层成功(或阵亡);足迹由 step() 统一按层重置
+                break  # level changed (or died); step() resets footprints per level uniformly
             if self._reflex_eligible(raw):
                 break
             if pos == (sx, sy):
-                continue  # 已站上楼梯格,等触发换层——站桩不算失速
+                continue  # standing on the stairs tile, waiting for the level-change trigger; standing still is not a stall
             if target[0] == "open":
-                # 开门型目标:门格真的变可走才算完成(贴脸≠已开,动画要几拍)
+                # Door-type target: complete only when the door tile really becomes walkable (touching it != opened, the animation takes a few ticks)
                 if bridge.probe_tile(target[1], target[2])["walkable"]:
                     path[target[3]] = (target[1], target[2], False)
-                    pi = target[3]  # 从门所在格继续消费路径
+                    pi = target[3]  # continue consuming the path from the door tile
                     target = None
                     stall = 0
                     last_pos = pos
@@ -4989,7 +4989,7 @@ class DiabloGymEnv(gym.Env):
                 # Every native walk request is one exact controller edge.
                 # The old multi-hop macro accepted "within one tile", which
                 # could advance pi before the committed animation had landed.
-                pi = target[3] + 1  # 到达路点,继续下一段
+                pi = target[3] + 1  # waypoint reached, continue with the next segment
                 target = None
                 stall = 0
                 last_pos = pos
@@ -4997,7 +4997,7 @@ class DiabloGymEnv(gym.Env):
             if pos == last_pos:
                 stall += 1
                 if stall == 3 and target is not None:
-                    # 命令可能被打断(被怪撞开路径等):原地重发一次
+                    # The command may have been interrupted (path knocked off by a monster, etc.): resend once in place
                     if target[0] == "open":
                         accepted = bridge.act_controller_operate(
                             target[1],
@@ -5020,7 +5020,7 @@ class DiabloGymEnv(gym.Env):
                             execution_audit, accepted,
                             f"action11 descend retry {target[0]}")
                 if stall >= 6:
-                    break  # 重发后仍无进展 → 交还控制权,下次按键重新规划
+                    break  # still no progress after the resend -> hand control back, re-plan on the next key press
             else:
                 stall = 0
             last_pos = pos
@@ -5035,21 +5035,21 @@ class DiabloGymEnv(gym.Env):
         action14_audit: dict | None = None,
         execution_audit: dict | None = None,
     ):
-        """捡取宏(v13 药 / v14 装备):只消费观测绑定的目标与 radius-12 地图。
+        """Pickup macro (v13 potions / v14 gear): consumes only the target and radius-12 map bound to the observation.
 
-        沿固定快照路径开门走向该目标物，并在精确站上目标格后才提交。
-        wrapper 与两个原生定点入口都要求玩家 future 精确同格，把整条
-        移动轨迹锁在固定快照逐步验证的路径上；公开便利入口同样不能
-        选择邻近物品绕过这项证明。
+        Walks toward the target item along the fixed snapshot path, opening doors, and commits only after standing exactly on the target tile.
+        The wrapper and both native pinned entry points require the player's future to be exactly on that tile, locking the whole
+        movement trajectory onto the path verified step by step by the fixed snapshot; the public convenience entry points likewise cannot
+        pick a nearby item to bypass this proof.
 
-        原生提交再次核验 active id、坐标、seed、create info 与 base id。
-        装备还会重算 PlanGearUpgrade，复制整套身体槽后原子替换并以
-        CalcPlrInv 复验，失败完整回滚；不走 AutoEquip/背包回退。成功
-        的 0/1 原生回执会在提交后立刻同步 observe，记录严格为正的整套
-        战力 delta，后续受击/耐久损失不能篡改这条因果凭证。目标
-        消失或失效即结束，药另有腰带数上涨的快速判据。阵亡/换层/路径
-        耗尽/持续失速提前结束；12 拍耗尽自然归还控制权，下次按键重新
-        规划。全程无随机数，确定性。
+        The native commit re-checks the active id, position, seed, create info and base id again.
+        Gear also recomputes PlanGearUpgrade, copies the whole set of body slots, replaces atomically and
+        re-verifies with CalcPlrInv, rolling back completely on failure; no AutoEquip/backpack fallback. A successful
+        0/1 native receipt synchronously observes right after the commit and records the strictly positive whole-set
+        combat delta, so later hits/durability loss cannot tamper with this causal evidence. The macro ends when the target
+        disappears or becomes invalid; potions also have the quick criterion of a rising belt count. Death/level change/path
+        exhaustion/persistent stall end it early; after 12 ticks control returns naturally and the next key press re-plans.
+        Fully deterministic, no random numbers.
         """
         raw = self._raw
         flag = "heal" if kind == "heal" else "gear"
@@ -5088,10 +5088,10 @@ class DiabloGymEnv(gym.Env):
                 or int(action14_audit["utility_delta"]) != 0
             ):
                 raise RuntimeError(
-                    "action14_audit 初始状态损坏")
+                    "action14_audit initial state corrupt")
         elif action14_audit is not None:
             raise RuntimeError(
-                "action14_audit 只能用于装备拾取宏")
+                "action14_audit may only be used by the gear pickup macro")
 
         px, py = int(raw["player_x"]), int(raw["player_y"])
         hx, hy = target_point.x, target_point.y
@@ -5122,18 +5122,18 @@ class DiabloGymEnv(gym.Env):
                 if not isinstance(
                         accepted_raw, (bool, np.bool_, int, np.integer)):
                     raise RuntimeError(
-                        "action14 原生回执必须是整数 0/1，收到 "
+                        "action14 native receipt must be an integer 0/1, got "
                         f"{accepted_raw!r}")
                 accepted = int(accepted_raw)
                 if accepted not in (0, 1):
                     raise RuntimeError(
-                        "action14 原生回执必须是 0/1，收到 "
+                        "action14 native receipt must be 0/1, got "
                         f"{accepted}")
                 action14_audit["commit_attempts"] += 1
                 if accepted:
                     if action14_audit["accepted"]:
                         raise RuntimeError(
-                            "action14 同一策略动作出现重复成功提交")
+                            "action14 duplicate successful commit within the same policy action")
                     committed = bridge.observe()
                     if getattr(self, "resource_preserve_equipment_readiness", False):
                         self._validate_native_resource_flags(committed)
@@ -5142,7 +5142,7 @@ class DiabloGymEnv(gym.Env):
                     utility_delta = utility_after - utility_before
                     if utility_delta <= 0:
                         raise RuntimeError(
-                            "action14 原生接受后整套战力未严格增长:"
+                            "action14 whole-set combat power did not strictly increase after native acceptance: "
                             f"{utility_before}->{utility_after}")
                     action14_audit.update({
                         "accepted": True,
@@ -5209,7 +5209,7 @@ class DiabloGymEnv(gym.Env):
                     nx, ny, is_softwall = path[pi]
                     if abs(nx - cur[0]) + abs(ny - cur[1]) != 1:
                         raise RuntimeError(
-                            "controller pickup 路径不是 4 向相邻步")
+                            "controller pickup path is not 4-direction adjacent steps")
                     target = (
                         ("open", nx, ny)
                         if is_softwall else ("walk", nx, ny)
@@ -5454,38 +5454,38 @@ class DiabloGymEnv(gym.Env):
             return None
         if before_present != after_present:
             raise RuntimeError(
-                "monster_kill_total 只出现在 transition 一端")
+                "monster_kill_total appears at only one end of the transition")
 
         def value(raw, label):
             candidate = raw["monster_kill_total"]
             if isinstance(candidate, bool):
                 raise RuntimeError(
-                    f"{label}.monster_kill_total 不得为 bool")
+                    f"{label}.monster_kill_total must not be a bool")
             try:
                 integer = int(candidate)
                 numeric = float(candidate)
             except (TypeError, ValueError, OverflowError) as exc:
                 raise RuntimeError(
-                    f"{label}.monster_kill_total 必须是非负整数") from exc
+                    f"{label}.monster_kill_total must be a non-negative integer") from exc
             if (
                 not math.isfinite(numeric)
                 or numeric != float(integer)
                 or integer < 0
             ):
                 raise RuntimeError(
-                    f"{label}.monster_kill_total 必须是非负整数")
+                    f"{label}.monster_kill_total must be a non-negative integer")
             return integer
 
         before = value(prev, "prev")
         after = value(cur, "cur")
         if after < before:
             raise RuntimeError(
-                "原生 monster_kill_total 在 episode 内回退:"
+                "native monster_kill_total went backwards within the episode: "
                 f"{before}->{after}")
         return after - before
 
     def _reset_combat_ledger(self, raw) -> None:
-        """以当前场景血线为零点；reset/换图时调用，绝不跨 lifetime 域。"""
+        """Zero the current scene's HP lines; called on reset/map change, never across lifetime domains."""
         self._combat_hp_floor = {
             self._monster_generation_key(m): (
                 max(0, int(m["hp"])),
@@ -5495,13 +5495,13 @@ class DiabloGymEnv(gym.Env):
         }
 
     def _combat_reward(self, prev, cur) -> float:
-        """以怪物本场景新最低 HP 的势函数差计伤害，已付区间不重复给钱。
+        """Pay damage as the potential difference of each monster's new lowest HP in this scene; intervals already paid are never paid again.
 
-        ledger 只保留当前仍存活 lifetime；新生成的怪从首次观测血线建账。
-        generation 消失时只把其尚未支付的伤害势结至 0；收头单位来自原生
-        单调 monster_kill_total，而非由 active-list 消失推断（缺少该字段
-        的旧合成 fixture 才回退到 generation 消失计数）。slot 被同拍复用
-        时旧、新 generation 分别结账，绝不把新怪 HP 当作旧怪回血。
+        The ledger keeps only lifetimes still alive; a newly spawned monster opens its account at its first observed HP line.
+        When a generation disappears, only its unpaid damage potential is settled to 0; kill units come from the native
+        monotone monster_kill_total rather than being inferred from active-list disappearance (only old synthetic fixtures
+        lacking that field fall back to counting generation disappearances). When a slot is reused in the same tick,
+        the old and new generations are settled separately, and the new monster's HP is never taken as the old monster healing.
         """
         if not hasattr(self, "_combat_hp_floor"):
             self._combat_hp_floor = {}
@@ -5524,8 +5524,8 @@ class DiabloGymEnv(gym.Env):
                 generation_key,
                 (max(0, int(m["hp"])), max(1, int(m["max_hp"]))),
             )
-            # 若调用方在两个 env.step 之间直接推进了 bridge，prev 已经低于
-            # 账本时只下调零点、不追付环境之外发生的伤害。
+            # If the caller advanced the bridge directly between two env.step calls and prev is already below
+            # the ledger, only lower the zero point; do not pay for damage that happened outside the environment.
             paid_floor = min(ledger_low, max(0, int(m["hp"])))
             denominator = max(ledger_max, int(m["max_hp"]), 1)
             current = cur_by_generation.get(generation_key)
@@ -5552,7 +5552,7 @@ class DiabloGymEnv(gym.Env):
                 max(denominator, int(current["max_hp"]), 1),
             )
 
-        # 本拍新生成/首次进入 active list 的怪不能凭首次观测的残血领奖。
+        # Monsters newly spawned/first entering the active list this tick cannot claim a reward for the low HP seen at first observation.
         for generation_key, m in cur_by_generation.items():
             if generation_key not in prev_by_generation:
                 next_floor[generation_key] = (
@@ -5740,24 +5740,24 @@ class DiabloGymEnv(gym.Env):
             prev = dict(prev, dungeon_level=before)
             cur = dict(cur, dungeon_level=after)
         if self.descend_ladder and dl > 0:
-            # v17:深度递进——每个 N→N+1 付 8×N(L1→2 仍是 8,锚定旧章;
-            # L2→3 付 16、L3→4 付 24……越深越值钱,给"往下活着"一个未来)
+            # v17: depth progression; each N->N+1 pays 8×N (L1->2 is still 8, anchored to the old chapter;
+            # L2->3 pays 16, L3->4 pays 24 ... the deeper the more valuable, giving "going down alive" a future)
             r += DESCEND_UNIT * sum(range(prev["dungeon_level"], cur["dungeon_level"]))
         else:
             r += DESCEND_UNIT * dl
         if dl > 0 and econ.descend_unit != DESCEND_UNIT:
-            # R10 v2 A 条款:下楼单价上调,以对 v1 的精确增量追加
-            # (层数为整数,差价乘积在 float64 中无损;v1 路径零触碰)。
+            # R10 v2 clause A: the descend unit price is raised, appended as an exact increment over v1
+            # (level counts are integers, so the price-difference product is lossless in float64; the v1 path is untouched).
             if self.descend_ladder:
                 r += (econ.descend_unit - DESCEND_UNIT) * sum(
                     range(prev["dungeon_level"], cur["dungeon_level"]))
             else:
                 r += (econ.descend_unit - DESCEND_UNIT) * dl
         if econ.descend_vest_kills > 0:
-            # R11 杀怪锁(主席版,2026-08-28):下楼奖金先记"未解锁"托管;
-            # 该层击杀满 vest_kills 只解锁(托管清零、钱留账);死于解锁前
-            # 全额罚没。gamma=1.0 下与真托管到账数学等价,且不动工资剥薪
-            # 恒等式。超时局终不罚(主席原文只判死刑)。
+            # R11 kill lock (2026-08-28): the descend bonus is first booked into an "unvested" escrow;
+            # vest_kills kills on that level only vest it (escrow cleared, money stays booked); dying before vesting
+            # forfeits all of it. Mathematically equal to real escrow payout at gamma=1.0, and it leaves the wage-stripping
+            # identity intact. Timed-out episodes are not penalized (the rule only penalizes death).
             if dl > 0:
                 paid = econ.descend_unit * (
                     sum(range(prev["dungeon_level"], cur["dungeon_level"]))
@@ -5793,9 +5793,9 @@ class DiabloGymEnv(gym.Env):
                 action14_utility_delta)
             r += gear_term
         if econ.name != "v1" and gear_term > 0.0:
-            # R10 v2 E1 条款:装备重定价(scale 降/cap 升)。a14 因果分支
-            # 有精确 Δutility 可重算;(prev,cur) 分支按 v1 分量等比换算,
-            # 仅 v1 饱和(=cap)时保守低估——预注册已如实登记该近似。
+            # R10 v2 clause E1: gear repricing (scale down/cap up). The a14 causal branch
+            # can recompute the exact Δutility; the (prev,cur) branch converts the v1 component proportionally,
+            # underestimating conservatively only when v1 saturates (=cap); the pre-registration records this approximation truthfully.
             if action14_utility_delta is not None:
                 repriced = min(
                     econ.gear_cap,
@@ -5819,12 +5819,12 @@ class DiabloGymEnv(gym.Env):
             if native_kills is not None:
                 combat_term = float(native_kills)
                 r += native_kills
-        # 接近塑形:仅当本拍请求了非等待动作且是"自己走近"才有奖励。
-        # ActWait 为避免破坏引擎占位，允许上一拍已提交的单格动画自然收尾；
-        # 若只比较前后坐标，这段旧动作位移会被错记到当前 action0，真实
-        # a0-only 探针因此偶发 +0.005~+0.02。requested_action 把信用归因
-        # 钉回请求动作：等待永不领接近塑形，并且即使旧步收尾仍付 -0.002。
-        # XP/击杀/真实伤害等环境事件仍按事实记账，不因动作号而抹掉。
+        # Approach shaping: rewarded only when this tick requested a non-wait action and "walked closer by itself".
+        # To avoid breaking engine occupancy, ActWait lets the single-tile animation committed in the previous tick finish naturally;
+        # if only the before/after positions were compared, that displacement of the old action would be credited to the current action0, and a real
+        # a0-only probe occasionally got +0.005 to +0.02. requested_action pins the credit
+        # back to the requested action: waiting never earns approach shaping, and pays -0.002 even while an old step finishes.
+        # Environment events such as XP/kills/real damage are still booked as facts, not erased by the action number.
         if same_scene:
             moved = (cur["player_x"], cur["player_y"]) != (prev["player_x"], prev["player_y"])
             if requested_action == 0 or action_executed is False:
@@ -5836,11 +5836,11 @@ class DiabloGymEnv(gym.Env):
                 if not moved:
                     approach_delta = None
                 elif requested_action == 9:
-                    # action 9 的路径/攻击已经绑定 controller snapshot 的
-                    # canonical generation。若这里重新按 tile 选最近怪，
-                    # 移动怪或局部不可接敌的 decoy 会把朝真实目标的走位
-                    # 反向记成负奖励。无候选时也必须 fail closed，不能
-                    # 回退到任意 raw 怪物给一次空 action 伪造进展。
+                    # action 9's path/attack is already bound to the controller snapshot's
+                    # canonical generation. Re-picking the nearest monster by tile here would let
+                    # a moving monster or a locally unengageable decoy book the walk toward the real target
+                    # in reverse as negative reward. With no candidate it must also fail closed and must not
+                    # fall back to an arbitrary raw monster to fake progress for an empty action.
                     approach_delta = (
                         cls._player_approach_delta(
                             prev,
@@ -5862,12 +5862,12 @@ class DiabloGymEnv(gym.Env):
             economy=econ,
         )
         if econ.name != "v1":
-            # R10 v2 B×D 条款:深度乘数与反躺平,只作用于正向 farm 收入
-            # (xp+击杀),不触碰下楼/装备/塑形/死亡/胜利各项;记账归经理。
+            # R10 v2 clauses B×D: depth multiplier and anti-idling, applied only to positive farm income
+            # (xp + kills), never touching descend/gear/shaping/death/victory terms; booked to the manager.
             d_now = max(int(cur["dungeon_level"]), 1)
             if econ.idle_counts_micro_beats:
-                # R16 v4:idle 钟按底层微拍计数。step() 在调用 _reward 前已
-                # 把本决策全部拍(含 settle)累进 self._steps,取其增量。
+                # R16 v4: the idle clock counts engine micro beats. step() has already added all of this decision's
+                # ticks (including settle) to self._steps before calling _reward; take the increment.
                 steps_now = int(getattr(self, "_steps", 0))
                 idle_tick = max(
                     0, steps_now - int(getattr(
@@ -5891,8 +5891,8 @@ class DiabloGymEnv(gym.Env):
             if farm > 0.0:
                 r += farm * (mult - 1.0)
             if econ.idle_reset_on_kill:
-                # R16 v4:击杀发生即清零(结算在前:终结长时间空转的那一杀
-                # 仍按清零前的钟计价;此后钟重新起算)。
+                # R16 v4: a kill resets the clock (settled first: the kill that ends a long idle spell
+                # is still priced with the clock before the reset; the clock then starts again).
                 idle_kills = self._native_monster_kill_delta(prev, cur)
                 if idle_kills is not None and idle_kills > 0:
                     self._econ_steps_on_level = 0
@@ -6032,7 +6032,7 @@ class DiabloGymEnv(gym.Env):
         result = np.asarray(vec, dtype=np.float32)
         if result.shape != (295,):
             raise RuntimeError(
-                "protocol-v3 policy observation 形状漂移:"
+                "protocol-v3 policy observation shape drift: "
                 f"{result.shape} != (295,)")
         return result
 
@@ -6080,9 +6080,9 @@ class DiabloGymEnv(gym.Env):
         vec += [0.0, 0.0, 0.0, 0.0] * (_K_MONSTERS - len(monsters))
         lm = bridge.local_map(radius=_MAP_RADIUS)
         vec += [float(v) for v in lm["walkable"]]
-        # local_map 的 monster 通道是物理碰撞事实源，会包含墙后/未照亮怪；
-        # 策略观测必须与 token/a9 共用可见可达真源，不能从这 121 位侧信道
-        # 偷看全知占位。规划宏仍可用原始通道避免穿过实体。
+        # The local_map monster channel is the physical collision source of truth and includes monsters behind walls/unlit;
+        # the policy observation must share the visible-reachable source of truth with token/a9, and cannot peek at
+        # omniscient occupancy through this 121-bit side channel. Planning macros may still use the raw channel to avoid walking through bodies.
         policy_tiles = {(int(m["x"]), int(m["y"])) for m in policy_monsters}
         vec += [
             1.0 if (px + dx, py + dy) in policy_tiles else 0.0
@@ -6091,7 +6091,7 @@ class DiabloGymEnv(gym.Env):
         ]
         heals = cls._policy_floor_items(obs, "heal")
         belt_scalar = cls._belt_observation_scalar(obs)
-        if heals:  # v13:瓶盲修复——喝药/捡药两个键的前置条件入观测
+        if heals:  # v13: bottle-blindness fix; the preconditions of the drink/potion-pickup keys enter the observation
             h = min(heals, key=lambda it: max(abs(it["x"] - px), abs(it["y"] - py)))
             vec += [belt_scalar,
                     max(-1.0, min(1.0, (h["x"] - px) / 20.0)),
@@ -6100,16 +6100,16 @@ class DiabloGymEnv(gym.Env):
             vec += [belt_scalar, 0.0, 0.0, 0.0]
         gears = cls._policy_floor_items(obs, "gear")
         ac = max(0.0, min(1.0, obs.get("armor_class", 0) / 50.0))
-        if gears:  # v14:装备章——捡装备键的前置条件入观测(教训十一验收单)
+        if gears:  # v14: gear chapter; the precondition of the gear-pickup key enters the observation (lesson 11 acceptance list)
             g = min(gears, key=lambda it: max(abs(it["x"] - px), abs(it["y"] - py)))
             vec += [ac,
                     max(-1.0, min(1.0, (g["x"] - px) / 20.0)),
                     max(-1.0, min(1.0, (g["y"] - py) / 20.0)), 1.0]
         else:
             vec += [ac, 0.0, 0.0, 0.0]
-        # v19:强弱仪表(教训五族)。"够不够强、该不该下"的决策变量是
-        # 等级/层数之比,但 dim5 的 char_level/50 让 1 级和 3 级只差 0.04,
-        # 对策略近乎不可见——农到多强才下楼,得先看得见"多强"。
-        # 比值 1.0 = 等级与层数持平,>1 越级碾压,<1 越级送死;封顶 2 归一。
+        # v19: strength gauge (lesson-5 family). The decision variable for "strong enough, time to go down?" is
+        # the level/depth ratio, but dim5's char_level/50 makes level 1 and level 3 differ by only 0.04,
+        # nearly invisible to the policy; to decide how strong to farm before descending, "how strong" must first be visible.
+        # Ratio 1.0 = level equals depth, >1 over-levelled and crushing, <1 under-levelled and dying; capped at 2 and normalized.
         vec += [min(2.0, obs["char_level"] / max(1, obs["dungeon_level"])) / 2.0]
         return np.asarray(vec, dtype=np.float32)

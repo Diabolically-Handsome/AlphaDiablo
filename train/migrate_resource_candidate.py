@@ -95,13 +95,13 @@ def operation_for(service_policy, recovery="off", worker_learning_window_scope=N
     from eval_contract import validate_dive_blocker_recovery, EARNED_DIVE_SUFFIX_SCOPE
     require(service_policy in OPERATIONS,
             "Only explicit sustain-v2/v3/v4/v5/v6/sustain-loot-v1 targets are eligible")
-    # R18-B3 复审 (2026-09-07):sustain-loot-v1 的操作名已经登记(见 OPERATIONS),
-    # 但迁移契约的词汇表(ALLOWED_CONTRACT_KEYS / target_contract)里没有
-    # worker_time_protocol,而 loot 配方自本版起随完成时钟分版。真放行,就会冻结
-    # 一份 time_protocol=completion-l2-v1 的收据——一句没人核实过的时钟断言;
-    # 而 train_ppo._validate_resource_warm_start_args 又无条件拒绝一切 loot
-    # warm-start,那份收据永远没人能消费。在迁移 schema 升版长出时钟键之前
-    # fail closed。
+    # R18-B3 re-review (2026-09-07): the sustain-loot-v1 operation name is already registered (see OPERATIONS),
+    # but the migration contract vocabulary (ALLOWED_CONTRACT_KEYS / target_contract) has no
+    # worker_time_protocol, and from this version the loot recipe is versioned by the completion clock. Letting it through
+    # would freeze a receipt with time_protocol=completion-l2-v1 -- a clock claim nobody has verified;
+    # and train_ppo._validate_resource_warm_start_args unconditionally rejects every loot
+    # warm start, so nobody could ever consume that receipt. Until the migration schema is bumped to carry a clock key,
+    # fail closed.
     require(service_policy != "sustain-loot-v1",
             "sustain-loot-v1 migration requires a completion-l2 clock in the migration "
             "schema (worker_time_protocol is not in ALLOWED_CONTRACT_KEYS yet)")

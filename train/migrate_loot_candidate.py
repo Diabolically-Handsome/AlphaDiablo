@@ -81,7 +81,7 @@ OPERATIONS = {
     "completion-l2-r18c": "r16-to-sustain-loot-v1-completion-l2-r18c"
                           "-earned-dive-suffix-v1-dive-adjacent-v1-weights-only-v2",
 }
-# The registered laws of the R18-B3b arm.  A law the chairman has not registered
+# The registered laws of the R18-B3b arm.  An unregistered law
 # for a loot warm start (veto-v1, retreat off, a future coach-v04) is refused
 # here rather than silently minted; adding one is a one-line registration plus a
 # new test, and never a rename.
@@ -94,8 +94,8 @@ ESCROW_READINESS_TABLES = ("v1", "v2")
 # here on B3b's own terms so a warm start may actually enter the l1-only
 # world; R18-M wrote the key as a frozen None outside the world, which kept
 # the default arm consumable but refused the flag itself (the refusal was
-# reproduced: "resume 训练/环境契约漂移: {'hunt_scope': (None, 'l1-only')}").
-# resource_portal stays UNregistered -- no launch tonight sets it, so it keeps
+# reproduced: "resume training/environment contract drift: {'hunt_scope': (None, 'l1-only')}").
+# resource_portal stays UNregistered -- no current launch sets it, so it keeps
 # the fail-closed setdefault in target_contract() below.
 HUNT_SCOPES = ("all", "l1-only")
 # R18-B6 (2026-09-07): the three loot-itinerary laws B6 wires into training.
@@ -208,7 +208,7 @@ def target_world(time_protocol, resource_readiness_law="coach-v03",
         "worker_time_recipe": recipe,
         "resource_readiness_law": resource_readiness_law,
         "resource_retreat": resource_retreat,
-        # R17.0 修正案一 accounting: v1 (the legacy ruler) is written as None by
+        # R17.0 amendment 1 accounting: v1 (the legacy ruler) is written as None by
         # _training_contract, so the migrated contract carries the key with the
         # value None -- exactly what train_ppo writes (R18-B3b 2026-09-07).
         "worker_descend_escrow_readiness_table":

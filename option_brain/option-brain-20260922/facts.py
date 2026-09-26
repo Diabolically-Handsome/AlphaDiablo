@@ -1536,8 +1536,8 @@ def weapon_choice_v4(prompt, text):
 
 
 # ----------------------------------------------------------------------------------------------- version 5
-# Version 5 (round 9b, 2026-09-23 night, opt-in with FACTS_VERSION=5; spec r9-work/r9b/FACTS-V5-SPEC.md as corrected by
-# its review, workflow wf_8332a9fa-a96): the Butcher blocking the stairs. In the loop games (gate9-new-butcher/s4150025,
+# Version 5 (round 9b, 2026-09-23, opt-in with FACTS_VERSION=5; spec in an unpublished working note, as corrected by
+# its review): the Butcher blocking the stairs. In the loop games (gate9-new-butcher/s4150025,
 # gate9-new-king/s4150025, round 8 king3-v3/s4150025 and 6 more; about 21% of the round-8 failures) the hero fled up
 # the stairs from him, he waited at the landing, and town said 'yes' and dungeon level 1 'ready' again: down, adjacent,
 # up, for the rest of the game, never getting stronger. Engine facts from the training-seed logs:

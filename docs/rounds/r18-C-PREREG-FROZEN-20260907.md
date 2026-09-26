@@ -1,45 +1,44 @@
-# R18-C 预注册:长观察窗零训练探针(2026-09-07 凌晨)
+# R18-C pre-registration: a zero-training probe with a long observation window (2026-09-07)
 
-## 〇、案由
+## 0. Background
 
-主席 2026-09-07 00:15:「要不我们彻夜搞个不限时序的训练,明早起来看看有没有进展?」
-主刀答复:训练窗尚未接入撤退(R18-B 未做,WorkerWindowEnv 明确拒绝 retreat-v1),凌晨匆忙发训练臂不合宪法;
-改为**零训练、长观察窗**的机理探针,回答主席真正好奇的问题——T0″ 证明撤退把 L2 上的死改成活,
-但首降后 1800 拍的窗装不下"撤 → 恢复 → 再下"一个循环;把窗放宽五倍,看这个循环转不转、转了以后往哪走。
+An open-ended training run was proposed to see whether there is any progress. It was not launched: the training windows do not include retreat yet (R18-B is not done, and WorkerWindowEnv explicitly rejects retreat-v1), so launching a training arm in a hurry would break the protocol rules.
+Instead, a **zero-training mechanism probe with a long observation window** answers the underlying question: T0″ showed that retreat turns deaths on L2 into survival,
+but the 1800-tick window after the first descent cannot hold one "retreat → recover → descend again" cycle; widen the window five-fold and see whether the cycle turns, and where it leads.
 
-## 一、改动(默认关 = 逐位不变)
+## 1. Change (default off = unchanged bit for bit)
 
-`python/diablogym/completion_clock.py`:新增不可变配方 `completion-l2-r18c`(frozen 子类,字段 init=False):
-到达截止 12000、观测分母 6000、采集/服务/农场常数与 v1 相同,**首降后观察 9000 拍**(v1 为 1800)。
-`CompletionClock` 只接受登记在册的两个配方。`python/diablogym/options_env.py`:凡接受 v1 之处同样接受 r18c;
-时钟按配方构建;遥测报告实际配方。`worker_env.py` 不改——训练继续拒绝 r18c。
-已知小瑕疵(只报):`SustainCompletionService.telemetry()` 的 `time_protocol` 字段仍写 v1 字符串(常数相同,标签未改)。
+`python/diablogym/completion_clock.py`: a new immutable recipe `completion-l2-r18c` (a frozen subclass, fields init=False):
+arrival deadline 12000, observation denominator 6000, collection/service/farm constants the same as v1, **9000 ticks of observation after the first descent** (v1: 1800).
+`CompletionClock` only accepts the two registered recipes. `python/diablogym/options_env.py`: r18c is accepted wherever v1 is;
+the clock is built from the recipe; the telemetry reports the actual recipe. `worker_env.py` is not changed: training keeps rejecting r18c.
+Known minor flaw (reported only): the `time_protocol` field of `SustainCompletionService.telemetry()` still writes the v1 string (same constants, label not changed).
 
-## 二、探针
+## 2. Probe
 
-驱动 `r10-staging/run_r18c_probe.py`;池 2_133(已消耗池,同种子配对);工人 7e31dc54;经理 = 资源教练 coach-v03;
-经济 sustain-loot-v1;解码 sample;两臂:(e-long) retreat-v1 + r18c;(d′-long) 对照 + r18c。
-每局物理上限 12000 + 9000 = 21000 拍。
+Driver `r10-staging/run_r18c_probe.py` (not published); pool 2_133 (a consumed pool, same-seed pairs); worker 7e31dc54; manager = the resource coach coach-v03;
+economy sustain-loot-v1; decoding: sample; two arms: (e-long) retreat-v1 + r18c; (d′-long) control + r18c.
+The physical cap per game is 12000 + 9000 = 21000 ticks.
 
-### 只报不判的项目(P1–P6)
+### Items reported, not judged (P1–P6)
 
-- P1 再下:撤退臂中"到达上层后再次下到 L2"的局数,及其中活到钟响的局数;
-- P2 深度:两臂最大主线深度分布(L3+ 到达数);
-- P3 存活:配对 saved − lost 与单侧 UCB95(与 T0″ 同法),另报 fd+9000 与 fd+1800 两个口径;
-- P4 暴露:L2 每千拍风险率、L2 总拍;
-- P5 循环:每局成功撤退次数直方图,二次尝试次数与其成功率;
-- P6 前缀同一性:(d′-long) 每局首降拍必须与 T0″ 对照臂逐局相同(同种子、同到达截止 → 首降前轨迹应逐位一致);
-  不同则本探针 VOID。
+- P1 descending again: the number of games in the retreat arm that "go down to L2 again after reaching the upper level", and how many of them survive until the clock runs out;
+- P2 depth: the maximum main-line depth distribution of both arms (number of L3+ arrivals);
+- P3 survival: paired saved − lost and the one-sided UCB95 (same method as T0″), also reported under the fd+9000 and fd+1800 definitions;
+- P4 exposure: L2 hazard per 1000 ticks, total L2 ticks;
+- P5 cycles: histogram of successful retreats per game, the number of second attempts and their success rate;
+- P6 prefix identity: the first-descent tick of every (d′-long) game must match the T0″ control arm game by game (same seeds and arrival deadline → trajectories before the first descent should be bit-identical);
+  otherwise this probe is VOID.
 
-本探针不是训练发射闸门;它的产出是 R18-B 训练臂应该奖励什么(再下?深度?存活?)的证据。
-**任何阈值(撤退法 50%/75%、观察窗 9000)本夜不改;改即新预注册。**
+This probe is not a training launch gate; its output is evidence of what the R18-B training arm should reward (descending again? depth? survival?).
+**No threshold (retreat rule 50%/75%, observation window 9000) changes in this round; a change means a new pre-registration.**
 
-## 三、认证链(发射前)
+## 3. Certification chain (before launch)
 
-全套件 pytest 0 失败(含 `tests/test_completion_r18c.py`);探针回归 33023de1… 相等;双向重烤 4/4 + 4/4(镜像根已刷新);
-Opus 三镜审阅(同一性 / 新路径 / 实验设计)无未反驳的 blocker;本文件 sha256 记入台账。
+Full pytest suite with 0 failures (including `tests/test_completion_r18c.py`); probe regression 33023de1… equal; two-way re-bake 4/4 + 4/4 (mirror root refreshed);
+a three-lens review (identity / new path / experiment design) with no unrefuted blocker; the sha256 of this file recorded in the ledger.
 
-## 四、种子与文件
+## 4. Seeds and files
 
-2_133 再消耗 2 组(累计 10 组);处女池零接触。新文件:本预注册、`run_r18c_probe.py`、`tests/test_completion_r18c.py`、`r18c-probe/`。
-改前副本:`~/r17_work/r18/{completion_clock,options_env}.py.pre-r18c`。
+2_133 consumes 2 more groups (10 in total); the virgin pools are untouched. New files: this pre-registration, `run_r18c_probe.py` and `r18c-probe/` (not published), `tests/test_completion_r18c.py`.
+Pre-change copies of `completion_clock.py` and `options_env.py` were kept in a local work directory (not published).

@@ -1,8 +1,8 @@
-"""DiabloGym v1 训练:PPO 学清地牢 1 层。
+"""DiabloGym v1 training: PPO learns to clear dungeon level 1.
 
-用法(仓库根目录):
+Usage (from the repo root):
   .venv/bin/python train/train_ppo.py --total-steps 2998272 --num-envs 4
-  (指标落盘到 runs/<run>/progress.jsonl + status.json,dashboard.py 实时读取)
+  (metrics are written to runs/<run>/progress.jsonl + status.json and read live by dashboard.py)
 """
 
 from __future__ import annotations
@@ -44,8 +44,8 @@ _POLICY_HEAD_KEYS = (
 )
 _RUN_ARTIFACTS = (
     "progress.jsonl", "status.json", "status.tmp.json", "sentinel.jsonl", "calib.jsonl",
-    # 发射夜审计 A 修:三件新仪表档系追加写("a" 模式),不入列则同名重跑
-    # 残留堆积,课程腿第二发腿终全表复核必假判 CASE_HALT_G0(G0-2a 16:55:51 同因)。
+    # Launch audit fix A: the three new gauge files are append-only ("a" mode); if they are not listed, a rerun under the same name
+    # accumulates leftovers, and the course leg's second end-of-leg full-table review falsely rules CASE_HALT_G0 (same cause as the G0-2a incident).
     "dry_curriculum.jsonl", "distill_ce_probe.jsonl", "drywin_metrics.jsonl",
     "bc_aux_monitor.jsonl", "bc_aux_behavior_receipt.json",
     "bc_aux_liveness_preflight.json",
@@ -57,28 +57,28 @@ _ARTIFACT_SCOPE_RESULTS = {
     "candidate": ("model_candidate.zip", "PRODUCTION_CANDIDATE"),
     "production": ("model_final.zip", "PUBLISHED"),
 }
-_GEAR_PRESENT_INDEX = 293  # base obs zero-based; 文档中的“第 294 维”
-# 训练契约修订号单一真源。rev7 把此前只写进易丢运行配置的
-# distill_beta / teacher_sha256 / calib_record_only 纳入 checkpoint 契约，
-# 并登记 active bc_aux 是否携 liveness。否则 beta=0 或只记不裁的腿也能
-# 伪装成同一正式目标。
-# rev10 把有害的固定 argmax circuit 改为策略分布内的精确 5% mixture；
-# rev11 修掉其“随机探索存在、确定性部署永远不可达”的致命错位：四个稳定
-# raw 战斗特征 + bias 组成 5 参数 contextual gate，仍在同一精确 mixture
-# 分布中训练，且发布前必须证明确定性 a12 跨多个 held-out episode 可达。
-# rev12 撤销最后这条确定性动作配额：是否在 argmax 下喝药由 PPO 的战斗
-# 回报自主裁决；发布仍要求原生认证的探索样本、低误饮、低漂移与资源安全，
-# 实际战力则交给独立 paired efficacy 门。
-# rev13 把 WorkerWindowEnv 的跨窗口终局信用与附加死亡成本纳入不可省略的
-# 训练契约。旧实现把冻结 manager/script 期间发生的真实死亡只写审计账，
-# PPO 收到 0；同时 FARM 内死亡与快进死亡若另加风险成本又很容易重复计罚。
-# 两个旋钮必须由环境逐 transition 出具分账，默认值保持 rev12 逐位语义。
-# rev14 显式绑定 Worker 策略看到 raw protocol-v4 还是 legacy protocol-v3
-# 观测，但当时所谓 legacy 只解码 286/297；v4 已经在更早的怪物/地图/物品
-# 列丢掉信息，旧 actor 仍然 OOD。rev15 要求环境在 lossless raw 边界重建
-# 完整 v3 base。普通 actor 收 exact legacy-v3；A12 custom 收
-# legacy-v3-a12-overlay（只把可逆的 packed belt/latch 覆盖回 286/297），
-# 其继承 actor/value 在内部解码后也恰为完整 v3。
+_GEAR_PRESENT_INDEX = 293  # base obs zero-based; "dimension 294" in the docs
+# Single source of truth for the training contract revision number. rev7 moved distill_beta / teacher_sha256 /
+# calib_record_only, previously written only into the easily lost run config, into the checkpoint contract,
+# and registers whether an active bc_aux carries liveness. Otherwise a leg with beta=0 or record-only (no verdict) could
+# masquerade as the same formal target.
+# rev10 replaced the harmful fixed argmax circuit with an exact 5% mixture inside the policy distribution;
+# rev11 fixed its fatal misalignment of "random exploration exists, deterministic deployment never reachable": four stable
+# raw combat features + a bias form a 5-parameter contextual gate, still trained in the same exact mixture
+# distribution, and before release it must prove that deterministic a12 is reachable across several held-out episodes.
+# rev12 withdrew that last deterministic action quota: whether to drink under argmax is decided autonomously by PPO's combat
+# return; release still requires natively certified exploration samples, low false drinking, low drift and resource safety,
+# and actual combat strength is left to the independent paired efficacy gate.
+# rev13 made the WorkerWindowEnv cross-window terminal credit and additional death cost a non-omittable part of the
+# training contract. The old implementation wrote real deaths during frozen manager/script time only to the audit ledger,
+# and PPO received 0; meanwhile adding a risk cost to deaths inside FARM and during fast-forward easily double-penalised.
+# Both knobs must be itemised by the environment per transition; the defaults keep rev12 semantics bit for bit.
+# rev14 explicitly binds whether the Worker policy sees raw protocol-v4 or legacy protocol-v3
+# observations, but the so-called legacy then only decoded 286/297; v4 had already lost information in the earlier monster/map/item
+# columns, so the old actor was still OOD. rev15 requires the environment to rebuild the full v3 base at the lossless raw
+# boundary. The ordinary actor receives exact legacy-v3; the A12 custom actor receives
+# legacy-v3-a12-overlay (only the reversible packed belt/latch is overlaid back onto 286/297),
+# and its inherited actor/value also decode internally to exactly the full v3.
 # rev16 closes the optimization target itself: real base-game termination and
 # cross-window bootstrap are named, manager view is explicit, and main-PPO
 # gradient clipping records whether actor/critic are independently bounded.
@@ -115,7 +115,7 @@ _CONTRACT_REVISION = 26
 _REGISTERED_DUAL_WORKER_PG_AUDIT_SCHEMAS = types.MappingProxyType({
     24: "diablogym-worker-onpolicy-pg/8",
     25: "diablogym-worker-onpolicy-pg/9",
-    # A4(2026-07-27):KL 早停豁免旗入回执,audit schema /10,契约升 rev26。
+    # A4 (2026-07-27): KL early-stop exemption flag added to the receipt, audit schema /10, contract bumped to rev26.
     26: "diablogym-worker-onpolicy-pg/10",
 })
 _POLICY_SOURCE_ROLES_SCHEMA = "diablogym-policy-source-roles/1"
@@ -128,19 +128,19 @@ _WORKER_NO_PROGRESS_TIMEOUT_CONTRACT = {
         "death-ladder-base-plus-additional-terminal-death-cost"
     ),
 }
-# R16 修宪接线常量:CLI 默认值即"未启用"(契约恒写 None)。
-# farm_scene_cap 默认镜像 diablogym.options_env.FARM_SCENE_CAP(=1800);
-# no_progress_timeout_credit 默认 death-equivalent = 旧法(停滞超时按
-# 死亡等价计账),zero = R16 新记账口径(语义由 worker_env 侧实现)。
+# R16 amendment wiring constants: the CLI default means "not enabled" (the contract always writes None).
+# farm_scene_cap defaults to a mirror of diablogym.options_env.FARM_SCENE_CAP (=1800);
+# no_progress_timeout_credit defaults to death-equivalent = the old rule (a stall timeout is booked
+# as death-equivalent), zero = the new R16 booking definition (semantics implemented on the worker_env side).
 _FARM_SCENE_CAP_DEFAULT = 1800
 _WORKER_NO_PROGRESS_TIMEOUT_CREDIT_DEFAULT = "death-equivalent"
 _WORKER_NO_PROGRESS_TIMEOUT_CREDITS = ("death-equivalent", "zero")
 _WORKER_VIEW_LEGACY_V3 = "legacy-v3"
 _WORKER_VIEW_A12_OVERLAY = "legacy-v3-a12-overlay"
 _WORKER_VIEW_DUAL_V4_ASYMMETRIC = "dual-v4-asymmetric-v3"
-# R13 教室改革:v5 = v4 逐位前缀 + 12 维窗口模式追加块(见 options_env)。
+# R13 classroom reform: v5 = v4 bit-for-bit prefix + a 12-dim window-mode append block (see options_env).
 _WORKER_VIEW_DUAL_V5_WINDOW_MODE = "dual-v5-window-mode-v1"
-# dual 家族视图共用 asymmetric policy class 与 dual 续训分类机器。
+# dual-family views share the asymmetric policy class and the dual continuation-classification machinery.
 _WORKER_DUAL_VIEWS = frozenset({
     _WORKER_VIEW_DUAL_V4_ASYMMETRIC,
     _WORKER_VIEW_DUAL_V5_WINDOW_MODE,
@@ -205,37 +205,37 @@ _WORKER_BC_FORBIDDEN_ACTIONS = (11, 12)
 _WORKER_BC_REQUIRED_RECALL_ACTIONS = (14,)
 _WORKER_BC_MIN_ACTION14_LABELS = 64
 _WORKER_BC_MIN_ACTION14_EPISODES = 16
-# E3 ④乙:禁采断言世代条件化(图纸 E2 共同真源)——v1 禁 (11,12) 原封(上行),
-# v2 禁 11 允 12(守卫面不弱化)。
+# E3 4B: forbidden-action assertion conditioned on generation (shared source of truth with design E2) -- v1 forbids (11,12) unchanged (line above),
+# v2 forbids 11, allows 12 (guard surface not weakened).
 _WORKER_BC_V2_FORBIDDEN_ACTIONS = (11,)
-# E3 ④乙:λ_bc 主案冻结常量(D7 注册裁量,与蒸馏锚 β=0.015625 同量级);
-# 系 L-full CLI 显传值之文档/测试锚,非 --bc-aux-lambda 默认值(默认 0.0=不在位)。
+# E3 4B: frozen main-case λ_bc constant (registered discretion in D7, same order of magnitude as the distillation anchor β=0.015625);
+# it is the documentation/test anchor for the value passed explicitly on the L-full CLI, not the --bc-aux-lambda default (default 0.0 = absent).
 _BC_AUX_MAIN_LAMBDA = 0.015625
-# v33 修复版辅助目标。旧目标只保留 y==12 的 199 个正例，并在每个 PPO
-# minibatch 重放，实测会把策略推成“m[12] 合法便几乎总喝”。rev2 同时钉死
-# 数据面、损失面与消费频率，写入 training_contract，禁止旧 rev5 检查点把
-# positive-only 语义静默带进新腿。
-# rev3 进一步把辅助 bank 限定在 BC-v2 的 training episodes；原始 held-out
-# episodes 只服务最终发布门，禁止正例/负例直接泄漏进优化器后再冒充独立验收。
-# rev4 把负例 KL/rollout monitor 的锚从“每腿起点”改为首次 aux 根策略，
-# 并随 checkpoint 持久化；禁止 continuation 逐腿重锚后累积漂移。
-# rev5 把每 rollout 一次辅助更新从首个 PPO minibatch 的联合裁剪中拆出，
-# 在 PPO epochs 后走独立 optimizer step；生产与 liveness 预检共用同一
-# zero_grad/backward/clip/step 原子路径，避免纯 aux 预检系统性高估可学性。
-# rev6 证明了结构路径可无损安装，却也给出了决定性的线上反证：把教师
-# hp-band 目标冻结成 argmax 并不会增强战力，只会把成功的脑干反射提前，
-# 16 局死亡完全不变且收益下降。rev7 因而把教师降格为训练期探索先验：
-# actor 无损扩为 68，新增列只承载一个专用概率标量。rev8 修掉 rev7 最后
-# 一个尾部漏洞：单一 raw-logit 权重无法在异质状态上同时做到“平均 5%”
-# 和“从不成为 argmax”。现在在策略分布层精确定义
-# π'(12)=ε, π'(a≠12)=(1−ε)π_non12(a)，rollout 与 evaluate_actions 共用；
-# ε=.05 时 top non12≥.95/14>.05，故逐状态构造性不成 argmax。但 rev8
-# 把 ε 封顶 0.25，真实 V28 eligible 状态确定性切换阈值却是 0.327..0.499；
-# 训练能采到 a12、正式 deterministic eval 仍一次不会喝。rev9 以四个稳定
-# raw 特征(HP、怪物密度、最近怪距离、腰带经济)+bias 学 ε(s)，概率上限
-# 0.95，硬谓词外仍精确为 0；五个参数不向旧 actor 反传。rev10 不再把
-# 教师式 deterministic a12 配额混入发布：PPO 可学会或拒绝该动作，最终
-# 效力只由 paired 战力门裁决。
+# v33 fixed auxiliary objective. The old objective kept only the 199 positives with y==12 and replayed them in every PPO
+# minibatch, which measurably pushed the policy to "drink almost always whenever m[12] is legal". rev2 pins down
+# the data surface, loss surface and consumption frequency together and writes them into training_contract, forbidding old rev5 checkpoints from
+# silently carrying positive-only semantics into a new leg.
+# rev3 further restricts the auxiliary bank to BC-v2 training episodes; the original held-out
+# episodes serve only the final release gate, forbidding positives/negatives from leaking into the optimizer and then posing as independent acceptance.
+# rev4 moved the anchor of the negative KL/rollout monitor from "each leg's starting point" to the first aux root policy,
+# persisted with the checkpoint; this forbids continuations from re-anchoring per leg and accumulating drift.
+# rev5 split the once-per-rollout auxiliary update out of the joint clipping of the first PPO minibatch,
+# running it as a standalone optimizer step after the PPO epochs; production and the liveness preflight share the same
+# zero_grad/backward/clip/step atomic path, so a pure-aux preflight cannot systematically overestimate learnability.
+# rev6 proved the structural path can be installed losslessly, but also produced a decisive online counter-proof: freezing the teacher's
+# hp-band target into argmax does not add combat strength, it only moves the successful brainstem reflex earlier;
+# the 16 episodes' deaths were completely unchanged and returns fell. rev7 therefore demoted the teacher to a training-time exploration prior:
+# the actor is widened losslessly to 68, and the new column carries only one dedicated probability scalar. rev8 fixed rev7's last
+# tail hole: a single raw-logit weight cannot achieve both "5% on average" and "never the argmax"
+# across heterogeneous states. The policy distribution layer now defines exactly
+# π'(12)=ε, π'(a≠12)=(1−ε)π_non12(a), shared by rollout and evaluate_actions;
+# with ε=.05, top non12 >= .95/14 > .05, so it is never the argmax in any state by construction. But rev8
+# capped ε at 0.25, while the real deterministic switching threshold of V28 eligible states is 0.327..0.499;
+# training could sample a12, yet the formal deterministic eval would never drink once. rev9 learns ε(s) from four stable
+# raw features (HP, monster density, nearest-monster distance, belt economy) + bias, probability cap
+# 0.95, still exactly 0 outside the hard predicate; the five parameters do not backpropagate into the old actor. rev10 no longer mixes
+# a teacher-style deterministic a12 quota into release: PPO may learn or refuse the action, and the final
+# efficacy is decided only by the paired combat-strength gate.
 _BC_AUX_OBJECTIVE_REVISION = 11
 _BC_AUX_CIRCUIT_SCHEMA = "a12-onpolicy-contextual-mixture-adapter/1"
 _BC_AUX_CIRCUIT_BASE_WIDTH = 64
@@ -260,9 +260,9 @@ _BC_AUX_MIN_EXPECTED_A12_SAMPLES = 20.0
 _BC_AUX_MIN_ACTUAL_A12_SAMPLES = 10
 _BC_AUX_NEGATIVE_RATIO = 8
 _BC_AUX_MIN_NEGATIVE_RATIO = 3
-# feature297<0 且 m12=False 的非 12 行证明“同窗已饮”可见闩确实关闭了
-# worker-owned 饮药键。rev8 mixture 在谓词外构造性给 p12=0，因此这些行
-# 用作三域接口/掩码证据，不再伪装成可送进动作12 BCE 的 legal negative。
+# Non-12 rows with feature297<0 and m12=False prove that the visible "already drank this window" latch really closed the
+# worker-owned drink key. The rev8 mixture gives p12=0 by construction outside the predicate, so these rows
+# serve as three-domain interface/mask evidence and no longer pose as legal negatives fit for the action-12 BCE.
 _BC_AUX_MIN_POST_DRINK_NEGATIVE_RATIO = 1
 _BC_AUX_UPDATE_EVERY = 1
 _BC_AUX_POSITIVE_FRACTION = 0.25
@@ -283,10 +283,10 @@ if (
     or set(_BC_V2_COLLECTION_EPISODES) & _BURNED_BC_EPISODES
     or set(_WORKER_BC_DEMO_SEEDS) & set(_BC_V2_COLLECTION_EPISODES)
 ):
-    raise RuntimeError("active BC fresh seed registries 与已查看/彼此的池发生重叠")
+    raise RuntimeError("active BC fresh seed registries overlap with already-viewed pools/each other")
 _BC_V2_N12_MIN = 122
-# BC-v2 producer/consumer 共同真源。bc_worker 反向从本模块导入，训练入口
-# 则直接用同一常量重算三域回执，避免双份 schema/切分静默漂移。
+# Shared source of truth for the BC-v2 producer/consumer. bc_worker imports from this module in reverse, and the training entry point
+# recomputes the three-domain receipt directly with the same constants, so no duplicate schema/split can drift silently.
 _A12_CALIBRATION_SCHEMA_VERSION = "a12-teacher-boundary/3"
 _A12_CALIBRATION_HP_FEATURE = 0
 _A12_CALIBRATION_DRINK_LATCH_FEATURE = 297
@@ -304,12 +304,12 @@ _BC_FINAL_HOLDOUT_POOL_SCHEMA = "bc-final-holdout-pool/1"
 _BC_FINAL_HOLDOUT_MARKER_SCHEMA = "bc-final-holdout-consumption/2"
 _BC_SELECTION_VALIDATION_FRACTION = 0.10
 _BC_SELECTION_SPLIT_SEED = 2301
-# BC-v2 / smoke 共用的行为硬门。门限都在原始 held-out 分布上计算，不在
-# 1:8 富集训练 bank 上计算；分母和真实逐样本 masks 一并入回执。
+# Behaviour hard gates shared by BC-v2 / smoke. All thresholds are computed on the original held-out distribution, not on
+# the 1:8 enriched training bank; denominators and the real per-sample masks go into the receipt together.
 _A12_PRECISION_MIN = 0.05
 _A12_RECALL_MIN = 0.50
-# BC-v2 教师本身比后续 PPO 发布门更严格；bc_worker 从这里导入，
-# 避免专用 0.5 门再次被通用“≥300 类 recall≥0.85”隐式覆盖。
+# The BC-v2 teacher itself is stricter than the later PPO release gate; bc_worker imports from here,
+# so its dedicated 0.5 gate cannot again be overridden implicitly by the generic ">=300-class recall>=0.85".
 _BC_V2_TEACHER_RECALL_MIN = 0.50
 _A12_FPR_MAX = 0.002
 _A12_PREDICTED_SHARE_MIN = 0.00005
@@ -318,8 +318,8 @@ _A12_HIGH_HP_FALSE_DRINK_MAX = 0.001
 _A12_LEGAL_NEGATIVE_PROBABILITY_MEAN_MAX = 1e-4
 _A12_LEGAL_NEGATIVE_PROBABILITY_MAX = 1e-3
 _A13_SPILLOVER_MAX = 0.02
-# 最终发布相对“首次挂载 bc_aux 的根策略”而非每腿起点裁漂移。否则每腿
-# 各退 15% 可在若干 continuation 后累积毁掉战斗/探索而逐腿全部 PASS。
+# The final release judges drift against "the root policy at the first bc_aux mount", not each leg's starting point. Otherwise each leg
+# could lose 15% and, after several continuations, accumulate enough to wreck combat/exploration while every leg PASSes.
 _BC_AUX_ROOT_ARGMAX_DRIFT_MAX = 0.20
 _BC_AUX_ROOT_TV_MAX = 0.15
 _BC_AUX_ROOT_KL_MAX = 0.25
@@ -356,15 +356,15 @@ _BC_V2_PASS_KEYS = frozenset({
     "demos_sha256", "final_pool_sha256",
     "final_holdout_marker_sha256",
 })
-# 历史 v3 driver 的兼容符号；当前训练路径绝不再把它当作真值。协议 v4
-# 改变 Worker/掩码/窗口语义，BC-v1 必须重采，探针身份改由当前
-# protocol+implementation 严格 PASS 回执的 demos_sha256 动态绑定。
+# Compatibility symbol for the historical v3 driver; the current training path never treats it as truth. Protocol v4
+# changed the Worker/mask/window semantics, BC-v1 must be re-collected, and the probe identity is now bound dynamically to the
+# demos_sha256 of the strict PASS receipt of the current protocol+implementation.
 _BC_V1_DEMOS_SHA256 = (
     "3bf892d611e41853eca8fce0cb146753af41ad2c3a21b6c581df1041fb1d9363")
-# E5 探针专用 rng 种子(承 DryAnchorSentinel rng(26) 先例,孪生件同形;
-# 只读探针自有流,不碰训练 RNG)。
+# Dedicated rng seed of the E5 probe (following the DryAnchorSentinel rng(26) precedent, same shape as its twin;
+# the read-only probe owns its stream and never touches the training RNG).
 _E5_PROBE_RNG_SEED = 26
-# E5 探针示范态每组抽样上限(承 DryAnchorSentinel 固定抽 2000 先例)。
+# Per-group sampling cap for E5 probe demo states (following the DryAnchorSentinel fixed-2000 precedent).
 _E5_PROBE_GROUP_CAP = 2000
 _BC_REPLAY_SEEDS = tuple(range(7000, 7032))
 _BC_REPLAY_CACHE: dict[tuple[str, str, str, str], dict] = {}
@@ -392,7 +392,7 @@ _BC_PASS_KEYS = {
 
 
 def _require(condition: bool, message: str) -> None:
-    """训练契约不能用 assert：`python -O` 会把 assert 整段删掉。"""
+    """Training contracts cannot use assert: `python -O` strips asserts entirely."""
     if not condition:
         raise ValueError(message)
 
@@ -413,10 +413,10 @@ def _masked_action_or_first_legal(
     valid = np.asarray(mask, dtype=bool)
     _require(
         valid.shape == (n_actions,),
-        f"{label} 动作掩码形状异常:{valid.shape} != {(n_actions,)}",
+        f"{label} action mask shape invalid: {valid.shape} != {(n_actions,)}",
     )
     legal = np.flatnonzero(valid)
-    _require(len(legal) > 0, f"{label} 动作掩码全假")
+    _require(len(legal) > 0, f"{label} action mask is all False")
     if (
         isinstance(requested, (int, np.integer))
         and not isinstance(requested, (bool, np.bool_))
@@ -438,9 +438,9 @@ def _is_sha256(value) -> bool:
 
 def _finite_number(value, label: str) -> float:
     _require(isinstance(value, (int, float)) and not isinstance(value, bool),
-             f"{label} 必须是数值")
+             f"{label} must be numeric")
     result = float(value)
-    _require(math.isfinite(result), f"{label} 必须有限")
+    _require(math.isfinite(result), f"{label} must be finite")
     return result
 
 
@@ -456,13 +456,13 @@ def _requested_drink_sovereignty(args) -> bool | None:
         requested = getattr(args, "drink_sovereignty")
         _require(
             requested is None or isinstance(requested, bool),
-            "drink_sovereignty 请求必须是 bool 或 None",
+            "drink_sovereignty request must be a bool or None",
         )
         return requested
     legacy_disabled = getattr(args, "no_drink_sovereignty", False)
     _require(
         isinstance(legacy_disabled, bool),
-        "no_drink_sovereignty 兼容字段必须是 bool",
+        "no_drink_sovereignty compatibility field must be a bool",
     )
     return not legacy_disabled
 
@@ -473,7 +473,7 @@ def _effective_drink_sovereignty(args) -> bool:
         resolved = getattr(args, "resolved_drink_sovereignty")
         _require(
             isinstance(resolved, bool),
-            "resolved_drink_sovereignty 必须是 bool",
+            "resolved_drink_sovereignty must be a bool",
         )
         return resolved
     requested = _requested_drink_sovereignty(args)
@@ -485,35 +485,35 @@ def _effective_drink_sovereignty(args) -> bool:
 
 def _read_worker_zip_contract(
         path: str | pathlib.Path, *, expected_sha256: str | None = None) -> dict:
-    """R9:读取 SB3 zip 内嵌 diablogym_contract(不 import torch,不建策略)。
+    """R9: read the diablogym_contract embedded in an SB3 zip (no torch import, no policy built).
 
-    认证发布件的部署契约是 action12/观测视图的单一真源;主进程在任何
-    VecEnv 子进程载入之前先从同一字节串解析并锁定它。
+    The deployment contract of a certified release artifact is the single source of truth for action12/observation view; the main process parses and
+    locks it from the same byte string before any VecEnv subprocess loads.
     """
     try:
         payload = pathlib.Path(path).read_bytes()
     except OSError as exc:
-        raise ValueError(f"worker zip 不可读: {path}: {exc}") from exc
+        raise ValueError(f"worker zip unreadable: {path}: {exc}") from exc
     if expected_sha256 is not None:
         actual = hashlib.sha256(payload).hexdigest()
         _require(actual == expected_sha256,
-                 f"worker zip SHA256 漂移: {actual} != {expected_sha256}")
+                 f"worker zip SHA256 drift: {actual} != {expected_sha256}")
     try:
         with zipfile.ZipFile(io.BytesIO(payload)) as archive:
             data = json.loads(archive.read("data"))
     except (KeyError, TypeError, ValueError, zipfile.BadZipFile, OSError) as exc:
-        raise ValueError(f"worker zip 不是可解析 SB3 checkpoint: {path}: {exc}") from exc
+        raise ValueError(f"worker zip is not a parseable SB3 checkpoint: {path}: {exc}") from exc
     contract = data.get("diablogym_contract")
     _require(isinstance(contract, dict),
-             "--worker-zip 必须携 diablogym_contract(认证发布件训练契约)")
+             "--worker-zip must carry a diablogym_contract (training contract of a certified release artifact)")
     _require(contract.get("contract_revision") == 26,
-             "--worker-zip 训练契约 contract_revision 必须为 26,"
-             f"收到 {contract.get('contract_revision')!r}")
+             "--worker-zip training contract contract_revision must be 26, "
+             f"got {contract.get('contract_revision')!r}")
     view = contract.get("worker_policy_observation_view")
     _require(isinstance(view, str) and bool(view),
-             "--worker-zip 契约缺 worker_policy_observation_view")
+             "--worker-zip contract is missing worker_policy_observation_view")
     _require(isinstance(contract.get("drink_sovereignty"), bool),
-             "--worker-zip 契约缺 bool drink_sovereignty")
+             "--worker-zip contract is missing bool drink_sovereignty")
     return contract
 
 
@@ -524,18 +524,18 @@ def _resolve_training_drink_sovereignty(
     requested = _requested_drink_sovereignty(args)
     worker_zip = getattr(args, "worker_zip", None)
     if getattr(args, "options", False) and worker_zip:
-        # R9:zip 工人分支——rev26 认证契约是 action12 单一真源
-        # (认证发布件 drink_sovereignty=False → 恒掩)。
+        # R9: zip worker branch -- the rev26 certified contract is the single source of truth for action12
+        # (certified release artifact drink_sovereignty=False -> always masked).
         _require(
             _is_sha256(worker_zip_sha256),
-            "Options Worker(zip) action12 解析必须绑定已捕获 zip SHA256",
+            "Options Worker (zip) action12 resolution must be bound to the captured zip SHA256",
         )
         contract = _read_worker_zip_contract(
             worker_zip, expected_sha256=worker_zip_sha256)
         derived = bool(contract["drink_sovereignty"])
         _require(
             requested is None or requested == derived,
-            "命令行 drink_sovereignty 与 --worker-zip 契约冲突:"
+            "command-line drink_sovereignty conflicts with the --worker-zip contract: "
             f"requested={requested},contract={derived}",
         )
         return derived
@@ -549,7 +549,7 @@ def _resolve_training_drink_sovereignty(
 
         _require(
             _is_sha256(worker_npz_sha256),
-            "Options Worker action12 解析必须绑定已捕获 NPZ SHA256",
+            "Options Worker action12 resolution must be bound to the captured NPZ SHA256",
         )
         net = NumpyManager(
             worker_npz, expected_sha256=worker_npz_sha256)
@@ -560,13 +560,13 @@ def _resolve_training_drink_sovereignty(
                 WORKER_ACTION12_ENVIRONMENT_MASK,
                 WORKER_ACTION12_PERMANENTLY_MASKED,
             },
-            f"Worker NPZ action12 mode 非法:{mode!r}",
+            f"Worker NPZ action12 mode invalid: {mode!r}",
         )
         derived = mode == WORKER_ACTION12_ENVIRONMENT_MASK
         _require(
             requested is None or requested == derived,
-            "命令行 drink_sovereignty 与 Worker NPZ action12 contract "
-            f"冲突:requested={requested},contract={mode!r}",
+            "command-line drink_sovereignty conflicts with the Worker NPZ action12 contract"
+            f": requested={requested},contract={mode!r}",
         )
         return derived
     return True if requested is None else requested
@@ -576,13 +576,13 @@ def _bc_final_holdout_pool_spec(generation: int, seeds) -> dict:
     """Canonical one-shot final-pool identity shared by producer/consumer."""
     _require(
         _is_plain_int(generation) and generation in (1, 2),
-        f"BC final heldout generation 非法:{generation!r}")
+        f"BC final heldout generation invalid: {generation!r}")
     raw_seeds = list(seeds)
     _require(
         bool(raw_seeds)
         and all(_is_plain_int(seed) for seed in raw_seeds)
         and len(raw_seeds) == len(set(raw_seeds)),
-        "BC final heldout seed registry 必须是非空无重复整数表")
+        "BC final heldout seed registry must be a non-empty table of unique integers")
     normalized = [int(seed) for seed in raw_seeds]
     return {
         # Pool identity must not change when the marker file format evolves.
@@ -638,9 +638,9 @@ def _assert_bc_final_holdout_pool_disjoint(
     from eval_contract import EvalContractError, strict_json_loads
 
     _require(registry.is_dir(),
-             f"BC final heldout registry 不是目录:{registry}")
+             f"BC final heldout registry is not a directory: {registry}")
     _require(not registry.is_symlink(),
-             f"BC final heldout registry 不允许符号链接:{registry}")
+             f"BC final heldout registry does not allow symbolic links: {registry}")
     entries = sorted(registry.iterdir())
     unexpected = [
         entry for entry in entries
@@ -648,13 +648,13 @@ def _assert_bc_final_holdout_pool_disjoint(
     ]
     _require(
         not unexpected,
-        "BC final heldout registry 含未知残件，无法证明未消费:"
+        "BC final heldout registry contains unknown leftovers; cannot prove it is unconsumed: "
         f"{unexpected}",
     )
     for lock in (entry for entry in entries
                  if entry.name == ".registry.lock"):
         _require(lock.is_file() and not lock.is_symlink(),
-                 f"BC final heldout registry lock 非普通文件:{lock}")
+                 f"BC final heldout registry lock is not a regular file: {lock}")
     marker_keys = {
         "schema_version",
         "teacher_generation",
@@ -670,12 +670,12 @@ def _assert_bc_final_holdout_pool_disjoint(
     }
     for existing in (entry for entry in entries if entry.suffix == ".json"):
         _require(existing.is_file() and not existing.is_symlink(),
-                 f"BC final heldout registry marker 非普通文件:{existing}")
+                 f"BC final heldout registry marker is not a regular file: {existing}")
         try:
             record = strict_json_loads(existing.read_bytes())
         except (OSError, EvalContractError) as exc:
             raise ValueError(
-                f"BC final heldout registry 旧 marker 不可解析:{existing}"
+                f"BC final heldout registry old marker unparseable: {existing}"
             ) from exc
         _require(
             isinstance(record, dict)
@@ -688,7 +688,7 @@ def _assert_bc_final_holdout_pool_disjoint(
                     for seed in record["episode_seeds"])
             and len(record["episode_seeds"])
             == len(set(record["episode_seeds"])),
-            f"BC final heldout registry 旧 marker pool 身份非法:{existing}",
+            f"BC final heldout registry old marker pool identity invalid: {existing}",
         )
         existing_spec, existing_pool_sha256 = (
             _bc_final_holdout_marker_identity(
@@ -709,12 +709,12 @@ def _assert_bc_final_holdout_pool_disjoint(
             and bool(record["provenance"])
             and record.get("consumption_stage")
             == "before_pool_collection",
-            f"BC final heldout registry 旧 marker 完整身份非法:{existing}",
+            f"BC final heldout registry old marker full identity invalid: {existing}",
         )
         overlap = requested.intersection(record["episode_seeds"])
         _require(
             not overlap,
-            "BC final heldout episode 与已消费 registry 部分/全部重叠:"
+            "BC final heldout episodes partially/fully overlap a consumed registry: "
             f"marker={existing},overlap={sorted(overlap)[:16]},"
             f"overlap_n={len(overlap)}",
         )
@@ -733,7 +733,7 @@ def _validate_bc_final_holdout_marker(
         record = strict_json_loads(marker_payload)
     except (OSError, EvalContractError) as exc:
         raise ValueError(
-            f"BC final heldout one-shot marker 缺失/不可读:{marker}") from exc
+            f"BC final heldout one-shot marker missing/unreadable: {marker}") from exc
     expected_keys = {
         *spec,
         "pool_sha256",
@@ -744,7 +744,7 @@ def _validate_bc_final_holdout_marker(
     }
     _require(
         isinstance(record, dict) and set(record) == expected_keys,
-        "BC final heldout marker 字段/schema 不精确")
+        "BC final heldout marker fields/schema not exact")
     _require(
         all(record[key] == value for key, value in spec.items())
         and record["pool_sha256"] == pool_sha256
@@ -753,7 +753,7 @@ def _validate_bc_final_holdout_marker(
         and _is_plain_int(record["started_at_ns"])
         and record["started_at_ns"] > 0
         and record["consumption_stage"] == "before_pool_collection",
-        "BC final heldout marker pool/时间/消费阶段身份不闭合")
+        "BC final heldout marker pool/time/consumption-stage identity does not close")
     _require(
         isinstance(expected_report, dict)
         and expected_report.get("final_pool_sha256") == pool_sha256
@@ -761,9 +761,9 @@ def _validate_bc_final_holdout_marker(
             expected_report.get("final_holdout_marker_sha256"))
         and expected_report["final_holdout_marker_sha256"]
         == hashlib.sha256(marker_payload).hexdigest(),
-        "BC PASS report 未精确绑定 final pool/marker 字节")
+        "BC PASS report not exactly bound to the final pool/marker bytes")
     provenance = record["provenance"]
-    _require(isinstance(provenance, dict), "BC final marker provenance 非对象")
+    _require(isinstance(provenance, dict), "BC final marker provenance is not an object")
     provenance_keys = {
         "schema_version",
         "protocol_version",
@@ -779,12 +779,12 @@ def _validate_bc_final_holdout_marker(
             provenance.get(key) == expected_report.get(key)
             for key in provenance_keys
         ),
-        "BC final heldout marker provenance 与 PASS report 不一致")
+        "BC final heldout marker provenance disagrees with the PASS report")
     return record
 
 
 def _checkpoint_path(path: str | pathlib.Path) -> pathlib.Path:
-    """按 SB3 规则容忍命令行省略 `.zip`。"""
+    """Tolerate an omitted `.zip` on the command line, following SB3 rules."""
     p = pathlib.Path(path)
     return p if p.exists() or p.suffix == ".zip" else pathlib.Path(f"{p}.zip")
 
@@ -794,7 +794,7 @@ def _capture_file_sha256(path: str | pathlib.Path, label: str) -> str:
     try:
         payload = p.read_bytes()
     except OSError as exc:
-        raise ValueError(f"{label} 不可读: {p}: {exc}") from exc
+        raise ValueError(f"{label} unreadable: {p}: {exc}") from exc
     return hashlib.sha256(payload).hexdigest()
 
 
@@ -861,7 +861,7 @@ def _implementation_bundle_sha256() -> str:
         for relative in _IMPLEMENTATION_SOURCE_FILES
     ]
     suffix = sysconfig.get_config_var("EXT_SUFFIX")
-    _require(bool(suffix), "当前 Python 没有 EXT_SUFFIX，无法绑定原生桥")
+    _require(bool(suffix), "this Python has no EXT_SUFFIX; cannot bind the native bridge")
     rel_paths.append(pathlib.Path("build") / f"_diablogym{suffix}")
 
     digest = hashlib.sha256()
@@ -870,7 +870,7 @@ def _implementation_bundle_sha256() -> str:
         try:
             payload = p.read_bytes()
         except OSError as exc:
-            raise ValueError(f"实现绑定文件不可读: {p}: {exc}") from exc
+            raise ValueError(f"implementation binding file unreadable: {p}: {exc}") from exc
         name = rel.as_posix().encode()
         digest.update(len(name).to_bytes(4, "big"))
         digest.update(name)
@@ -884,7 +884,7 @@ def _implementation_bundle_sha256() -> str:
     try:
         engine_payload = engine.read_bytes()
     except OSError as exc:
-        raise ValueError(f"实现绑定 engine 不可读: {engine}: {exc}") from exc
+        raise ValueError(f"implementation binding engine unreadable: {engine}: {exc}") from exc
     engine_label = b"native-engine"
     digest.update(len(engine_label).to_bytes(4, "big"))
     digest.update(engine_label)
@@ -926,14 +926,14 @@ def _validate_runtime_versions() -> None:
     from importlib.metadata import version
 
     actual = {name: version(name) for name in _RUNTIME_VERSIONS}
-    # 跨平台注记(2026-07-27 WSL2 移植):Linux 轮子带本地版本段(2.12.1+cpu),
-    # 门槛按公开版本段比对;身份记录仍存完整本地版本(同 eval_contract 修订)。
+    # Cross-platform note (2026-07-27 WSL2 port): Linux wheels carry a local version segment (2.12.1+cpu);
+    # the threshold compares the public version segment; the identity record still stores the full local version (same as the eval_contract revision).
     mismatches = {name: (actual[name], expected)
                   for name, expected in _RUNTIME_VERSIONS.items()
                   if actual[name] != expected
                   and actual[name].split("+", 1)[0] != expected}
     _require(not mismatches,
-             f"训练运行时版本漂移（升级须重做数值回归）: {mismatches}")
+             f"training runtime version drift (upgrades must redo the numeric regression): {mismatches}")
 
 
 def _validate_model_recipe(model, expected_target_kl=None) -> None:
@@ -971,7 +971,7 @@ def _validate_model_recipe(model, expected_target_kl=None) -> None:
             else not math.isclose(actual[key], expected, rel_tol=0, abs_tol=1e-12))
     }
     _require(not differences,
-             f"PPO 隐含算法配方漂移（foreign/resume checkpoint）: {differences}")
+             f"PPO implicit algorithm recipe drift (foreign/resume checkpoint): {differences}")
 
 
 def _worker_policy_observation_view(args) -> str | None:
@@ -994,7 +994,7 @@ def _root_context_critic_gradient_clipping(max_grad_norm: float) -> dict:
     value = float(max_grad_norm)
     _require(
         math.isfinite(value) and value > 0.0,
-        "root/context/critic gradient clipping 要求有限正 max_grad_norm",
+        "root/context/critic gradient clipping requires a finite positive max_grad_norm",
     )
     return {
         "mode": "separate-root-context-critic-v2",
@@ -1091,7 +1091,7 @@ def _validate_registered_dual_worker_contract(
         _REGISTERED_DUAL_WORKER_PG_AUDIT_SCHEMAS.get(
             expected_contract_revision)
         == expected_worker_onpolicy_pg_audit_schema,
-        "dual-v4 contract revision/PG audit schema 未注册或错配",
+        "dual-v4 contract revision/PG audit schema not registered or mismatched",
     )
     _validate_policy_source_roles(contract)
     evidence = (
@@ -1110,7 +1110,7 @@ def _validate_registered_dual_worker_contract(
         == DUAL_WORKER_LAYOUT.observation_dim
         and isinstance(evidence.get("policy"), dict)
         and isinstance(evidence.get("context"), dict),
-        "当前 asymmetric Worker runtime evidence 非法",
+        "current asymmetric Worker runtime evidence invalid",
     )
     policy = evidence["policy"]
     context = evidence["context"]
@@ -1127,7 +1127,7 @@ def _validate_registered_dual_worker_contract(
         == ASYMMETRIC_WORKER_FROZEN_CRITIC_PARAMETER_COUNT
         and policy.get("critic_tensor_count")
         == ASYMMETRIC_WORKER_FROZEN_CRITIC_TENSOR_COUNT,
-        "当前 asymmetric Worker 容量/张量拓扑漂移",
+        "current asymmetric Worker capacity/tensor topology drift",
     )
     actor_migration = (
         contract.get("actor_migration")
@@ -1153,7 +1153,7 @@ def _validate_registered_dual_worker_contract(
             rel_tol=0.0,
             abs_tol=1e-12,
         ),
-        "dual-v4 contract max_grad_norm 未绑定当前配方",
+        "dual-v4 contract max_grad_norm not bound to the current recipe",
     )
     expected_clipping = _root_context_critic_gradient_clipping(
         float(max_grad_norm))
@@ -1236,7 +1236,7 @@ def _validate_registered_dual_worker_contract(
             "worker_onpolicy_pg_min_optimizer_steps_per_joint_rollout")
         == WORKER_ONPOLICY_PG_MIN_OPTIMIZER_STEPS_PER_JOINT_ROLLOUT
         and contract.get("gradient_clipping") == expected_clipping,
-        f"checkpoint 不是完整注册的 rev{expected_contract_revision} "
+        f"checkpoint is not a fully registered rev{expected_contract_revision} "
         "dual-v4 Worker",
     )
     return evidence
@@ -1269,32 +1269,32 @@ def _classify_dual_worker_resume(args, resume_data: dict) -> str | None:
             not in _WORKER_DUAL_VIEWS):
         return None
     _require(isinstance(resume_data, dict),
-             "dual-v4 resume checkpoint data 不是对象")
+             "dual-v4 resume checkpoint data is not an object")
     saved = resume_data.get("diablogym_contract")
     reset_critic = bool(getattr(args, "reset_worker_critic", False))
     allow_legacy = bool(getattr(args, "allow_legacy_resume", False))
     if saved is None:
         _require(
             reset_critic and allow_legacy,
-            "从 298 维旧 Worker 点火 dual-v4 必须同时显式 "
-            "--reset-worker-critic 与 --allow-legacy-resume",
+            "launching dual-v4 from a 298-dim old Worker requires both explicit "
+            "--reset-worker-critic and --allow-legacy-resume",
         )
         return _DUAL_LEGACY_ACTOR_MIGRATION
 
     _require(isinstance(saved, dict),
-             "dual-v4 checkpoint training_contract 不是对象")
+             "dual-v4 checkpoint training_contract is not an object")
     _require(
         not reset_critic and not allow_legacy,
-        "已有 dual-v4 training_contract 的 checkpoint 必须参数/优化器续接；"
-        "禁止重复 reset critic 或伪装 legacy migration",
+        "a checkpoint that already has a dual-v4 training_contract must continue parameters/optimizer; "
+        "repeated reset critic or disguised legacy migration is forbidden",
     )
     # Validate the complete architecture/optimizer ABI before classifying the
     # weaker environment-restart continuation operation.
     _validate_current_dual_worker_contract(saved)
     _require(
         bool(getattr(args, "allow_environment_restart_resume", False)),
-        "dual-v4 checkpoint 不含原生世界/包装器/RNG 状态；参数与 Adam "
-        "续接会从新环境轨迹重启。必须显式传 "
+        "dual-v4 checkpoint holds no native world/wrapper/RNG state; parameter and Adam "
+        "continuation restarts from new environment trajectories. Must pass "
         "--allow-environment-restart-resume",
     )
     return _DUAL_ENV_RESTART_CONTINUATION
@@ -1312,17 +1312,17 @@ def _build_resume_lineage(
             _DUAL_LEGACY_ACTOR_MIGRATION,
             _DUAL_ENV_RESTART_CONTINUATION,
         },
-        "resume lineage 输入非法",
+        "resume lineage input invalid",
     )
     parent_steps = resume_data.get("num_timesteps")
     _require(
         _is_plain_int(parent_steps) and parent_steps >= 0,
-        "resume lineage parent num_timesteps 非法",
+        "resume lineage parent num_timesteps invalid",
     )
     _require(
         seed is None
         or (_is_plain_int(seed) and 0 <= seed < 2**32),
-        "resume lineage seed 非法",
+        "resume lineage seed invalid",
     )
     previous = resume_data.get("_resume_lineage")
     if previous is None:
@@ -1333,7 +1333,7 @@ def _build_resume_lineage(
             and previous.get("schema") == _RESUME_LINEAGE_SCHEMA
             and _is_plain_int(previous.get("generation"))
             and previous["generation"] >= 1,
-            "resume checkpoint 的既有 lineage 非法",
+            "resume checkpoint existing lineage invalid",
         )
         generation = previous["generation"] + 1
     return {
@@ -1384,19 +1384,19 @@ def _validate_worker_policy_observation_binding(args, model) -> None:
             and policy_spec == expected_spec
             and getattr(model, "policy_class", None)
             is A12MixtureMaskableActorCriticPolicy,
-            "实际 A12 custom policy class/spec 未闭合",
+            "actual A12 custom policy class/spec not closed",
         )
     else:
         _require(
             model_spec is None and policy_spec is None
             and getattr(model, "policy_class", None)
             is not A12MixtureMaskableActorCriticPolicy,
-            "普通 Worker 携带残留 A12 class/spec",
+            "ordinary Worker carries a residual A12 class/spec",
         )
     expected_custom = _bc_aux_structural_active(args)
     _require(
         custom is expected_custom,
-        "CLI structural A12 配方与实际加载 policy class 不一致",
+        "CLI structural A12 recipe disagrees with the actually loaded policy class",
     )
     legacy_view = bool(getattr(
         args, "legacy_worker_policy_observation_view", False))
@@ -1417,12 +1417,12 @@ def _validate_worker_policy_observation_binding(args, model) -> None:
             and not asymmetric
             and selected_view == _WORKER_VIEW_LEGACY_V3
         ),
-        "实际 Worker policy class 与环境 observation view 不一致",
+        "actual Worker policy class disagrees with the environment observation view",
     )
     _require(
         asymmetric
         is (selected_view in _WORKER_DUAL_VIEWS),
-        "dual 家族观测与实际 asymmetric policy class 不一致",
+        "dual-family observation disagrees with the actual asymmetric policy class",
     )
     expected_action14_bonus = float(getattr(
         args, "worker_action14_logit_bonus", 0.0))
@@ -1444,9 +1444,9 @@ def _validate_worker_policy_observation_binding(args, model) -> None:
             and expected_action14_bonus == 0.0
             and actual_action14_bonus is None
         ),
-        "CLI action14 logit prior 与实际 Worker policy 不一致",
+        "CLI action14 logit prior disagrees with the actual Worker policy",
     )
-    # R13:a11 冷启动先验绑定(post-load 双写后核验,活体==CLI)。
+    # R13: a11 cold-start prior binding (checked after the post-load double write, live == CLI).
     expected_action11_bonus = float(getattr(
         args, "worker_dive_action11_logit_bonus", 0.0))
     actual_action11_bonus = getattr(
@@ -1463,9 +1463,9 @@ def _validate_worker_policy_observation_binding(args, model) -> None:
             not asymmetric
             and expected_action11_bonus == 0.0
         ),
-        "CLI action11 logit prior 与实际 Worker policy 不一致",
+        "CLI action11 logit prior disagrees with the actual Worker policy",
     )
-    # R16:a13 拾药先验绑定(post-load 双写后核验,活体==CLI;a11 同款)。
+    # R16: a13 potion-pickup prior binding (checked after the post-load double write, live == CLI; same as a11).
     expected_action13_bonus = float(getattr(
         args, "worker_potion_action13_logit_bonus", 0.0))
     actual_action13_bonus = getattr(
@@ -1482,19 +1482,19 @@ def _validate_worker_policy_observation_binding(args, model) -> None:
             not asymmetric
             and expected_action13_bonus == 0.0
         ),
-        "CLI action13 logit prior 与实际 Worker policy 不一致",
+        "CLI action13 logit prior disagrees with the actual Worker policy",
     )
     actor_migration = getattr(model, "_actor_migration_receipt", None)
     _require(
         (asymmetric and isinstance(actor_migration, dict))
         or (not asymmetric and actor_migration is None),
-        "asymmetric policy class 与 actor migration receipt 不一致",
+        "asymmetric policy class disagrees with the actor migration receipt",
     )
     expected_observation_dim = (
         ASYMMETRIC_WORKER_OBSERVATION_DIM if asymmetric else 298)
     _require(
         tuple(model.observation_space.shape) == (expected_observation_dim,),
-        "Worker policy class 与实际 observation space 形状不一致:"
+        "Worker policy class disagrees with the actual observation space shape: "
         f"{model.observation_space.shape} != ({expected_observation_dim},)",
     )
 
@@ -1503,7 +1503,7 @@ def _check_finite_tree(value, label: str) -> None:
     import torch
 
     if isinstance(value, torch.Tensor):
-        _require(torch.isfinite(value).all().item(), f"{label} 含 NaN/Inf")
+        _require(torch.isfinite(value).all().item(), f"{label} contains NaN/Inf")
     elif isinstance(value, dict):
         for key, child in value.items():
             _check_finite_tree(child, f"{label}.{key}")
@@ -1511,7 +1511,7 @@ def _check_finite_tree(value, label: str) -> None:
         for index, child in enumerate(value):
             _check_finite_tree(child, f"{label}[{index}]")
     elif isinstance(value, float):
-        _require(math.isfinite(value), f"{label} 含非有限标量")
+        _require(math.isfinite(value), f"{label} contains a non-finite scalar")
 
 
 def _validate_checkpoint_bytes(payload: bytes, label: str,
@@ -1522,17 +1522,17 @@ def _validate_checkpoint_bytes(payload: bytes, label: str,
     try:
         with zipfile.ZipFile(io.BytesIO(payload)) as archive:
             bad_member = archive.testzip()
-            _require(bad_member is None, f"checkpoint CRC 失败: {bad_member}")
+            _require(bad_member is None, f"checkpoint CRC failed: {bad_member}")
             member_names = archive.namelist()
             _require(len(member_names) == len(set(member_names)),
-                     f"checkpoint 含重复 ZIP 成员: {label}")
+                     f"checkpoint contains duplicate ZIP members: {label}")
             names = set(member_names)
             _require({"data", "policy.pth", "policy.optimizer.pth"} <= names,
-                     f"checkpoint 缺关键成员: {label}")
+                     f"checkpoint is missing key members: {label}")
             data = json.loads(archive.read("data"))
             saved_sb3 = archive.read("_stable_baselines3_version").decode().strip()
             _require(saved_sb3 == _RUNTIME_VERSIONS["stable-baselines3"],
-                     f"checkpoint SB3 版本 {saved_sb3} 与运行时配方不符")
+                     f"checkpoint SB3 version {saved_sb3} does not match the runtime recipe")
             for name in sorted(n for n in names if n.endswith(".pth")):
                 state = torch.load(io.BytesIO(archive.read(name)), map_location="cpu",
                                    weights_only=True)
@@ -1541,17 +1541,17 @@ def _validate_checkpoint_bytes(payload: bytes, label: str,
             json.JSONDecodeError) as exc:
         if isinstance(exc, ValueError) and str(exc).startswith("checkpoint"):
             raise
-        raise ValueError(f"checkpoint 不可读/不安全: {label}: {exc}") from exc
-    _require(isinstance(data, dict), f"checkpoint data 不是对象: {label}")
+        raise ValueError(f"checkpoint unreadable/unsafe: {label}: {exc}") from exc
+    _require(isinstance(data, dict), f"checkpoint data is not an object: {label}")
     try:
         steps = data["num_timesteps"]
     except KeyError as exc:
-        raise ValueError("checkpoint num_timesteps 缺失/非法") from exc
+        raise ValueError("checkpoint num_timesteps missing/invalid") from exc
     _require(_is_plain_int(steps) and steps >= 0,
-             "checkpoint num_timesteps 必须是非负普通整数")
+             "checkpoint num_timesteps must be a non-negative plain integer")
     if require_leashed:
         _require("distill_beta" in data,
-                 "resume 检查点不是 LeashedMaskablePPO（缺 distill_beta 标记）")
+                 "resume checkpoint is not LeashedMaskablePPO (missing distill_beta marker)")
     return data
 
 
@@ -1562,19 +1562,19 @@ def _validate_checkpoint_file(path: str | pathlib.Path,
     try:
         payload = p.read_bytes()
     except OSError as exc:
-        raise ValueError(f"checkpoint 不可读/不安全: {p}: {exc}") from exc
+        raise ValueError(f"checkpoint unreadable/unsafe: {p}: {exc}") from exc
     return _validate_checkpoint_bytes(payload, str(p), require_leashed)
 
 
 def _validate_leashed_metadata(data: dict) -> dict:
     _require("distill_beta" in data,
-             "resume 检查点不是 LeashedMaskablePPO（缺 distill_beta 标记）")
+             "resume checkpoint is not LeashedMaskablePPO (missing distill_beta marker)")
     try:
         beta = float(data["distill_beta"])
     except (TypeError, ValueError) as exc:
-        raise ValueError("resume 检查点 distill_beta 标记非法") from exc
+        raise ValueError("resume checkpoint distill_beta marker invalid") from exc
     _require(math.isfinite(beta) and beta >= 0,
-             "resume 检查点 distill_beta 必须是有限非负数")
+             "resume checkpoint distill_beta must be a finite non-negative number")
     return data
 
 
@@ -1593,18 +1593,18 @@ def _validate_resumable_leashed_boundary(data: dict) -> dict:
     if contract is None:
         return data
     _require(isinstance(contract, dict),
-             "resume training_contract 不是对象")
+             "resume training_contract is not an object")
     steps = data.get("num_timesteps")
     completed = data.get("_last_completed_ppo_rollout_steps")
     optimizer_steps = data.get("_ppo_optimizer_steps_completed")
     _require(
         _is_plain_int(completed) and completed == steps,
-        "resume checkpoint 不是已由 optimizer 消费的 rollout 边界:"
+        "resume checkpoint is not a rollout boundary already consumed by the optimizer: "
         f"completed={completed!r},num_timesteps={steps!r}",
     )
     _require(
         _is_plain_int(optimizer_steps) and optimizer_steps > 0,
-        "resume checkpoint 缺已完成 PPO optimizer step 回执:"
+        "resume checkpoint is missing the completed PPO optimizer step receipt: "
         f"{optimizer_steps!r}",
     )
     n_steps = contract.get("n_steps")
@@ -1612,12 +1612,12 @@ def _validate_resumable_leashed_boundary(data: dict) -> dict:
     _require(
         _is_plain_int(n_steps) and n_steps > 0
         and _is_plain_int(num_envs) and num_envs > 0,
-        "resume training_contract 缺合法 n_steps/num_envs",
+        "resume training_contract is missing valid n_steps/num_envs",
     )
     quantum = n_steps * num_envs
     _require(
         steps % quantum == 0,
-        "resume checkpoint num_timesteps 未对齐训练 rollout 量子:"
+        "resume checkpoint num_timesteps not aligned to the training rollout quantum: "
         f"{steps} % {quantum}",
     )
     # These lists belong to the buffer that is about to be optimized.  Normal
@@ -1629,13 +1629,13 @@ def _validate_resumable_leashed_boundary(data: dict) -> dict:
     ):
         _require(
             key not in data or data[key] == [],
-            f"resume checkpoint 携未消费 pending receipt:{key}",
+            f"resume checkpoint carries an unconsumed pending receipt: {key}",
         )
     return data
 
 
 def _validate_leashed_checkpoint(path: str | pathlib.Path) -> dict:
-    """用保存元数据区分 Leashed 检查点，禁止普通 MaskablePPO 冒充续训源。"""
+    """Tell Leashed checkpoints apart by their saved metadata; an ordinary MaskablePPO may not pose as a resume source."""
     return _validate_resumable_leashed_boundary(
         _validate_leashed_metadata(
             _validate_checkpoint_file(path, require_leashed=True)))
@@ -1647,7 +1647,7 @@ def _capture_leashed_checkpoint(path: str | pathlib.Path) -> tuple[bytes, dict, 
     try:
         payload = p.read_bytes()
     except OSError as exc:
-        raise ValueError(f"resume 检查点不可读: {p}: {exc}") from exc
+        raise ValueError(f"resume checkpoint unreadable: {p}: {exc}") from exc
     data = _validate_resumable_leashed_boundary(
         _validate_leashed_metadata(
             _validate_checkpoint_bytes(
@@ -1656,9 +1656,9 @@ def _capture_leashed_checkpoint(path: str | pathlib.Path) -> tuple[bytes, dict, 
 
 
 def _select_batch_size(n_steps: int, n_envs: int, cap: int = 256) -> int:
-    """保持 256 配方；仅在尾 minibatch 恰为 1 时下调，避免 std=NaN。"""
+    """Keep the 256 recipe; lower it only when the tail minibatch is exactly 1, to avoid std=NaN."""
     rollout_size = n_steps * n_envs
-    _require(rollout_size > 1, "n_steps * num_envs 必须大于 1")
+    _require(rollout_size > 1, "n_steps * num_envs must be greater than 1")
     for size in range(cap, 1, -1):
         if rollout_size <= size or rollout_size % size != 1:
             return size
@@ -1666,20 +1666,20 @@ def _select_batch_size(n_steps: int, n_envs: int, cap: int = 256) -> int:
 
 
 def _reset_policy_optimizer(model, learning_rate: float) -> None:
-    """重建 policy optimizer，清除 continuation 驮带的全部 Adam moments。
+    """Rebuild the policy optimizer, clearing all Adam moments carried over by a continuation.
 
-    权重张量不经 state_dict 往返；只替换 optimizer 对象与 lr schedule。
-    调用者须在 load 完成、训练开始前执行，并由 ``--reset-optimizer`` 显式
-    授权。该助手独立可测，防“只把 step 写零但 exp_avg 仍在”的伪重置。
+    Weight tensors do not round-trip through state_dict; only the optimizer object and lr schedule are replaced.
+    The caller must run this after load completes and before training starts, explicitly authorised by ``--reset-optimizer``.
+    The helper is independently testable, preventing fake resets that "only zero the step while exp_avg remains".
     """
     import torch
 
     _require(math.isfinite(learning_rate) and learning_rate > 0,
-             "reset optimizer 学习率必须是有限正数")
+             "reset optimizer learning rate must be a finite positive number")
     policy = model.policy
     optimizer_class = getattr(policy, "optimizer_class", None)
     optimizer_kwargs = dict(getattr(policy, "optimizer_kwargs", {}) or {})
-    _require(optimizer_class is not None, "policy 缺 optimizer_class，无法安全重建")
+    _require(optimizer_class is not None, "policy is missing optimizer_class; cannot rebuild safely")
     before = {name: value.detach().clone()
               for name, value in policy.state_dict().items()}
     model.learning_rate = float(learning_rate)
@@ -1689,10 +1689,10 @@ def _reset_policy_optimizer(model, learning_rate: float) -> None:
         policy.parameters(), lr=float(model.lr_schedule(1.0)),
         **optimizer_kwargs)
     _require(not policy.optimizer.state,
-             "reset optimizer 后仍含旧 state/Adam moments")
+             "reset optimizer still holds old state/Adam moments")
     for name, value in policy.state_dict().items():
         _require(torch.equal(before[name], value.detach()),
-                 f"reset optimizer 意外改动 policy 权重:{name}")
+                 f"reset optimizer unexpectedly changed policy weights: {name}")
 
 
 def _stable_named_tensor_sha256(state: dict, keys) -> str:
@@ -1703,7 +1703,7 @@ def _stable_named_tensor_sha256(state: dict, keys) -> str:
     keys = tuple(keys)
     _require(
         isinstance(state, dict) and all(key in state for key in keys),
-        "policy state_dict 缺少摘要张量",
+        "policy state_dict is missing digest tensors",
     )
     digest = hashlib.sha256()
     for key in sorted(keys):
@@ -1711,7 +1711,7 @@ def _stable_named_tensor_sha256(state: dict, keys) -> str:
         _require(
             isinstance(tensor, torch.Tensor)
             and bool(torch.isfinite(tensor).all().item()),
-            f"policy state_dict 张量非法:{key}",
+            f"policy state_dict tensor invalid: {key}",
         )
         array = tensor.detach().cpu().contiguous().numpy()
         digest.update(key.encode("utf-8"))
@@ -1732,8 +1732,8 @@ def _checkpoint_policy_state(checkpoint_payload: bytes) -> dict:
                 weights_only=True,
             )
     except (OSError, KeyError, RuntimeError, zipfile.BadZipFile) as exc:
-        raise ValueError("checkpoint policy.pth 无法解析") from exc
-    _require(isinstance(state, dict), "checkpoint policy.pth 不是 state_dict")
+        raise ValueError("checkpoint policy.pth cannot be parsed") from exc
+    _require(isinstance(state, dict), "checkpoint policy.pth is not a state_dict")
     return state
 
 
@@ -1767,15 +1767,15 @@ def _initialize_asymmetric_worker_actor(
 
     _require(
         isinstance(model.policy, AsymmetricWorkerMaskableActorCriticPolicy),
-        "dual-v4 actor migration 要求 asymmetric policy class")
+        "dual-v4 actor migration requires an asymmetric policy class")
     _require(str(getattr(model, "device", "")) == "cpu",
-             "dual-v4 actor bitwise migration 当前只认证 CPU")
+             "dual-v4 actor bitwise migration is currently certified on CPU only")
     _require(_is_sha256(source_checkpoint_sha256),
-             "dual-v4 actor migration 缺 source checkpoint SHA")
+             "dual-v4 actor migration is missing the source checkpoint SHA")
     _require(
         hashlib.sha256(source_checkpoint_payload).hexdigest()
         == source_checkpoint_sha256,
-        "dual-v4 actor migration source payload/SHA 不一致",
+        "dual-v4 actor migration source payload/SHA mismatch",
     )
     source = _checkpoint_policy_state(source_checkpoint_payload)
     critic_keys = (
@@ -1789,7 +1789,7 @@ def _initialize_asymmetric_worker_actor(
     expected_source_keys = set((*_POLICY_HEAD_KEYS, *critic_keys))
     _require(
         set(source) == expected_source_keys,
-        "dual-v4 actor migration source policy state_dict 字段不精确:"
+        "dual-v4 actor migration source policy state_dict fields not exact: "
         f"missing={sorted(expected_source_keys - set(source))},"
         f"extra={sorted(set(source) - expected_source_keys)}",
     )
@@ -1813,7 +1813,7 @@ def _initialize_asymmetric_worker_actor(
         )
     except Exception as exc:
         raise ValueError(
-            "dual-v4 actor migration source model 无法按真实 policy 加载"
+            "dual-v4 actor migration source model cannot be loaded as the real policy"
         ) from exc
     finally:
         random.setstate(python_rng_state)
@@ -1833,7 +1833,7 @@ def _initialize_asymmetric_worker_actor(
         and type(source_policy.mlp_extractor) is MlpExtractor
         and tuple(source_model.observation_space.shape) == (298,)
         and getattr(source_model.action_space, "n", None) == 15,
-        "dual-v4 actor migration source 不是注册的 "
+        "dual-v4 actor migration source is not the registered "
         "plain Flatten/Tanh 298→64→64→15 policy",
     )
     expected_layers = (
@@ -1849,7 +1849,7 @@ def _initialize_asymmetric_worker_actor(
             type(layer)
             for layer in source_policy.mlp_extractor.value_net
         ) == expected_layers,
-        "dual-v4 actor migration source MLP 层序不精确",
+        "dual-v4 actor migration source MLP layer order not exact",
     )
     loaded_source_state = source_policy.state_dict()
     _require(
@@ -1858,7 +1858,7 @@ def _initialize_asymmetric_worker_actor(
             torch.equal(loaded_source_state[key].detach().cpu(), source[key])
             for key in expected_source_keys
         ),
-        "dual-v4 actor migration source 实际 policy 与 policy.pth 不一致",
+        "dual-v4 actor migration source actual policy disagrees with policy.pth",
     )
     source_actor_sha256 = _stable_named_tensor_sha256(
         source, _POLICY_HEAD_KEYS)
@@ -1871,7 +1871,7 @@ def _initialize_asymmetric_worker_actor(
                 key in target
                 and target[key].shape == source[key].shape
                 and target[key].dtype == source[key].dtype,
-                f"dual-v4 actor tensor 不可逐位移植:{key}",
+                f"dual-v4 actor tensor cannot be transplanted bit for bit: {key}",
             )
             target[key].copy_(source[key])
     extractor = model.policy.mlp_extractor
@@ -1879,7 +1879,7 @@ def _initialize_asymmetric_worker_actor(
     parameter_groups = adapter.named_parameter_groups()
     _require(
         tuple(parameter_groups) == ("encoder", "interaction", "output"),
-        "dual-v4 actor context semantic parameter groups 漂移",
+        "dual-v4 actor context semantic parameter groups drifted",
     )
     hidden_parameters = (
         *parameter_groups["encoder"],
@@ -1917,12 +1917,12 @@ def _initialize_asymmetric_worker_actor(
             bool(torch.isfinite(parameter).all().item())
             for parameter in (*hidden_parameters, *output_parameters)
         ),
-        "dual-v4 actor context 起点必须关闭、hidden canonical nonzero、"
+        "dual-v4 actor context must start closed, hidden canonical nonzero, "
         "output canonical zero",
     )
     for key in _POLICY_HEAD_KEYS:
         _require(torch.equal(target[key], source[key]),
-                 f"dual-v4 actor 移植后不逐位相同:{key}")
+                 f"dual-v4 actor not bit-identical after transplant: {key}")
     # Tensor equality alone does not prove semantic equality if activation or
     # preprocessing topology drifted.  Run both graphs on a deterministic
     # nontrivial batch and require exact raw-logit identity before signing the
@@ -1974,7 +1974,7 @@ def _initialize_asymmetric_worker_actor(
     _require(
         torch.equal(source_logits, target_logits)
         and excluded_preoutput_equal,
-        "dual-v4 actor 移植 logits 或 p_skip 结构排除不逐位成立",
+        "dual-v4 actor transplant: logits or the p_skip structural exclusion are not bit-identical",
     )
     probe_array = source_logits.contiguous().numpy()
     probe_digest = hashlib.sha256()
@@ -2070,12 +2070,12 @@ def _reset_worker_critic(
     _require(
         isinstance(training_seed, int) and not isinstance(training_seed, bool)
         and 0 <= training_seed < 2**32,
-        "fresh Worker critic 要求显式 uint32 训练 seed",
+        "fresh Worker critic requires an explicit uint32 training seed",
     )
     _require(_is_sha256(source_checkpoint_sha256),
-             "fresh Worker critic 缺可信 source checkpoint SHA256")
+             "fresh Worker critic is missing a trusted source checkpoint SHA256")
     _require(str(getattr(model, "device", "")) == "cpu",
-             "fresh Worker critic 迁移当前只允许 CPU，以保证可复现初始化")
+             "fresh Worker critic migration currently allows CPU only, to keep initialisation reproducible")
     policy = model.policy
     partition = strict_actor_critic_parameter_partition(
         policy, optimizer=policy.optimizer)
@@ -2089,7 +2089,7 @@ def _reset_worker_critic(
         source_critic_sha256 = critic_before
     _require(_is_sha256(source_actor_sha256)
              and _is_sha256(source_critic_sha256),
-             "fresh critic 缺 source actor/critic SHA")
+             "fresh critic is missing the source actor/critic SHA")
     rng_before = torch.random.get_rng_state().clone()
     init_seed = int.from_bytes(
         hashlib.sha256(
@@ -2105,26 +2105,26 @@ def _reset_worker_critic(
         policy.value_net.apply(
             functools.partial(policy.init_weights, gain=1.0))
     _require(torch.equal(torch.random.get_rng_state(), rng_before),
-             "fresh critic 初始化污染全局 Torch RNG")
+             "fresh critic initialisation polluted the global Torch RNG")
     actor_after = actor_parameter_sha256(
         policy, optimizer=policy.optimizer)
     critic_after = critic_parameter_sha256(
         policy, optimizer=policy.optimizer)
     _require(actor_after == actor_before,
-             "fresh critic 初始化改写冻结 V28 actor")
+             "fresh critic initialisation rewrote the frozen V28 actor")
     _require(critic_after != critic_before,
-             "fresh critic 初始化后摘要未变化")
+             "fresh critic digest unchanged after initialisation")
     _require(all(
         bool(parameter.detach().isfinite().all().item())
         for parameter in partition["critic"]
-    ), "fresh critic 初始化产生 NaN/Inf")
+    ), "fresh critic initialisation produced NaN/Inf")
     critic_parameter_count = sum(
         int(parameter.numel()) for parameter in partition["critic"])
     _require(
         len(partition["actor"]) > 0
         and len(partition["critic"]) > 0
         and critic_parameter_count > 0,
-        "fresh structured critic 容量/张量数漂移",
+        "fresh structured critic capacity/tensor count drifted",
     )
     receipt = {
         "schema": _ASYMMETRIC_CRITIC_RESET_SCHEMA,
@@ -2169,11 +2169,11 @@ def _canonical_asymmetric_worker_migration_evidence(
         and _is_sha256(source_checkpoint_sha256)
         and hashlib.sha256(source_checkpoint_payload).hexdigest()
         == source_checkpoint_sha256,
-        "canonical asymmetric evidence source payload/SHA 不一致",
+        "canonical asymmetric evidence source payload/SHA mismatch",
     )
     _require(
         _is_plain_int(training_seed) and 0 <= training_seed < 2**32,
-        "canonical asymmetric evidence 要求 uint32 training_seed",
+        "canonical asymmetric evidence requires a uint32 training_seed",
     )
     python_rng_state = random.getstate()
     numpy_rng_state = np.random.get_state()
@@ -2219,7 +2219,7 @@ def _canonical_asymmetric_worker_migration_evidence(
             == critic_receipt["critic_parameter_tensors"]
             and runtime["policy"]["critic_parameter_count"]
             == critic_receipt["critic_parameter_count"],
-            "canonical asymmetric migration/reset/runtime evidence 未闭合",
+            "canonical asymmetric migration/reset/runtime evidence not closed",
         )
         return {
             "schema": _ASYMMETRIC_CANONICAL_EVIDENCE_SCHEMA,
@@ -2299,7 +2299,7 @@ def _policy_source_roles(args, demos_sha256: str | None) -> dict:
 def _validate_policy_source_roles(contract: dict) -> dict:
     """Fail closed when provenance labels claim a policy path that is absent."""
     _require(isinstance(contract, dict),
-             "policy source roles 要求 training contract 对象")
+             "policy source roles require a training contract object")
     roles = contract.get("policy_source_roles")
     _require(
         isinstance(roles, dict)
@@ -2312,7 +2312,7 @@ def _validate_policy_source_roles(contract: dict) -> dict:
             "worker_action14_policy_sources",
         }
         and roles.get("schema") == _POLICY_SOURCE_ROLES_SCHEMA,
-        "policy source roles schema/字段不精确",
+        "policy source roles schema/fields not exact",
     )
     initialization = roles["initialization"]
     direct = roles["bc_v1_direct_policy_uses"]
@@ -2341,7 +2341,7 @@ def _validate_policy_source_roles(contract: dict) -> dict:
             ["pass-gate", "read-only-dry-anchor-instrumentation"]
             if contract.get("demos_sha256") is not None else []
         ),
-        "BC-v1 policy/data role 与初始化或 demos 绑定不一致",
+        "BC-v1 policy/data role disagrees with the initialisation or demos binding",
     )
     beta = contract.get("distill_beta")
     _require(
@@ -2349,13 +2349,13 @@ def _validate_policy_source_roles(contract: dict) -> dict:
         and not isinstance(beta, bool)
         and math.isfinite(float(beta))
         and float(beta) >= 0.0,
-        "policy source roles 缺有限非负 distill_beta",
+        "policy source roles are missing a finite non-negative distill_beta",
     )
     if float(beta) == 0.0:
         _require(
             teacher == "disabled"
             and "distillation-teacher" not in direct,
-            "β=0 却宣称存在 distillation policy path",
+            "β=0 but a distillation policy path is claimed",
         )
     else:
         _require(
@@ -2368,11 +2368,11 @@ def _validate_policy_source_roles(contract: dict) -> dict:
                 ("distillation-teacher" in direct)
                 is (teacher == "configured-bc-v1-export")
             ),
-            "distillation teacher 与 BC-v1 direct role 不闭合",
+            "distillation teacher does not close with the BC-v1 direct role",
         )
         _require(
             _is_sha256(contract.get("teacher_sha256")),
-            "启用 distillation 却缺少有效 teacher_sha256",
+            "distillation enabled but no valid teacher_sha256",
         )
 
     mode = contract.get("mode")
@@ -2380,7 +2380,7 @@ def _validate_policy_source_roles(contract: dict) -> dict:
     _require(
         isinstance(action14, list)
         and len(action14) == len(set(action14)),
-        "worker a14 policy sources 必须是无重复列表",
+        "worker a14 policy sources must be a list without duplicates",
     )
     expected_action14 = []
     if mode == "worker":
@@ -2399,7 +2399,7 @@ def _validate_policy_source_roles(contract: dict) -> dict:
             "native-reward-bound-on-policy-ppo")
     _require(
         action14 == expected_action14,
-        "worker a14 policy sources 与真实初始化/prior/PPO 路径不一致",
+        "worker a14 policy sources disagree with the real initialisation/prior/PPO path",
     )
     if (
         mode == "worker"
@@ -2411,17 +2411,17 @@ def _validate_policy_source_roles(contract: dict) -> dict:
             and isinstance(contract.get("actor_migration"), dict)
             and contract["actor_migration"].get("method")
             == _ASYMMETRIC_ACTOR_INIT_METHOD,
-            "dual-v4 actor migration 必须如实登记为 resume-checkpoint",
+            "dual-v4 actor migration must be registered truthfully as resume-checkpoint",
         )
     return roles
 
 
 def _resource_service_recipe_for(protocol, mode, service_policy,
                                  worker_time_protocol="legacy"):
-    """R18-B3 (2026-09-07):训练侧配方必须写明真正在跑的完成时钟。
+    """R18-B3 (2026-09-07): the training-side recipe must state the completion clock actually running.
 
-    只有 sustain-loot-v1 的配方带时钟,其余服务法走原调用(逐字节不变)。
-    sustain-loot-v1 配 legacy 时钟在此 fail closed —— 战利品经济没有旧时钟版本。
+    Only the sustain-loot-v1 recipe carries a clock; the other service policies take the original call (byte-for-byte unchanged).
+    sustain-loot-v1 with the legacy clock fails closed here -- the loot economy has no old-clock version.
     """
     if service_policy != "sustain-loot-v1":
         return resource_service_recipe(protocol, mode, service_policy)
@@ -2514,7 +2514,7 @@ def _training_contract(args, model, batch_size: int,
             and critic_receipt.get(
                 "worker_onpolicy_pg_audit_schema")
             == WORKER_ONPOLICY_PG_AUDIT_SCHEMA,
-            "模型 critic migration receipt 非法，拒绝写训练契约",
+            "model critic migration receipt invalid; refusing to write the training contract",
         )
         critic_migration = {
             "method": critic_receipt["method"],
@@ -2604,7 +2604,7 @@ def _training_contract(args, model, batch_size: int,
             and actor_receipt.get("bitwise_probe_rows") == 4
             and _is_sha256(
                 actor_receipt.get("bitwise_probe_sha256")),
-            "模型 asymmetric actor migration receipt 非法，拒绝写训练契约",
+            "model asymmetric actor migration receipt invalid; refusing to write the training contract",
         )
         actor_migration = {
             "method": actor_receipt["method"],
@@ -2640,11 +2640,11 @@ def _training_contract(args, model, batch_size: int,
     from leashed_ppo import LEGACY_DISTILLATION_EXCLUDED_ACTIONS
     contract = {
         "schema_version": 2,
-        "contract_revision": _CONTRACT_REVISION,   # v32:+drink_sovereignty(④丙 环境语义入契约)
+        "contract_revision": _CONTRACT_REVISION,   # v32: +drink_sovereignty (4C environment semantics enter the contract)
         "implementation_sha256": implementation_sha256,
-        # R12:经济法案入契约(v1=历史默认;后人续训可见工资制度身份)
+        # R12: the economy rule enters the contract (v1 = historical default; later continuations can see the wage-system identity)
         "reward_economy": getattr(args, "reward_economy", "v1"),
-        # R12 修正案二:脚本教练身份入契约(None=npz 经理)
+        # R12 amendment 2 (docs/rounds/r12-LAUNCH-RECORD-20260830.md): the scripted-coach identity enters the contract (None = npz manager)
         "manager_heuristic": getattr(args, "manager_heuristic", None),
         "mode": mode,
         "arch": args.arch,
@@ -2693,9 +2693,9 @@ def _training_contract(args, model, batch_size: int,
         "worker_additional_terminal_death_cost":
             float(getattr(
                 args, "worker_additional_terminal_death_cost", 0.0)),
-        # R13:课堂范围入契约。未启用(farm-only)恒写 None,旧 checkpoint
-        # 契约 .get 同为 None → resume 等式兼容,revision 26 不动
-        # (worker_zip_sha256 先例);启用漂移走白名单(v0.3 修订)。
+        # R13: the classroom scope enters the contract. Not enabled (farm-only) always writes None; old checkpoint
+        # contracts .get None too -> resume equality compatible, revision 26 unchanged
+        # (worker_zip_sha256 precedent); enabled drift goes through the whitelist (v0.3 revision).
         "worker_learning_window_scope": (
             getattr(args, "worker_learning_window_scope", "farm-only")
             if (getattr(args, "worker", False)
@@ -2703,7 +2703,7 @@ def _training_contract(args, model, batch_size: int,
                     args, "worker_learning_window_scope", "farm-only")
                 != "farm-only")
             else None),
-        # R13 冷启动杠杆同款记账:0.0(未启用)恒写 None。
+        # R13 cold-start lever, same booking: 0.0 (not enabled) always writes None.
         "worker_dive_action11_logit_bonus": (
             float(getattr(
                 args, "worker_dive_action11_logit_bonus", 0.0))
@@ -2712,7 +2712,7 @@ def _training_contract(args, model, batch_size: int,
                     args, "worker_dive_action11_logit_bonus", 0.0))
                 > 0.0)
             else None),
-        # R16 拾药先验同款记账:0.0(未启用)恒写 None。
+        # R16 potion-pickup prior, same booking: 0.0 (not enabled) always writes None.
         "worker_potion_action13_logit_bonus": (
             float(getattr(
                 args, "worker_potion_action13_logit_bonus", 0.0))
@@ -2721,21 +2721,21 @@ def _training_contract(args, model, batch_size: int,
                     args, "worker_potion_action13_logit_bonus", 0.0))
                 > 0.0)
             else None),
-        # R16 修宪:环境/教室/工资侧新参数各一 None-off 键——CLI 默认值
-        # (False/0/1800/death-equivalent)恒写 None,旧 checkpoint 契约 .get
-        # 同为 None → resume 等式兼容,revision 26 不动(worker_zip_sha256
-        # 先例);启用漂移走 _ENVIRONMENT_RESTART_ALLOWED_DRIFT 白名单。
+        # R16 amendment: one None-off key each for the new environment/classroom/wage-side parameters -- CLI defaults
+        # (False/0/1800/death-equivalent) always write None, old checkpoint contracts .get
+        # None too -> resume equality compatible, revision 26 unchanged (worker_zip_sha256
+        # precedent); enabled drift goes through the _ENVIRONMENT_RESTART_ALLOWED_DRIFT whitelist.
         "explore_global_fallback": (
             True
             if bool(getattr(args, "explore_global_fallback", False))
             else None),
-        # R16 C5 主力(A 队追加,fallback 同款记账):False(未启用)恒写 None。
+        # R16 C5 main lever (later addition, same booking as fallback): False (not enabled) always writes None.
         "explore_global_hunt": (
             True
             if bool(getattr(args, "explore_global_hunt", False))
             else None),
-        # R18-B5 (2026-09-07): a10 全局猎怪的作用域(all = 冻结行为恒写
-        # None,只有 l1-only 是字面值),与 explore_global_hunt 同款记账。
+        # R18-B5 (2026-09-07): scope of the a10 global monster hunt (all = frozen behaviour, always written as
+        # None; only l1-only is a literal), same booking as explore_global_hunt.
         "hunt_scope": (
             getattr(args, "hunt_scope", "all")
             if getattr(args, "hunt_scope", "all") != "all" else None),
@@ -2761,7 +2761,7 @@ def _training_contract(args, model, batch_size: int,
         "resource_service_policy": (
             getattr(args, "resource_service_policy", "legacy-v1")
             if getattr(args, "resource_service_policy", "legacy-v1") != "legacy-v1" else None),
-        # R18-B3: loot 配方带时钟;非 loot 的服务法调用逐字节不变。
+        # R18-B3: the loot recipe carries a clock; non-loot service-policy calls stay byte-for-byte unchanged.
         "resource_service_recipe": _resource_service_recipe_for(
             getattr(args, "resource_protocol", "off"),
             getattr(args, "resource_purchase_mode", "full"),
@@ -2815,14 +2815,14 @@ def _training_contract(args, model, batch_size: int,
                     _WORKER_NO_PROGRESS_TIMEOUT_CREDIT_DEFAULT)
                 != _WORKER_NO_PROGRESS_TIMEOUT_CREDIT_DEFAULT)
             else None),
-        # R13.2 甲案同款记账:0.0(未启用)恒写 None。
+        # R13.2 plan A, same booking: 0.0 (not enabled) always writes None.
         "worker_depth_shaping_unit": (
             float(getattr(args, "worker_depth_shaping_unit", 0.0))
             if (getattr(args, "worker", False)
                 and float(getattr(
                     args, "worker_depth_shaping_unit", 0.0)) > 0.0)
             else None),
-        # R14 乙案同款记账:0.0(未启用)恒写 None。
+        # R14 plan B, same booking: 0.0 (not enabled) always writes None.
         "worker_descend_bonus_fraction": (
             float(getattr(
                 args, "worker_descend_bonus_fraction", 0.0))
@@ -2830,7 +2830,7 @@ def _training_contract(args, model, batch_size: int,
                 and float(getattr(
                     args, "worker_descend_bonus_fraction", 0.0)) > 0.0)
             else None),
-        # R14.2 丁案同款记账:0.0(未启用)恒写 None。
+        # R14.2 plan D, same booking: 0.0 (not enabled) always writes None.
         "worker_descend_escrow_fraction": (
             float(getattr(
                 args, "worker_descend_escrow_fraction", 0.0))
@@ -2838,7 +2838,7 @@ def _training_contract(args, model, batch_size: int,
                 and float(getattr(
                     args, "worker_descend_escrow_fraction", 0.0)) > 0.0)
             else None),
-        # R15 修正案二:False(未启用)恒写 None。
+        # R15 amendment 2: False (not enabled) always writes None.
         "worker_descend_escrow_readiness_gate": (
             True
             if (getattr(args, "worker", False)
@@ -2846,7 +2846,7 @@ def _training_contract(args, model, batch_size: int,
                     args, "worker_descend_escrow_readiness_gate",
                     False)))
             else None),
-        # R17.0 修正案一:v1(旧尺,未启用)恒写 None;仅 v2 写字面值。
+        # R17.0 amendment 1: v1 (old ruler, not enabled) always writes None; only v2 writes a literal.
         "worker_descend_escrow_readiness_table": (
             "v2"
             if (getattr(args, "worker", False)
@@ -2854,7 +2854,7 @@ def _training_contract(args, model, batch_size: int,
                     args, "worker_descend_escrow_readiness_table",
                     "v1")) == "v2")
             else None),
-        # R14.3 戊案:power=1.0(线性旧法)恒写 None。
+        # R14.3 plan E: power=1.0 (the old linear rule) always writes None.
         "worker_descend_escrow_power": (
             float(getattr(
                 args, "worker_descend_escrow_power", 1.0))
@@ -2882,14 +2882,14 @@ def _training_contract(args, model, batch_size: int,
         "actor_migration": actor_migration,
         "critic_migration": critic_migration,
         "artifact_scope": getattr(args, "artifact_scope", "production"),
-        # E4 rev5 双键(圈 7,三腿统一):disabled 或实况载荷;skip_dry 键
-        # 保持 CLI 旗字面值不受此二键影响(rev3 勘正,契约与回执同构)。
+        # E4 rev5 dual keys (review round 7, unified across the three legs): disabled or the live payload; the skip_dry key
+        # keeps the CLI flag literal, unaffected by these two keys (rev3 correction; contract and receipt are isomorphic).
         "dry_curriculum": _contract_dry_curriculum(args),
         "bc_aux": _contract_bc_aux(args, bc_aux_demos_sha256),
         "manager_npz_sha256": manager_npz_sha256,
         "worker_npz_sha256": worker_npz_sha256,
-        # R9:zip 工人组装口(认证发布件)身份;未挂 zip 工人时恒 None,
-        # 旧 checkpoint 契约 .get 同为 None → resume 等式兼容,revision 不动。
+        # R9: identity of the zip worker assembly point (certified release artifact); always None when no zip worker is mounted,
+        # old checkpoint contracts .get None too -> resume equality compatible, revision unchanged.
         "worker_zip_sha256": worker_zip_sha256,
         "demos_sha256": demos_sha256,
         "policy_source_roles":
@@ -2929,76 +2929,76 @@ def _training_contract(args, model, batch_size: int,
     return contract
 
 
-# R12 修法(2026-08-30,主席批路线甲后的实施条款):环境重启续接的
-# 白名单豁免。再教育 = 同一工人在"合法变更后的世界"继续训练,以下
-# 字段的漂移属预注册点名的立法本身,不构成契约违约;白名单之外
-# (视图/动作空间/几何/算法配方等)仍铁腕相等。
+# R12 rule change (2026-08-30, implementing the design decision to take route A): whitelist exemption for
+# environment-restart continuation. Re-education = the same worker keeps training in "the world after sanctioned changes"; drift in the
+# following fields is itself the rule change named in the pre-registration and is not a contract violation; outside the whitelist
+# (view/action space/geometry/algorithm recipe etc.) strict equality still holds.
 _ENVIRONMENT_RESTART_ALLOWED_DRIFT = frozenset({
     "demos_sha256", "distill_beta", "distillation", "dry_curriculum",
     "implementation_sha256", "policy_source_roles", "teacher_sha256",
     "worker_additional_terminal_death_cost", "reward_economy",
-    # R13 修法(2026-08-30,主席批教室改革后的实施条款):课堂范围是
-    # 预注册点名的立法本身(None→farm-dive-v1),与 reward_economy 同款。
+    # R13 rule change (2026-08-30, implementing the classroom-reform design decision): the classroom scope is
+    # itself the rule change named in the pre-registration (None->farm-dive-v1), same as reward_economy.
     "worker_learning_window_scope",
-    # R13 冷启动杠杆(主席裁决点5预授权,G0 验收未达标时启用):
-    # None→bonus 的漂移属预注册点名立法。
+    # R13 cold-start lever (pre-authorised as decision point 5, enabled if G0 acceptance falls short):
+    # None->bonus drift is a rule change named in the pre-registration.
     "worker_dive_action11_logit_bonus",
-    # R13.2 甲案(主席 2026-08-31「按甲来说吧」):势函数深度塑形,
-    # None→unit 的漂移属预注册点名立法。
+    # R13.2 plan A (design decision, 2026-08-31): potential-based depth shaping,
+    # None->unit drift is a rule change named in the pre-registration.
     "worker_depth_shaping_unit",
-    # R14 乙案(主席 2026-08-31「先做乙」):有界下楼奖金返还,
-    # None→fraction 的漂移属预注册点名立法。
+    # R14 plan B (design decision, 2026-08-31): bounded descend-bonus refund,
+    # None->fraction drift is a rule change named in the pre-registration.
     "worker_descend_bonus_fraction",
-    # R14.2 丁案(主席夜间条例「乙不行直接按丁走」):托管发放,
-    # None→fraction 的漂移属预注册点名立法。
+    # R14.2 plan D (design decision: if plan B fails, go straight to plan D): escrow payout,
+    # None->fraction drift is a rule change named in the pre-registration.
     "worker_descend_escrow_fraction",
-    # R14.3 戊案(主席夜令「挖掘一条能用的曲线」):凸曲线计价,
-    # None→power 的漂移属预注册点名立法。
+    # R14.3 plan E (design decision: find a usable payout curve): convex-curve pricing,
+    # None->power drift is a rule change named in the pre-registration.
     "worker_descend_escrow_power",
-    # R15 修正案二:战备条件托管,None→True 的漂移属预注册点名立法。
+    # R15 amendment 2: readiness-conditioned escrow; None->True drift is a rule change named in the pre-registration.
     "worker_descend_escrow_readiness_gate",
-    # R17.0 修正案一(合议庭更正二.1):托管战备门尺子选择器,
-    # None→v2 的漂移属预注册点名立法。
+    # R17.0 amendment 1 (panel correction 2.1): escrow readiness-gate ruler selector,
+    # None->v2 drift is a rule change named in the pre-registration.
     "worker_descend_escrow_readiness_table",
-    # R17.1 主席裁决三:战备法(六条件教练法,排除血量),None→coach-v03
-    # 的漂移属预注册点名立法(readiness_table 同款)。
+    # R17.1 decision 3: readiness law (six-condition coach law, HP excluded); None->coach-v03
+    # drift is a rule change named in the pre-registration (same as readiness_table).
     "resource_readiness_law",
-    # R18-B:撤退法(retreat-v1 返城),None→retreat-v1 的漂移属预注册
-    # 点名立法(readiness_law 同款)。
+    # R18-B: retreat law (retreat-v1 return to town); None->retreat-v1 drift is a rule change named
+    # in the pre-registration (same as readiness_law).
     "resource_retreat",
-    # R18-B5 (2026-09-07):传送法(portal-v1 撤退载具),None→portal-v1
-    # 的漂移属预注册点名立法(retreat 同款)。
+    # R18-B5 (2026-09-07): portal law (portal-v1 retreat vehicle); None->portal-v1
+    # drift is a rule change named in the pre-registration (same as retreat).
     "resource_portal",
-    # R18-B6 (2026-09-07):扫箱法(sweep-v1)、鉴定腿(cain-v1)、
-    # 武器升级腿(smith-v1),None→字面值的漂移属预注册点名立法
-    # (retreat/portal 同款);三者都只在 loot 经济里成立。
+    # R18-B6 (2026-09-07): chest-sweep law (sweep-v1), identify leg (cain-v1),
+    # weapon-upgrade leg (smith-v1); None->literal drift is a rule change named in the pre-registration
+    # (same as retreat/portal); all three only hold in the loot economy.
     "resource_sweep",
     "resource_identify",
     "resource_weapon_upgrade",
-    # R16 修宪(2026-09-01,预注册点名):a13 拾药冷启动先验,
-    # None→bonus 的漂移属预注册点名立法(a11 同款)。
+    # R16 amendment (2026-09-01, named in the pre-registration): a13 potion-pickup cold-start prior,
+    # None->bonus drift is a rule change named in the pre-registration (same as a11).
     "worker_potion_action13_logit_bonus",
-    # R16 修宪:环境侧(探索全局回退/全图猎怪/远格进展计数)与教室侧
-    # (农窗场景上限/层钟窗内重置)语义变更,None→值 的漂移属预注册
-    # 点名立法。explore_global_hunt = R16 C5 主力(A 队 8 种子探针:
-    # fallback 375→375 杀几乎不触发,hunt 375→670 杀),与 fallback 同款。
+    # R16 amendment: environment-side (explore global fallback / full-map monster hunt / far-cell progress count) and classroom-side
+    # (farm-window scene cap / level-clock reset inside the window) semantic changes; None->value drift is a rule change named
+    # in the pre-registration. explore_global_hunt = R16 C5 main lever (8-seed probe:
+    # fallback 375->375 kills, almost never triggers; hunt 375->670 kills), same as fallback.
     "explore_global_fallback",
     "explore_global_hunt",
-    # R18-B5 (2026-09-07):a10 猎怪作用域,None→l1-only 的漂移属预注册
-    # 点名立法(explore_global_hunt 同款)。
+    # R18-B5 (2026-09-07): a10 hunt scope; None->l1-only drift is a rule change named
+    # in the pre-registration (same as explore_global_hunt).
     "hunt_scope",
     "progress_far_tiles",
     "farm_scene_cap",
     "reset_layer_clock_on_window",
-    # R16 修宪:工资侧(掉血计价/拾药奖金/停滞超时记账口径),
-    # None→值 的漂移属预注册点名立法(worker_additional_terminal_death_cost
-    # 同款)。
+    # R16 amendment: wage side (HP-loss pricing / potion-pickup bonus / stall-timeout booking definition);
+    # None->value drift is a rule change named in the pre-registration (same as
+    # worker_additional_terminal_death_cost).
     "worker_hp_loss_price",
     "worker_potion_pickup_bonus",
     "worker_no_progress_timeout_credit",
-    # R16 修宪:训练局长(max_steps 3000→≥6000)与开放喝药主权
-    # (drink_sovereignty)均为预注册点名的立法漂移;白名单之外的
-    # 视图/动作空间/几何/算法配方仍铁腕相等。
+    # R16 amendment: the training episode length (max_steps 3000->>=6000) and opening potion autonomy
+    # (drink_sovereignty) are both rule-change drift named in the pre-registration; outside the whitelist
+    # view/action space/geometry/algorithm recipe still require strict equality.
     "max_steps",
     "drink_sovereignty",
 })
@@ -3062,15 +3062,15 @@ def _validate_resource_resume_identity(saved: dict | None, current: dict) -> Non
                 identity.get("worker_time_protocol") or "legacy")
             _require(identity.get("resource_service_recipe") == expected,
                      f"{label} resource_service_recipe has mismatched native armor/preservation scope/version")
-    # R18-B: 撤退法进入恒等键组;旗关两侧都是 None,旧续训逐位不变。
-    # R18-B5 (2026-09-07):传送法同为资源侧法条(portal-v1 只在
-    # l2-town-v1/coach-v03/retreat-v1 下成立),一并进恒等键组;
-    # hunt_scope 不在此列——它是 DiabloGymEnv 级探索开关,不属于
-    # resource_service 身份,漂移由 _ENVIRONMENT_RESTART_ALLOWED_DRIFT 管辖。
-    # R18-B6 (2026-09-07):扫箱/鉴定/武器升级三条法都是 sustain-loot-v1
-    # 行程自身的版本(validate_sweep_protocol / validate_identify_protocol /
-    # validate_weapon_upgrade 全都要 l2-town-v1 + sustain-loot-v1),换法即换
-    # 世界,故与 retreat/portal 同列恒等键组;hunt_scope 仍不在此列。
+    # R18-B: the retreat law joins the identity key group; with the flag off both sides are None, old continuations unchanged bit for bit.
+    # R18-B5 (2026-09-07): the portal law is also a resource-side rule (portal-v1 only holds under
+    # l2-town-v1/coach-v03/retreat-v1) and joins the identity key group too;
+    # hunt_scope is not in this list -- it is a DiabloGymEnv-level exploration switch, not part of the
+    # resource_service identity; its drift is governed by _ENVIRONMENT_RESTART_ALLOWED_DRIFT.
+    # R18-B6 (2026-09-07): the sweep/identify/weapon-upgrade laws are all versions of the sustain-loot-v1
+    # trip itself (validate_sweep_protocol / validate_identify_protocol /
+    # validate_weapon_upgrade all require l2-town-v1 + sustain-loot-v1); changing the law changes the
+    # world, so they sit in the identity key group with retreat/portal; hunt_scope is still not in this list.
     keys = ("resource_protocol", "resource_purchase_mode",
             "resource_service_policy", "resource_service_recipe",
             "resource_retreat", "resource_portal",
@@ -3090,12 +3090,12 @@ def _validate_resume_contract(saved: dict | None, current: dict,
     _validate_resource_resume_identity(saved, current)
     if saved is None:
         _require(allow_legacy_resume,
-                 "resume checkpoint 无 training_contract，无法证明原训练环境/资源；"
-                 "如确需一次性迁移，请显式传 --allow-legacy-resume")
-        print("   [legacy migration] 已显式允许无契约 checkpoint；"
-              f"本腿将写入 contract_revision {_CONTRACT_REVISION} 契约")
+                 "resume checkpoint has no training_contract; cannot prove the original training environment/resources; "
+                 "if a one-off migration is really needed, pass --allow-legacy-resume explicitly")
+        print("   [legacy migration] a contract-less checkpoint was explicitly allowed; "
+              f"this leg will write a contract_revision {_CONTRACT_REVISION} contract")
         return
-    _require(isinstance(saved, dict), "checkpoint training_contract 不是对象")
+    _require(isinstance(saved, dict), "checkpoint training_contract is not an object")
     allowed = ({"manager_npz_sha256", "manager_heuristic"}
                if allow_manager_change else set())
     if allow_environment_restart:
@@ -3104,12 +3104,12 @@ def _validate_resume_contract(saved: dict | None, current: dict,
             k for k in _ENVIRONMENT_RESTART_ALLOWED_DRIFT
             if saved.get(k) != current.get(k))
         if drifted:
-            print("   [environment-restart resume] 白名单豁免漂移字段: "
+            print("   [environment-restart resume] whitelist-exempt drifted fields: "
                   + ", ".join(drifted))
     if allow_optimizer_reset:
-        # reset 明确切断旧 Adam moments；学习率与 reset 回执因此属于本腿
-        # 新 optimizer 身份，不应拿上一腿契约阻止该显式迁移。reset 本身是
-        # 本腿事件，只进 config/receipt，不进持久 resume equality。
+        # reset explicitly cuts off the old Adam moments; the learning rate and the reset receipt therefore belong to this leg's
+        # new optimizer identity, and the previous leg's contract must not block this explicit migration. The reset itself is
+        # an event of this leg; it goes only into config/receipt, not into the persisted resume equality.
         allowed.add("learning_rate")
     saved_recipe = saved.get("algorithm_recipe")
     current_recipe = current.get("algorithm_recipe")
@@ -3121,52 +3121,52 @@ def _validate_resume_contract(saved: dict | None, current: dict,
     differences = {key: (saved.get(key), current.get(key))
                    for key in sorted(set(saved) | set(current))
                    if key not in allowed and saved.get(key) != current.get(key)}
-    _require(not differences, f"resume 训练/环境契约漂移: {differences}")
+    _require(not differences, f"resume training/environment contract drift: {differences}")
 
 
-# ---- E1 ⑤A 干窗课程(PREREG-内容案 E1,rev3 核认勘正) ----
+# ---- E1 5A dry-window course (docs/prereg/PREREG-v33-content-case.md E1, rev3 certified correction) ----
 
-# 腿相对锚定常量:腿起点恒 = 王 zip 终点 3,497,984(P3 复点火恒自王 zip);
-# 全局步锚定禁用——p 表序号 = (num_timesteps − 3,497,984) / 2048。
+# Leg-relative anchoring constants: the leg start is always = the end point of the throne zip, 3,497,984 (P3 relaunches always start from the throne zip);
+# global-step anchoring is disabled -- p-table index = (num_timesteps − 3,497,984) / 2048.
 _DRY_CURRICULUM_LEG_START = 3_497_984
-# 主表(批文即定,圈 2 附裁):前 147×2048=301,056 步线性 1.0→0.5,
-# 后 97×2048=198,656 步持 0.5;147+97=244 量子恰等腿长 499,712。
+# Main table (fixed at approval; review round 2 annex ruling): the first 147×2048=301,056 steps linear 1.0->0.5,
+# the next 97×2048=198,656 steps hold 0.5; 147+97=244 quanta, exactly the leg length 499,712.
 _DRY_CURRICULUM_MAIN_TABLE = "linear:1.0:0.5:147,hold:0.5:97"
 
 
 def _dry_window_mechanism_active(args) -> bool:
-    """E1 波及面谓词(rev3 勘正,四门统一):干窗机制在位 = skip_dry ∨ schedule。"""
+    """E1 blast-radius predicate (rev3 correction, the four gates unified): dry-window mechanism present = skip_dry or schedule."""
     return bool(args.skip_dry) or bool(args.dry_curriculum_schedule)
 
 
 def _mount_dry_anchor_sentinel(args) -> bool:
-    """E1 四门之 dry_cb 挂载门(原 :2101-2104 谓词):worker ∧ 干窗机制在位。"""
+    """E1 four gates: dry_cb mount gate (original :2101-2104 predicate): worker and dry-window mechanism present."""
     return bool(args.worker) and _dry_window_mechanism_active(args)
 
 
 def _precheck_dry_window_demos(args) -> None:
-    """E1 四门之 demos/BC 预检门(原 :499-505):谓词改写为机制在位,断言原封。"""
+    """E1 four gates: demos/BC preflight gate (original :499-505): predicate rewritten to mechanism-present, assertion unchanged."""
     if not _dry_window_mechanism_active(args):
         return
     demos = pathlib.Path(__file__).resolve().parent / "runs" / "bc-worker" / "demos.npz"
     _require(demos.is_file(),
-             f"干窗机制(--skip-dry/--dry-curriculum-schedule)所需示范集不存在: {demos}")
-    # v4:探针集绑定当前严格 PASS 回执；旧 v3 protocol/implementation
-    # 即使字节仍等历史常量也必须拒绝。
+             f"demo set required by the dry-window mechanism (--skip-dry/--dry-curriculum-schedule) does not exist: {demos}")
+    # v4: the probe set is bound to the current strict PASS receipt; old v3 protocol/implementation
+    # must be refused even if its bytes still equal the historical constant.
     _assert_bc_v1_demos_frozen(demos)
     policy = demos.with_name("policy_sd.pt")
     _require(policy.is_file(),
-             f"干窗机制(--skip-dry/--dry-curriculum-schedule)所需 BC 权重不存在: {policy}")
+             f"BC weights required by the dry-window mechanism (--skip-dry/--dry-curriculum-schedule) do not exist: {policy}")
     report = _validate_bc_report(policy, "data_gate")
     _load_dry_anchor_demos(demos, report.get("demos_sha256"))
 
 
 def _capture_dry_window_demos_sha256(args) -> str | None:
-    """E1 四门之 demos_sha256 捕获门(原 :1766-1771):谓词改写,路径与断言原封。"""
+    """E1 four gates: demos_sha256 capture gate (original :1766-1771): predicate rewritten, path and assertion unchanged."""
     if not _dry_window_mechanism_active(args):
         return None
     demos = pathlib.Path(__file__).resolve().parent / "runs" / "bc-worker" / "demos.npz"
-    # v4:从当前严格 PASS 回执捕获，不信历史 v3 冻结常量。
+    # v4: capture from the current strict PASS receipt; the historical v3 frozen constant is not trusted.
     _assert_bc_v1_demos_frozen(demos)
     report = _validate_bc_report(demos.with_name("policy_sd.pt"), "data_gate")
     _, _, demos_sha256 = _load_dry_anchor_demos(demos, report.get("demos_sha256"))
@@ -3174,93 +3174,93 @@ def _capture_dry_window_demos_sha256(args) -> str | None:
 
 
 def _parse_dry_curriculum_schedule(spec: str) -> tuple[float, ...]:
-    """解析 --dry-curriculum-schedule 为逐 rollout"序号→p"全表。
+    """Parse --dry-curriculum-schedule into the full per-rollout "index->p" table.
 
-    语法(逗号分隔段,段内冒号分隔):
-      linear:<p0>:<p1>:<n> —— n(≥2)个 rollout 端点含线性 p0→p1,
-                              第 k 项 = p0 + (p1−p0)·k/(n−1),k=0..n−1;
-      hold:<p>:<n>         —— n(≥1)个 rollout 恒 p。
-    全部 p 须为 [0, 1] 内有限数。主表 = linear:1.0:0.5:147,hold:0.5:97。
+    Syntax (comma-separated segments, colon-separated fields):
+      linear:<p0>:<p1>:<n> -- n (>=2) rollout endpoints, linear p0->p1 inclusive,
+                              item k = p0 + (p1−p0)·k/(n−1), k=0..n−1;
+      hold:<p>:<n>         -- n (>=1) rollouts at constant p.
+    Every p must be a finite number in [0, 1]. Main table = linear:1.0:0.5:147,hold:0.5:97.
     """
     _require(isinstance(spec, str) and bool(spec.strip()),
-             "--dry-curriculum-schedule 不能为空")
+             "--dry-curriculum-schedule must not be empty")
     table: list[float] = []
     for raw_segment in spec.split(","):
         segment = raw_segment.strip()
         fields = segment.split(":")
         if fields[0] == "linear":
             _require(len(fields) == 4,
-                     f"--dry-curriculum-schedule 段格式应为 linear:<p0>:<p1>:<n>: {segment!r}")
+                     f"--dry-curriculum-schedule segment format must be linear:<p0>:<p1>:<n>: {segment!r}")
             try:
                 p0, p1, n = float(fields[1]), float(fields[2]), int(fields[3])
             except ValueError as exc:
                 raise ValueError(
-                    f"--dry-curriculum-schedule 段数值不可解析: {segment!r}") from exc
-            _require(n >= 2, f"linear 段须 n≥2(单点请用 hold): {segment!r}")
+                    f"--dry-curriculum-schedule segment values unparseable: {segment!r}") from exc
+            _require(n >= 2, f"linear segment needs n>=2 (use hold for a single point): {segment!r}")
             values = [p0 + (p1 - p0) * k / (n - 1) for k in range(n)]
         elif fields[0] == "hold":
             _require(len(fields) == 3,
-                     f"--dry-curriculum-schedule 段格式应为 hold:<p>:<n>: {segment!r}")
+                     f"--dry-curriculum-schedule segment format must be hold:<p>:<n>: {segment!r}")
             try:
                 p, n = float(fields[1]), int(fields[2])
             except ValueError as exc:
                 raise ValueError(
-                    f"--dry-curriculum-schedule 段数值不可解析: {segment!r}") from exc
-            _require(n >= 1, f"hold 段须 n≥1: {segment!r}")
+                    f"--dry-curriculum-schedule segment values unparseable: {segment!r}") from exc
+            _require(n >= 1, f"hold segment needs n>=1: {segment!r}")
             values = [p] * n
         else:
             raise ValueError(
-                f"--dry-curriculum-schedule 未知段类型(只允许 linear/hold): {segment!r}")
+                f"--dry-curriculum-schedule unknown segment type (only linear/hold allowed): {segment!r}")
         _require(all(math.isfinite(v) and 0.0 <= v <= 1.0 for v in values),
-                 f"--dry-curriculum-schedule p 值必须在 [0, 1] 内: {segment!r}")
+                 f"--dry-curriculum-schedule p values must lie in [0, 1]: {segment!r}")
         table.extend(values)
     return tuple(table)
 
 
-# ---- R9 深层起点课程(PREREG-R9,课程臂 prologue) ----
+# ---- R9 deep-start curriculum (PREREG-R9, curriculum arm prologue) ----
 
-# prologue 中局终(死亡/截断)换种子重抽的封顶次数;超限即放弃代打,
-# 换新种子按普通起点交棒(遥测 resamples 如实入 info)。
+# Cap on reseeded redraws when the episode ends (death/truncation) during the prologue; past the cap the scripted play-through is abandoned,
+# and a new seed hands over from an ordinary start (telemetry resamples is recorded truthfully in info).
 _DEEP_START_MAX_RESAMPLES = 8
 
 
 def _parse_deep_start_curriculum(spec: str) -> dict:
-    """解析 --deep-start-curriculum 'p=0.5,target=2,cap=8' 为 dict。
+    """Parse --deep-start-curriculum 'p=0.5,target=2,cap=8' into a dict.
 
-    p ∈ [0,1] 为每局独立触发概率(局种子派生确定性 RNG,不碰全局 RNG);
-    target ≥ 2 为 prologue 代打的目标 dungeon_level(起点恒 1 层);
-    cap ≥ 1 为代打窗数上限。三键必须给全,不允许未知键/重复键。
+    p in [0,1] is the per-episode independent trigger probability (deterministic RNG derived from the episode seed, never touching the global RNG);
+    target >= 2 is the target dungeon_level of the prologue play-through (the start is always level 1);
+    cap >= 1 caps the number of play-through windows. All three keys are required; unknown/duplicate keys are not allowed.
     """
     _require(isinstance(spec, str) and bool(spec.strip()),
-             "--deep-start-curriculum 不能为空")
+             "--deep-start-curriculum must not be empty")
     fields: dict[str, float | int] = {}
     for raw_item in spec.split(","):
         item = raw_item.strip()
         key, sep, value = item.partition("=")
         _require(bool(sep),
-                 f"--deep-start-curriculum 项格式应为 key=value: {item!r}")
+                 f"--deep-start-curriculum items must be key=value: {item!r}")
         key = key.strip()
         _require(key in ("p", "target", "cap"),
-                 f"--deep-start-curriculum 未知键(只允许 p/target/cap): {key!r}")
-        _require(key not in fields, f"--deep-start-curriculum 键重复: {key!r}")
+                 f"--deep-start-curriculum unknown key (only p/target/cap allowed): {key!r}")
+        _require(key not in fields, f"--deep-start-curriculum duplicate key: {key!r}")
         try:
             fields[key] = float(value) if key == "p" else int(value)
         except ValueError as exc:
             raise ValueError(
-                f"--deep-start-curriculum 数值不可解析: {item!r}") from exc
+                f"--deep-start-curriculum value unparseable: {item!r}") from exc
     _require(set(fields) == {"p", "target", "cap"},
-             "--deep-start-curriculum 必须给全 p/target/cap 三键")
+             "--deep-start-curriculum must give all three keys p/target/cap")
     _require(math.isfinite(fields["p"]) and 0.0 <= fields["p"] <= 1.0,
-             f"--deep-start-curriculum p 必须在 [0, 1] 内: {fields['p']!r}")
+             f"--deep-start-curriculum p must lie in [0, 1]: {fields['p']!r}")
     _require(fields["target"] >= 2,
-             f"--deep-start-curriculum target 必须 ≥2(起点恒 1 层): {fields['target']!r}")
+             f"--deep-start-curriculum target must be >=2 (the start is always level 1): {fields['target']!r}")
     _require(fields["cap"] >= 1,
-             f"--deep-start-curriculum cap 必须 ≥1: {fields['cap']!r}")
+             f"--deep-start-curriculum cap must be >=1: {fields['cap']!r}")
     return fields
 
 
 def _prologue_dungeon_level(env) -> int:
-    """OptionsEnv 当前 dungeon_level(桩环境同构可测;缺 raw 视为 1 层)。"""
+    """Current dungeon_level of an OptionsEnv (testable with an isomorphic stub env; missing raw counts as level 1)."""
     raw = getattr(getattr(env, "env", None), "_raw", None)
     if isinstance(raw, dict):
         return int(raw.get("dungeon_level", 1))
@@ -3268,11 +3268,11 @@ def _prologue_dungeon_level(env) -> int:
 
 
 def _play_deep_start_prologue(env, obs, info, *, spec: dict, form: str):
-    """单次 prologue 代打;局终(死亡/截断)返回 None 交调用方重抽。
+    """One prologue play-through; returns None at episode end (death/truncation) so the caller redraws.
 
-    dive 形态:循环选 DIVE(被掩则 FARM)至 dungeon_level ≥ target 或窗数 ≥ cap;
-    exhausted 形态:FARM 至 榨干∧DIVE 合法(或 FARM 被掩=强制交权)即交棒。
-    掩码永不全假(OptionsEnv 契约:DIVE 非法时 FARM 保底),故所选动作恒合法。
+    dive form: repeatedly choose DIVE (FARM if masked) until dungeon_level >= target or windows >= cap;
+    exhausted form: FARM until drained and DIVE legal (or FARM masked = forced handover), then hand over.
+    The mask is never all False (OptionsEnv contract: FARM is the fallback when DIVE is illegal), so the chosen action is always legal.
     """
     from diablogym.options_env import DIVE, FARM
 
@@ -3301,15 +3301,15 @@ def _play_deep_start_prologue(env, obs, info, *, spec: dict, form: str):
 
 def _deep_start_prologue(env, obs, info, seed, *, spec: dict, form: str,
                          resample_seed, reset):
-    """R9 深层起点课程 prologue 核(模块级,桩环境单测覆盖)。
+    """Core of the R9 deep-start curriculum prologue (module level, covered by stub-env unit tests).
 
-    触发判定每局独立:由环境局种子派生确定性 RNG(``random.Random(seed
-    ^ 0xD1CE)``),不触碰全局 RNG——同种子必然同判。prologue 中局终
-    (死亡/截断)经 ``resample_seed``/``reset`` 闭包换种子重抽,封顶
-    ``_DEEP_START_MAX_RESAMPLES``;超限放弃代打,换新种子按普通起点交棒。
-    返回 (obs, info, seed, telemetry);telemetry 四键
-    {prologue_triggered, start_dlvl, prologue_windows, resamples} 由调用方
-    并入 reset 返回的 info。
+    The trigger decision is independent per episode: a deterministic RNG derived from the environment episode seed (``random.Random(seed
+    ^ 0xD1CE)``), never touching the global RNG -- the same seed always decides the same. An episode end during the prologue
+    (death/truncation) redraws with a new seed through the ``resample_seed``/``reset`` closures, capped at
+    ``_DEEP_START_MAX_RESAMPLES``; past the cap the play-through is abandoned and a new seed hands over from an ordinary start.
+    Returns (obs, info, seed, telemetry); the four telemetry keys
+    {prologue_triggered, start_dlvl, prologue_windows, resamples} are merged by the caller
+    into the info returned by reset.
     """
     probability = float(spec["p"])
     triggered = random.Random(seed ^ 0xD1CE).random() < probability
@@ -3363,7 +3363,7 @@ def _resolve_dry_curriculum_start(
     _require(table and all(
         math.isfinite(value) and 0.0 <= value <= 1.0
         for value in table
-    ), "dry-curriculum 起点解析需要非空 [0,1] 有限概率表")
+    ), "dry-curriculum start resolution needs a non-empty table of finite probabilities in [0,1]")
     for label, value in (
             ("start_steps", start_steps),
             ("rollout_quantum", rollout_quantum),
@@ -3371,16 +3371,16 @@ def _resolve_dry_curriculum_start(
             ("leg_start", leg_start)):
         _require(
             _is_plain_int(value),
-            f"dry-curriculum {label} 必须是普通整数",
+            f"dry-curriculum {label} must be a plain integer",
         )
     _require(rollout_quantum > 0 and total_steps > 0,
-             "dry-curriculum rollout 量子/训练步数必须为正")
+             "dry-curriculum rollout quantum/training steps must be positive")
     _require(total_steps % rollout_quantum == 0,
-             "dry-curriculum 训练步数必须按 rollout 量子闭合")
+             "dry-curriculum training steps must close on the rollout quantum")
     offset = start_steps - leg_start
     _require(
         offset >= 0 and offset % rollout_quantum == 0,
-        "dry-curriculum checkpoint 起点不在腿相对 rollout 边界:"
+        "dry-curriculum checkpoint start is not on a leg-relative rollout boundary: "
         f"start={start_steps},leg_start={leg_start},quantum={rollout_quantum}",
     )
     index = offset // rollout_quantum
@@ -3388,13 +3388,13 @@ def _resolve_dry_curriculum_start(
     _require(
         index < len(table)
         and index + rollout_count <= len(table),
-        "dry-curriculum 表不足以覆盖 continuation:"
+        "dry-curriculum table not long enough to cover the continuation: "
         f"start_index={index},rollouts={rollout_count},table={len(table)}",
     )
     return int(index), float(table[index])
 
 
-# ---- E3 ④乙 辅助示范通路(PREREG-内容案 E3;两旗互不强制,零侵入条款) ----
+# ---- E3 4B auxiliary demo pathway (PREREG-v33-content-case E3; the two flags do not force each other, zero-intrusion clause) ----
 
 
 def _bc_aux_active(args) -> bool:
@@ -3416,16 +3416,16 @@ def _bc_aux_structural_active(args) -> bool:
 
 
 def _parse_bc_aux_demos_v2(path: str | pathlib.Path):
-    """E3 ④乙:bc-worker-v2 示范集专用验证器(镜像断言按世代分别成文)。
+    """E3 4B: dedicated validator for the bc-worker-v2 demo set (mirror assertions written separately per generation).
 
-    v1 面(_BC_REPORT_SCHEMA_VERSION=1/_validate_bc_report/_load_dry_anchor_demos/
-    canonical bc-worker 路径)原封零触碰;本验证器单列,v2 demos schema 承图纸
-    E2 共同真源 = v1 键(X/Y/episode_id)+ 逐样本 masks 数组(采集时
-    env.action_masks() 现场捕获系唯一 on-manifold 真源,obs 反推口径禁用)。
-    世代条件化禁采镜像:v2 禁 11 允 12。v1 之干态双通道饱和断言
-    系 dry-anchor 探针专属,不随镜(施工注记)。返回
-    (X, Y, episode_id, masks, sha256)；episode_id 保留给真实 held-out 行为门，
-    禁把整池训练态冒充独立验证态。
+    The v1 surface (_BC_REPORT_SCHEMA_VERSION=1/_validate_bc_report/_load_dry_anchor_demos/
+    canonical bc-worker path) is untouched; this validator stands alone, and the v2 demos schema follows design
+    E2's shared source of truth = the v1 keys (X/Y/episode_id) + a per-sample masks array (captured live from
+    env.action_masks() at collection, the single on-manifold source of truth; inferring from obs is forbidden).
+    Generation-conditioned forbidden-action mirror: v2 forbids 11, allows 12. The v1 dry-state dual-channel saturation assertion
+    belongs to the dry-anchor probe only and is not mirrored (implementation note). Returns
+    (X, Y, episode_id, masks, sha256); episode_id is kept for the real held-out behaviour gate,
+    and passing off whole-pool training states as independent validation states is forbidden.
     """
     import numpy as np
 
@@ -3433,7 +3433,7 @@ def _parse_bc_aux_demos_v2(path: str | pathlib.Path):
     try:
         payload = p.read_bytes()
     except OSError as exc:
-        raise ValueError(f"④乙 v2 示范集不可读: {p}: {exc}") from exc
+        raise ValueError(f"4B v2 demo set unreadable: {p}: {exc}") from exc
     sha256 = hashlib.sha256(payload).hexdigest()
     try:
         with np.load(io.BytesIO(payload), allow_pickle=False) as data:
@@ -3445,67 +3445,67 @@ def _parse_bc_aux_demos_v2(path: str | pathlib.Path):
                 "preventive_threshold",
             }
             _require(set(data.files) == required,
-                     "④乙 v2 demos.npz schema/provenance 字段不精确匹配:"
-                     f"缺={sorted(required - set(data.files))},"
-                     f"多={sorted(set(data.files) - required)}")
+                     "4B v2 demos.npz schema/provenance fields do not match exactly: "
+                     f"missing={sorted(required - set(data.files))},"
+                     f"extra={sorted(set(data.files) - required)}")
             x, y = data["X"].copy(), data["Y"].copy()
             episode_id, masks = data["episode_id"].copy(), data["masks"].copy()
             meta = {}
             for key in required - {"X", "Y", "episode_id", "masks"}:
                 value = np.asarray(data[key])
                 _require(value.shape == (),
-                         f"④乙 v2 provenance {key} 必须是 0-d 标量")
+                         f"4B v2 provenance {key} must be a 0-d scalar")
                 meta[key] = value.item()
     except (OSError, ValueError) as exc:
-        raise ValueError(f"④乙 v2 示范集不可读: {p}: {exc}") from exc
+        raise ValueError(f"4B v2 demo set unreadable: {p}: {exc}") from exc
     _require(meta["schema_version"] == _BC_V2_DEMOS_SCHEMA_VERSION,
-             f"④乙 v2 demos schema 过期:{meta['schema_version']!r}")
+             f"4B v2 demos schema outdated: {meta['schema_version']!r}")
     _require(isinstance(meta["protocol_version"], (int, np.integer))
              and int(meta["protocol_version"]) == PROTOCOL_VERSION,
-             "④乙 v2 demos 评测/环境协议过期:"
+             "4B v2 demos evaluation/environment protocol outdated: "
              f"{meta['protocol_version']!r} != {PROTOCOL_VERSION}")
     _require(meta["implementation_sha256"] == _implementation_bundle_sha256(),
-             "④乙 v2 demos implementation_sha256 与当前训练实现不一致")
+             "4B v2 demos implementation_sha256 disagrees with the current training implementation")
     generator = pathlib.Path(__file__).with_name("bc_worker.py")
     _require(meta["generator_sha256"]
              == hashlib.sha256(generator.read_bytes()).hexdigest(),
-             "④乙 v2 demos generator_sha256 漂移:train/bc_worker.py")
+             "4B v2 demos generator_sha256 drift: train/bc_worker.py")
     _require(_is_sha256(meta["manager_npz_sha256"]),
-             "④乙 v2 demos manager_npz_sha256 非法")
+             "4B v2 demos manager_npz_sha256 invalid")
     _require(isinstance(meta["teacher_generation"], (int, np.integer))
              and int(meta["teacher_generation"]) == _BC_V2_TEACHER_GENERATION,
-             f"④乙 v2 demos teacher_generation 非 2:{meta['teacher_generation']!r}")
+             f"4B v2 demos teacher_generation is not 2: {meta['teacher_generation']!r}")
     _require(isinstance(meta["preventive_threshold"], (int, float,
                                                         np.integer, np.floating))
              and float(meta["preventive_threshold"])
              in _BC_V2_PREVENTIVE_THRESHOLDS,
-             "④乙 v2 demos preventive_threshold 未注册:"
+             "4B v2 demos preventive_threshold not registered: "
              f"{meta['preventive_threshold']!r}")
     _require(x.ndim == 2 and x.shape[1] == 298
              and y.ndim == 1 and len(x) == len(y),
-             f"④乙 v2 数组形状异常:X={x.shape},Y={y.shape}")
+             f"4B v2 array shapes invalid: X={x.shape},Y={y.shape}")
     _require(x.dtype == np.float32 and np.issubdtype(y.dtype, np.integer),
-             f"④乙 v2 dtype 异常:X={x.dtype},Y={y.dtype}")
+             f"4B v2 dtype invalid: X={x.dtype},Y={y.dtype}")
     _require(episode_id.ndim == 1 and len(episode_id) == len(x)
              and np.issubdtype(episode_id.dtype, np.integer)
              and len(np.unique(episode_id)) >= 2,
-             "④乙 v2 episode_id 形状/类型/独立局数异常")
+             "4B v2 episode_id shape/type/independent episode count invalid")
     _require(masks.ndim == 2 and masks.shape == (len(x), 15)
              and masks.dtype == np.bool_,
-             f"④乙 v2 masks 形状/dtype 异常:{getattr(masks, 'shape', None)},"
+             f"4B v2 masks shape/dtype invalid: {getattr(masks, 'shape', None)},"
              f"{getattr(masks, 'dtype', None)}")
-    _require(bool(((y >= 0) & (y < 15)).all()), "④乙 v2 标签越界")
+    _require(bool(((y >= 0) & (y < 15)).all()), "4B v2 labels out of range")
     _require(not np.isin(y, _WORKER_BC_V2_FORBIDDEN_ACTIONS).any(),
-             "④乙 v2 示范集含世代禁采动作 11(v2 禁 11 允 12,守卫面不弱化)")
-    # 裁量强化注记:逐样本标签须为自身掩码合法位(on-manifold 真实执行拍之必然,
-    # 掩位标签将使辅助 CE 取 -1e8 位);其对 12 类对蕴含图纸 m[12]=True 断言。
+             "4B v2 demo set contains generation-forbidden action 11 (v2 forbids 11, allows 12; guard surface not weakened)")
+    # Discretionary hardening note: every per-sample label must be a legal bit of its own mask (a given for really executed on-manifold steps;
+    # a masked label would make the auxiliary CE take the -1e8 entry); for class 12 pairs this implies the design's m[12]=True assertion.
     _require(bool(masks[np.arange(len(y)), y].all()),
-             "④乙 v2 存在标签被自身掩码禁止的示范对(on-manifold 破缺,fail-loud)")
+             "4B v2 has demo pairs whose label is forbidden by their own mask (on-manifold broken, fail-loud)")
     latch = x[:, _A12_CALIBRATION_DRINK_LATCH_FEATURE]
     _require(bool(np.isfinite(latch).all())
              and bool((((0.0 <= latch) & (latch <= 1.0))
                        | ((-2.0 <= latch) & (latch <= -1.0))).all()),
-             "④乙 v2 feature297 主动饮位不在未饮[0,1]/已饮[-2,-1]编码域")
+             "4B v2 feature297 active-drink bit outside the not-drunk [0,1] / drunk [-2,-1] encoding domains")
     hp = x[:, _A12_CALIBRATION_HP_FEATURE]
     threshold = float(meta["preventive_threshold"])
     visible_target = (
@@ -3515,31 +3515,31 @@ def _parse_bc_aux_demos_v2(path: str | pathlib.Path):
         & (latch >= 0.0)
     )
     _require(np.array_equal(y == 12, visible_target),
-             "④乙 v2 标签不等于现场可见 TeacherV2 谓词"
-             "(hp/m12/主动饮位)，拒绝隐藏状态或 obs/raw 错位")
+             "4B v2 labels differ from the live visible TeacherV2 predicate"
+             " (hp/m12/active-drink bit); refusing hidden state or obs/raw misalignment")
     return x, y, episode_id, masks, sha256, meta
 
 
 def _load_bc_aux_demos_v2(
         path: str | pathlib.Path, *,
         expected_manager_sha256: str):
-    """读取且验证已提交的 BC-v2 PASS bundle。
+    """Read and validate a committed BC-v2 PASS bundle.
 
-    demos 内嵌 metadata 只能证明“自报身份”；生成器在训练/校准失败前就
-    可能写出数据。sibling PASS report 是三件套的提交标记，必须绑定当前
-    demos/policy 字节、固定 384 episode 与 n12 数据门，RUNNING/FAIL/缺件
-    一律拒绝进入 PPO 优化器。
+    The metadata embedded in demos can only prove a "self-reported identity"; the generator may write data
+    before training/calibration fails. The sibling PASS report is the commit marker of the three-file set and must bind the current
+    demos/policy bytes, the fixed 384 episodes and the n12 data gate; RUNNING/FAIL/missing files
+    are always refused entry to the PPO optimizer.
     """
     from eval_contract import EvalContractError, strict_json_loads
     import numpy as np
 
     p = pathlib.Path(path)
     _require(_is_sha256(expected_manager_sha256),
-             "④乙 v2 loader 缺本次训练 manager_npz_sha256")
+             "4B v2 loader is missing this training run's manager_npz_sha256")
     x, y, episode_id, masks, demos_sha256, meta = (
         _parse_bc_aux_demos_v2(p))
     _require(meta["manager_npz_sha256"] == expected_manager_sha256,
-             "④乙 v2 demos 经理分布与本次训练 --manager-npz 不一致:"
+             "4B v2 demos manager distribution disagrees with this training run's --manager-npz: "
              f"{meta['manager_npz_sha256']} != {expected_manager_sha256}")
     report_path = p.with_name("bc_report_v2.json")
     policy_path = p.with_name("policy_sd.pt")
@@ -3547,61 +3547,61 @@ def _load_bc_aux_demos_v2(
         report = strict_json_loads(report_path.read_bytes())
     except (OSError, EvalContractError) as exc:
         raise ValueError(
-            f"④乙 v2 PASS 回执缺失/不可读:{report_path}") from exc
-    _require(isinstance(report, dict), "④乙 v2 PASS 回执必须是 JSON 对象")
+            f"4B v2 PASS receipt missing/unreadable: {report_path}") from exc
+    _require(isinstance(report, dict), "4B v2 PASS receipt must be a JSON object")
     _require(set(report) == set(_BC_V2_PASS_KEYS),
-             "④乙 v2 PASS 回执字段/schema 不精确:"
+             "4B v2 PASS receipt fields/schema not exact: "
              f"missing={sorted(set(_BC_V2_PASS_KEYS) - set(report))},"
              f"extra={sorted(set(report) - set(_BC_V2_PASS_KEYS))}")
     _require(report["schema_version"] == _BC_V2_REPORT_SCHEMA_VERSION
              and report["data_gate"] == "PASS",
-             "④乙 v2 sibling report 未通过当前 schema/data_gate")
+             "4B v2 sibling report did not pass the current schema/data_gate")
     for key in (
             "protocol_version", "implementation_sha256", "generator_sha256",
             "manager_npz_sha256", "teacher_generation",
             "preventive_threshold"):
         _require(report[key] == meta[key],
-                 f"④乙 v2 report/demos provenance 不一致:{key}")
+                 f"4B v2 report/demos provenance mismatch: {key}")
     _validate_bc_final_holdout_marker(
         p.parent, 2, _BC_V2_COLLECTION_EPISODES, report)
     _require(report["demos_sha256"] == demos_sha256,
-             "④乙 v2 PASS 回执未绑定现场 demos 字节")
+             "4B v2 PASS receipt not bound to the live demos bytes")
     _require(report["pairs"] == len(y)
              and report["collection_episodes"]
              == len(_BC_V2_COLLECTION_EPISODES),
-             "④乙 v2 PASS 回执 pairs/collection_episodes 不闭合")
+             "4B v2 PASS receipt pairs/collection_episodes do not close")
     episodes = np.unique(episode_id)
     _require(np.array_equal(
         episodes, np.asarray(_BC_V2_COLLECTION_EPISODES, dtype=episodes.dtype)),
-        "④乙 v2 demos 必须精确覆盖当前固定 episode "
+        "4B v2 demos must exactly cover the current fixed episodes "
         "2103000..2103383")
     _bc_v2_post_drink_coverage(x, y, episode_id, masks)
     n12 = int((y == 12).sum())
     _require(report["n12"] == n12
              and report["n12_gate_min"] == _BC_V2_N12_MIN
              and n12 >= _BC_V2_N12_MIN,
-             "④乙 v2 n12 数据门与现场标签不闭合")
+             "4B v2 n12 data gate does not close with the live labels")
     heldout = _bc_v2_holdout_indices(episode_id)
     heldout_episodes = sorted(
         int(v) for v in np.unique(episode_id[heldout]))
     _require(report["held_out_pairs"] == len(heldout)
              and report["held_out_episodes"] == heldout_episodes,
-             "④乙 v2 held-out episode split 与现场数据不闭合")
+             "4B v2 held-out episode split does not close with the live data")
     gate = report["a12_behavior_gate"]
     _require(isinstance(gate, dict) and gate.get("verdict") == "PASS",
-             "④乙 v2 sibling report 的 a12 行为门未 PASS")
+             "4B v2 sibling report's a12 behaviour gate did not PASS")
     try:
         policy_payload = policy_path.read_bytes()
     except OSError as exc:
         raise ValueError(
-            f"④乙 v2 PASS 回执绑定权重缺失/不可读:{policy_path}") from exc
+            f"4B v2 PASS receipt bound weights missing/unreadable: {policy_path}") from exc
     _require(hashlib.sha256(policy_payload).hexdigest()
              == report["policy_sha256"],
-             "④乙 v2 PASS 回执未绑定现场 policy_sd.pt 字节")
+             "4B v2 PASS receipt not bound to the live policy_sd.pt bytes")
 
-    # 哈希只能证明“这些字节被回执点名”，不能证明它们是可执行策略，更不能
-    # 证明回执中的 held-out 行为读数确由这些权重产生。只使用 weights_only
-    # 反序列化，并把 BC-v2 的标准六张量形制/有限性逐项钉死。
+    # A hash only proves "these bytes are named by the receipt"; it cannot prove they are an executable policy, still less
+    # that the receipt's held-out behaviour readings were produced by these weights. Deserialise with weights_only
+    # only, and pin the standard BC-v2 six-tensor shapes/finiteness one by one.
     import torch as th
     try:
         policy_sd = th.load(
@@ -3609,7 +3609,7 @@ def _load_bc_aux_demos_v2(
             weights_only=True)
     except Exception as exc:
         raise ValueError(
-            "④乙 v2 policy_sd.pt 不是安全可解析的 weights-only 权重"
+            "4B v2 policy_sd.pt is not safely parseable weights-only weights"
         ) from exc
     expected_shapes = {
         "mlp_extractor.policy_net.0.weight": (64, x.shape[1]),
@@ -3621,23 +3621,23 @@ def _load_bc_aux_demos_v2(
     }
     _require(isinstance(policy_sd, dict)
              and set(policy_sd) == set(_POLICY_HEAD_KEYS),
-             "④乙 v2 policy_sd.pt 策略头六张量键集合不精确")
+             "4B v2 policy_sd.pt policy-head six-tensor key set not exact")
     for key, shape in expected_shapes.items():
         tensor = policy_sd[key]
         _require(isinstance(tensor, th.Tensor)
                  and tensor.dtype == th.float32
                  and tuple(tensor.shape) == shape
                  and bool(th.isfinite(tensor).all()),
-                 f"④乙 v2 policy_sd.pt 张量形制/有限性异常:"
+                 f"4B v2 policy_sd.pt tensor shape/finiteness invalid: "
                  f"{key}={getattr(tensor, 'shape', None)}/"
                  f"{getattr(tensor, 'dtype', None)}")
 
     _validate_bc_v2_calibration_receipt(
         report, policy_sd, x, y, episode_id, masks)
 
-    # 哈希和 a12 安全门都不能证明其余战斗类仍在。用现场 held-out/masks
-    # 重算 top1 与全部有足够覆盖的逐类召回；a12 走下方专用 0.5+安全门，
-    # 其余类仍严格要求 0.85。
+    # Neither the hash nor the a12 safety gate proves the other combat classes are still there. Recompute top1 and every
+    # per-class recall with enough coverage on the live held-out/masks; a12 goes through the dedicated 0.5 + safety gate below,
+    # the other classes still strictly require 0.85.
     with th.no_grad():
         heldout_logits = _policy_logits_from_sb3_state_dict(
             policy_sd, x[heldout])
@@ -3655,7 +3655,7 @@ def _load_bc_aux_demos_v2(
             float(report["held_out_top1"]), observed_top1,
             rel_tol=0.0, abs_tol=1e-15)
         and observed_top1 >= 0.95,
-        "④乙 v2 held_out_top1 与现场权重重算不一致或未过门")
+        "4B v2 held_out_top1 disagrees with the live-weights recomputation or missed the gate")
     full_counts = np.bincount(y, minlength=15)
     gated_actions = np.flatnonzero(full_counts >= 300)
     reported_recalls = report["class_recalls"]
@@ -3663,7 +3663,7 @@ def _load_bc_aux_demos_v2(
         isinstance(reported_recalls, dict)
         and set(reported_recalls)
         == {str(int(action)) for action in gated_actions},
-        "④乙 v2 class_recalls 类集合与现场 demos 不一致")
+        "4B v2 class_recalls class set disagrees with the live demos")
     for action in gated_actions:
         selected = heldout_y == action
         recall = (
@@ -3676,12 +3676,12 @@ def _load_bc_aux_demos_v2(
             and math.isclose(
                 float(reported), recall,
                 rel_tol=0.0, abs_tol=1e-15),
-            "④乙 v2 class_recalls 与现场权重重算不一致:"
+            "4B v2 class_recalls disagree with the live-weights recomputation:"
             f" action={int(action)}")
         if int(action) != 12:
             _require(
                 recall >= 0.85,
-                "④乙 v2 非 a12 逐类召回未过 0.85:"
+                "4B v2 non-a12 per-class recall below 0.85:"
                 f" action={int(action)}, recall={recall}")
 
     observed_behavior = bc_aux_behavior_metrics(
@@ -3689,8 +3689,8 @@ def _load_bc_aux_demos_v2(
     reported_behavior = report["a12_behavior"]
 
     def _metrics_match(expected, observed) -> bool:
-        # JSON 中计数/字符串/None 必须逐字等；浮点容许 CPU 前向与 JSON
-        # round-trip 的最后几位差异，但拒绝非有限值。
+        # Counts/strings/None in JSON must match exactly; floats tolerate last-digit differences between the CPU forward and a JSON
+        # round trip, but non-finite values are refused.
         if isinstance(expected, dict) or isinstance(observed, dict):
             return (isinstance(expected, dict)
                     and isinstance(observed, dict)
@@ -3710,15 +3710,15 @@ def _load_bc_aux_demos_v2(
         return type(expected) is type(observed) and expected == observed
 
     _require(_metrics_match(reported_behavior, observed_behavior),
-             "④乙 v2 回执 a12_behavior 与现场权重重算不一致")
-    # BC-v2 的教师召回由下方独立的、同源 0.5 门负责；通用安全门在
-    # rev8 起与部署侧 exact-mixture 使用同一 schema，不能再暗含
-    # “a12 必须成为 argmax”的旧目标，否则 producer/loader/evaluator
-    # 会对同一份回执算出不同 gate。
+             "4B v2 receipt a12_behavior disagrees with the live-weights recomputation")
+    # The BC-v2 teacher recall is handled by the separate, same-source 0.5 gate below; since rev8 the generic safety gate
+    # uses the same schema as the deployment-side exact mixture and must no longer imply
+    # the old target "a12 must become the argmax", otherwise producer/loader/evaluator
+    # would compute different gates for the same receipt.
     observed_gate = bc_aux_behavior_gate(
         observed_behavior, require_teacher_recall=False)
     _require(observed_gate["verdict"] == "PASS",
-             "④乙 v2 现场权重重算 a12 行为门未 PASS:"
+             "4B v2 live-weights recomputed a12 behaviour gate did not PASS: "
              f"{observed_gate['reasons']}")
     _require(
         observed_behavior["recall_12"] >= _BC_V2_TEACHER_RECALL_MIN
@@ -3728,24 +3728,24 @@ def _load_bc_aux_demos_v2(
             float(report["recall_12"]),
             round(float(observed_behavior["recall_12"]), 4),
             rel_tol=0.0, abs_tol=1e-12),
-        "④乙 v2 现场权重未过教师专用 a12 recall 0.5 门"
-        "或 legacy recall 字段不同源")
+        "4B v2 live weights failed the teacher-only a12 recall 0.5 gate"
+        " or the legacy recall field has a different source")
     _require(report["a12_behavior_gate"] == observed_gate,
-             "④乙 v2 回执 a12_behavior_gate 与现场重算不一致")
+             "4B v2 receipt a12_behavior_gate disagrees with the live recomputation")
     return x, y, episode_id, masks, demos_sha256
 
 
 def _filter_bc_aux_demo_pairs(x, y, masks):
-    """构造 legacy 校准 bank：全部正例 + 有真实 m[12] 的 hard negatives。
+    """Build the legacy calibration bank: all positives + hard negatives with a real m[12].
 
-    旧实现 ``keep = y == 12`` 会在没有任何反例的情况下反复最大化 π(12)，
-    102,400 步 smoke 已实测坍缩为 91%“有药就喝”。修复版只消费采集时现场
-    masks，负例按 8:1 封顶并同时覆盖：
-      * hp>=0.65 的明确非触发态（旧模型假阳性主体）；
-      * 非 a9 动作，防负例侧退化为“全部学 a9”。
-    feature297<0 的后饮行现在必须同时 m12=False；它们只证明可见闩/掩码
-    接口闭合，不能送进要求 m12=True 的 legacy BCE bank。
-    选择为确定性等距子样，不消费训练或辅助 RNG。
+    The old implementation ``keep = y == 12`` repeatedly maximised π(12) without any counter-examples;
+    a 102,400-step smoke run measurably collapsed to 91% "drink whenever there is a potion". The fixed version consumes only the live
+    collection masks, caps negatives at 8:1, and covers both:
+      * clearly non-trigger states with hp>=0.65 (the bulk of the old model's false positives);
+      * non-a9 actions, so the negative side does not degenerate into "learn a9 everywhere".
+    Post-drink rows with feature297<0 must now also have m12=False; they only prove the visible latch/mask
+    interface closes and cannot go into a legacy BCE bank that requires m12=True.
+    Selection is a deterministic equally spaced subsample and consumes neither the training nor the auxiliary RNG.
     """
     import numpy as np
 
@@ -3755,20 +3755,20 @@ def _filter_bc_aux_demo_pairs(x, y, masks):
     _require(x.ndim == 2 and x.shape[1] == 298
              and y.shape == (len(x),)
              and masks.shape == (len(x), 15),
-             "a12 校准 bank 输入形状异常")
+             "a12 calibration bank input shape invalid")
     positive = np.flatnonzero(y == 12)
     _require(len(positive) > 0,
-             "--bc-aux-demos 中没有 12 类示范对(fail-loud)")
+             "--bc-aux-demos has no class-12 demo pairs (fail-loud)")
     _require(bool(masks[positive, 12].all()),
-             "12 类示范对存在 m[12]=False:采集面 on-manifold 破缺")
+             "class-12 demo pairs with m[12]=False: collection surface on-manifold broken")
     negative = np.flatnonzero((y != 12) & masks[:, 12])
     _require(len(negative) > 0,
-             "--bc-aux-demos 没有 m[12]=True 的非 12 hard negative；"
-             "拒绝退回 positive-only 目标")
+             "--bc-aux-demos has no non-12 hard negative with m[12]=True; "
+             "refusing to fall back to the positive-only objective")
     _require(len(negative) >= _BC_AUX_MIN_NEGATIVE_RATIO * len(positive),
-             "a12 校准 bank 合法 hard negatives 不足:"
+             "a12 calibration bank has too few legal hard negatives: "
              f"{len(negative)} < {_BC_AUX_MIN_NEGATIVE_RATIO}×"
-             f"{len(positive)}；疑似主动饮可见位/安全负例覆盖不足")
+             f"{len(positive)}; suspect insufficient coverage of the active-drink visible bit/safe negatives")
     post_drink_closed = np.flatnonzero(
         (y != 12)
         & ~masks[:, 12]
@@ -3776,10 +3776,10 @@ def _filter_bc_aux_demo_pairs(x, y, masks):
     _require(
         len(post_drink_closed)
         >= _BC_AUX_MIN_POST_DRINK_NEGATIVE_RATIO * len(positive),
-        "a12 demos 的可见后饮关闩证据不足:"
+        "a12 demos lack evidence that the visible post-drink latch closes: "
         f"{len(post_drink_closed)} < "
-        f"{_BC_AUX_MIN_POST_DRINK_NEGATIVE_RATIO}×{len(positive)}；"
-        "无法证明同窗重复饮已由可见状态+掩码关闭")
+        f"{_BC_AUX_MIN_POST_DRINK_NEGATIVE_RATIO}×{len(positive)}; "
+        "cannot prove that repeat drinking in the same window is closed by visible state + mask")
 
     limit = min(len(negative), _BC_AUX_NEGATIVE_RATIO * len(positive))
     chosen: list[int] = []
@@ -3791,7 +3791,7 @@ def _filter_bc_aux_demo_pairs(x, y, masks):
         count = min(int(quota), len(pool), limit - len(chosen))
         if count <= 0:
             return
-        # floor(k*N/n) 在 n<=N 时严格递增，故无重复且跨原序列均匀覆盖。
+        # floor(k*N/n) is strictly increasing for n<=N, so there are no duplicates and coverage is even across the original sequence.
         pick = pool[np.floor(
             np.arange(count, dtype=np.float64) * len(pool) / count
         ).astype(np.int64)]
@@ -3808,35 +3808,35 @@ def _filter_bc_aux_demo_pairs(x, y, masks):
     take(negative[y[negative] != 9], max(1, limit // 8))
     take(negative, limit - len(chosen))
     _require(len(chosen) == limit,
-             f"a12 hard-negative 选择数异常:{len(chosen)} != {limit}")
+             f"a12 hard-negative selection count invalid: {len(chosen)} != {limit}")
     keep = np.concatenate([positive, np.asarray(chosen, dtype=np.int64)])
     return x[keep], y[keep], masks[keep]
 
 
 def _bc_v2_holdout_indices(episode_id):
-    """镜像 bc_worker.split_by_episode 的 rng(23)/10% 整局切分。
+    """Mirror the rng(23)/10% whole-episode split of bc_worker.split_by_episode.
 
-    train_ppo 不能反向 import bc_worker（后者已 import 本模块），故在此保留
-    小而封闭的纯函数，并由测试逐数组对齐。
+    train_ppo cannot import bc_worker in reverse (the latter already imports this module), so a small closed
+    pure function is kept here, and tests align it array by array.
     """
     import numpy as np
 
     groups = np.asarray(episode_id)
     _require(groups.ndim == 1 and len(groups) > 0
              and np.issubdtype(groups.dtype, np.integer),
-             "BC-v2 held-out episode_id 非法")
+             "BC-v2 held-out episode_id invalid")
     episodes = np.unique(groups)
-    _require(len(episodes) >= 2, "BC-v2 held-out 至少需要 2 个独立 episode")
+    _require(len(episodes) >= 2, "BC-v2 held-out needs at least 2 independent episodes")
     order = np.random.default_rng(_BC_FINAL_SPLIT_SEED).permutation(episodes)
     held = order[:max(1, int(round(len(order) * 0.1)))]
     indices = np.flatnonzero(np.isin(groups, held))
     _require(0 < len(indices) < len(groups),
-             "BC-v2 episode split 产生空训练集或空 held-out")
+             "BC-v2 episode split produced an empty training set or empty held-out")
     return indices
 
 
 def _bc_v2_training_indices(episode_id):
-    """与固定 held-out 整局互斥且完备的训练行索引。"""
+    """Training row indices mutually exclusive with and complementary to the fixed held-out episodes."""
     import numpy as np
 
     groups = np.asarray(episode_id)
@@ -3846,23 +3846,23 @@ def _bc_v2_training_indices(episode_id):
     training = np.flatnonzero(selected)
     _require(len(training) + len(heldout) == len(groups)
              and not np.intersect1d(training, heldout).size,
-             "BC-v2 training/held-out 行切分不互斥完备")
+             "BC-v2 training/held-out row split not mutually exclusive and complete")
     train_episodes = np.unique(groups[training])
     heldout_episodes = np.unique(groups[heldout])
     _require(not np.intersect1d(train_episodes, heldout_episodes).size,
-             "BC-v2 training/held-out episode 发生泄漏")
+             "BC-v2 training/held-out episode leak")
     return training
 
 
 def _bc_v2_fit_validation_indices(episode_id):
-    """镜像 bc_worker 的 nested rng(2301)/10% 整局候选选择切分。"""
+    """Mirror bc_worker's nested rng(2301)/10% whole-episode candidate-selection split."""
     import numpy as np
 
     groups = np.asarray(episode_id)
     training = _bc_v2_training_indices(groups)
     training_episodes = np.unique(groups[training])
     _require(len(training_episodes) >= 2,
-             "BC-v2 nested split 至少需要两个 training episodes")
+             "BC-v2 nested split needs at least two training episodes")
     order = np.random.default_rng(
         _BC_SELECTION_SPLIT_SEED).permutation(training_episodes)
     n_validation = max(
@@ -3881,18 +3881,18 @@ def _bc_v2_fit_validation_indices(episode_id):
              and not np.intersect1d(fit, validation).size
              and not np.intersect1d(fit, heldout).size
              and not np.intersect1d(validation, heldout).size,
-             "BC-v2 nested fit/validation/final 三域不互斥完备")
+             "BC-v2 nested fit/validation/final three domains not mutually exclusive and complete")
     return fit, validation
 
 
 def _bc_v2_post_drink_coverage(
         x, y, episode_id, masks, *,
         scopes: tuple[str, ...] = ("fit", "validation", "final")) -> dict:
-    """在调用者获准的域证明可见后饮闩与 m12 掩码同源。
+    """Prove, on the domains the caller is allowed to read, that the visible post-drink latch and the m12 mask share a source.
 
-    Producer 在候选冻结前只能传 ``("fit", "validation")``。默认三域
-    仅供已经提交的一次性 bundle 消费端复验；这样覆盖诊断本身不能再偷看
-    final heldout。
+    Before the candidate is frozen the producer may only pass ``("fit", "validation")``. The default three domains
+    are only for re-verification by the consumer of an already committed one-shot bundle; so the coverage diagnosis itself can no longer peek at
+    the final heldout.
     """
     import numpy as np
 
@@ -3905,7 +3905,7 @@ def _bc_v2_post_drink_coverage(
         and y.shape == groups.shape == (len(x),)
         and masks.shape == (len(x), 15)
         and masks.dtype == np.bool_,
-        "BC-v2 后饮覆盖输入形状/dtype 异常",
+        "BC-v2 post-drink coverage input shape/dtype invalid",
     )
     fit, validation = _bc_v2_fit_validation_indices(groups)
     heldout = _bc_v2_holdout_indices(groups)
@@ -3919,7 +3919,7 @@ def _bc_v2_post_drink_coverage(
         and bool(scopes)
         and len(scopes) == len(set(scopes))
         and all(scope in allowed for scope in scopes),
-        f"BC-v2 后饮覆盖 scopes 非法:{scopes!r}",
+        f"BC-v2 post-drink coverage scopes invalid: {scopes!r}",
     )
     result = {}
     for scope in scopes:
@@ -3934,9 +3934,9 @@ def _bc_v2_post_drink_coverage(
             positive > 0
             and post_drink_negative
             >= _BC_AUX_MIN_POST_DRINK_NEGATIVE_RATIO * positive,
-            f"BC-v2 {scope} 域缺少可见后饮关闩覆盖:"
+            f"BC-v2 {scope} domain lacks visible post-drink latch coverage: "
             f"positive={positive},post_drink_negative="
-            f"{post_drink_negative},要求≥"
+            f"{post_drink_negative}, required>="
             f"{_BC_AUX_MIN_POST_DRINK_NEGATIVE_RATIO}:1",
         )
         result[scope] = {
@@ -3947,7 +3947,7 @@ def _bc_v2_post_drink_coverage(
 
 
 def _build_bc_aux_training_bank(x, y, episode_id, masks):
-    """只从固定 training episodes 构造优化 bank；held-out 永不入图。"""
+    """Build the optimisation bank only from the fixed training episodes; held-out never enters the graph."""
     training = _bc_v2_training_indices(episode_id)
     return _filter_bc_aux_demo_pairs(
         x[training], y[training], masks[training])
@@ -3957,12 +3957,12 @@ def _policy_logits_from_sb3_state_dict(
         policy_sd, obs, *, legacy_scene_clock: bool = False,
         action_masks=None, circuit_spec=None,
         return_raw_actor_logits: bool = False):
-    """以 SB3 六张策略头张量离线前向；供 BC-v2/E5/G0 共用。
+    """Offline forward pass on the six SB3 policy-head tensors; shared by BC-v2/E5/G0.
 
-    ``legacy_scene_clock`` 是保留给既有调用方的参数名；为真时实际应用
-    完整 protocol-v3 worker 兼容视图（286 恢复 heals 主刻度，297 恢复
-    exhausted 位）。当前学生的 contextual gate 仍必须读取 raw signed
-    观测，不能在这个通用前向里默认转换。
+    ``legacy_scene_clock`` is a parameter name kept for existing callers; when true it actually applies
+    the full protocol-v3 worker compatibility view (286 restores the heals main scale, 297 restores the
+    exhausted bit). The current student's contextual gate must still read the raw signed
+    observation and must not be converted by default in this generic forward pass.
     """
     import numpy as np
     import torch as th
@@ -3975,10 +3975,10 @@ def _policy_logits_from_sb3_state_dict(
         "action_net.weight", "action_net.bias",
     )
     _require(isinstance(return_raw_actor_logits, bool),
-             "return_raw_actor_logits 必须为 bool")
+             "return_raw_actor_logits must be a bool")
     _require(isinstance(policy_sd, dict)
              and all(key in policy_sd for key in required),
-             "离线行为门所需 SB3 策略头六张量不全")
+             "the six SB3 policy-head tensors required by the offline behaviour gate are incomplete")
     raw_x = th.as_tensor(np.asarray(obs, dtype=np.float32))
     x = raw_x
     if legacy_scene_clock:
@@ -3991,7 +3991,7 @@ def _policy_logits_from_sb3_state_dict(
     w0, b0, w1, b1, wa, ba = tensors
     _require(w0.ndim == 2 and w0.shape[1] == x.shape[1]
              and wa.ndim == 2 and wa.shape[0] == 15,
-             "离线行为门策略头形状异常")
+             "offline behaviour gate policy-head shape invalid")
     with th.no_grad():
         h = th.tanh(x @ w0.T + b0)
         h = th.tanh(h @ w1.T + b1)
@@ -4001,12 +4001,12 @@ def _policy_logits_from_sb3_state_dict(
         _require(
             (expanded and circuit_spec == _bc_aux_circuit_spec())
             or (not expanded and circuit_spec is None),
-            "离线行为门不得仅凭 68 宽猜测 adapter 语义；"
-            "必须显式绑定当前 contextual circuit spec",
+            "the offline behaviour gate must not guess adapter semantics from the 68 width alone; "
+            "the current contextual circuit spec must be bound explicitly",
         )
         if expanded:
             _require(action_masks is not None,
-                     "contextual mixture 离线前向必须提供逐样本 masks")
+                     "contextual mixture offline forward must provide per-sample masks")
             from leashed_ppo import (
                 _a12_mixture_logits,
                 _legacy_worker_observation_view,
@@ -4048,7 +4048,7 @@ def _policy_logits_from_sb3_state_dict(
 
 def _validate_bc_v2_calibration_receipt(
         report, policy_sd, x, y, episode_id, masks) -> None:
-    """用 canonical demos + 最终六张量重算校准 fit 回执与三域边界。"""
+    """Recompute the calibration fit receipt and three-domain boundaries from the canonical demos + final six tensors."""
     import numpy as np
     import torch as th
 
@@ -4063,7 +4063,7 @@ def _validate_bc_v2_calibration_receipt(
     }
     _require(isinstance(calibration, dict)
              and set(calibration) == expected_keys,
-             "④乙 v2 a12_calibration 字段/schema 不精确")
+             "4B v2 a12_calibration fields/schema not exact")
     _require(
         calibration["schema_version"] == _A12_CALIBRATION_SCHEMA_VERSION
         and calibration["fit_scope"] == "nested-fit-episodes-only"
@@ -4075,7 +4075,7 @@ def _validate_bc_v2_calibration_receipt(
         and calibration["predicate"] == _A12_CALIBRATION_PREDICATE
         and calibration["target_recall_12"]
         == _A12_CALIBRATION_TRAIN_RECALL_TARGET,
-        "④乙 v2 a12_calibration 身份/可见谓词不符")
+        "4B v2 a12_calibration identity/visible predicate mismatch")
 
     fit, validation = _bc_v2_fit_validation_indices(episode_id)
     final_heldout = _bc_v2_holdout_indices(episode_id)
@@ -4092,17 +4092,17 @@ def _validate_bc_v2_calibration_receipt(
     for key, expected in expected_counts.items():
         value = calibration[key]
         _require(_is_plain_int(value) and value > 0 and value == expected,
-                 "④乙 v2 a12_calibration 三域确定性切分不一致:"
+                 "4B v2 a12_calibration three-domain deterministic split inconsistent: "
                  f"{key}={value!r} != {expected}")
 
     bias = _finite_number(
-        calibration["bias_12"], "④乙 v2 a12_calibration bias_12")
+        calibration["bias_12"], "4B v2 a12_calibration bias_12")
     policy_bias = float(
         th.as_tensor(policy_sd["action_net.bias"])[12].detach().cpu())
-    # 生产者从最终 float32 参数回读后写 JSON；JSON 数字能无损往返该值，
-    # 因而这里要求精确相等。近似容差会重新打开“回执不是部署权重”的缝。
+    # The producer reads the final float32 parameters back before writing JSON; JSON numbers round-trip that value losslessly,
+    # so exact equality is required here. An approximate tolerance would reopen the "receipt is not the deployed weights" gap.
     _require(bias == policy_bias,
-        "④乙 v2 a12_calibration bias_12 未绑定最终 policy")
+        "4B v2 a12_calibration bias_12 not bound to the final policy")
 
     fx = np.asarray(x)[fit]
     fy = np.asarray(y)[fit]
@@ -4153,21 +4153,21 @@ def _validate_bc_v2_calibration_receipt(
     metrics = calibration["fit_metrics"]
     _require(isinstance(metrics, dict)
              and set(metrics) == set(observed),
-             "④乙 v2 a12_calibration fit_metrics 字段不精确")
+             "4B v2 a12_calibration fit_metrics fields not exact")
     for key, expected in observed.items():
         value = metrics[key]
         if key in {"tp", "fp"}:
             _require(_is_plain_int(value) and value >= 0
                      and value == expected,
-                     "④乙 v2 a12_calibration fit 计数未绑定现场策略:"
+                     "4B v2 a12_calibration fit counts not bound to the live policy: "
                      f"{key}={value!r} != {expected}")
         else:
             numeric = _finite_number(
-                value, f"④乙 v2 a12_calibration fit_metrics.{key}")
+                value, f"4B v2 a12_calibration fit_metrics.{key}")
             _require(0.0 <= numeric <= 1.0
                      and math.isclose(
                          numeric, expected, rel_tol=0.0, abs_tol=1e-15),
-                     "④乙 v2 a12_calibration fit 指标未绑定现场策略:"
+                     "4B v2 a12_calibration fit metrics not bound to the live policy: "
                      f"{key}={numeric!r} != {expected!r}")
     _require(
         observed["recall_12"] >= _A12_CALIBRATION_TRAIN_RECALL_TARGET
@@ -4184,17 +4184,17 @@ def _validate_bc_v2_calibration_receipt(
         and observed["legal_negative_probability_12_max"]
         <= _A12_LEGAL_NEGATIVE_PROBABILITY_MAX
         and observed["a13_spillover"] <= _A13_SPILLOVER_MAX,
-        "④乙 v2 a12_calibration 现场 fit 安全门未过")
+        "4B v2 a12_calibration live fit safety gate not passed")
 
 
 def bc_aux_behavior_metrics(
         policy_sd, x, y, episode_id, masks, *,
         anchor_sd=None, heldout_only: bool = True, circuit_spec=None) -> dict:
-    """E5/a12 行为面：真实 v2 masks 上的 held-out 分类与起点漂移。
+    """E5/a12 behaviour surface: held-out classification and starting-point drift on the real v2 masks.
 
-    这不是训练 loss 的重述。precision/FPR/predicted share/high-HP 误饮可抓
-    “recall 很高但到处喝”的坍缩；a13 spillover 和 anchor TV/KL 则抓把
-    非触发态原有补给/交战分布挤走的副作用。
+    This is not a restatement of the training loss. precision/FPR/predicted share/high-HP false drinks catch the collapse
+    "recall is high but it drinks everywhere"; a13 spillover and anchor TV/KL catch the side effect of crowding out
+    the original resupply/engagement distribution in non-trigger states.
     """
     import numpy as np
     import torch as th
@@ -4207,7 +4207,7 @@ def bc_aux_behavior_metrics(
              and episode_id.shape == (len(x),)
              and masks.shape == (len(x), 15)
              and masks.dtype == np.bool_,
-             "E5 BC-v2 行为门输入形状/dtype 异常")
+             "E5 BC-v2 behaviour gate input shape/dtype invalid")
     indices = (_bc_v2_holdout_indices(episode_id) if heldout_only
                else np.arange(len(x), dtype=np.int64))
     hx, hy, hm = x[indices], y[indices], masks[indices]
@@ -4221,9 +4221,9 @@ def bc_aux_behavior_metrics(
     true12 = hy == 12
     pred12 = pred == 12
     all_negative = ~true12
-    # FPR 的可行动分母只能是现场 m12=True 的非 12 态。把 quota 已耗尽、
-    # 空腰带等 m12=False 结构性不可能态混入，会随掩码强化而把 FPR 人为
-    # 稀释至近零，恰好掩盖“在每个仍可喝状态都喝”的坍缩。
+    # The actionable FPR denominator can only be live non-12 states with m12=True. Mixing in structurally impossible m12=False states
+    # such as an exhausted quota or an empty belt would, as the mask strengthens, artificially
+    # dilute the FPR toward zero, hiding exactly the collapse "drink in every state where it can".
     legal_negative = all_negative & hm[:, 12]
     tp = int((pred12 & true12).sum())
     fp = int((pred12 & legal_negative).sum())
@@ -4267,8 +4267,8 @@ def bc_aux_behavior_metrics(
     true13_share = float((hy == 13).mean()) if n else 0.0
     anchor = None
     if anchor_sd is not None:
-        # 根锚来自 protocol-v3 worker 语义。只转换 anchor 输入；上面的
-        # 当前候选 contextual gate 仍消费 packed belt 与 signed 闩位。
+        # The root anchor comes from protocol-v3 worker semantics. Only the anchor input is converted; the current
+        # candidate contextual gate above still consumes the packed belt and the signed latch bit.
         anchor_logits = _policy_logits_from_sb3_state_dict(
             anchor_sd, hx, legacy_scene_clock=True)
         if circuit_spec == _bc_aux_circuit_spec():
@@ -4389,7 +4389,7 @@ def bc_aux_behavior_gate(
         metrics: dict, *, require_root_anchor: bool = False,
         require_teacher_recall: bool = True,
         require_deployable_a12: bool = False) -> dict:
-    """生产硬门；返回结构化原因，调用者不得仅消费一个 PASS 字符串。"""
+    """Production hard gate; returns structured reasons, and callers must not consume a bare PASS string."""
     reasons = []
     if not isinstance(metrics, dict) \
             or set(metrics) != set(_BC_AUX_BEHAVIOR_METRIC_KEYS):
@@ -4689,9 +4689,9 @@ def bc_aux_behavior_gate(
             else:
                 for action in _BC_AUX_CRITICAL_ACTIONS:
                     row = retention.get(str(action))
-                    # 某动作在根策略的 held-out argmax 中零覆盖时没有可保留
-                    # 行，跳过该动作；有覆盖则至少保住一半，防 9/10/13
-                    # 被 a12 校准或 PPO 更新整类抹除。
+                    # If an action has zero coverage in the root policy's held-out argmax there are no rows to keep,
+                    # so skip it; with coverage keep at least half, so 9/10/13 cannot
+                    # be wiped out as a whole class by a12 calibration or PPO updates.
                     if not isinstance(row, dict):
                         reasons.append(
                             f"root_anchor.action_{action}_retention_missing")
@@ -4760,10 +4760,10 @@ def bc_aux_behavior_gate(
 
 
 def _policy_head_snapshot(policy) -> dict:
-    """冻结当前 SB3 策略头六张量；用于起点锚与最终发布行为门。"""
+    """Freeze the current six SB3 policy-head tensors; used for the starting anchor and the final release behaviour gate."""
     state = policy.state_dict()
     _require(all(key in state for key in _POLICY_HEAD_KEYS),
-             "策略 state_dict 缺少行为门所需六张量")
+             "policy state_dict is missing the six tensors required by the behaviour gate")
     return {
         key: state[key].detach().cpu().clone()
         for key in _POLICY_HEAD_KEYS
@@ -4771,12 +4771,12 @@ def _policy_head_snapshot(policy) -> dict:
 
 
 def _policy_head_sha256(state: dict) -> str:
-    """跨 torch.save 版本稳定的六张量内容摘要。"""
+    """Content digest of the six tensors, stable across torch.save versions."""
     import numpy as np
 
     _require(isinstance(state, dict)
              and set(state) == set(_POLICY_HEAD_KEYS),
-             "策略头摘要输入键集合不精确")
+             "policy-head digest input key set not exact")
     digest = hashlib.sha256()
     for key in _POLICY_HEAD_KEYS:
         tensor = state[key].detach().cpu().contiguous()
@@ -4789,20 +4789,20 @@ def _policy_head_sha256(state: dict) -> str:
 
 
 def _persistent_bc_aux_root_anchor(model) -> dict:
-    """首次 aux 腿冻结根锚；后续 checkpoint continuation 继承同一锚。"""
+    """The first aux leg freezes the root anchor; later checkpoint continuations inherit the same anchor."""
     current = _policy_head_snapshot(model.policy)
     root = getattr(model, "bc_aux_root_anchor_sd", None)
     if root is None:
         root = current
     _require(isinstance(root, dict)
              and set(root) == set(_POLICY_HEAD_KEYS),
-             "checkpoint 中 bc_aux 根策略锚字段异常")
+             "bc_aux root policy anchor fields in the checkpoint invalid")
     frozen = {}
     for key in _POLICY_HEAD_KEYS:
         value = root[key]
         _require(hasattr(value, "detach")
                  and bool(value.detach().isfinite().all().item()),
-                 f"bc_aux 根策略锚张量异常:{key}")
+                 f"bc_aux root policy anchor tensor invalid: {key}")
         frozen[key] = value.detach().cpu().clone()
     # rev9 widens only the live actor.  Its persistent root intentionally
     # remains the exact 64-wide V28 head and therefore must not be forced to
@@ -4822,15 +4822,15 @@ def _persistent_bc_aux_root_anchor(model) -> dict:
         and b1.shape == (w0.shape[0],)
         and wa.shape == (action_dim, w0.shape[0])
         and ba.shape == (action_dim,),
-        "bc_aux 根策略锚必须是 298→64→64→15 的 pre-adapter actor；"
-        "existing adapter 缺 root 时禁止从 68 宽当前头静默重锚",
+        "bc_aux root policy anchor must be a 298->64->64->15 pre-adapter actor; "
+        "when an existing adapter lacks a root, silently re-anchoring from the 68-wide current head is forbidden",
     )
     current_w0 = current["mlp_extractor.policy_net.0.weight"]
     current_wa = current["action_net.weight"]
     _require(
         current_w0.ndim == 2 and int(current_w0.shape[1]) == obs_dim
         and current_wa.ndim == 2 and int(current_wa.shape[0]) == action_dim,
-        "bc_aux 当前策略与根锚输入/动作维度不一致",
+        "bc_aux current policy and root anchor input/action dimensions disagree",
     )
     model.bc_aux_root_anchor_sd = {
         key: value.clone() for key, value in frozen.items()
@@ -4879,13 +4879,13 @@ def _expand_policy_with_bc_aux_circuit(model) -> dict:
              and isinstance(net[0], th.nn.Linear)
              and isinstance(net[2], th.nn.Linear)
              and isinstance(policy.action_net, th.nn.Linear),
-             "a12 circuit 只支持标准两层 MlpPolicy actor")
+             "a12 circuit only supports a standard two-layer MlpPolicy actor")
     expected_spec = _bc_aux_circuit_spec()
     existing_spec = getattr(model, "_bc_aux_circuit_spec", None)
     if existing_spec is not None:
         from leashed_ppo import A12MixtureMaskableActorCriticPolicy
         _require(existing_spec == expected_spec,
-                 "checkpoint a12 adapter spec 与 rev9 不一致")
+                 "checkpoint a12 adapter spec disagrees with rev9")
         _require(
             isinstance(policy, A12MixtureMaskableActorCriticPolicy)
             and model.policy_class is A12MixtureMaskableActorCriticPolicy
@@ -4902,7 +4902,7 @@ def _expand_policy_with_bc_aux_circuit(model) -> dict:
             and policy.action_net.weight.shape
             == (int(model.action_space.n),
                 _BC_AUX_CIRCUIT_EXPANDED_WIDTH),
-            "checkpoint a12 circuit 拓扑与 spec 不一致")
+            "checkpoint a12 circuit topology disagrees with the spec")
         return expected_spec
 
     old0, old1, olda = net[0], net[2], policy.action_net
@@ -4919,11 +4919,11 @@ def _expand_policy_with_bc_aux_circuit(model) -> dict:
         and olda.bias.shape == (action_dim,)
         and action_dim > _BC_AUX_CIRCUIT_ACTION
         and obs_dim > _A12_CALIBRATION_DRINK_LATCH_FEATURE,
-        "a12 circuit 只允许从冻结 298→64→64→15 V28 actor 迁移")
+        "a12 circuit may only migrate from the frozen 298->64->64->15 V28 actor")
     root = _persistent_bc_aux_root_anchor(model)
     _require(_policy_head_sha256(root)
              == _policy_head_sha256(_policy_head_snapshot(policy)),
-             "首次 a12 circuit 迁移前 root 必须逐位等于当前 V28 actor")
+             "before the first a12 circuit migration the root must equal the current V28 actor bit for bit")
 
     device, dtype = old0.weight.device, old0.weight.dtype
     new0 = th.nn.Linear(
@@ -4992,13 +4992,13 @@ def _calibrate_bc_aux_adapter_weight(
 
     spec = _bc_aux_circuit_spec()
     _require(getattr(model, "_bc_aux_circuit_spec", None) == spec,
-             "a12 adapter 校准前 spec 缺失/漂移")
+             "a12 adapter spec missing/drifted before calibration")
     from leashed_ppo import A12MixtureMaskableActorCriticPolicy
     _require(
         isinstance(model.policy, A12MixtureMaskableActorCriticPolicy)
         and model.policy.bc_aux_mixture_spec == spec
         and model.policy_class is A12MixtureMaskableActorCriticPolicy,
-        "a12 mixture policy class/spec 未原子安装")
+        "a12 mixture policy class/spec not installed atomically")
     x = np.asarray(x, dtype=np.float32)
     y = np.asarray(y)
     groups = np.asarray(episode_id)
@@ -5008,7 +5008,7 @@ def _calibrate_bc_aux_adapter_weight(
         and y.shape == groups.shape == (len(x),)
         and masks.shape == (len(x), 15)
         and masks.dtype == np.bool_,
-        "a12 adapter 校准输入形状/dtype 异常")
+        "a12 adapter calibration input shape/dtype invalid")
     fit, validation = _bc_v2_fit_validation_indices(groups)
     visible_eligible = (
         (x[:, 0] >= spec["hp_low"] - spec["boundary_epsilon"])
@@ -5018,12 +5018,12 @@ def _calibrate_bc_aux_adapter_weight(
     )
     _require(
         np.array_equal(y == _BC_AUX_CIRCUIT_ACTION, visible_eligible),
-        "a12 mixture 数据标签不等于可见 hp/latch/m12 谓词；"
-        "拒绝用旧语义 demos 初始化")
+        "a12 mixture data labels differ from the visible hp/latch/m12 predicate; "
+        "refusing to initialise from old-semantics demos")
     positive_fit = fit[y[fit] == _BC_AUX_CIRCUIT_ACTION]
     _require(len(positive_fit) >= 2
              and bool(masks[positive_fit, _BC_AUX_CIRCUIT_ACTION].all()),
-             "a12 adapter nested-fit 正例不足/不合法")
+             "a12 adapter nested-fit positives insufficient/invalid")
     action = _BC_AUX_CIRCUIT_ACTION
     parameter_columns = tuple(
         int(value) for value in spec["gate_parameter_columns"])
@@ -5038,7 +5038,7 @@ def _calibrate_bc_aux_adapter_weight(
             rel_tol=0.0,
             abs_tol=2e-7,
         ),
-        "a12 contextual gate 初始系数/bias 已漂移")
+        "a12 contextual gate initial coefficients/bias have drifted")
 
     device = model.device
 
@@ -5064,7 +5064,7 @@ def _calibrate_bc_aux_adapter_weight(
     positive_validation = validation[
         y[validation] == _BC_AUX_CIRCUIT_ACTION]
     _require(len(positive_validation) >= 1,
-             "a12 adapter nested-validation 无正例")
+             "a12 adapter nested-validation has no positives")
     validation_positive_summary = positive_probability_summary(
         positive_validation)
     validation_positive_probability = validation_positive_summary["mean"]
@@ -5094,7 +5094,7 @@ def _calibrate_bc_aux_adapter_weight(
         <= _A12_LEGAL_NEGATIVE_PROBABILITY_MEAN_MAX
         and fit_metrics["legal_negative_probability_12_max"]
         <= _A12_LEGAL_NEGATIVE_PROBABILITY_MAX,
-        "a12 adapter nested-fit 初始探索/安全门未过")
+        "a12 adapter nested-fit initial exploration/safety gate not passed")
     validation_metrics = bc_aux_behavior_metrics(
         candidate, x[validation], y[validation],
         groups[validation], masks[validation],
@@ -5104,7 +5104,7 @@ def _calibrate_bc_aux_adapter_weight(
         validation_metrics, require_root_anchor=True,
         require_teacher_recall=False)
     _require(validation_gate["verdict"] == "PASS",
-             "a12 adapter nested-validation 安全门未过:"
+             "a12 adapter nested-validation safety gate not passed: "
              f"{validation_gate['reasons']}")
     _require(
         math.isclose(
@@ -5119,7 +5119,7 @@ def _calibrate_bc_aux_adapter_weight(
         and validation_positive_summary["predicted_a12"] == 0
         and validation_metrics["predicted_a12"] == 0
         and validation_metrics["anchor"]["argmax_drift"] == 0.0,
-        "a12 adapter nested-validation 探索概率/argmax 异常")
+        "a12 adapter nested-validation exploration probability/argmax invalid")
     return {
         "fit_pairs": int(len(fit)),
         "validation_pairs": int(len(validation)),
@@ -5163,14 +5163,14 @@ def _calibrate_bc_aux_adapter_weight(
 
 def _bc_aux_liveness_call_plan(total_steps: int, n_steps: int,
                                num_envs: int) -> dict:
-    """把生产腿预算换算成 ``train()``/aux 调用数，禁止手写 244 漂移。"""
+    """Convert the production leg budget into ``train()``/aux call counts, so a hand-written 244 cannot drift."""
     quantum = int(n_steps) * int(num_envs)
     _require(quantum > 0 and int(total_steps) > 0
              and int(total_steps) % quantum == 0,
-             "bc_aux liveness 预算必须按 rollout 量子整除")
+             "bc_aux liveness budget must divide by the rollout quantum")
     train_calls = int(total_steps) // quantum
     _require(_BC_AUX_UPDATE_EVERY >= 1,
-             "bc_aux update_every 必须为正整数")
+             "bc_aux update_every must be a positive integer")
     aux_calls = len(range(0, train_calls, _BC_AUX_UPDATE_EVERY))
     return {
         "rollout_quantum": quantum,
@@ -5184,24 +5184,24 @@ def _simulate_bc_aux_liveness(
         model, *, bank, x, y, episode_id, masks,
         bc_aux_lambda: float, seed: int | None,
         call_plan: dict) -> dict:
-    """在隔离 clone 上跑生产同数 aux 调用，只以 training episodes 裁门。
+    """Run the production number of aux calls on an isolated clone, gating only on training episodes.
 
-    这是环境点火前的必要条件探针：保留 checkpoint 中真实 policy、Adam
-    moments、lr、batch size 与 persistent root；唯一拿掉的是 PPO/蒸馏
-    梯度。探针绝不把模拟后的权重带回生产模型，也绝不读取 held-out 行。
+    This is a necessary-condition probe before the environment launches: it keeps the real policy, Adam
+    moments, lr, batch size and persistent root from the checkpoint; the only thing removed is the PPO/distillation
+    gradient. The probe never carries simulated weights back into the production model and never reads held-out rows.
     """
     import numpy as np
     from leashed_ppo import derive_bc_aux_rng
 
     _require(math.isfinite(bc_aux_lambda) and bc_aux_lambda > 0,
-             "bc_aux liveness λ 必须是有限正数")
+             "bc_aux liveness λ must be a finite positive number")
     _require(isinstance(call_plan, dict)
              and call_plan.get("update_every") == _BC_AUX_UPDATE_EVERY,
-             "bc_aux liveness 调用计划与当前 objective 不一致")
+             "bc_aux liveness call plan disagrees with the current objective")
     train_calls = int(call_plan.get("train_calls", -1))
     expected_aux_calls = int(call_plan.get("aux_optimizer_calls", -1))
     _require(train_calls > 0 and expected_aux_calls > 0,
-             "bc_aux liveness 调用计划为空")
+             "bc_aux liveness call plan is empty")
 
     bx, by, bm = bank
     root = _persistent_bc_aux_root_anchor(model)
@@ -5215,13 +5215,13 @@ def _simulate_bc_aux_liveness(
         float(group["lr"]) for group in optimizer.param_groups]
     _require(all(math.isfinite(value) and value > 0
                  for value in optimizer_lrs),
-             "bc_aux liveness optimizer lr 非法")
+             "bc_aux liveness optimizer lr invalid")
 
     applied = 0
     last_loss = None
     for call_index in range(train_calls):
-        # 镜像 LeashedMaskablePPO.train() 的调用计数与 due 判定；当前 rev5
-        # update_every=1，生产 499,712/2,048 因而严格得到 244 次。
+        # Mirrors the call count and due check of LeashedMaskablePPO.train(); with the current rev5
+        # update_every=1, production 499,712/2,048 therefore gives exactly 244.
         model._bc_aux_train_calls += 1
         if call_index % _BC_AUX_UPDATE_EVERY != 0:
             continue
@@ -5229,7 +5229,7 @@ def _simulate_bc_aux_liveness(
         applied += 1
         last_loss = float(aux_loss.detach().cpu())
     _require(applied == expected_aux_calls,
-             "bc_aux liveness 实际 aux 调用数与生产计划不一致:"
+             "bc_aux liveness actual aux call count disagrees with the production plan: "
              f"{applied} != {expected_aux_calls}")
 
     groups = np.asarray(episode_id)
@@ -5239,7 +5239,7 @@ def _simulate_bc_aux_liveness(
     heldout_episodes = np.unique(groups[heldout])
     _require(not np.intersect1d(
         train_episodes, heldout_episodes).size,
-        "bc_aux liveness training/heldout episode 泄漏")
+        "bc_aux liveness training/heldout episode leak")
     candidate = _policy_head_snapshot(model.policy)
     metrics = bc_aux_behavior_metrics(
         candidate, np.asarray(x)[training], np.asarray(y)[training],
@@ -5309,7 +5309,7 @@ def _run_bc_aux_policy_gradient_canary(
     _require(
         len(positive) > 0
         and bool(action_masks[positive, action].all()),
-        "a12 policy-gradient canary 缺 nested-validation 合法正例")
+        "a12 policy-gradient canary lacks legal nested-validation positives")
 
     # Keep the probe compact and deterministic while spanning more than one
     # episode whenever the validation split permits it.
@@ -5345,23 +5345,23 @@ def _run_bc_aux_policy_gradient_canary(
             obs_t, action_masks=masks_t)
         loss = -distribution.log_prob(actions_t).mean()
         _require(bool(th.isfinite(loss).item()),
-                 "a12 policy-gradient canary loss 非有限")
+                 "a12 policy-gradient canary loss not finite")
         loss.backward()
         gradient = gate_bias_parameter.grad
         _require(
             gradient is not None
             and gradient.shape == gate_bias_parameter.shape
             and bool(th.isfinite(gradient).all().item()),
-            "a12 policy-gradient canary gate bias 梯度缺失/非有限")
+            "a12 policy-gradient canary gate bias gradient missing/not finite")
         bias_gradient = float(gradient[action].detach().cpu())
         _require(
             bias_gradient < 0.0,
-            "a12 policy-gradient canary 有利优势未产生提升 gate 的梯度")
+            "a12 policy-gradient canary: a favourable advantage produced no gradient that raises the gate")
         circuit_snapshot = model._protect_bc_aux_circuit_before_step()
         gradient_norm = float(th.nn.utils.clip_grad_norm_(
             model.policy.parameters(), model.max_grad_norm).detach().cpu())
         _require(math.isfinite(gradient_norm) and gradient_norm > 0.0,
-                 "a12 policy-gradient canary 梯度范数非法")
+                 "a12 policy-gradient canary gradient norm invalid")
         optimizer.step()
         model._project_bc_aux_adapter_weight()
         model._assert_bc_aux_circuit_unchanged(circuit_snapshot)
@@ -5383,7 +5383,7 @@ def _run_bc_aux_policy_gradient_canary(
             after_probability >= before_probability
             and (not movement_required or probability_delta > 0.0)
             and (not movement_required or bias_delta > 0.0),
-            "a12 policy-gradient canary optimizer step 未提升 eligible p(a12)")
+            "a12 policy-gradient canary optimizer step did not raise eligible p(a12)")
         end_head = _policy_head_snapshot(model.policy)
         return {
             "schema_version": "a12-policy-gradient-canary/1",
@@ -5414,7 +5414,7 @@ def _run_bc_aux_policy_gradient_canary(
             for key, value in policy_state.items())
         if not restored:
             raise RuntimeError(
-                "a12 policy-gradient canary 未恢复隔离 policy 状态")
+                "a12 policy-gradient canary did not restore the isolated policy state")
 
 
 def _simulate_bc_aux_circuit_liveness(
@@ -5426,14 +5426,14 @@ def _simulate_bc_aux_circuit_liveness(
     existing = getattr(model, "_bc_aux_circuit_spec", None) is not None
     if not existing:
         _require(_policy_head_sha256(start) == _policy_head_sha256(root),
-                 "rev9 首次安装起点不是未改写 V28 root")
+                 "rev9 first-install starting point is not the unmodified V28 root")
     spec = _expand_policy_with_bc_aux_circuit(model)
     if existing:
         _require(not callable(model.learning_rate)
                  and math.isclose(
                      float(model.learning_rate), learning_rate,
                      rel_tol=0.0, abs_tol=1e-12),
-                 "rev9 continuation 学习率漂移")
+                 "rev9 continuation learning rate drift")
         frozen_values = []
         for parameter, protected in (
                 model._bc_aux_circuit_protected_tensors()):
@@ -5445,12 +5445,12 @@ def _simulate_bc_aux_circuit_liveness(
                     _require(
                         moment.shape == parameter.shape
                         and bool((moment[protected] == 0).all().item()),
-                        f"rev9 continuation 受保护 Adam {key} 非零/错形")
+                        f"rev9 continuation protected Adam {key} nonzero/wrong shape")
         _require(
             frozen_values
             and all(bool((value == 0).all().item())
                     for value in frozen_values),
-            "rev9 continuation 固定 adapter 张量不再是 canonical zero")
+            "rev9 continuation fixed adapter tensors are no longer canonical zero")
         action = int(spec["action_index"])
         columns = [
             int(value) for value in spec["gate_parameter_columns"]]
@@ -5463,7 +5463,7 @@ def _simulate_bc_aux_circuit_liveness(
             and bool(gate_bias.isfinite().item())
             and bool((gate_coefficients.abs() <= limit).all().item())
             and abs(float(gate_bias.cpu())) <= limit,
-            "rev9 continuation contextual gate 非有限/越界")
+            "rev9 continuation contextual gate not finite/out of range")
         fit, validation = _bc_v2_fit_validation_indices(episode_id)
         candidate = _policy_head_snapshot(model.policy)
         metrics = bc_aux_behavior_metrics(
@@ -5548,7 +5548,7 @@ def _simulate_bc_aux_circuit_liveness(
 
 
 def _write_bc_aux_behavior_receipt(path: pathlib.Path, record: dict) -> None:
-    """FAIL 亦原子落回执；canonical 模型只在 PASS 后发布。"""
+    """FAIL also writes its receipt atomically; the canonical model is published only after PASS."""
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(
         f".{path.name}.{os.getpid()}.{time.time_ns()}.tmp")
@@ -5584,54 +5584,54 @@ _PUBLICATION_PROVENANCE_KEYS = frozenset({
 
 def _validate_publication_provenance(
         provenance: dict, *, demos_sha256: str, final_step: int) -> dict:
-    """严格冻结最终模型的训练谱系，供评测入口现场复验。"""
+    """Strictly freeze the training lineage of the final model, for re-verification at the evaluation entry point."""
     _require(isinstance(provenance, dict)
              and set(provenance) == _PUBLICATION_PROVENANCE_KEYS,
-             "bc_aux 最终发布谱系字段不完整")
+             "bc_aux final release lineage fields incomplete")
     _require(provenance["protocol_version"] == PROTOCOL_VERSION,
-             "bc_aux 最终发布谱系协议不匹配")
+             "bc_aux final release lineage protocol mismatch")
     for key in (
             "implementation_sha256", "manager_npz_sha256",
             "resume_checkpoint_sha256", "teacher_sha256",
             "bc_aux_demos_sha256", "bc_aux_liveness_preflight_sha256",
             "training_contract_sha256"):
         _require(_is_sha256(provenance[key]),
-                 f"bc_aux 最终发布谱系 {key} 非法")
+                 f"bc_aux final release lineage {key} invalid")
     _require(provenance["bc_aux_demos_sha256"] == demos_sha256,
-             "bc_aux 最终发布谱系 demos 与行为门不一致")
+             "bc_aux final release lineage demos disagree with the behaviour gate")
     start = provenance["start_steps"]
     target = provenance["target_global_steps"]
     _require(_is_plain_int(start) and _is_plain_int(target)
              and 0 <= start < target == int(final_step),
-             "bc_aux 最终发布谱系步数不闭合")
+             "bc_aux final release lineage step counts do not close")
     seed = provenance["seed"]
     _require(seed is None or (_is_plain_int(seed) and 0 <= seed < 2**32),
-             "bc_aux 最终发布谱系 seed 非法")
+             "bc_aux final release lineage seed invalid")
     _require(isinstance(provenance["optimizer_reset"], bool),
-             "bc_aux 最终发布谱系 optimizer_reset 必须是 bool")
+             "bc_aux final release lineage optimizer_reset must be a bool")
     target_kl = provenance["target_kl"]
     _require(target_kl is None or (
         isinstance(target_kl, (int, float))
         and not isinstance(target_kl, bool)
         and math.isfinite(float(target_kl))
         and float(target_kl) > 0),
-        "bc_aux 最终发布谱系 target_kl 非法")
+        "bc_aux final release lineage target_kl invalid")
     value = provenance["distill_beta"]
     _require(
         isinstance(value, (int, float))
         and not isinstance(value, bool)
         and math.isfinite(float(value))
         and float(value) > 0,
-        "bc_aux 最终发布谱系 distill_beta 必须是有限正数")
+        "bc_aux final release lineage distill_beta must be a finite positive number")
     _require(
         provenance["bc_aux_mode"]
         == "expanded-trainable-a12-contextual-mixture"
         and isinstance(provenance["bc_aux_lambda"], (int, float))
         and not isinstance(provenance["bc_aux_lambda"], bool)
         and float(provenance["bc_aux_lambda"]) == 0.0,
-        "bc_aux 最终发布谱系必须绑定 rev10 contextual mixture/λ=0")
+        "bc_aux final release lineage must bind the rev10 contextual mixture/λ=0")
     _require(provenance["calib_record_only"] is False,
-             "bc_aux 正式发布禁止 calib_record_only 绕过硬门")
+             "bc_aux formal release forbids calib_record_only to bypass the hard gate")
     return dict(provenance)
 
 
@@ -5642,10 +5642,10 @@ def _run_bc_aux_liveness_preflight(
         bank, x, y, episode_id, masks,
         demos_sha256: str, manager_npz_sha256: str,
         implementation_sha256: str, batch_size: int) -> tuple[dict, str]:
-    """环境点火前在隔离 checkpoint clone 上执行 aux 必要条件预检。
+    """Run the aux necessary-condition preflight on an isolated checkpoint clone before the environment launches.
 
-    FAIL/ERROR 只发布 sibling receipt，主动移除 canonical model_final 并抛错；
-    PASS clone 也立即丢弃，绝不把预检权重或 RNG 状态渗入真实训练。
+    FAIL/ERROR only publishes the sibling receipt, actively removes the canonical model_final and raises;
+    a PASS clone is also discarded at once, and preflight weights or RNG state never leak into real training.
     """
     import numpy as np
     import torch as th
@@ -5657,10 +5657,10 @@ def _run_bc_aux_liveness_preflight(
             ("manager_npz_sha256", manager_npz_sha256),
             ("implementation_sha256", implementation_sha256)):
         _require(_is_sha256(value),
-                 f"bc_aux liveness 输入 {label} 非法")
+                 f"bc_aux liveness input {label} invalid")
     _require(isinstance(resume_checkpoint_bytes, bytes)
              and len(resume_checkpoint_bytes) > 0,
-             "bc_aux liveness 缺已冻结 resume checkpoint 字节")
+             "bc_aux liveness is missing the frozen resume checkpoint bytes")
     structural = _bc_aux_structural_active(args)
     call_plan = (
         {
@@ -5717,8 +5717,8 @@ def _run_bc_aux_liveness_preflight(
         },
     }
 
-    # SB3 load(seed=...) 会重播全局 Python/NumPy/Torch 种子。预检是隔离探针，
-    # 必须在真实 model/env 建立前逐流恢复，不能改变随后生产轨迹。
+    # SB3 load(seed=...) replays the global Python/NumPy/Torch seeds. The preflight is an isolated probe
+    # and must restore every stream before the real model/env is built, so it cannot change the subsequent production trajectory.
     py_state = random.getstate()
     np_state = np.random.get_state()
     torch_state = th.get_rng_state().clone()
@@ -5760,13 +5760,13 @@ def _run_bc_aux_liveness_preflight(
             _require(not callable(saved_lr)
                      and math.isclose(float(saved_lr), args.lr,
                                       rel_tol=0, abs_tol=1e-12),
-                     "bc_aux liveness resume 学习率与生产 CLI 不一致:"
+                     "bc_aux liveness resume learning rate disagrees with the production CLI: "
                      f"{saved_lr} != {args.lr}")
             _require(all(math.isclose(
                 float(group["lr"]), args.lr,
                 rel_tol=0, abs_tol=1e-12)
                 for group in model.policy.optimizer.param_groups),
-                "bc_aux liveness checkpoint optimizer 当前 lr 与生产不一致")
+                "bc_aux liveness checkpoint optimizer current lr disagrees with production")
         model.target_kl = args.target_kl
         _require(math.isclose(float(model.ent_coef), args.ent_coef,
                               rel_tol=0, abs_tol=1e-12)
@@ -5774,7 +5774,7 @@ def _run_bc_aux_liveness_preflight(
                                   rel_tol=0, abs_tol=1e-12)
                  and model.n_steps == args.n_steps
                  and model.batch_size == batch_size,
-                 "bc_aux liveness clone 与生产冻结配方不一致")
+                 "bc_aux liveness clone disagrees with the frozen production recipe")
         _validate_model_recipe(
             model, expected_target_kl=args.target_kl)
         result = (
@@ -5823,12 +5823,12 @@ def _run_bc_aux_liveness_preflight(
             missing_ok=True)
         if failure is not None:
             raise ValueError(
-                "bc_aux liveness preflight ERROR，环境未点火、拒绝训练；"
-                f"详见 {receipt_path}") from failure
+                "bc_aux liveness preflight ERROR; environment not launched, training refused; "
+                f"see {receipt_path}") from failure
         _require(
             False,
-            "bc_aux liveness preflight FAIL，环境未点火、拒绝训练:"
-            f"{record['gate']['reasons']}；详见 {receipt_path}")
+            "bc_aux liveness preflight FAIL; environment not launched, training refused: "
+            f"{record['gate']['reasons']}; see {receipt_path}")
     return record, receipt_sha256
 
 
@@ -5845,10 +5845,10 @@ def _publish_model_final_with_bc_aux_gate(
     transitions, and leaves efficacy to paired native evaluation.
     """
     _require(_is_sha256(demos_sha256),
-             "bc_aux 最终行为门缺 demos_sha256 绑定")
+             "bc_aux final behaviour gate is missing the demos_sha256 binding")
     _require(isinstance(anchor_sd, dict)
              and set(anchor_sd) == set(_POLICY_HEAD_KEYS),
-             "bc_aux 最终行为门缺挂载起点策略锚")
+             "bc_aux final behaviour gate is missing the mounted starting policy anchor")
     final = pathlib.Path(destination)
     if final.suffix.lower() != ".zip":
         final = pathlib.Path(f"{final}.zip")
@@ -5879,12 +5879,12 @@ def _publish_model_final_with_bc_aux_gate(
     ):
         _require(
             _is_plain_int(value) and value >= 0,
-            f"bc_aux rollout 计数 {name} 非普通非负整数",
+            f"bc_aux rollout count {name} is not a plain non-negative integer",
         )
     _require(
         requested_a12 == sampled_a12 + rejected_a12
         and requested_a12 <= eligible_states,
-        "bc_aux rollout 请求/执行/拒绝计数不闭合",
+        "bc_aux rollout requested/executed/refused counts do not close",
     )
     expected_a12_mass = getattr(
         model, "_bc_aux_expected_a12_mass", 0.0)
@@ -5893,7 +5893,7 @@ def _publish_model_final_with_bc_aux_gate(
         and not isinstance(expected_a12_mass, bool)
         and math.isfinite(float(expected_a12_mass))
         and 0.0 <= float(expected_a12_mass) <= float(eligible_states),
-        "bc_aux rollout expected_a12_mass 非有限数或超出 eligible 闭包",
+        "bc_aux rollout expected_a12_mass not finite or outside the eligible closure",
     )
     exploration_reasons = []
     if not math.isfinite(expected_a12_mass) \
@@ -5948,24 +5948,24 @@ def _publish_model_final_with_bc_aux_gate(
     if gate["verdict"] != "PASS" or exploration_reasons:
         _write_bc_aux_behavior_receipt(receipt, record)
         _require(False,
-                 "bc_aux 最终 held-out/探索证据硬门 FAIL，拒绝发布"
-                 f" model_final:{gate['reasons'] + exploration_reasons}；"
-                 f"详见 {receipt}")
+                 "bc_aux final held-out/exploration-evidence hard gate FAIL; refusing to publish"
+                 f" model_final: {gate['reasons'] + exploration_reasons}; "
+                 f"see {receipt}")
 
-    # 不得先把 gate PASS 写成“已发布”：磁盘满/CRC/finite 校验失败时那会
-    # 留下一张成功回执却没有模型。canonical zip 成功且重新哈希后，才把
-    # PUBLISHED+model_sha256 原子落盘。失败回执明确为 SAVE_FAILED。
+    # Never write gate PASS as "published" first: if disk-full/CRC/finite checks fail, that would
+    # leave a success receipt with no model. Only after the canonical zip succeeds and is re-hashed is
+    # PUBLISHED+model_sha256 written atomically. A failure receipt is explicitly SAVE_FAILED.
     try:
         _atomic_save_model(model, final)
         model_sha256 = hashlib.sha256(final.read_bytes()).hexdigest()
         _require(_is_sha256(model_sha256),
-                 "model_final 发布后 SHA256 计算异常")
+                 "model_final SHA256 computation failed after publishing")
         record["model_sha256"] = model_sha256
         record["publication"] = "PUBLISHED"
         _write_bc_aux_behavior_receipt(receipt, record)
     except Exception as exc:
-        # 若模型已写而最终回执未能提交，宁可撤掉无证 canonical；checkpoint
-        # 恢复件仍在 ckpt/，不会因这里 fail-closed 丢掉训练进度。
+        # If the model was written but the final receipt could not be committed, rather withdraw the unbacked canonical; the checkpoint
+        # recovery copies stay in ckpt/, so failing closed here never loses training progress.
         final.unlink(missing_ok=True)
         record["publication"] = "SAVE_FAILED"
         record["model_sha256"] = None
@@ -5981,16 +5981,16 @@ def _publish_model_final_with_bc_aux_gate(
     return record
 
 
-# ---- E4 契约 rev5 双键 + E6 探针集钉死(PREREG-内容案 E4/E6) ----
+# ---- E4 contract rev5 dual keys + E6 probe set pinned (PREREG-v33-content-case E4/E6) ----
 
 
 def _contract_dry_curriculum(args):
-    """E4 rev5 键:课⑤不在位 = "disabled";在位 = {"schedule": CLI 字面表述}。
+    """E4 rev5 key: course 5 absent = "disabled"; present = {"schedule": CLI literal text}.
 
-    载荷取 --dry-curriculum-schedule 之 CLI 字面串(与 D3 逐腿附加项列同源,
-    L-cur/L-full 携主表;L-base 无 schedule → disabled)。schedule 字面即
-    全表语义真源(_parse_dry_curriculum_schedule 确定性展开),resume 对账
-    由字符串相等承载。
+    The payload is the CLI literal string of --dry-curriculum-schedule (same source as the D3 per-leg extras column,
+    L-cur/L-full carry the main table; L-base has no schedule -> disabled). The schedule literal is
+    the source of truth for the full table's semantics (expanded deterministically by _parse_dry_curriculum_schedule), and resume reconciliation
+    is carried by string equality.
     """
     return ({"schedule": str(args.dry_curriculum_schedule)}
             if args.dry_curriculum_schedule else "disabled")
@@ -6006,9 +6006,9 @@ def _contract_bc_aux(args, bc_aux_demos_sha256):
         return "disabled"
     _require(_bc_aux_structural_active(args)
              and float(args.bc_aux_lambda) == 0.0,
-             "rev12 contract 只接受 structural graft")
+             "rev12 contract only accepts a structural graft")
     _require(_is_sha256(bc_aux_demos_sha256),
-             "④乙在位但缺 bc-worker-v2 示范集 sha256,拒绝写入 rev5 契约")
+             "4B present but the bc-worker-v2 demo set sha256 is missing; refusing to write the rev5 contract")
     return {"mode": "expanded-trainable-a12-contextual-mixture",
             "lambda": float(args.bc_aux_lambda),
             "demos_sha256": bc_aux_demos_sha256,
@@ -6033,23 +6033,23 @@ def _contract_bc_aux(args, bc_aux_demos_sha256):
 
 
 def _assert_bc_v1_demos_frozen(path: str | pathlib.Path) -> str:
-    """兼容函数名：把 BC-v1 demos 绑定到当前严格 PASS 回执。
+    """Compatibility function name: bind the BC-v1 demos to the current strict PASS receipt.
 
-    历史常量只服务 protocol-v3 driver 导入兼容，不能证明 v4 语义。这里先
-    验 policy/report 的 protocol、implementation、generator 与重放证据，
-    再要求报告 demos_sha256 等于现场字节；因此旧报告自然 fail-closed，
-    新 v4 重采件也不会被旧 3bf8… 永久挡住。
+    The historical constant only serves import compatibility for the protocol-v3 driver and cannot prove v4 semantics. Here we first
+    check the protocol, implementation, generator and replay evidence of policy/report,
+    then require the report demos_sha256 to equal the live bytes; so old reports naturally fail closed,
+    and newly re-collected v4 artifacts are not permanently blocked by the old 3bf8....
     """
     demos = pathlib.Path(path)
-    actual = _capture_file_sha256(demos, "BC-v1 demos(当前 PASS 回执绑定)")
+    actual = _capture_file_sha256(demos, "BC-v1 demos (bound to the current PASS receipt)")
     policy = demos.with_name("policy_sd.pt")
-    _require(policy.is_file(), f"BC-v1 当前权重缺失/不可读: {policy}")
+    _require(policy.is_file(), f"BC-v1 current weights missing/unreadable: {policy}")
     report = _validate_bc_report(policy, "data_gate")
     expected = report.get("demos_sha256")
     _require(_is_sha256(expected),
-             "BC-v1 当前 PASS 回执缺 demos_sha256")
+             "BC-v1 current PASS receipt is missing demos_sha256")
     _require(actual == expected,
-             "BC-v1 demos 与当前 PASS 回执字节漂移:"
+             "BC-v1 demos bytes drifted from the current PASS receipt: "
              f"{actual} != {expected}")
     return actual
 
@@ -6071,7 +6071,7 @@ def _validate_worker_time_config(protocol="legacy", *, worker,
         return None
     _require(worker and worker_learning_window_scope == EARNED_DIVE_SUFFIX_SCOPE,
              "completion-l2 protocols require an earned-dive-suffix-v1 Worker")
-    # R18-B3 (2026-09-07): sustain-loot-v1 与 sustain-v6 并列;别的服务法照旧拒绝。
+    # R18-B3 (2026-09-07): sustain-loot-v1 stands alongside sustain-v6; other service policies are still refused.
     _require(resource_protocol == "l2-town-v1" and resource_purchase_mode == "full"
              and resource_service_policy in ("sustain-v6", "sustain-loot-v1"),
              "completion-l2 protocols require l2-town-v1/full/sustain-v6 or sustain-loot-v1")
@@ -6082,10 +6082,10 @@ def _validate_worker_time_config(protocol="legacy", *, worker,
 
 
 def _validate_worker_time_args(args) -> None:
-    # R18-B3 复审 (2026-09-07): loot 只在完成时钟下存在,这条法与学习窗口作用域
-    # 无关。此前 farm-only / farm-dive-v1 下的 loot + legacy 走完整个参数校验层
-    # 才在 OptionsEnv 构造时(python/diablogym/options_env.py:486)才死——那时
-    # run 目录与 config 已落盘、原生引擎已启动。入口先 fail closed,措辞同款。
+    # R18-B3 re-review (2026-09-07): loot exists only under the completion clock, and this rule has nothing to do with
+    # the learning-window scope. Before, loot + legacy under farm-only / farm-dive-v1 passed the whole parameter validation layer
+    # and only died when OptionsEnv was constructed (python/diablogym/options_env.py:486) -- by then
+    # the run directory and config were on disk and the native engine had started. The entry point now fails closed first, with the same wording.
     if getattr(args, "resource_service_policy", "legacy-v1") == "sustain-loot-v1":
         from diablogym.completion_clock import COMPLETION_PROTOCOLS
         _require(getattr(args, "worker_time_protocol", "legacy") in COMPLETION_PROTOCOLS,
@@ -6121,10 +6121,10 @@ def _validate_worker_prefix_args(args) -> None:
              "earned-dive-suffix-v1 requires CPU Worker MaskablePPO")
     _require(args.seed is not None and args.max_steps == 6000,
              "earned-dive-suffix-v1 requires an explicit seed and max_steps=6000")
-    # R18-B3 (2026-09-07): 服务法由单值钉死改为集合成员(sustain-v6 或
-    # sustain-loot-v1),但**留在 `fixed` 的原位(第 3 位)**:R18-B3 复审指出,
-    # 把它提到循环之前会改变已有非法调用者拿到的首个报错。现在除服务法自身
-    # (法条本身变了)之外,每一个钉死值的措辞与检查顺序仍然一字未动。
+    # R18-B3 (2026-09-07): the service policy changes from a single pinned value to set membership (sustain-v6 or
+    # sustain-loot-v1), but **stays in its original position in `fixed` (third)**: the R18-B3 re-review pointed out
+    # that moving it before the loop would change the first error that existing invalid callers get. Apart from the service policy itself
+    # (whose rule did change), the wording and check order of every pinned value are still unchanged.
     fixed = {
         "resource_protocol": "l2-town-v1", "resource_purchase_mode": "full",
         "resource_service_policy": ("sustain-v6", "sustain-loot-v1"),
@@ -6139,16 +6139,16 @@ def _validate_worker_prefix_args(args) -> None:
         "farm_scene_cap": 3600, "reset_layer_clock_on_window": True,
     }
     for key, expected in fixed.items():
-        # 元组 = 集合成员(R18-B3 起只有 resource_service_policy 一处);
-        # 单值键走原来的等号比较与原来的措辞。
+        # tuple = set membership (since R18-B3 only resource_service_policy);
+        # single-value keys keep the original equality comparison and wording.
         if isinstance(expected, tuple):
             _require(getattr(args, key, None) in expected,
                      f"earned-dive-suffix-v1 requires {key} " + " or ".join(expected))
         else:
             _require(getattr(args, key, None) == expected,
                      f"earned-dive-suffix-v1 requires {key}={expected!r}")
-    # R18-B3 (2026-09-07): 战利品经济没有旧时钟版本;措辞与 worker_env /
-    # options_env 完全同款。
+    # R18-B3 (2026-09-07): the loot economy has no old-clock version; wording identical to worker_env /
+    # options_env.
     from diablogym.completion_clock import COMPLETION_PROTOCOLS
     _require(getattr(args, "resource_service_policy", None) != "sustain-loot-v1"
              or getattr(args, "worker_time_protocol", "legacy") in COMPLETION_PROTOCOLS,
@@ -6231,27 +6231,27 @@ def _validate_args(args) -> None:
     _validate_worker_prefix_args(args)
     _validate_resource_warm_start_args(args)
     _validate_first_update_diagnostic_args(args)
-    _require(args.total_steps > 0, "--total-steps 必须 > 0")
-    _require(args.num_envs > 0, "--num-envs 必须 > 0")
-    _require(args.n_steps > 0, "--n-steps 必须 > 0")
+    _require(args.total_steps > 0, "--total-steps must be > 0")
+    _require(args.num_envs > 0, "--num-envs must be > 0")
+    _require(args.n_steps > 0, "--n-steps must be > 0")
     rollout_quantum = args.n_steps * args.num_envs
     _require(args.total_steps % rollout_quantum == 0,
-             "--total-steps 必须能被 n_steps * num_envs 整除，"
-             f"否则 SB3 会静默向上多采样（当前量子 {rollout_quantum}）")
-    _require(args.max_steps > 0, "--max-steps 必须 > 0")
-    _require(math.isfinite(args.lr) and args.lr > 0, "--lr 必须是有限正数")
+             "--total-steps must be divisible by n_steps * num_envs, "
+             f"otherwise SB3 silently over-samples upward (current quantum {rollout_quantum})")
+    _require(args.max_steps > 0, "--max-steps must be > 0")
+    _require(math.isfinite(args.lr) and args.lr > 0, "--lr must be a finite positive number")
     _require(math.isfinite(args.gamma) and 0 <= args.gamma <= 1,
-             "--gamma 必须在 [0, 1] 内")
+             "--gamma must lie in [0, 1]")
     _require(math.isfinite(args.ent_coef) and args.ent_coef >= 0,
-             "--ent-coef 必须是有限非负数")
+             "--ent-coef must be a finite non-negative number")
     _require(math.isfinite(args.distill_beta) and args.distill_beta >= 0,
-             "--distill-beta 必须是有限非负数")
+             "--distill-beta must be a finite non-negative number")
     action14_logit_bonus = float(getattr(
         args, "worker_action14_logit_bonus", 0.0))
     _require(
         math.isfinite(action14_logit_bonus)
         and 0.0 <= action14_logit_bonus <= 10.0,
-        "--worker-action14-logit-bonus 必须是 [0,10] 内有限数",
+        "--worker-action14-logit-bonus must be a finite number in [0,10]",
     )
     _require(
         action14_logit_bonus == 0.0
@@ -6261,7 +6261,7 @@ def _validate_args(args) -> None:
             and _worker_policy_observation_view(args)
             == _WORKER_VIEW_DUAL_V4_ASYMMETRIC
         ),
-        "--worker-action14-logit-bonus 非零只适用于 "
+        "--worker-action14-logit-bonus nonzero only applies to "
         "dual-v4 asymmetric Worker MaskablePPO",
     )
     action11_logit_bonus = float(getattr(
@@ -6269,7 +6269,7 @@ def _validate_args(args) -> None:
     _require(
         math.isfinite(action11_logit_bonus)
         and 0.0 <= action11_logit_bonus <= 10.0,
-        "--worker-dive-action11-logit-bonus 必须是 [0,10] 内有限数",
+        "--worker-dive-action11-logit-bonus must be a finite number in [0,10]",
     )
     _require(
         action11_logit_bonus == 0.0
@@ -6280,18 +6280,18 @@ def _validate_args(args) -> None:
                 args, "worker_learning_window_scope", "farm-only")
             in ("farm-dive-v1", EARNED_DIVE_SUFFIX_SCOPE)
         ),
-        "--worker-dive-action11-logit-bonus 非零只适用于 "
-        "live-DIVE 教室的 Worker MaskablePPO(R13 冷启动杠杆)",
+        "--worker-dive-action11-logit-bonus nonzero only applies to "
+        "Worker MaskablePPO in the live-DIVE classroom (R13 cold-start lever)",
     )
     action13_logit_bonus = float(getattr(
         args, "worker_potion_action13_logit_bonus", 0.0))
     _require(
         math.isfinite(action13_logit_bonus)
         and 0.0 <= action13_logit_bonus <= 10.0,
-        "--worker-potion-action13-logit-bonus 必须是 [0,10] 内有限数",
+        "--worker-potion-action13-logit-bonus must be a finite number in [0,10]",
     )
-    # R16:先验挂在 asymmetric policy class 上(policy_kwargs 只在
-    # dual-v4 视图下装配),故非零仅限 dual-v4 Worker MaskablePPO(a14 同款)。
+    # R16: the prior hangs on the asymmetric policy class (policy_kwargs are only assembled under
+    # the dual-v4 view), so nonzero is limited to dual-v4 Worker MaskablePPO (same as a14).
     _require(
         action13_logit_bonus == 0.0
         or (
@@ -6300,15 +6300,15 @@ def _validate_args(args) -> None:
             and _worker_policy_observation_view(args)
             == _WORKER_VIEW_DUAL_V4_ASYMMETRIC
         ),
-        "--worker-potion-action13-logit-bonus 非零只适用于 "
-        "dual-v4 asymmetric Worker MaskablePPO(R16 拾药先验)",
+        "--worker-potion-action13-logit-bonus nonzero only applies to "
+        "dual-v4 asymmetric Worker MaskablePPO (R16 potion-pickup prior)",
     )
     depth_shaping_unit = float(getattr(
         args, "worker_depth_shaping_unit", 0.0))
     _require(
         math.isfinite(depth_shaping_unit)
         and 0.0 <= depth_shaping_unit <= 100.0,
-        "--worker-depth-shaping-unit 必须是 [0,100] 内有限数",
+        "--worker-depth-shaping-unit must be a finite number in [0,100]",
     )
     _require(
         depth_shaping_unit == 0.0
@@ -6319,15 +6319,15 @@ def _validate_args(args) -> None:
                 args, "worker_learning_window_scope", "farm-only")
             in ("farm-dive-v1", EARNED_DIVE_SUFFIX_SCOPE)
         ),
-        "--worker-depth-shaping-unit 非零只适用于 "
-        "live-DIVE 教室的 Worker MaskablePPO(R13.2 甲案)",
+        "--worker-depth-shaping-unit nonzero only applies to "
+        "Worker MaskablePPO in the live-DIVE classroom (R13.2 plan A)",
     )
     descend_bonus_fraction = float(getattr(
         args, "worker_descend_bonus_fraction", 0.0))
     _require(
         math.isfinite(descend_bonus_fraction)
         and 0.0 <= descend_bonus_fraction <= 1.0,
-        "--worker-descend-bonus-fraction 必须在 [0,1] 内",
+        "--worker-descend-bonus-fraction must lie in [0,1]",
     )
     _require(
         descend_bonus_fraction == 0.0
@@ -6338,15 +6338,15 @@ def _validate_args(args) -> None:
                 args, "worker_learning_window_scope", "farm-only")
             in ("farm-dive-v1", EARNED_DIVE_SUFFIX_SCOPE)
         ),
-        "--worker-descend-bonus-fraction 非零只适用于 "
-        "live-DIVE 教室的 Worker MaskablePPO(R14 乙案)",
+        "--worker-descend-bonus-fraction nonzero only applies to "
+        "Worker MaskablePPO in the live-DIVE classroom (R14 plan B)",
     )
     descend_escrow_fraction = float(getattr(
         args, "worker_descend_escrow_fraction", 0.0))
     _require(
         math.isfinite(descend_escrow_fraction)
         and 0.0 <= descend_escrow_fraction <= 1.0,
-        "--worker-descend-escrow-fraction 必须在 [0,1] 内",
+        "--worker-descend-escrow-fraction must lie in [0,1]",
     )
     _require(
         descend_escrow_fraction == 0.0
@@ -6357,52 +6357,52 @@ def _validate_args(args) -> None:
                 args, "worker_learning_window_scope", "farm-only")
             in ("farm-dive-v1", EARNED_DIVE_SUFFIX_SCOPE)
         ),
-        "--worker-descend-escrow-fraction 非零只适用于 "
-        "live-DIVE 教室的 Worker MaskablePPO(R14.2 丁案)",
+        "--worker-descend-escrow-fraction nonzero only applies to "
+        "Worker MaskablePPO in the live-DIVE classroom (R14.2 plan D)",
     )
     _require(
         descend_escrow_fraction == 0.0
         or descend_bonus_fraction == 0.0,
-        "乙案(bonus)与丁案(escrow)互斥,不得同时启用",
+        "plan B (bonus) and plan D (escrow) are mutually exclusive and must not be enabled together",
     )
     descend_escrow_power = float(getattr(
         args, "worker_descend_escrow_power", 1.0))
     _require(
         math.isfinite(descend_escrow_power)
         and 1.0 <= descend_escrow_power <= 3.0,
-        "--worker-descend-escrow-power 必须在 [1,3] 内",
+        "--worker-descend-escrow-power must lie in [1,3]",
     )
     _require(
         descend_escrow_power == 1.0
         or descend_escrow_fraction > 0.0,
-        "--worker-descend-escrow-power ≠ 1 仅与托管同时生效(R14.3 戊案)",
+        "--worker-descend-escrow-power != 1 only takes effect together with escrow (R14.3 plan E)",
     )
     _require(
         not getattr(args, "worker_descend_escrow_readiness_gate", False)
         or descend_escrow_fraction > 0.0,
-        "--worker-descend-escrow-readiness-gate 仅与托管同时生效"
-        "(R15 修正案二)",
+        "--worker-descend-escrow-readiness-gate only takes effect together with escrow"
+        " (R15 amendment 2)",
     )
     descend_escrow_readiness_table = str(getattr(
         args, "worker_descend_escrow_readiness_table", "v1"))
     _require(
         descend_escrow_readiness_table in ("v1", "v2"),
-        "--worker-descend-escrow-readiness-table 必须是 v1/v2",
+        "--worker-descend-escrow-readiness-table must be v1/v2",
     )
     _require(
         descend_escrow_readiness_table == "v1"
         or bool(getattr(
             args, "worker_descend_escrow_readiness_gate", False)),
-        "--worker-descend-escrow-readiness-table v2 仅与战备门"
-        "(--worker-descend-escrow-readiness-gate)同时生效"
-        "(R17.0 修正案一)",
+        "--worker-descend-escrow-readiness-table v2 only takes effect together with the readiness gate"
+        " (--worker-descend-escrow-readiness-gate)"
+        " (R17.0 amendment 1)",
     )
     distill_anneal_actor_rollouts = int(getattr(
         args, "distill_anneal_actor_rollouts", 0))
     _require(
         distill_anneal_actor_rollouts == 0
         or distill_anneal_actor_rollouts >= 2,
-        "--distill-anneal-actor-rollouts 必须为 0 或 >=2",
+        "--distill-anneal-actor-rollouts must be 0 or >=2",
     )
     _require(
         distill_anneal_actor_rollouts == 0
@@ -6411,14 +6411,14 @@ def _validate_args(args) -> None:
             and args.worker
             and args.algo == "mppo"
         ),
-        "--distill-anneal-actor-rollouts 只适用于 "
-        "β>0 的 Worker MaskablePPO",
+        "--distill-anneal-actor-rollouts only applies to "
+        "Worker MaskablePPO with β>0",
     )
     _require(args.target_kl is None
              or (math.isfinite(args.target_kl) and args.target_kl > 0),
-             "--target-kl 给定时必须是有限正数")
+             "--target-kl, when given, must be a finite positive number")
     _require(not args.reset_optimizer or bool(args.resume_from),
-             "--reset-optimizer 只适用于 --resume-from continuation")
+             "--reset-optimizer only applies to a --resume-from continuation")
     reset_worker_critic = bool(getattr(
         args, "reset_worker_critic", False))
     critic_warmup_steps = int(getattr(
@@ -6431,60 +6431,60 @@ def _validate_args(args) -> None:
             "separate-actor-critic-v1",
             "separate-root-context-critic-v2",
         },
-        "--gradient-clip-mode 不在注册模式内",
+        "--gradient-clip-mode is not a registered mode",
     )
     _require(critic_warmup_steps >= 0,
-             "--critic-warmup-steps 不能为负")
+             "--critic-warmup-steps must not be negative")
     if reset_worker_critic:
         _require(
             args.worker and args.algo == "mppo" and bool(args.resume_from),
-            "--reset-worker-critic 只适用于 "
+            "--reset-worker-critic only applies to "
             "--worker --algo mppo --resume-from",
         )
         _require(args.reset_optimizer,
-                 "--reset-worker-critic 必须同时 --reset-optimizer")
+                 "--reset-worker-critic requires --reset-optimizer as well")
         _require(args.seed is not None,
-                 "--reset-worker-critic 必须显式提供 --seed")
+                 "--reset-worker-critic requires an explicit --seed")
         _require(str(args.device) == "cpu",
-                 "--reset-worker-critic 当前只允许 --device cpu")
+                 "--reset-worker-critic currently only allows --device cpu")
         _require(
             critic_warmup_steps > 0
             and critic_warmup_steps % rollout_quantum == 0
             and critic_warmup_steps < args.total_steps,
-            "--critic-warmup-steps 必须为正、整除 rollout 量子且小于"
-            " --total-steps，以保证 warmup 后 actor 真正更新",
+            "--critic-warmup-steps must be positive, divide the rollout quantum and be less than"
+            " --total-steps, so the actor really updates after warmup",
         )
         _require(
             gradient_clip_mode in {
                 "separate-actor-critic-v1",
                 "separate-root-context-critic-v2",
             },
-            "--reset-worker-critic 必须使用"
-            " --gradient-clip-mode 分组裁剪",
+            "--reset-worker-critic must use"
+            " --gradient-clip-mode grouped clipping",
         )
     else:
         _require(
             critic_warmup_steps == 0,
-            "--critic-warmup-steps 只随 --reset-worker-critic 使用",
+            "--critic-warmup-steps is only used with --reset-worker-critic",
         )
     _require(
         gradient_clip_mode == "global"
         or (args.worker and args.algo == "mppo"
             and bool(args.resume_from or getattr(args, "resource_warm_start", None))),
-        "分组裁剪只适用于 Worker MaskablePPO continuation/resource warm-start",
+        "grouped clipping only applies to Worker MaskablePPO continuation/resource warm-start",
     )
-    _require(args.freeze_policy_steps >= 0, "--freeze-policy-steps 不能为负")
-    _require(args.ckpt_every_steps > 0, "--ckpt-every-steps 必须 > 0")
-    _require(args.sentinel_every > 0, "--sentinel-every 必须 > 0")
-    _require(args.dry_anchor_every > 0, "--dry-anchor-every 必须 > 0")
-    # E5 仪表旋钮(只记不裁;0 = 不在位 = 零侵入,G0-2a 先决)
-    _require(args.distill_ce_probe_every >= 0, "--distill-ce-probe-every 不能为负")
-    _require(args.drywin_metrics_every >= 0, "--drywin-metrics-every 不能为负")
+    _require(args.freeze_policy_steps >= 0, "--freeze-policy-steps must not be negative")
+    _require(args.ckpt_every_steps > 0, "--ckpt-every-steps must be > 0")
+    _require(args.sentinel_every > 0, "--sentinel-every must be > 0")
+    _require(args.dry_anchor_every > 0, "--dry-anchor-every must be > 0")
+    # E5 gauge knobs (record-only, no verdict; 0 = absent = zero intrusion, G0-2a prerequisite)
+    _require(args.distill_ce_probe_every >= 0, "--distill-ce-probe-every must not be negative")
+    _require(args.drywin_metrics_every >= 0, "--drywin-metrics-every must not be negative")
     _require(
         getattr(args, "worker_fast_forward_reward_credit", "none") in {
             "none", "terminal-death-only"
         },
-        "--worker-fast-forward-reward-credit 只允许 "
+        "--worker-fast-forward-reward-credit only allows "
         "none/terminal-death-only",
     )
     _require(
@@ -6492,7 +6492,7 @@ def _validate_args(args) -> None:
             args, "worker_additional_terminal_death_cost", 0.0))
         and getattr(args, "worker_additional_terminal_death_cost", 0.0)
         >= 0.0,
-        "--worker-additional-terminal-death-cost 必须是有限非负数",
+        "--worker-additional-terminal-death-cost must be a finite non-negative number",
     )
     _require(
         args.worker
@@ -6502,21 +6502,21 @@ def _validate_args(args) -> None:
             and getattr(
                 args, "worker_additional_terminal_death_cost", 0.0) == 0.0
         ),
-        "Worker 奖励契约旋钮只适用于 --worker",
+        "Worker reward-contract knobs only apply to --worker",
     )
-    # R16 修宪:工资侧新旋钮(WorkerWindowEnv 显式参数)——范围 + 仅 --worker。
+    # R16 amendment: new wage-side knobs (explicit WorkerWindowEnv parameters) -- range + --worker only.
     worker_hp_loss_price = float(getattr(
         args, "worker_hp_loss_price", 0.0))
     _require(
         math.isfinite(worker_hp_loss_price) and worker_hp_loss_price >= 0.0,
-        "--worker-hp-loss-price 必须是有限非负数",
+        "--worker-hp-loss-price must be a finite non-negative number",
     )
     worker_potion_pickup_bonus = float(getattr(
         args, "worker_potion_pickup_bonus", 0.0))
     _require(
         math.isfinite(worker_potion_pickup_bonus)
         and worker_potion_pickup_bonus >= 0.0,
-        "--worker-potion-pickup-bonus 必须是有限非负数",
+        "--worker-potion-pickup-bonus must be a finite non-negative number",
     )
     worker_no_progress_timeout_credit = getattr(
         args, "worker_no_progress_timeout_credit",
@@ -6524,7 +6524,7 @@ def _validate_args(args) -> None:
     _require(
         worker_no_progress_timeout_credit
         in set(_WORKER_NO_PROGRESS_TIMEOUT_CREDITS),
-        "--worker-no-progress-timeout-credit 只允许 "
+        "--worker-no-progress-timeout-credit only allows "
         + "/".join(_WORKER_NO_PROGRESS_TIMEOUT_CREDITS),
     )
     _require(
@@ -6535,13 +6535,13 @@ def _validate_args(args) -> None:
             and worker_no_progress_timeout_credit
             == _WORKER_NO_PROGRESS_TIMEOUT_CREDIT_DEFAULT
         ),
-        "R16 工资侧旋钮(--worker-hp-loss-price/--worker-potion-pickup-bonus/"
-        "--worker-no-progress-timeout-credit)只适用于 --worker",
+        "R16 wage-side knobs (--worker-hp-loss-price/--worker-potion-pickup-bonus/"
+        "--worker-no-progress-timeout-credit) only apply to --worker",
     )
-    # R16 修宪:环境侧/教室侧新参数——范围 + 教室参数仅限持有 OptionsEnv
-    # 的模式(--worker/--options);DiabloGymEnv 级参数(explore_global_
-    # fallback/explore_global_hunt/progress_far_tiles)各模式皆可——三条
-    # make_env 路径都直接构造 DiabloGymEnv,bool 开关无范围可校。
+    # R16 amendment: new environment-side/classroom-side parameters -- range + classroom parameters only for modes that hold an OptionsEnv
+    # (--worker/--options); DiabloGymEnv-level parameters (explore_global_
+    # fallback/explore_global_hunt/progress_far_tiles) are allowed in every mode -- all three
+    # make_env paths construct DiabloGymEnv directly, and bool switches have no range to check.
     resource_protocol = getattr(args, "resource_protocol", "off")
     resource_purchase_mode = getattr(args, "resource_purchase_mode", "full")
     resource_service_policy = getattr(args, "resource_service_policy", "legacy-v1")
@@ -6561,7 +6561,7 @@ def _validate_args(args) -> None:
              "--resource-readiness-law must be veto-v1/coach-v03")
     _require(resource_readiness_law == "veto-v1" or resource_protocol == "l2-town-v1",
              "--resource-readiness-law coach-v03 requires --resource-protocol l2-town-v1")
-    # R18-B: retreat-v1 只在 l2-town-v1/coach-v03 的教室里成立(引擎侧同款)。
+    # R18-B: retreat-v1 only holds in the l2-town-v1/coach-v03 classroom (same on the engine side).
     resource_retreat = getattr(args, "resource_retreat", "off")
     _require(resource_retreat in ("off", "retreat-v1"),
              "--resource-retreat must be off/retreat-v1")
@@ -6571,8 +6571,8 @@ def _validate_args(args) -> None:
              "and --resource-readiness-law coach-v03")
     _require(resource_retreat == "off" or args.worker or args.options,
              "--resource-retreat requires --worker/--options")
-    # R18-B5 (2026-09-07): portal-v1 是撤退的载具,除 l2-town-v1/coach-v03
-    # 之外还必须先有 retreat-v1(引擎侧 validate_portal_protocol 同款)。
+    # R18-B5 (2026-09-07): portal-v1 is the retreat vehicle; besides l2-town-v1/coach-v03
+    # it also needs retreat-v1 first (same as validate_portal_protocol on the engine side).
     resource_portal = getattr(args, "resource_portal", "off")
     _require(resource_portal in ("off", "portal-v1"),
              "--resource-portal must be off/portal-v1")
@@ -6584,13 +6584,13 @@ def _validate_args(args) -> None:
              "--resource-portal portal-v1 requires --resource-retreat retreat-v1")
     _require(resource_portal == "off" or args.worker or args.options,
              "--resource-portal requires --worker/--options")
-    # R18-B6 (2026-09-07): sweep-v1 / cain-v1 / smith-v1 都活在 loot 经济的
-    # 行程里(部署侧 validate_sweep_protocol / validate_identify_protocol /
-    # validate_weapon_upgrade 同款):l2-town-v1 + sustain-loot-v1;smith-v1
-    # 另需 full 采购模式。三者都只经 WorkerWindowEnv/OptionsEnv 的
-    # **env_kwargs 直通,故仍限 --worker/--options。
-    # (resource_protocol / resource_purchase_mode / resource_service_policy 已在
-    # 本函数上方取过,这里复用同一份,不重复读 args。)
+    # R18-B6 (2026-09-07): sweep-v1 / cain-v1 / smith-v1 all live inside the trips of the loot economy
+    # (same as validate_sweep_protocol / validate_identify_protocol /
+    # validate_weapon_upgrade on the deployment side): l2-town-v1 + sustain-loot-v1; smith-v1
+    # also needs the full purchase mode. All three only pass through the **env_kwargs of
+    # WorkerWindowEnv/OptionsEnv, so they are still limited to --worker/--options.
+    # (resource_protocol / resource_purchase_mode / resource_service_policy were already read above in
+    # this function; the same values are reused here instead of reading args again.)
     resource_sweep = getattr(args, "resource_sweep", "off")
     _require(resource_sweep in ("off", "sweep-v1"),
              "--resource-sweep must be off/sweep-v1")
@@ -6611,11 +6611,11 @@ def _validate_args(args) -> None:
              "sustain-loot-v1 (the identify leg is part of that town trip)")
     _require(resource_identify == "off" or args.worker or args.options,
              "--resource-identify requires --worker/--options")
-    # 训练侧词汇表比部署侧窄一个值,并且是故意的:RESOURCE_WEAPON_UPGRADES
-    # 还有 dry-v1,那是 smith-v1 的「只观察不出手」孪生(resource_weapon_
-    # upgrade.py:129-137),它不发命令、不走微步、不做 native 调用,行数据
-    # 与 control 臂逐位相同。用它训练等于给一次控制臂跑动铸一个说谎的身份
-    # ——与 hunt_scope 复核修正同一条理由,故训练侧 fail closed。
+    # The training-side vocabulary is one value narrower than the deployment side, on purpose: RESOURCE_WEAPON_UPGRADES
+    # also has dry-v1, the "observe only, never act" twin of smith-v1 (resource_weapon_
+    # upgrade.py:129-137); it sends no commands, takes no micro-steps and makes no native calls, and its row data
+    # is bit-identical to the control arm. Training with it would mint a lying identity for a control-arm run
+    # -- the same reason as the hunt_scope review fix, so the training side fails closed.
     resource_weapon_upgrade = getattr(args, "resource_weapon_upgrade", "off")
     _require(resource_weapon_upgrade in ("off", "smith-v1"),
              "--resource-weapon-upgrade must be off/smith-v1")
@@ -6629,31 +6629,31 @@ def _validate_args(args) -> None:
              "--resource-weapon-upgrade smith-v1 requires --resource-purchase-mode full")
     _require(resource_weapon_upgrade == "off" or args.worker or args.options,
              "--resource-weapon-upgrade requires --worker/--options")
-    # R18-B5 (2026-09-07): hunt_scope 是 DiabloGymEnv 级开关(env.py 的构造器
-    # 不要求资源协议,这里不过度收紧),但训练侧只经 WorkerWindowEnv/OptionsEnv
-    # 的 **env_kwargs 直通,故仍限 --worker/--options。
+    # R18-B5 (2026-09-07): hunt_scope is a DiabloGymEnv-level switch (the env.py constructor
+    # does not require a resource protocol, so we do not over-tighten here), but on the training side it only passes through the **env_kwargs of
+    # WorkerWindowEnv/OptionsEnv, so it is still limited to --worker/--options.
     hunt_scope = getattr(args, "hunt_scope", "all")
     _require(hunt_scope in ("all", "l1-only"),
              "--hunt-scope must be all/l1-only")
     _require(hunt_scope == "all" or args.worker or args.options,
              "--hunt-scope l1-only requires --worker/--options")
-    # 复核修正(同日):l1-only 唯一的消费者是 a10 全图寻怪的闸
-    # (env.py 的 `_explore_global_hunt and self._hunt_allowed_here(raw)`),
-    # 寻怪不开时它是保证的空操作。契约与档案身份却会照写这条法,于是身份
-    # 为一部没有跑过的法作证,而一次纯粹的记账差异会让后续续训被判环境漂移。
-    # 与本节其余各条同一条理由:静默失效比早点报错糟得多。
+    # Review fix (same day): the only consumer of l1-only is the gate of the a10 full-map monster search
+    # (`_explore_global_hunt and self._hunt_allowed_here(raw)` in env.py),
+    # which is a guaranteed no-op when hunting is off. The contract and archive identity would still record this law, so the identity
+    # would vouch for a law that never ran, and a pure bookkeeping difference would get later continuations ruled as environment drift.
+    # Same reason as every other item in this section: silently ineffective is much worse than an early error.
     _require(hunt_scope == "all" or bool(getattr(args, "explore_global_hunt", False)),
              "--hunt-scope l1-only requires --explore-global-hunt")
     progress_far_tiles = int(getattr(args, "progress_far_tiles", 0))
     _require(
         progress_far_tiles >= 0,
-        "--progress-far-tiles 不能为负",
+        "--progress-far-tiles must not be negative",
     )
     farm_scene_cap = int(getattr(
         args, "farm_scene_cap", _FARM_SCENE_CAP_DEFAULT))
     _require(
         farm_scene_cap > 0,
-        "--farm-scene-cap 必须 > 0",
+        "--farm-scene-cap must be > 0",
     )
     _require(
         args.worker or args.options
@@ -6662,21 +6662,21 @@ def _validate_args(args) -> None:
             and not bool(getattr(
                 args, "reset_layer_clock_on_window", False))
         ),
-        "--farm-scene-cap/--reset-layer-clock-on-window 是 OptionsEnv 教室"
-        "参数,只适用于 --worker/--options",
+        "--farm-scene-cap/--reset-layer-clock-on-window are OptionsEnv classroom"
+        " parameters and only apply to --worker/--options",
     )
     _require(
         getattr(args, "worker_learning_window_scope", "farm-only") in {
             "farm-only", "farm-dive-v1", EARNED_DIVE_SUFFIX_SCOPE
         },
-        "--worker-learning-window-scope 只允许 farm-only/farm-dive-v1/earned-dive-suffix-v1",
+        "--worker-learning-window-scope only allows farm-only/farm-dive-v1/earned-dive-suffix-v1",
     )
     _require(
         args.worker
         or getattr(
             args, "worker_learning_window_scope", "farm-only")
         == "farm-only",
-        "--worker-learning-window-scope 只适用于 --worker",
+        "--worker-learning-window-scope only applies to --worker",
     )
     legacy_policy_view = bool(getattr(
         args, "legacy_worker_policy_observation_view", False))
@@ -6689,239 +6689,239 @@ def _validate_args(args) -> None:
             _WORKER_VIEW_DUAL_V4_ASYMMETRIC,
             _WORKER_VIEW_DUAL_V5_WINDOW_MODE,
         },
-        "--worker-policy-observation-view 只允许 "
+        "--worker-policy-observation-view only allows "
         "legacy-v3/dual-v4-asymmetric-v3/dual-v5-window-mode-v1",
     )
-    # R13 交叉门(v0.3 修订):live-DIVE 课堂要求 dual-v4 视图——主权
-    # 移交后工人掩码特征(617-632)天然携带窗口模式信号(m[11] 仅在
-    # live DIVE 窗内可为 1),v4 观测语义如实反映新法,无混叠盲区;
-    # 显式模式 one-hot(v5)列 R13.2 预备役。
+    # R13 cross gate (v0.3 revision): the live-DIVE classroom requires the dual-v4 view -- after the autonomy
+    # handover the worker mask features (617-632) naturally carry the window-mode signal (m[11] can be 1 only
+    # inside live DIVE windows), so the v4 observation semantics reflect the new rules faithfully, with no aliasing blind spot;
+    # an explicit mode one-hot (v5) is kept in reserve for R13.2.
     _require(
         getattr(args, "worker_learning_window_scope", "farm-only")
         == "farm-only"
         or explicit_worker_view == _WORKER_VIEW_DUAL_V4_ASYMMETRIC,
-        "live-DIVE worker scope 必须搭配 "
+        "live-DIVE worker scope must be paired with "
         "--worker-policy-observation-view dual-v4-asymmetric-v3",
     )
     _require(
         args.worker or not legacy_policy_view,
-        "--legacy-worker-policy-observation-view 只适用于 --worker",
+        "--legacy-worker-policy-observation-view only applies to --worker",
     )
     _require(
         args.worker or explicit_worker_view is None,
-        "--worker-policy-observation-view 只适用于 --worker",
+        "--worker-policy-observation-view only applies to --worker",
     )
     _require(
         not (legacy_policy_view and explicit_worker_view is not None),
-        "旧 legacy Worker 旗与显式 worker observation view 互斥",
+        "the old legacy Worker flag and an explicit worker observation view are mutually exclusive",
     )
     manager_policy_view = getattr(
         args, "manager_policy_observation_view", "raw-v4")
     _require(
         manager_policy_view in {"raw-v4", "legacy-v3"},
-        "--manager-policy-observation-view 只允许 raw-v4/legacy-v3",
+        "--manager-policy-observation-view only allows raw-v4/legacy-v3",
     )
     _require(
         args.options or manager_policy_view == "raw-v4",
-        "--manager-policy-observation-view=legacy-v3 只适用于 --options；"
-        "--worker 的冻结 M29 视图由 WorkerWindowEnv 强制绑定",
+        "--manager-policy-observation-view=legacy-v3 only applies to --options; "
+        "the frozen M29 view of --worker is bound by WorkerWindowEnv",
     )
     if args.worker:
         if _bc_aux_structural_active(args):
             _require(
                 not legacy_policy_view
                 and explicit_worker_view is None,
-                "A12 custom policy 必须读取 legacy-v3-a12-overlay；"
-                "旧 actor/value 由 policy 内部解码为完整 v3",
+                "A12 custom policy must read legacy-v3-a12-overlay; "
+                "the old actor/value are decoded to the full v3 inside the policy",
             )
             _require(
                 _requested_drink_sovereignty(args) is not False,
-                "A12 custom policy 必须开启 drink sovereignty；"
-                "--no-drink-sovereignty 会让 m[12] 永久关闭并切断在线学习",
+                "A12 custom policy must enable drink sovereignty; "
+                "--no-drink-sovereignty would close m[12] permanently and cut off online learning",
             )
         elif explicit_worker_view == _WORKER_VIEW_DUAL_V4_ASYMMETRIC:
             _require(
                 bool(args.resume_from or getattr(args, "resource_warm_start", None)),
-                "dual-v4-asymmetric-v3 必须从已登记 Worker checkpoint "
-                "点火、显式环境重启式参数续接或独立 resource warm-start",
+                "dual-v4-asymmetric-v3 must launch from a registered Worker checkpoint, "
+                "an explicit environment-restart parameter continuation or an independent resource warm-start",
             )
         elif explicit_worker_view == _WORKER_VIEW_DUAL_V5_WINDOW_MODE:
             _require(
                 bool(args.resume_from),
-                "dual-v5-window-mode-v1 必须从 v4→v5 迁移入学 zip 续接"
-                "(零填充扩维,D0 门保 argmax 同一)",
+                "dual-v5-window-mode-v1 must continue from a v4->v5 migrated enrolment zip"
+                " (zero-padded widening; the D0 gate keeps argmax identical)",
             )
         else:
             _require(
                 legacy_policy_view
                 or explicit_worker_view == _WORKER_VIEW_LEGACY_V3,
-                "普通 Worker policy 必须显式携"
-                " legacy-v3 observation view，"
-                "保证训练与部署同用 protocol-v3 actor/value 输入",
+                "an ordinary Worker policy must explicitly carry the"
+                " legacy-v3 observation view, "
+                "so training and deployment use the same protocol-v3 actor/value input",
             )
     _require(
         getattr(args, "artifact_scope", "production")
         in _ARTIFACT_SCOPE_RESULTS,
-        "--artifact-scope 只允许 development/candidate/production",
+        "--artifact-scope only allows development/candidate/production",
     )
     _require(args.distill_ce_probe_every == 0
              or (args.worker and args.algo == "mppo"),
-             "--distill-ce-probe-every 只适用于 --worker --algo mppo"
-             "(探针需 Leashed 教师)")
+             "--distill-ce-probe-every only applies to --worker --algo mppo"
+             " (the probe needs a Leashed teacher)")
     _require(args.drywin_metrics_every == 0 or args.worker,
-             "--drywin-metrics-every 只适用于 --worker")
+             "--drywin-metrics-every only applies to --worker")
     if args.run_name is not None:
         _require(bool(args.run_name) and pathlib.Path(args.run_name).name == args.run_name
                  and args.run_name not in (".", ".."),
-                 "--run-name 必须是单个目录名，不能含路径分隔符")
+                 "--run-name must be a single directory name without path separators")
     if args.seed is not None:
-        _require(0 <= args.seed < 2**32, "--seed 必须在 [0, 2**32) 内")
+        _require(0 <= args.seed < 2**32, "--seed must lie in [0, 2**32)")
         _require(args.seed + args.num_envs - 1 < 2**32,
-                 "--seed + num_envs - 1 必须小于 2**32")
+                 "--seed + num_envs - 1 must be less than 2**32")
 
     modes = int(args.worker) + int(args.options) + int(args.flat_clock)
-    _require(modes <= 1, "--worker/--options/--flat-clock 互斥")
-    # E1 两旗互斥断言(承工程 B1)+ 四门之互斥/模式门:谓词 = skip_dry ∨ schedule。
+    _require(modes <= 1, "--worker/--options/--flat-clock are mutually exclusive")
+    # E1 two-flag mutual-exclusion assertion (following engineering B1) + the four gates' exclusion/mode gate: predicate = skip_dry or schedule.
     _require(not (args.skip_dry and args.dry_curriculum_schedule),
-             "--skip-dry 与 --dry-curriculum-schedule 互斥")
+             "--skip-dry and --dry-curriculum-schedule are mutually exclusive")
     _require(not _dry_window_mechanism_active(args) or args.worker,
-             "--skip-dry/--dry-curriculum-schedule 只能与 --worker 同用")
+             "--skip-dry/--dry-curriculum-schedule can only be used with --worker")
     if args.dry_curriculum_schedule:
         curriculum_table = _parse_dry_curriculum_schedule(args.dry_curriculum_schedule)
         _require(len(curriculum_table) * rollout_quantum >= args.total_steps,
-                 f"--dry-curriculum-schedule p 表 {len(curriculum_table)} 项"
-                 f"不足以覆盖本腿 {args.total_steps // rollout_quantum} 个 rollout"
-                 "(腿相对锚定禁越界钳位)")
-    _require(not args.worker_npz or args.options, "--worker-npz 只能与 --options 同用")
-    # R9:zip 工人组装口(认证发布件)——互斥/模式门与 npz 同型。
-    _require(not args.worker_zip or args.options, "--worker-zip 只能与 --options 同用")
+                 f"--dry-curriculum-schedule p table has {len(curriculum_table)} entries,"
+                 f" not enough to cover this leg's {args.total_steps // rollout_quantum} rollouts"
+                 " (leg-relative anchoring forbids out-of-range clamping)")
+    _require(not args.worker_npz or args.options, "--worker-npz can only be used with --options")
+    # R9: zip worker assembly point (certified release artifact) -- exclusion/mode gates shaped like npz.
+    _require(not args.worker_zip or args.options, "--worker-zip can only be used with --options")
     _require(not (args.worker_zip and args.worker_npz),
-             "--worker-zip 与 --worker-npz 互斥(一个组装口只挂一个工人)")
+             "--worker-zip and --worker-npz are mutually exclusive (one assembly point mounts one worker)")
     _require(not args.worker_zip_sha256 or args.worker_zip,
-             "--worker-zip-sha256 必须与 --worker-zip 同用")
+             "--worker-zip-sha256 must be used with --worker-zip")
     _require(args.worker_zip_sha256 is None or _is_sha256(args.worker_zip_sha256),
-             f"--worker-zip-sha256 必须是 64 位小写十六进制: {args.worker_zip_sha256!r}")
-    # R9 课程旋钮:仅 --options;形态旗不得脱离课程旗单独出现。
+             f"--worker-zip-sha256 must be 64 lowercase hex digits: {args.worker_zip_sha256!r}")
+    # R9 curriculum knobs: --options only; the form flag must not appear without the curriculum flag.
     _require(not args.deep_start_curriculum or args.options,
-             "--deep-start-curriculum 只能与 --options 同用")
+             "--deep-start-curriculum can only be used with --options")
     _require(args.deep_start_form is None or bool(args.deep_start_curriculum),
-             "--deep-start-form 必须与 --deep-start-curriculum 同用")
+             "--deep-start-form must be used with --deep-start-curriculum")
     if args.deep_start_curriculum:
         _parse_deep_start_curriculum(args.deep_start_curriculum)
     _require(not args.teacher_override or (args.resume_from and args.worker),
-             "--teacher-override 只能与 worker 侧 --resume-from 同用")
+             "--teacher-override can only be used with a worker-side --resume-from")
     _require(not args.allow_manager_change or (args.resume_from and args.worker),
-             "--allow-manager-change 只允许 worker resume 显式换经理")
+             "--allow-manager-change only allows an explicit manager change on worker resume")
     _require(not args.allow_legacy_resume or args.resume_from,
-             "--allow-legacy-resume 只能与 --resume-from 同用")
+             "--allow-legacy-resume can only be used with --resume-from")
     allow_environment_restart_resume = bool(getattr(
         args, "allow_environment_restart_resume", False))
     _require(
         not allow_environment_restart_resume
         or (args.worker and args.algo == "mppo" and bool(args.resume_from)),
-        "--allow-environment-restart-resume 只适用于 "
+        "--allow-environment-restart-resume only applies to "
         "--worker --algo mppo --resume-from",
     )
     _require(
         not (args.worker and args.allow_legacy_resume)
         or reset_worker_critic,
-        "旧 Worker checkpoint 的一次性迁移必须同时"
-        " --reset-worker-critic；仅清 optimizer 不能修复窗口终止 critic",
+        "a one-off migration of an old Worker checkpoint must also pass"
+        " --reset-worker-critic; clearing the optimizer alone cannot fix the window-termination critic",
     )
     _require(args.freeze_policy_steps == 0 or args.bc_init,
-             "--freeze-policy-steps > 0 时必须提供 --bc-init")
+             "--freeze-policy-steps > 0 requires --bc-init")
     _require(args.bc_init or args.init_source == "bc",
-             "--init-source checkpoint 必须与 --bc-init 同用")
+             "--init-source checkpoint must be used with --bc-init")
     _require(args.distill_beta == 0 or (args.worker and args.algo == "mppo"),
-             "--distill-beta > 0 只适用于 --worker --algo mppo")
+             "--distill-beta > 0 only applies to --worker --algo mppo")
     _require(not (args.calib_probes or args.calib_record_only)
              or (args.worker and args.algo == "mppo"),
-             "G-CAL 参数只适用于 --worker --algo mppo")
-    # E3 ④乙:两旗互不强制(单独给任一旗不报错);在位 = λ_bc>0 ∧ demos 给定。
+             "G-CAL parameters only apply to --worker --algo mppo")
+    # E3 4B: the two flags do not force each other (either alone raises no error); present = λ_bc>0 and demos given.
     _require(math.isfinite(args.bc_aux_lambda) and args.bc_aux_lambda >= 0,
-             "--bc-aux-lambda 必须是有限非负数")
+             "--bc-aux-lambda must be a finite non-negative number")
     _require(not args.bc_aux_graft or bool(args.bc_aux_demos),
-             "--bc-aux-graft 必须同时提供 --bc-aux-demos")
+             "--bc-aux-graft requires --bc-aux-demos as well")
     _require(
         not _bc_aux_structural_active(args)
         or math.isclose(float(args.bc_aux_lambda), 0.0,
                         rel_tol=0.0, abs_tol=0.0),
-        "rev10 contextual mixture adapter 要求 --bc-aux-lambda=0；"
-        "禁止恢复不可达的梯度辅助拔河")
+        "rev10 contextual mixture adapter requires --bc-aux-lambda=0; "
+        "reviving the unreachable gradient auxiliary tug-of-war is forbidden")
     _require(
         not (args.bc_aux_lambda > 0 and bool(args.bc_aux_demos)),
-        "rev5 gradient bc_aux 已被实测否决；请改用"
+        "rev5 gradient bc_aux was rejected by measurement; use"
         " --bc-aux-graft --bc-aux-lambda 0")
     _require(not _bc_aux_active(args) or (args.worker and args.algo == "mppo"),
-             "④乙辅助通路"
-             "只适用于 --worker --algo mppo")   # 承 --distill-beta 同型门(裁量注记)
+             "the 4B auxiliary pathway "
+             "only applies to --worker --algo mppo")   # same gate shape as --distill-beta (discretionary note)
     _require(not args.bc_aux_liveness_preflight
              or (_bc_aux_active(args) and bool(args.resume_from)),
-             "--bc-aux-liveness-preflight 只适用于带 --resume-from 的"
-             "在位 bc_aux 生产腿")
+             "--bc-aux-liveness-preflight only applies to a --resume-from"
+             " production leg with bc_aux present")
     _require(
         getattr(args, "artifact_scope", "production") == "production"
         or not _bc_aux_active(args),
-        "非 production 工件不得消费 bc_aux final-heldout 发布门；"
-        "请关闭 bc_aux，或使用独立 nested-validation 开发路径",
+        "non-production artifacts must not consume the bc_aux final-heldout release gate; "
+        "turn off bc_aux or use the independent nested-validation development path",
     )
     if _bc_aux_active(args):
         _require(bool(args.resume_from),
-                 "在位 bc_aux 正式腿必须从已冻结 worker checkpoint resume")
+                 "a formal leg with bc_aux present must resume from a frozen worker checkpoint")
         _require(args.bc_aux_liveness_preflight,
-                 "在位 bc_aux 正式腿必须携 --bc-aux-liveness-preflight")
+                 "a formal leg with bc_aux present must carry --bc-aux-liveness-preflight")
         _require(args.distill_beta > 0,
-                 "在位 bc_aux 正式腿必须保留非零 KING/BC 蒸馏皮筋")
+                 "a formal leg with bc_aux present must keep a nonzero KING/BC distillation leash")
         _require(_bc_aux_structural_active(args),
-                 "正式 bc_aux 只接受 rev10 contextual mixture adapter")
+                 "formal bc_aux only accepts the rev10 contextual mixture adapter")
         resume_metadata = _validate_leashed_checkpoint(args.resume_from)
         saved_adapter = resume_metadata.get("_bc_aux_circuit_spec")
         if saved_adapter is None:
             _require(args.reset_optimizer,
-                     "首次 a12 actor 扩宽必须 --reset-optimizer，"
-                     "禁止旧 Adam moments 错绑新拓扑")
+                     "the first a12 actor widening requires --reset-optimizer; "
+                     "binding old Adam moments to the new topology is forbidden")
         else:
             _require(saved_adapter == _bc_aux_circuit_spec(),
-                     "continuation checkpoint 的 a12 mixture spec 漂移")
+                     "continuation checkpoint a12 mixture spec drift")
             _require(not args.reset_optimizer,
-                     "已有 a12 mixture continuation 禁止 --reset-optimizer；"
-                     "必须保留 PPO 已学 ε、Adam moments 与探索计数")
+                     "an existing a12 mixture continuation forbids --reset-optimizer; "
+                     "the ε PPO has learned, the Adam moments and the exploration counts must be kept")
         _require(not args.calib_record_only,
-                 "在位 bc_aux 禁止 --calib-record-only 绕过 G-CAL 硬门")
+                 "with bc_aux present, --calib-record-only may not bypass the G-CAL hard gate")
         _require(pathlib.Path(args.bc_aux_demos).is_file(),
-                 f"④乙 v2 示范集(bc-worker-v2)不存在: {args.bc_aux_demos}")
-        # v2 专用验证器 + 正/负校准 bank fail-loud(镜像 _precheck 先例,
-        # 加载即弃;不在位时零侵入——连文件存在性都不查)
+                 f"4B v2 demo set (bc-worker-v2) does not exist: {args.bc_aux_demos}")
+        # dedicated v2 validator + positive/negative calibration bank fail-loud (mirrors the _precheck precedent,
+        # load then discard; zero intrusion when absent -- not even the file's existence is checked)
         expected_manager_sha256 = _capture_file_sha256(
             args.manager_npz, "manager_npz")
         _x, _y, _, _masks, _ = _load_bc_aux_demos_v2(
             args.bc_aux_demos,
             expected_manager_sha256=expected_manager_sha256)
     _require(args.arch != "attn" or not (args.worker or args.options or args.flat_clock),
-             "EntityAttention 只支持 295 维平面观测")
+             "EntityAttention only supports the 295-dim flat observation")
 
     if args.resume_from:
         _require((args.worker or args.options) and args.algo == "mppo",
-                 "--resume-from 只支持 worker/options 的 mppo 检查点")
+                 "--resume-from only supports worker/options mppo checkpoints")
         _require(not args.bc_init and args.freeze_policy_steps == 0,
-                 "--resume-from 禁与 --bc-init/--freeze-policy-steps 同用")
+                 "--resume-from must not be used with --bc-init/--freeze-policy-steps")
         _require(_checkpoint_path(args.resume_from).is_file(),
-                 f"resume 检查点不存在: {args.resume_from}")
+                 f"resume checkpoint does not exist: {args.resume_from}")
         if args.worker:
             resume_metadata = _validate_leashed_checkpoint(args.resume_from)
             contracted = resume_metadata.get("diablogym_contract") is not None
             _require(
                 contracted is allow_environment_restart_resume,
-                "带 training_contract 的 Worker checkpoint 只能以显式 "
-                "--allow-environment-restart-resume 做参数/Adam 续接；"
-                "旧点火 checkpoint 则必须走独立 legacy migration 门",
+                "a Worker checkpoint with a training_contract can only continue parameters/Adam with an explicit "
+                "--allow-environment-restart-resume; "
+                "an old launch checkpoint must go through the separate legacy migration gate",
             )
         else:
-            # v31 经理续训口:通用检查点闸(CRC/关键成员/步数/权重有限性),
-            # distill_beta 系工人 Leashed 专属标记,经理检查点不作此断言。
+            # v31 manager continuation entry: the generic checkpoint gate (CRC/key members/steps/finite weights);
+            # distill_beta is a marker specific to Leashed workers, so manager checkpoints do not assert it.
             _validate_checkpoint_file(args.resume_from)
     if args.bc_init:
-        _require(pathlib.Path(args.bc_init).is_file(), f"BC 权重不存在: {args.bc_init}")
+        _require(pathlib.Path(args.bc_init).is_file(), f"BC weights do not exist: {args.bc_init}")
         if args.init_source == "bc":
             gate = ("data_gate" if args.worker else "hypothesis" if args.options
                     else "memoryless_hypothesis")
@@ -6930,70 +6930,70 @@ def _validate_args(args) -> None:
             _validate_export_manifest(pathlib.Path(args.bc_init))
     if args.teacher_override:
         _require(pathlib.Path(args.teacher_override).is_file(),
-                 f"教师覆写文件不存在: {args.teacher_override}")
+                 f"teacher override file does not exist: {args.teacher_override}")
         _validate_export_manifest(pathlib.Path(args.teacher_override))
     if args.worker:
-        # R16 修宪:局长 3000(旧法)或 ≥6000(新法,审计 C6/C11:1800 拍场景
-        # 预算+3000 拍局长把工人赶下楼;白名单已放行 max_steps 漂移)。
+        # R16 amendment: episode length 3000 (old rule) or >=6000 (new rule; audit C6/C11: a 1800-step scene
+        # budget + a 3000-step episode length drove the worker downstairs; the whitelist already allows max_steps drift).
         _require(args.algo == "mppo" and args.gamma == 1.0
                  and (args.max_steps == 3000 or args.max_steps >= 6000),
-                 "PREREG-v23/R16:--worker 须配 --algo mppo --gamma 1.0 "
-                 "--max-steps 3000 或 ≥6000")
+                 "PREREG-v23/R16: --worker requires --algo mppo --gamma 1.0 "
+                 "--max-steps 3000 or >=6000")
         if getattr(args, "manager_heuristic", None):
-            # --manager-npz 带 argparse 默认路径;脚本教练模式下将其置空,
-            # 单一真源归 heuristic(显式同传两者时以本行为准,契约只记 heuristic)。
+            # --manager-npz has an argparse default path; in scripted-coach mode it is cleared,
+            # so the single source of truth is the heuristic (if both are passed explicitly this line wins, and the contract records only the heuristic).
             args.manager_npz = None
         else:
             _require(pathlib.Path(args.manager_npz).is_file(),
-                     f"经理 npz 不存在: {args.manager_npz}")
+                     f"manager npz does not exist: {args.manager_npz}")
         if args.distill_beta > 0 and not args.resume_from:
             _require(pathlib.Path(args.teacher_sd).is_file(),
-                     f"教师 state_dict 不存在: {args.teacher_sd}")
+                     f"teacher state_dict does not exist: {args.teacher_sd}")
             _validate_bc_report(pathlib.Path(args.teacher_sd), "data_gate")
-        # E1 四门之 demos/BC 预检门:skip_dry ∨ schedule(谓词在助手内,断言原封)
+        # E1 four gates: demos/BC preflight gate: skip_dry or schedule (predicate inside the helper, assertion unchanged)
         _precheck_dry_window_demos(args)
     if args.options:
         _require(args.algo == "mppo" and args.gamma == 1.0
                  and (args.max_steps == 3000 or args.max_steps >= 6000),
-                 "PREREG-v25/R16:--options 须配 --algo mppo --gamma 1.0 "
-                 "--max-steps 3000 或 ≥6000")
+                 "PREREG-v25/R16: --options requires --algo mppo --gamma 1.0 "
+                 "--max-steps 3000 or >=6000")
         if args.worker_npz:
             _require(args.n_steps == 64 and args.seed is not None,
-                     "PREREG-v25 D2:换届选举须 --n-steps 64 且显式 --seed")
+                     "PREREG-v25 D2: the re-election requires --n-steps 64 and an explicit --seed")
             _require(pathlib.Path(args.worker_npz).is_file(),
-                     f"工人 npz 不存在: {args.worker_npz}")
+                     f"worker npz does not exist: {args.worker_npz}")
         if args.worker_zip:
             _require(args.n_steps == 64 and args.seed is not None,
-                     "PREREG-R9:zip 工人换届须 --n-steps 64 且显式 --seed")
+                     "PREREG-R9: a zip worker re-election requires --n-steps 64 and an explicit --seed")
             _require(pathlib.Path(args.worker_zip).is_file(),
-                     f"工人 zip 不存在: {args.worker_zip}")
+                     f"worker zip does not exist: {args.worker_zip}")
     if args.seed is not None:
         from diablogym.worker_env import is_reserved_train_seed
 
         _require(not any(
             is_reserved_train_seed(args.seed + rank)
             for rank in range(args.num_envs)),
-                 "种子纪律:--seed + 实际 env rank 撞已登记 BC/评测池")
+                 "seed discipline: --seed + actual env rank collides with a registered BC/evaluation pool")
 
     try:
         probes = [int(x) for x in args.calib_probes.split(",") if x.strip()]
     except ValueError as exc:
-        raise ValueError("--calib-probes 必须是逗号分隔的整数") from exc
-    _require(all(p >= 0 for p in probes), "--calib-probes 不能包含负数")
+        raise ValueError("--calib-probes must be comma-separated integers") from exc
+    _require(all(p >= 0 for p in probes), "--calib-probes must not contain negative numbers")
     _select_batch_size(args.n_steps, args.num_envs)
 
 
 def _prepare_run_dir(run_dir: pathlib.Path, resume_from: str | None,
                      protected_inputs=()) -> None:
-    """同名重跑时保全旧产物，同时避免 progress/tb/ckpt 混入新尝试。"""
+    """On a same-name rerun, preserve old artifacts while keeping progress/tb/ckpt out of the new attempt."""
     run_dir.mkdir(parents=True, exist_ok=True)
     run_root = run_dir.resolve()
     protected = [pathlib.Path(p).resolve() for p in protected_inputs if p]
     in_output_tree = [p for p in protected
                       if p == run_root or p.is_relative_to(run_root)]
     _require(not in_output_tree,
-             "训练输入不能位于本次 run 输出目录内；请先复制到 train/models "
-             f"或独立 inputs 目录: {in_output_tree}")
+             "training inputs cannot live inside this run's output directory; copy them to train/models "
+             f"or a separate inputs directory first: {in_output_tree}")
     existing = [run_dir / name for name in _RUN_ARTIFACTS if (run_dir / name).exists()]
     if not existing:
         return
@@ -7002,16 +7002,16 @@ def _prepare_run_dir(run_dir: pathlib.Path, resume_from: str | None,
         _require(all(p.resolve() != source
                      and not (p.is_dir() and source.is_relative_to(p.resolve()))
                      for p in existing),
-                 "不能从同一 run_dir 的 model_final 原地 resume；请换 run-name")
+                 "cannot resume in place from the model_final of the same run_dir; use another run-name")
     archive = run_dir / "_attempts" / f"pre-{time.strftime('%Y%m%d-%H%M%S')}-{time.time_ns()}"
     archive.mkdir(parents=True)
     for path in existing:
         shutil.move(str(path), str(archive / path.name))
-    print(f"   同名 run 旧产物已归档: {archive}")
+    print(f"   archived old artifacts of the same-name run: {archive}")
 
 
 class _RunLock:
-    """进程级独占锁；内核会在崩溃/SIGKILL 时自动释放 flock。"""
+    """Process-level exclusive lock; the kernel releases the flock automatically on crash/SIGKILL."""
 
     def __init__(self, run_dir: pathlib.Path):
         run_dir.mkdir(parents=True, exist_ok=True)
@@ -7023,7 +7023,7 @@ class _RunLock:
             self._file.seek(0)
             owner = self._file.read().strip() or "unknown"
             self._file.close()
-            raise RuntimeError(f"run_dir 正被另一训练进程占用: {run_dir} ({owner})") from exc
+            raise RuntimeError(f"run_dir is being used by another training process: {run_dir} ({owner})") from exc
         self._file.seek(0)
         self._file.truncate()
         self._file.write(json.dumps({"pid": os.getpid(), "started_at": time.time()}))
@@ -7099,7 +7099,7 @@ class _TrainingResources:
         previous_handler = previous_alarm = None
 
         def _close_timeout(*_):
-            raise TimeoutError("vec_env.close() 超时(疑似 worker 已死)")
+            raise TimeoutError("vec_env.close() timed out (worker probably dead)")
 
         if armed:
             previous_handler = signal.getsignal(signal.SIGALRM)
@@ -7125,10 +7125,10 @@ class _TrainingResources:
                 if previous_alarm:
                     signal.alarm(previous_alarm)
         if close_error is not None:
-            print(f"vec_env.close 异常: {type(close_error).__name__}: {close_error}")
+            print(f"vec_env.close error: {type(close_error).__name__}: {close_error}")
             if processes:
                 recovery = _TrainingResources._reap_failed_vec_env(processes, remotes)
-                print(f"vec_env.close 自有进程回收: {json.dumps(recovery, sort_keys=True)}")
+                print(f"vec_env.close own-process reaping: {json.dumps(recovery, sort_keys=True)}")
 
     def close(self) -> None:
         # Clear ownership before calling user/library cleanup so a recursive
@@ -7144,7 +7144,7 @@ class _TrainingResources:
 
 
 def _atomic_save_model(model, destination: str | pathlib.Path) -> pathlib.Path:
-    """先写唯一临时 zip、完整验 CRC/finite，再原子发布 canonical。"""
+    """Write a unique temporary zip first, fully check CRC/finite, then atomically publish the canonical."""
     final = pathlib.Path(destination)
     if final.suffix.lower() != ".zip":
         final = pathlib.Path(f"{final}.zip")
@@ -7153,8 +7153,8 @@ def _atomic_save_model(model, destination: str | pathlib.Path) -> pathlib.Path:
         f".{final.stem}.{os.getpid()}.{time.time_ns()}.tmp.zip")
     try:
         model.save(str(tmp))
-        # SB3 close() 只把字节交给内核；在校验/原子替换前强制落盘，
-        # 避免断电后留下一个名字已发布但数据未持久化的 checkpoint。
+        # SB3 close() only hands the bytes to the kernel; force them to disk before validation/atomic replace,
+        # so a power loss cannot leave a checkpoint whose name is published but whose data was never persisted.
         with open(tmp, "rb") as stream:
             os.fsync(stream.fileno())
         _validate_checkpoint_file(tmp, require_leashed=hasattr(model, "distill_beta"))
@@ -7166,8 +7166,8 @@ def _atomic_save_model(model, destination: str | pathlib.Path) -> pathlib.Path:
             finally:
                 os.close(directory_fd)
         except OSError:
-            # 部分非 POSIX/网络文件系统不支持目录 fsync；文件本身
-            # 仍已持久化，且 replace 的原子性不受影响。
+            # Some non-POSIX/network file systems do not support directory fsync; the file itself
+            # is already persisted, and the atomicity of replace is unaffected.
             pass
     finally:
         tmp.unlink(missing_ok=True)
@@ -7183,48 +7183,48 @@ def _validate_worker_bc_evidence(rec: dict, demos_payload: bytes,
     try:
         with np.load(io.BytesIO(demos_payload), allow_pickle=False) as archive:
             _require(set(archive.files) == {"X", "Y", "episode_id"},
-                     "BC worker demos.npz 字段必须精确为 X/Y/episode_id")
+                     "BC worker demos.npz fields must be exactly X/Y/episode_id")
             x = archive["X"]
             y = archive["Y"]
             episode_id = archive["episode_id"]
     except Exception as exc:
         if isinstance(exc, ValueError) and str(exc).startswith("BC worker"):
             raise
-        raise ValueError("BC worker demos.npz 不可解析") from exc
+        raise ValueError("BC worker demos.npz unparseable") from exc
 
     pairs = rec["pairs"]
     _require(x.ndim == 2 and x.shape == (pairs, 298)
              and x.dtype == np.float32,
-             f"BC worker X 形状/dtype 与报告不一致: {x.shape}/{x.dtype}")
+             f"BC worker X shape/dtype disagrees with the report: {x.shape}/{x.dtype}")
     _require(y.shape == (pairs,) and y.dtype == np.int64,
-             f"BC worker Y 形状/dtype 与报告不一致: {y.shape}/{y.dtype}")
+             f"BC worker Y shape/dtype disagrees with the report: {y.shape}/{y.dtype}")
     _require(episode_id.shape == (pairs,) and episode_id.dtype == np.int64,
-             "BC worker episode_id 形状/dtype 与报告不一致")
-    _require(np.isfinite(x).all(), "BC worker demos X 含 NaN/Inf")
+             "BC worker episode_id shape/dtype disagrees with the report")
+    _require(np.isfinite(x).all(), "BC worker demos X contains NaN/Inf")
     from diablogym.worker_env import legacy_worker_policy_observation_view
 
     _require(
         np.array_equal(x, legacy_worker_policy_observation_view(x)),
-        "BC worker demos X 不是 canonical protocol-v3 policy view；"
-        "疑似把 raw packed-belt/signed-latch 示范用于 legacy actor",
+        "BC worker demos X is not the canonical protocol-v3 policy view; "
+        "suspect raw packed-belt/signed-latch demos used for a legacy actor",
     )
     _require(bool(((0 <= y) & (y < 15)).all()),
-             "BC worker demos Y 含越界动作")
+             "BC worker demos Y contains out-of-range actions")
     _require(not np.isin(y, _WORKER_BC_FORBIDDEN_ACTIONS).any(),
-             "BC worker demos Y 含禁采动作 11/12(11 恒掩;12 系教师排水后不采)")
+             "BC worker demos Y contains forbidden actions 11/12 (11 always masked; 12 never collected after the teacher's drain)")
     _require(bool((episode_id >= 0).all()),
-             "BC worker demos episode_id 不能为负")
+             "BC worker demos episode_id must not be negative")
     episodes = np.unique(episode_id)
     expected_demo_seeds = np.asarray(_WORKER_BC_DEMO_SEEDS, dtype=np.int64)
     _require(np.array_equal(episodes, expected_demo_seeds),
-             "BC worker demos 必须精确覆盖固定示范种子 "
-             "2142000..2142127 各至少一对")
+             "BC worker demos must exactly cover the fixed demo seeds "
+             "2142000..2142127, at least one pair each")
     action14 = y == 14
     action14_episodes = int(np.unique(episode_id[action14]).size)
     _require(
         int(action14.sum()) >= _WORKER_BC_MIN_ACTION14_LABELS
         and action14_episodes >= _WORKER_BC_MIN_ACTION14_EPISODES,
-        "BC worker demos a14 严格升级覆盖不足:"
+        "BC worker demos a14 strict-upgrade coverage insufficient: "
         f"labels={int(action14.sum())},episodes={action14_episodes}",
     )
     order = np.random.default_rng(_BC_FINAL_SPLIT_SEED).permutation(episodes)
@@ -7232,33 +7232,33 @@ def _validate_worker_bc_evidence(rec: dict, demos_payload: bytes,
     expected_episodes = np.sort(order[:n_holdout])
     reported_episodes = np.asarray(rec["held_out_episodes"], dtype=np.int64)
     _require(np.array_equal(reported_episodes, expected_episodes),
-             "BC worker held_out_episodes 与确定性整局切分不一致")
+             "BC worker held_out_episodes disagree with the deterministic whole-episode split")
     holdout_indices = np.flatnonzero(np.isin(episode_id, expected_episodes))
     _require(len(holdout_indices) == rec["held_out_pairs"],
-             "BC worker held_out_pairs 与 demos episode_id 重算不一致")
+             "BC worker held_out_pairs disagree with the demos episode_id recomputation")
     _require(0 < len(holdout_indices) < pairs,
-             "BC worker 确定性整局切分产生空训练集或空 held-out")
+             "BC worker deterministic whole-episode split produced an empty training set or empty held-out")
 
     try:
         state = torch.load(io.BytesIO(policy_payload), map_location="cpu",
                            weights_only=True)
     except Exception as exc:
-        raise ValueError("BC worker policy state_dict 不可解析") from exc
+        raise ValueError("BC worker policy state_dict unparseable") from exc
     required = _POLICY_HEAD_KEYS
     _require(isinstance(state, dict) and set(state) == set(required),
-             "BC worker policy state_dict 字段必须精确匹配策略头")
+             "BC worker policy state_dict fields must exactly match the policy head")
     tensors = [state[key] for key in required]
     _require(all(isinstance(value, torch.Tensor) for value in tensors),
-             "BC worker policy state_dict 含非 Tensor 值")
+             "BC worker policy state_dict contains non-Tensor values")
     w0, b0, w1, b1, wa, ba = tensors
     _require(w0.shape == (64, 298) and b0.shape == (64,)
              and w1.shape == (64, 64) and b1.shape == (64,)
              and wa.shape == (15, 64) and ba.shape == (15,),
-             "BC worker policy 必须是 298→64→64→15")
+             "BC worker policy must be 298->64->64->15")
     _require(all(value.dtype == torch.float32 for value in tensors),
-             "BC worker policy 策略头 dtype 必须是 float32")
+             "BC worker policy head dtype must be float32")
     _require(all(torch.isfinite(value).all().item() for value in tensors),
-             "BC worker policy 策略头含 NaN/Inf")
+             "BC worker policy head contains NaN/Inf")
 
     # Mirror bc_worker.train_bc exactly: one CPU batch over X[holdout].  Using
     # different chunk sizes can select a different GEMM kernel and flip an
@@ -7272,7 +7272,7 @@ def _validate_worker_bc_evidence(rec: dict, demos_payload: bytes,
     heldout_y = y[holdout_indices]
     top1 = round(float((pred == heldout_y).mean()), 4)
     _require(rec["held_out_top1"] == top1,
-             "BC worker held_out_top1 与 demos/policy 重算不一致: "
+             "BC worker held_out_top1 disagrees with the demos/policy recomputation: "
              f"{rec['held_out_top1']} != {top1}")
 
     full_counts = np.bincount(y, minlength=15)
@@ -7283,7 +7283,7 @@ def _validate_worker_bc_evidence(rec: dict, demos_payload: bytes,
     reported_recalls = {int(key): value
                         for key, value in rec["class_recalls"].items()}
     _require(set(reported_recalls) == set(map(int, gated_classes)),
-             "BC worker class_recalls 类集合与 demos 全集计数不一致")
+             "BC worker class_recalls class set disagrees with the full demos counts")
     for class_id in gated_classes:
         mask = heldout_y == class_id
         recall = (float((pred[mask] == class_id).mean())
@@ -7291,7 +7291,7 @@ def _validate_worker_bc_evidence(rec: dict, demos_payload: bytes,
         _require(math.isclose(
                      float(reported_recalls[int(class_id)]), recall,
                      rel_tol=0.0, abs_tol=1e-15),
-                 "BC worker class_recalls 与 demos/policy 重算不一致: "
+                 "BC worker class_recalls disagree with the demos/policy recomputation: "
                  f"class={class_id}, {reported_recalls[int(class_id)]} != {recall}")
 
 
@@ -7310,35 +7310,35 @@ def _recompute_replay_bc_evidence(required_gate: str,
         "hypothesis": (303, 3),
         "memoryless_hypothesis": (296, 15),
     }
-    _require(required_gate in dimensions, f"未知 replay BC gate: {required_gate}")
+    _require(required_gate in dimensions, f"unknown replay BC gate: {required_gate}")
     obs_dim, action_dim = dimensions[required_gate]
     try:
         state = torch.load(io.BytesIO(policy_payload), map_location="cpu",
                            weights_only=True)
     except Exception as exc:
-        raise ValueError("BC replay policy state_dict 不可解析") from exc
+        raise ValueError("BC replay policy state_dict unparseable") from exc
     _require(isinstance(state, dict) and set(state) == set(_POLICY_HEAD_KEYS),
-             "BC replay policy state_dict 字段必须精确匹配策略头")
+             "BC replay policy state_dict fields must exactly match the policy head")
     tensors = [state[key] for key in _POLICY_HEAD_KEYS]
     _require(all(isinstance(value, torch.Tensor) for value in tensors),
-             "BC replay policy state_dict 含非 Tensor 值")
+             "BC replay policy state_dict contains non-Tensor values")
     w0, b0, w1, b1, wa, ba = tensors
     _require(w0.shape == (64, obs_dim) and b0.shape == (64,)
              and w1.shape == (64, 64) and b1.shape == (64,)
              and wa.shape == (action_dim, 64) and ba.shape == (action_dim,),
-             f"BC replay policy 必须是 {obs_dim}→64→64→{action_dim}")
+             f"BC replay policy must be {obs_dim}->64->64->{action_dim}")
     _require(all(value.dtype == torch.float32 for value in tensors),
-             "BC replay policy 策略头 dtype 必须是 float32")
+             "BC replay policy head dtype must be float32")
     _require(all(torch.isfinite(value).all().item() for value in tensors),
-             "BC replay policy 策略头含 NaN/Inf")
+             "BC replay policy head contains NaN/Inf")
 
     def policy_action(obs, mask) -> int:
         vector = np.asarray(obs, dtype=np.float32)
         _require(vector.shape == (obs_dim,),
-                 f"BC replay 观测维度异常: {vector.shape} != {(obs_dim,)}")
+                 f"BC replay observation dimension invalid: {vector.shape} != {(obs_dim,)}")
         valid = np.asarray(mask, dtype=bool)
         _require(valid.shape == (action_dim,) and bool(valid.any()),
-                 "BC replay 动作掩码维度异常或全假")
+                 "BC replay action mask dimension invalid or all False")
         with torch.no_grad():
             x = torch.from_numpy(vector)
             hidden = torch.tanh(torch.nn.functional.linear(x, w0, b0))
@@ -7370,7 +7370,7 @@ def _recompute_replay_bc_evidence(required_gate: str,
                     chooser(env, obs, mask),
                     mask,
                     n_actions=3,
-                    label="BC manager 重放",
+                    label="BC manager replay",
                 )
                 obs, reward, done, trunc, _ = env.step(action)
                 total += float(reward)
@@ -7390,7 +7390,7 @@ def _recompute_replay_bc_evidence(required_gate: str,
         teacher_demo_mean = sum(value for value, _ in demo) / len(demo)
         bc_mean = sum(replay) / len(replay)
         teacher_mean = sum(teacher_replay) / len(teacher_replay)
-        _require(teacher_mean > 0, "BC manager 重算 teacher replay 非正")
+        _require(teacher_mean > 0, "BC manager recomputed teacher replay not positive")
         return {
             "pairs": sum(count for _, count in demo),
             "teacher_demo_mean": teacher_demo_mean,
@@ -7443,7 +7443,7 @@ def _recompute_replay_bc_evidence(required_gate: str,
     teacher_demo_mean = sum(value for value, _ in demo) / len(demo)
     bc_mean = sum(replay) / len(replay)
     teacher_mean = sum(teacher_replay) / len(teacher_replay)
-    _require(teacher_mean > 0, "BC flat 重算 teacher replay 非正")
+    _require(teacher_mean > 0, "BC flat recomputed teacher replay not positive")
     return {
         "pairs": sum(count for _, count in demo),
         "teacher_mean_demo": teacher_demo_mean,
@@ -7458,53 +7458,53 @@ def _validate_bc_report(p: pathlib.Path, required_gate: str,
                         *, policy_payload: bytes | None = None,
                         report_payload: bytes | None = None,
                         verify_replay: bool = True) -> dict:
-    """验证 BC 闸门，并绑定权重、生成器及完整训练运行时。
+    """Validate the BC gate and bind the weights, generator and the full training runtime.
 
-    调用方若已为 TOCTOU 安全冻结了 policy/report 字节，必须通过 payload
-    传入；验证器不会再读路径。训练加载与组装评测因此共享完全相同的
-    schema/指标/来源闸门，而不是各维护一份逐渐漂移的子集。
+    If the caller has already frozen the policy/report bytes for TOCTOU safety, it must pass them via payload;
+    the validator will not read the path again. Training loading and assembled evaluation therefore share exactly the same
+    schema/metric/provenance gates instead of each maintaining a slowly drifting subset.
     """
     from eval_contract import EvalContractError, PROTOCOL_VERSION, strict_json_loads
 
     _require(required_gate in {"data_gate", "hypothesis", "memoryless_hypothesis"},
-             f"未知 BC gate: {required_gate}")
+             f"unknown BC gate: {required_gate}")
     report = p.with_name("bc_report.json")
     try:
         frozen_report = (report.read_bytes() if report_payload is None
                          else report_payload)
         rec = strict_json_loads(frozen_report)
     except (OSError, EvalContractError) as exc:
-        raise ValueError(f"BC 闸门报告缺失/不可读: {report}") from exc
-    _require(isinstance(rec, dict), f"BC 闸门报告必须是 JSON 对象: {report}")
+        raise ValueError(f"BC gate report missing/unreadable: {report}") from exc
+    _require(isinstance(rec, dict), f"BC gate report must be a JSON object: {report}")
     _require(set(rec) == _BC_PASS_KEYS[required_gate],
-             f"BC 闸门报告字段/schema 不匹配: {report}")
+             f"BC gate report fields/schema mismatch: {report}")
     _require(_is_plain_int(rec.get("schema_version"))
              and rec["schema_version"] == _BC_REPORT_SCHEMA_VERSION,
-             f"BC 闸门报告 schema 过期: {rec.get('schema_version')!r}")
+             f"BC gate report schema outdated: {rec.get('schema_version')!r}")
     _require(rec[required_gate] == "PASS",
-             f"拒绝加载未过 {required_gate} 闸的 BC 权重: {rec[required_gate]!r}")
+             f"refusing to load BC weights that did not pass the {required_gate} gate: {rec[required_gate]!r}")
     expected_sha = rec.get("policy_sha256")
     _require(_is_sha256(expected_sha),
-             f"BC 闸门报告缺少 policy_sha256 绑定: {report}")
+             f"BC gate report is missing its policy_sha256 binding: {report}")
     try:
         frozen_policy = p.read_bytes() if policy_payload is None else policy_payload
     except OSError as exc:
-        raise ValueError(f"BC 权重缺失/不可读: {p}") from exc
+        raise ValueError(f"BC weights missing/unreadable: {p}") from exc
     actual_sha = hashlib.sha256(frozen_policy).hexdigest()
     _require(actual_sha == expected_sha,
-             f"BC 权重与闸门报告 SHA 不匹配: {actual_sha} != {expected_sha}")
+             f"BC weights SHA does not match the gate report: {actual_sha} != {expected_sha}")
 
     # A policy hash proves which bytes were loaded, but not which world made
     # their demonstrations.  In particular, pre-v3 worker demos may contain
     # trajectories that returned to town.  Bind every PASS report to the
     # current environment/native/content bundle and the exact BC generator.
     _require(rec.get("protocol_version") == PROTOCOL_VERSION,
-             f"BC 报告协议过期: {rec.get('protocol_version')!r} != {PROTOCOL_VERSION}")
+             f"BC report protocol outdated: {rec.get('protocol_version')!r} != {PROTOCOL_VERSION}")
     expected_impl = (expected_implementation_sha256
                      if expected_implementation_sha256 is not None
                      else _implementation_bundle_sha256())
     _require(rec.get("implementation_sha256") == expected_impl,
-             "BC 报告的实现/引擎/游戏内容身份与当前运行时不一致")
+             "BC report implementation/engine/game-content identity disagrees with the current runtime")
     root = pathlib.Path(__file__).resolve().parents[1]
     generator_name = {
         "data_gate": "bc_worker.py",
@@ -7514,7 +7514,7 @@ def _validate_bc_report(p: pathlib.Path, required_gate: str,
     generator_sha = hashlib.sha256(
         (root / "train" / generator_name).read_bytes()).hexdigest()
     _require(rec.get("generator_sha256") == generator_sha,
-             f"BC 报告生成器已漂移: train/{generator_name}")
+             f"BC report generator has drifted: train/{generator_name}")
     if required_gate == "data_gate":
         _validate_bc_final_holdout_marker(
             p.parent, 1, _WORKER_BC_DEMO_SEEDS, rec)
@@ -7523,53 +7523,53 @@ def _validate_bc_report(p: pathlib.Path, required_gate: str,
         top1 = _finite_number(rec["held_out_top1"], "BC held_out_top1")
         _require(_is_plain_int(pairs) and pairs > 0
                  and _is_plain_int(held_out_pairs) and 0 < held_out_pairs < pairs,
-                 "BC worker 报告样本计数非法")
-        # A2(2026-07-27 批):质量线只记不裁,此处仅约束读数范围;
-        # 逐位复算一致性由 _validate_worker_bc_evidence 保证。
+                 "BC worker report sample count invalid")
+        # A2 (approved 2026-07-27): the quality line is record-only, no verdict; here only the reading range is constrained;
+        # bitwise recomputation consistency is guaranteed by _validate_worker_bc_evidence.
         _require(top1 >= 0.0 and top1 <= 1.0,
-                 "BC worker held-out top-1 读数越界")
+                 "BC worker held-out top-1 reading out of range")
         episodes = rec["held_out_episodes"]
         _require(isinstance(episodes, list) and episodes
                  and all(_is_plain_int(value) and value >= 0 for value in episodes)
                  and episodes == sorted(set(episodes)),
-                 "BC worker held_out_episodes 非规范")
+                 "BC worker held_out_episodes not canonical")
         _require(isinstance(rec["class_weighted_retry"], bool),
-                 "BC worker class_weighted_retry 必须是 bool")
+                 "BC worker class_weighted_retry must be a bool")
         recalls = rec["class_recalls"]
-        _require(isinstance(recalls, dict), "BC worker class_recalls 必须是对象")
+        _require(isinstance(recalls, dict), "BC worker class_recalls must be an object")
         for raw_class, raw_recall in recalls.items():
             try:
                 class_id = int(raw_class)
             except (TypeError, ValueError) as exc:
-                raise ValueError("BC worker class_recalls 键必须是动作编号") from exc
+                raise ValueError("BC worker class_recalls keys must be action numbers") from exc
             _require(str(class_id) == str(raw_class) and 0 <= class_id < 15,
-                     f"BC worker class_recalls 键非法: {raw_class!r}")
+                     f"BC worker class_recalls key invalid: {raw_class!r}")
             recall = _finite_number(raw_recall,
                                     f"BC worker class_recalls[{raw_class!r}]")
-            # A2:同上,召回为只记不裁读数。
+            # A2: as above, recalls are record-only readings, no verdict.
             _require(0.0 <= recall <= 1.0,
-                     "BC worker class_recalls 读数越界")
+                     "BC worker class_recalls reading out of range")
         _require(_is_sha256(rec.get("demos_sha256")),
-                 "BC worker 报告缺少 demos_sha256")
+                 "BC worker report is missing demos_sha256")
         demos_path = p.with_name("demos.npz")
         try:
             demos_payload = demos_path.read_bytes()
         except OSError as exc:
             raise ValueError(
-                f"BC worker 示范集缺失/不可读: {demos_path}") from exc
+                f"BC worker demo set missing/unreadable: {demos_path}") from exc
         actual_demos_sha = hashlib.sha256(demos_payload).hexdigest()
         _require(actual_demos_sha == rec["demos_sha256"],
-                 "BC worker demos.npz 与闸门报告 SHA 不匹配: "
+                 "BC worker demos.npz SHA does not match the gate report: "
                  f"{actual_demos_sha} != {rec['demos_sha256']}")
         _validate_worker_bc_evidence(rec, demos_payload, frozen_policy)
         manager = root / "train" / "models" / "v22-h-manager" / "policy.npz"
         manager_sha = hashlib.sha256(manager.read_bytes()).hexdigest()
         _require(rec.get("manager_npz_sha256") == manager_sha,
-                 "BC worker 报告未绑定当前冻结 manager NPZ")
+                 "BC worker report not bound to the current frozen manager NPZ")
     else:
         pairs = rec["pairs"]
         ratio = _finite_number(rec["ratio"], "BC replay ratio")
-        _require(_is_plain_int(pairs) and pairs > 0, "BC 报告样本计数非法")
+        _require(_is_plain_int(pairs) and pairs > 0, "BC report sample count invalid")
         if required_gate == "hypothesis":
             demo_key, bc_key, teacher_key = (
                 "teacher_demo_mean", "bc_replay_7000", "teacher_7000")
@@ -7581,19 +7581,19 @@ def _validate_bc_report(p: pathlib.Path, required_gate: str,
         bc_replay = _finite_number(rec[bc_key], f"BC {bc_key}")
         teacher_replay = _finite_number(rec[teacher_key], f"BC {teacher_key}")
         _require(teacher_replay > 0,
-                 f"BC {teacher_key} 必须为正，replay ratio 才有定义")
+                 f"BC {teacher_key} must be positive for the replay ratio to be defined")
         recomputed_ratio = bc_replay / teacher_replay
         _require(math.isclose(ratio, recomputed_ratio,
                               rel_tol=1e-12, abs_tol=1e-12),
-                 "BC replay ratio 与报告中的 BC/teacher 指标不一致: "
+                 "BC replay ratio disagrees with the BC/teacher metrics in the report: "
                  f"{ratio} != {recomputed_ratio}")
-        _require(ratio >= 0.85, "BC 报告 PASS 与 replay ratio 不一致")
+        _require(ratio >= 0.85, "BC report PASS disagrees with the replay ratio")
         if verify_replay:
             cache_key = (required_gate, actual_sha, expected_impl, generator_sha)
             evidence = _BC_REPLAY_CACHE.get(cache_key)
             cache_miss = evidence is None
             if evidence is None:
-                print(f"   BC {required_gate}: 重放固定 demo/replay 种子复核报告证据")
+                print(f"   BC {required_gate}: replaying fixed demo/replay seeds to re-check the report evidence")
                 evidence = _recompute_replay_bc_evidence(
                     required_gate, frozen_policy)
             for key, actual_value in evidence.items():
@@ -7609,7 +7609,7 @@ def _validate_bc_report(p: pathlib.Path, required_gate: str,
                                                 rel_tol=1e-12,
                                                 abs_tol=1e-9))
                 _require(matches,
-                         "BC replay 报告与冻结 policy/当前 runtime 重算不一致: "
+                         "BC replay report disagrees with the frozen policy/current runtime recomputation: "
                          f"{key}={reported_value!r} != {actual_value!r}")
             if cache_miss:
                 _BC_REPLAY_CACHE[cache_key] = dict(evidence)
@@ -7617,20 +7617,20 @@ def _validate_bc_report(p: pathlib.Path, required_gate: str,
 
 
 def _dry_anchor_partition(x):
-    """按 worker v4 双通道语义返回互补的 (pre-dry, fresh) 行掩码。
+    """Return complementary (pre-dry, fresh) row masks under worker v4 dual-channel semantics.
 
-    worker transition 的观测发生在动作执行前；真正把 140/1800 计数推到
-    cap 的动作随后立即收窗，因此合法示范池通常只能看到 cap-1，而不会
-    看到恰好 1.0。col297 的负域还承载可见饮药闩，须先解码其 scene clock，
-    不能把负数误当 fresh。阈值直接取环境两个 cap 的单步前沿，避免探针因
-    一个不可能出现的终态观测而静默零覆盖。
+    The observation of a worker transition happens before the action executes; the action that actually pushes the 140/1800 count to
+    the cap closes the window immediately, so a legal demo pool usually sees only cap-1 and never
+    exactly 1.0. The negative domain of col297 also carries the visible drink latch, so its scene clock must be decoded first
+    rather than mistaking negatives for fresh. The thresholds are taken directly from the single-step frontier of the environment's two caps, so the probe
+    cannot silently get zero coverage because of a terminal observation that can never occur.
     """
     import numpy as np
     from diablogym.options_env import FARM_SCENE_CAP, KILL_PATIENCE
 
     values = np.asarray(x)
     _require(values.ndim == 2 and values.shape[1] == 298,
-             f"dry-anchor 分组输入形状异常:{values.shape}")
+             f"dry-anchor grouping input shape invalid: {values.shape}")
     short_threshold = np.float32(
         (KILL_PATIENCE - 1) / KILL_PATIENCE)
     scene_threshold = np.float32(
@@ -7650,34 +7650,34 @@ def _load_dry_anchor_demos(path: str | pathlib.Path,
 
     p = pathlib.Path(path)
     _require(isinstance(expected_sha256, str) and len(expected_sha256) == 64,
-             f"BC 闸门报告缺少 demos_sha256 绑定: {p.with_name('bc_report.json')}")
+             f"BC gate report is missing its demos_sha256 binding: {p.with_name('bc_report.json')}")
     try:
         payload = p.read_bytes()
     except OSError as exc:
-        raise ValueError(f"dry-anchor 示范集不可读: {p}: {exc}") from exc
+        raise ValueError(f"dry-anchor demo set unreadable: {p}: {exc}") from exc
     actual_sha256 = hashlib.sha256(payload).hexdigest()
     _require(actual_sha256 == expected_sha256,
-             f"dry-anchor demos SHA 不匹配: {actual_sha256} != {expected_sha256}")
+             f"dry-anchor demos SHA mismatch: {actual_sha256} != {expected_sha256}")
     try:
         with np.load(io.BytesIO(payload), allow_pickle=False) as data:
             _require(all(key in data for key in ("X", "Y", "episode_id")),
-                     "dry-anchor demos.npz 缺少 X/Y/episode_id")
+                     "dry-anchor demos.npz is missing X/Y/episode_id")
             x, y = data["X"].copy(), data["Y"].copy()
             episode_id = data["episode_id"].copy()
     except (OSError, ValueError) as exc:
-        raise ValueError(f"dry-anchor 示范集不可读: {p}: {exc}") from exc
+        raise ValueError(f"dry-anchor demo set unreadable: {p}: {exc}") from exc
     _require(x.ndim == 2 and x.shape[1] == 298
              and y.ndim == 1 and len(x) == len(y),
-             f"dry-anchor 数组形状异常:X={x.shape},Y={y.shape}")
+             f"dry-anchor array shapes invalid: X={x.shape},Y={y.shape}")
     _require(x.dtype == np.float32 and np.issubdtype(y.dtype, np.integer),
-             f"dry-anchor dtype 异常:X={x.dtype},Y={y.dtype}")
+             f"dry-anchor dtype invalid: X={x.dtype},Y={y.dtype}")
     _require(episode_id.ndim == 1 and len(episode_id) == len(x)
              and np.issubdtype(episode_id.dtype, np.integer)
              and len(np.unique(episode_id)) >= 2,
-             "dry-anchor episode_id 形状/类型/独立局数异常")
+             "dry-anchor episode_id shape/type/independent episode count invalid")
     dry, _ = _dry_anchor_partition(x)
     _require(bool(dry.any()),
-             "dry-anchor 示范集没有双通道 cap-1 前沿态"
+             "dry-anchor demo set has no dual-channel cap-1 frontier states "
              "(col296 short clock / col297 signed farm-scene clock)")
     return x, y, actual_sha256
 
@@ -7695,51 +7695,51 @@ def _validate_export_manifest(p: pathlib.Path) -> dict:
     try:
         rec = strict_json_loads(manifest_path.read_bytes())
     except (OSError, EvalContractError) as exc:
-        raise ValueError(f"checkpoint 导出清单缺失/不可读: {manifest_path}") from exc
-    _require(isinstance(rec, dict), f"checkpoint 导出清单必须是 JSON 对象: {manifest_path}")
+        raise ValueError(f"checkpoint export manifest missing/unreadable: {manifest_path}") from exc
+    _require(isinstance(rec, dict), f"checkpoint export manifest must be a JSON object: {manifest_path}")
     _require(set(rec) == {
         "schema_version", "artifact_type", "artifact_sha256",
         "source_checkpoint", "source_checkpoint_sha256", "tensor_count"},
-        f"checkpoint 导出清单字段异常: {manifest_path}")
+        f"checkpoint export manifest fields invalid: {manifest_path}")
     _require(_is_plain_int(rec["schema_version"])
              and rec["schema_version"] == _EXPORT_MANIFEST_SCHEMA_VERSION,
-             f"checkpoint 导出清单 schema 非法: {rec['schema_version']!r}")
+             f"checkpoint export manifest schema invalid: {rec['schema_version']!r}")
     _require(rec.get("artifact_type") == "checkpoint_policy_state",
-             f"导出清单 artifact_type 异常: {rec.get('artifact_type')!r}")
+             f"export manifest artifact_type invalid: {rec.get('artifact_type')!r}")
     expected = rec.get("artifact_sha256")
     try:
         artifact_payload = p.read_bytes()
     except OSError as exc:
-        raise ValueError(f"checkpoint 导出件不可读: {p}: {exc}") from exc
+        raise ValueError(f"checkpoint export unreadable: {p}: {exc}") from exc
     actual = hashlib.sha256(artifact_payload).hexdigest()
     _require(_is_sha256(expected) and expected == actual,
-             f"checkpoint 导出件与清单 SHA 不匹配: {actual} != {expected!r}")
+             f"checkpoint export SHA does not match the manifest: {actual} != {expected!r}")
     source_sha = rec.get("source_checkpoint_sha256")
     _require(_is_sha256(source_sha),
-             "checkpoint 导出清单缺少 source_checkpoint_sha256")
+             "checkpoint export manifest is missing source_checkpoint_sha256")
     source_checkpoint = rec.get("source_checkpoint")
     _require(isinstance(source_checkpoint, str) and source_checkpoint
              and pathlib.Path(source_checkpoint).is_absolute(),
-             "checkpoint 导出清单 source_checkpoint 必须是绝对路径")
+             "checkpoint export manifest source_checkpoint must be an absolute path")
     source_path = pathlib.Path(source_checkpoint)
     _require(str(source_path.resolve()) == source_checkpoint,
-             "checkpoint 导出清单 source_checkpoint 必须是规范绝对路径")
+             "checkpoint export manifest source_checkpoint must be a normalised absolute path")
     _require(source_path.resolve() != p.resolve(),
-             "checkpoint 导出件不能把自身声明为源 checkpoint")
+             "a checkpoint export cannot declare itself as its source checkpoint")
     try:
         source_payload = source_path.read_bytes()
     except OSError as exc:
         raise ValueError(
-            f"checkpoint 导出清单声明的源 checkpoint 不可读: {source_path}") from exc
+            f"source checkpoint declared by the checkpoint export manifest unreadable: {source_path}") from exc
     actual_source_sha = hashlib.sha256(source_payload).hexdigest()
     _require(actual_source_sha == source_sha,
-             "checkpoint 导出清单的源 checkpoint SHA 不匹配: "
+             "checkpoint export manifest source checkpoint SHA mismatch: "
              f"{actual_source_sha} != {source_sha}")
     _validate_checkpoint_bytes(source_payload, str(source_path))
 
     tensor_count = rec.get("tensor_count")
     _require(_is_plain_int(tensor_count) and tensor_count > 0,
-             "checkpoint 导出清单 tensor_count 必须是正整数")
+             "checkpoint export manifest tensor_count must be a positive integer")
     try:
         artifact_state = torch.load(
             io.BytesIO(artifact_payload), map_location="cpu", weights_only=True)
@@ -7748,31 +7748,31 @@ def _validate_export_manifest(p: pathlib.Path) -> dict:
                 io.BytesIO(source_archive.read("policy.pth")),
                 map_location="cpu", weights_only=True)
     except Exception as exc:
-        raise ValueError("checkpoint 导出件或源 policy state_dict 不可解析") from exc
+        raise ValueError("checkpoint export or source policy state_dict unparseable") from exc
     _require(isinstance(artifact_state, dict) and isinstance(source_state, dict),
-             "checkpoint 导出件与源 policy 必须都是 state_dict")
+             "checkpoint export and source policy must both be state_dicts")
     _require(tensor_count == len(artifact_state) == len(source_state),
-             "checkpoint 导出清单 tensor_count 与导出件/源 policy 不一致")
+             "checkpoint export manifest tensor_count disagrees with the export/source policy")
     _require(set(artifact_state) == set(source_state),
-             "checkpoint 导出件字段与源 checkpoint policy 不一致")
+             "checkpoint export fields disagree with the source checkpoint policy")
     for key in source_state:
         source_value = source_state[key]
         artifact_value = artifact_state[key]
         _require(isinstance(source_value, torch.Tensor)
                  and isinstance(artifact_value, torch.Tensor),
-                 f"checkpoint policy 字段不是 Tensor: {key}")
+                 f"checkpoint policy field is not a Tensor: {key}")
         _require(torch.isfinite(artifact_value).all().item(),
-                 f"checkpoint 导出件含 NaN/Inf: {key}")
+                 f"checkpoint export contains NaN/Inf: {key}")
         _require(artifact_value.shape == source_value.shape
                  and artifact_value.dtype == source_value.dtype
                  and torch.equal(artifact_value, source_value),
-                 f"checkpoint 导出件张量与源 checkpoint policy 不一致: {key}")
+                 f"checkpoint export tensor disagrees with the source checkpoint policy: {key}")
     return rec
 
 
 def _load_bc_state_dict(path: str, policy, required_gate: str,
                         source_kind: str = "bc") -> dict:
-    """校验 BC 闸门与关键张量，禁止“0 键命中但 strict=False”静默起跑。"""
+    """Check the BC gate and the key tensors; forbid a silent start with "0 keys matched but strict=False"."""
     import torch
 
     p = pathlib.Path(path)
@@ -7783,24 +7783,24 @@ def _load_bc_state_dict(path: str, policy, required_gate: str,
         manifest = _validate_export_manifest(p)
         expected_sha256 = manifest["artifact_sha256"]
     else:
-        raise ValueError(f"未知 init source kind: {source_kind}")
+        raise ValueError(f"unknown init source kind: {source_kind}")
 
     try:
         payload = p.read_bytes()
     except OSError as exc:
-        raise ValueError(f"--bc-init 权重不可读: {p}: {exc}") from exc
+        raise ValueError(f"--bc-init weights unreadable: {p}: {exc}") from exc
     actual_sha256 = hashlib.sha256(payload).hexdigest()
     _require(actual_sha256 == expected_sha256,
-             f"BC/init 权重在闸门校验后发生漂移: "
+             f"BC/init weights drifted after the gate check: "
              f"{actual_sha256} != {expected_sha256}")
     # Integrity check and torch deserialization consume the same bytes.
     sd = torch.load(io.BytesIO(payload), map_location="cpu", weights_only=True)
-    _require(isinstance(sd, dict), "--bc-init 必须是 policy state_dict")
+    _require(isinstance(sd, dict), "--bc-init must be a policy state_dict")
     bad_types = [k for k, value in sd.items() if not isinstance(value, torch.Tensor)]
-    _require(not bad_types, f"BC state_dict 含非 Tensor 值: {bad_types}")
+    _require(not bad_types, f"BC state_dict contains non-Tensor values: {bad_types}")
     nonfinite = [k for k, value in sd.items()
                  if not torch.isfinite(value).all().item()]
-    _require(not nonfinite, f"BC state_dict 含 NaN/Inf: {nonfinite}")
+    _require(not nonfinite, f"BC state_dict contains NaN/Inf: {nonfinite}")
     target = policy.state_dict()
     if source_kind == "checkpoint":
         missing_all = sorted(set(target) - set(sd))
@@ -7813,16 +7813,16 @@ def _load_bc_state_dict(path: str, policy, required_gate: str,
             if target[key].dtype != sd[key].dtype)
         _require(not missing_all and not unexpected_all and not mismatched_all
                  and not dtype_mismatched,
-                 "checkpoint 全量 policy state_dict 与目标不精确一致: "
+                 "checkpoint full policy state_dict does not exactly match the target: "
                  f"missing={missing_all}, unexpected={unexpected_all}, "
                  f"shape={mismatched_all}, dtype={dtype_mismatched}")
         _require(manifest is not None and manifest["tensor_count"] == len(sd),
-                 "checkpoint 导出清单 tensor_count 与 state_dict 不一致")
+                 "checkpoint export manifest tensor_count disagrees with the state_dict")
     missing = [k for k in _POLICY_HEAD_KEYS if k not in sd]
     mismatched = [k for k in _POLICY_HEAD_KEYS if k in sd and
                   (k not in target or target[k].shape != sd[k].shape)]
-    _require(not missing, f"BC state_dict 缺少策略头键: {missing}")
-    _require(not mismatched, f"BC state_dict 策略头形状不匹配: {mismatched}")
+    _require(not missing, f"BC state_dict is missing policy-head keys: {missing}")
+    _require(not mismatched, f"BC state_dict policy-head shape mismatch: {mismatched}")
     return sd
 
 
@@ -7885,19 +7885,19 @@ def make_env(max_steps: int = 1500, deep: bool = False, death_ladder: bool = Fal
     if implementation_sha256 is not None:
         actual_implementation = _implementation_bundle_sha256()
         _require(actual_implementation == implementation_sha256,
-                 "训练实现 bundle 在 VecEnv 创建前发生漂移: "
+                 "training implementation bundle drifted before VecEnv creation: "
                  f"{actual_implementation} != {implementation_sha256}")
     _require(deep_start_curriculum is None or options,
-             "deep_start_curriculum 只适用于 --options 经理训练")
+             "deep_start_curriculum only applies to --options manager training")
     _require(deep_start_form in ("dive", "exhausted"),
-             f"deep_start_form 必须是 dive/exhausted: {deep_start_form!r}")
+             f"deep_start_form must be dive/exhausted: {deep_start_form!r}")
     validate_resource_service_config(resource_protocol, resource_purchase_mode,
                                      resource_service_policy)
     _require(resource_readiness_law in ("veto-v1", "coach-v03"),
              "resource_readiness_law must be veto-v1/coach-v03")
     _require(resource_readiness_law == "veto-v1" or resource_protocol == "l2-town-v1",
              "resource_readiness_law coach-v03 requires resource_protocol l2-town-v1")
-    # R18-B: retreat-v1 只在 l2-town-v1/coach-v03 的教室里成立(引擎侧同款)。
+    # R18-B: retreat-v1 only holds in the l2-town-v1/coach-v03 classroom (same on the engine side).
     _require(resource_retreat in ("off", "retreat-v1"),
              "resource_retreat must be off/retreat-v1")
     _require(resource_retreat == "off" or (resource_protocol == "l2-town-v1"
@@ -7905,7 +7905,7 @@ def make_env(max_steps: int = 1500, deep: bool = False, death_ladder: bool = Fal
              "resource_retreat retreat-v1 requires l2-town-v1 under coach-v03")
     _require(resource_retreat == "off" or worker or options,
              "resource_retreat requires WorkerWindowEnv/OptionsEnv")
-    # R18-B5: portal-v1 是撤退的载具(引擎侧 validate_portal_protocol 同款)。
+    # R18-B5: portal-v1 is the retreat vehicle (same as validate_portal_protocol on the engine side).
     _require(resource_portal in ("off", "portal-v1"),
              "resource_portal must be off/portal-v1")
     _require(resource_portal == "off" or (resource_protocol == "l2-town-v1"
@@ -7915,7 +7915,7 @@ def make_env(max_steps: int = 1500, deep: bool = False, death_ladder: bool = Fal
              "resource_portal portal-v1 requires resource_retreat retreat-v1")
     _require(resource_portal == "off" or worker or options,
              "resource_portal requires WorkerWindowEnv/OptionsEnv")
-    # R18-B6: 扫箱/鉴定/武器升级三条法逐字复刻部署侧 validator 的措辞。
+    # R18-B6: the sweep/identify/weapon-upgrade laws copy the deployment-side validator wording verbatim.
     _require(resource_sweep in ("off", "sweep-v1"),
              "resource_sweep must be off/sweep-v1")
     _require(resource_sweep == "off" or resource_protocol == "l2-town-v1",
@@ -7932,7 +7932,7 @@ def make_env(max_steps: int = 1500, deep: bool = False, death_ladder: bool = Fal
              "resource_identify cain-v1 requires sustain-loot-v1")
     _require(resource_identify == "off" or worker or options,
              "resource_identify requires WorkerWindowEnv/OptionsEnv")
-    # dry-v1 是观察孪生,训练侧不收(_validate_args 同款理由)。
+    # dry-v1 is the observation twin; the training side does not accept it (same reason as _validate_args).
     _require(resource_weapon_upgrade in ("off", "smith-v1"),
              "resource_weapon_upgrade must be off/smith-v1")
     _require(resource_weapon_upgrade == "off" or resource_protocol == "l2-town-v1",
@@ -7944,8 +7944,8 @@ def make_env(max_steps: int = 1500, deep: bool = False, death_ladder: bool = Fal
              "resource_weapon_upgrade smith-v1 requires the full purchase mode")
     _require(resource_weapon_upgrade == "off" or worker or options,
              "resource_weapon_upgrade requires WorkerWindowEnv/OptionsEnv")
-    # R18-B5: hunt_scope 只经 WorkerWindowEnv/OptionsEnv 的 **env_kwargs 直通;
-    # 复核修正:寻怪不开时它是空操作,拒绝铸出一个说谎的身份(_validate_args 同款)。
+    # R18-B5: hunt_scope only passes through the **env_kwargs of WorkerWindowEnv/OptionsEnv;
+    # review fix: it is a no-op when hunting is off, so refuse to mint a lying identity (same as _validate_args).
     _require(hunt_scope in ("all", "l1-only"),
              "hunt_scope must be all/l1-only")
     _require(hunt_scope == "all" or worker or options,
@@ -7996,7 +7996,7 @@ def make_env(max_steps: int = 1500, deep: bool = False, death_ladder: bool = Fal
     from diablogym import DiabloGymEnv
 
     def with_seed_discipline(env):
-        """平面/策略脑通用的逐局种子包装；worker 自身有跨窗口局状态，不套。"""
+        """Per-episode seed wrapper shared by flat/policy-brain modes; the worker has its own cross-window episode state and is not wrapped."""
         import gymnasium as gym
         import numpy as np
         from diablogym.worker_env import (
@@ -8004,9 +8004,9 @@ def make_env(max_steps: int = 1500, deep: bool = False, death_ladder: bool = Fal
             sample_train_seed,
         )
 
-        # R9 课程臂:prologue 仅 options 经理训练在位;包装顺序
-        # Monitor(_SeedDiscipline(OptionsEnv)) 保证代打步天然在 Monitor
-        # 记账之外,prologue 奖励不入经理回报账(PREREG-R9 §4)。
+        # R9 curriculum arm: the prologue is present only in options manager training; the wrapping order
+        # Monitor(_SeedDiscipline(OptionsEnv)) guarantees the play-through steps fall naturally outside Monitor
+        # bookkeeping, and the prologue reward never enters the manager's return ledger (PREREG-R9 §4).
         prologue_spec = (
             dict(deep_start_curriculum)
             if (options and deep_start_curriculum) else None)
@@ -8019,14 +8019,14 @@ def make_env(max_steps: int = 1500, deep: bool = False, death_ladder: bool = Fal
             def reset(self, *, seed=None, options=None):
                 if seed is not None:
                     if is_reserved_train_seed(seed):
-                        raise ValueError(f"训练 reset 拒绝保留种子 {seed}")
+                        raise ValueError(f"training reset refuses reserved seed {seed}")
                     self._seed_rng = np.random.default_rng(seed)
                 else:
                     seed = sample_train_seed(self._seed_rng)
                 obs, info = self.env.reset(seed=seed, options=options)
                 if prologue_spec is not None:
-                    # R9 课程臂:prologue 核在模块级(桩环境单测覆盖);
-                    # 重抽种子经既有种子纪律采样器,拒采全部登记评测池。
+                    # R9 curriculum arm: the prologue core is module-level (covered by stub-env unit tests);
+                    # redrawn seeds go through the existing seed-discipline sampler, which refuses every registered evaluation pool.
                     obs, info, seed, telemetry = _deep_start_prologue(
                         self.env, obs, info, seed,
                         spec=prologue_spec, form=deep_start_form,
@@ -8045,10 +8045,10 @@ def make_env(max_steps: int = 1500, deep: bool = False, death_ladder: bool = Fal
         return Monitor(_SeedDiscipline(env))
 
     if worker:
-        # v4 窗口线：episode = 一整局底层游戏；自然 FARM 窗边界为
-        # nonterminal，并经 info["farm_window_end"] 显式上报。
-        # (rng_seed=None → 各子进程独立熵源,种子采样器拒采全部登记评测池)
-        # v26:skip_dry=True 时干层复访窗由脚本代跑,不进学习分布(绿洲处方)
+        # v4 window line: episode = one whole underlying game; natural FARM window boundaries are
+        # nonterminal and are reported explicitly through info["farm_window_end"].
+        # (rng_seed=None -> each subprocess has its own entropy source; the seed sampler refuses every registered evaluation pool)
+        # v26: with skip_dry=True, dry-level revisit windows are played by the script and stay out of the learning distribution (the "oasis" remedy)
         from diablogym import WorkerWindowEnv
         if prefix_spec is not None:
             from prefix_worker import load_prefix_worker
@@ -8085,8 +8085,8 @@ def make_env(max_steps: int = 1500, deep: bool = False, death_ladder: bool = Fal
                                            worker_descend_escrow_readiness_gate),
                                        worker_descend_escrow_readiness_table=(
                                            worker_descend_escrow_readiness_table),
-                                       # R16 修宪:工资侧显式参数(WorkerWindowEnv
-                                       # 具名消费,不进 env_kwargs)
+                                       # R16 amendment: explicit wage-side parameters (consumed by name by
+                                       # WorkerWindowEnv, not in env_kwargs)
                                        worker_hp_loss_price=worker_hp_loss_price,
                                        worker_potion_pickup_bonus=(
                                            worker_potion_pickup_bonus),
@@ -8095,12 +8095,12 @@ def make_env(max_steps: int = 1500, deep: bool = False, death_ladder: bool = Fal
                                        seed_scope="train",
                                        manager_sha256=manager_npz_sha256,
                                        manager_heuristic=manager_heuristic,
-                                       # R12:经济法案经 env_kwargs 直通
-                                       # OptionsEnv→DiabloGymEnv(v1 默认不变)
+                                       # R12: the economy rule passes through env_kwargs to
+                                       # OptionsEnv->DiabloGymEnv (v1 default unchanged)
                                        reward_economy=reward_economy,
-                                       # R16 修宪:教室侧参数经 env_kwargs 由
-                                       # OptionsEnv 具名消费;环境侧参数再直通
-                                       # DiabloGymEnv 具名消费(默认值=旧法)
+                                       # R16 amendment: classroom-side parameters are consumed by name by
+                                       # OptionsEnv through env_kwargs; environment-side parameters pass on to
+                                       # DiabloGymEnv, consumed by name (default = old rule)
                                        farm_scene_cap=farm_scene_cap,
                                        reset_layer_clock_on_window=(
                                            reset_layer_clock_on_window),
@@ -8109,40 +8109,40 @@ def make_env(max_steps: int = 1500, deep: bool = False, death_ladder: bool = Fal
                                        explore_global_hunt=explore_global_hunt,
                                        progress_far_tiles=progress_far_tiles))
     if options:
-        # v22:策略脑/操作脑——OptionsEnv 自带 deep+death_ladder 默认
-        # v25:worker_npz 非空时挂 npz 工人(NumpyManager 在本函数体内构造——
-        # spawn 子进程免 torch,PREREG-v25 D1 条款),并套种子纪律薄包装
-        # R9:worker_zip 非空时挂认证 SB3 zip 工人(dual-v4 asymmetric policy
-        # 无 npz 导出口;MaskablePPO 冻结前向逐子进程载入,载入前校验字节身份;
-        # 接法与双标签沿案卷 train/runs/efix-g0-evidence/probe_r9_dive.py:31-61)
+        # v22: policy brain/operator brain -- OptionsEnv brings its own deep+death_ladder defaults
+        # v25: when worker_npz is non-empty, mount the npz worker (NumpyManager is constructed inside this function --
+        # spawned subprocesses need no torch, PREREG-v25 D1 clause), and apply the thin seed-discipline wrapper
+        # R9: when worker_zip is non-empty, mount the certified SB3 zip worker (the dual-v4 asymmetric policy
+        # has no npz export; the frozen MaskablePPO forward is loaded per subprocess, with a byte-identity check before loading;
+        # wiring and dual labels follow the case file train/runs/efix-g0-evidence/probe_r9_dive.py:31-61)
         from diablogym import NumpyManager, OptionsEnv
 
         if worker_zip:
-            _require(not worker_npz, "--worker-zip 与 --worker-npz 互斥")
+            _require(not worker_npz, "--worker-zip and --worker-npz are mutually exclusive")
             import numpy as np
-            import leashed_ppo  # noqa: F401  自定义 policy class 注册(load 反序列化需要)
+            import leashed_ppo  # noqa: F401  registers the custom policy class (needed for load deserialisation)
             from sb3_contrib import MaskablePPO
 
             zip_payload = pathlib.Path(worker_zip).read_bytes()
             if worker_zip_sha256 is not None:
                 actual_zip_sha = hashlib.sha256(zip_payload).hexdigest()
                 _require(actual_zip_sha == worker_zip_sha256,
-                         "worker zip 在 VecEnv 创建前发生漂移: "
+                         "worker zip drifted before VecEnv creation: "
                          f"{actual_zip_sha} != {worker_zip_sha256}")
             model = MaskablePPO.load(io.BytesIO(zip_payload), device="cpu")
             zip_contract = getattr(model, "diablogym_contract", None)
             _require(isinstance(zip_contract, dict),
-                     "--worker-zip 必须携 diablogym_contract(认证发布件训练契约)")
+                     "--worker-zip must carry a diablogym_contract (training contract of a certified release artifact)")
             _require(zip_contract.get("contract_revision") == 26,
-                     "--worker-zip 训练契约 contract_revision 必须为 26,"
-                     f"收到 {zip_contract.get('contract_revision')!r}")
+                     "--worker-zip training contract contract_revision must be 26, "
+                     f"got {zip_contract.get('contract_revision')!r}")
             zip_view = zip_contract["worker_policy_observation_view"]
             zip_sovereignty = bool(zip_contract["drink_sovereignty"])
 
             def zip_worker(policy_obs, mask):
                 policy_mask = mask
                 if not zip_sovereignty:
-                    # 非主权工人防御性恒掩 a12(probe_r9_dive 同款)。
+                    # a worker without potion autonomy defensively always masks a12 (same as probe_r9_dive).
                     policy_mask = np.asarray(mask, dtype=bool).copy()
                     policy_mask[12] = False
                 action, _ = model.predict(
@@ -8155,8 +8155,8 @@ def make_env(max_steps: int = 1500, deep: bool = False, death_ladder: bool = Fal
                 else "permanently-masked")
             env = OptionsEnv(max_steps=max_steps,
                              **resource_kwargs,
-                             # None → 由 worker 双标签自绑定(单一真源);
-                             # OptionsEnv 会拒绝标签间/标签-显式值冲突。
+                             # None -> self-bound from the worker's dual labels (single source of truth);
+                             # OptionsEnv rejects conflicts between labels or between a label and an explicit value.
                              drink_sovereignty=None,
                              manager_observation_view=(
                                  manager_policy_observation_view),
@@ -8170,11 +8170,11 @@ def make_env(max_steps: int = 1500, deep: bool = False, death_ladder: bool = Fal
                              explore_global_hunt=explore_global_hunt,
                              progress_far_tiles=progress_far_tiles)
             _require(bool(env.drink_sovereignty) == zip_sovereignty,
-                     "OptionsEnv drink_sovereignty 未按 zip 工人契约自绑定")
+                     "OptionsEnv drink_sovereignty not self-bound per the zip worker contract")
         elif worker_npz:
-            # 条款要点:工人以 npz+numpy 前向进子进程(不 pickle 网络、不 load SB3
-            # 模型、不逐拍 torch 前向)。torch 模块本身随 train_ppo 顶层 import 进入
-            # 子进程(v23 先例同),"无 torch"断言不可实现,预注册已如实修正。
+            # Clause summary: the worker enters subprocesses as npz + numpy forward (no pickled network, no SB3
+            # model load, no per-step torch forward). The torch module itself still enters the subprocess through
+            # the top-level train_ppo import (same as the v23 precedent); a "no torch" assertion cannot be implemented, and the pre-registration was corrected accordingly.
             net = NumpyManager(worker_npz, expected_sha256=worker_npz_sha256)
             net.require_io_shape(298, 15, "Options worker")
             net.require_worker_contract()
@@ -8207,10 +8207,10 @@ def make_env(max_steps: int = 1500, deep: bool = False, death_ladder: bool = Fal
                              explore_global_hunt=explore_global_hunt,
                              progress_far_tiles=progress_far_tiles)
 
-        # 无论是否挂 npz 工人，经理训练都必须遵守同一种子纪律。
+        # With or without an npz worker, manager training must follow the same seed discipline.
         return with_seed_discipline(env)
     if flat_clock:
-        # v22 恶魔臂 F:296 维平面(停滞钟与策略脑同一块表)
+        # v22 devil arm F: 296-dim flat (stall clock is the same gauge as the policy brain's)
         from diablogym import StagnationClockWrapper
         return with_seed_discipline(StagnationClockWrapper(DiabloGymEnv(
             ticks_per_step=4, max_steps=max_steps, start_in_dungeon=True,
@@ -8219,14 +8219,14 @@ def make_env(max_steps: int = 1500, deep: bool = False, death_ladder: bool = Fal
             explore_global_hunt=explore_global_hunt,
             progress_far_tiles=progress_far_tiles)))
     env = DiabloGymEnv(
-        ticks_per_step=4,      # 每个决策 = 0.2 秒游戏时间
-        max_steps=max_steps,   # 1500 = 冠军(v6)配方;3000 = v10 长局实验 + v17 深水区。
-                               # 32 种子排行榜评估固定 1500 步(可比性);深水区章另立新表
-        start_in_dungeon=True, # 跳过城镇,直接站在地牢 1 层入口
-        include_raw=False,     # 训练不传 raw 大字典(多进程 IPC 减负)
-        descend_ladder=deep,   # v17:下楼奖金层数递进(8×N),给"往下活着"一个未来
-        death_ladder=death_ladder,  # v18:死在 N 层罚 8×N——"活着抵达"要赢过"摸到深度"
-        # R16 修宪:环境侧参数直通(默认 False/False/0 = 旧法逐位不变)
+        ticks_per_step=4,      # each decision = 0.2 s of game time
+        max_steps=max_steps,   # 1500 = champion (v6) recipe; 3000 = v10 long-episode experiment + v17 deep water.
+                               # the 32-seed leaderboard evaluation is fixed at 1500 steps (comparability); the deep-water chapter has its own table
+        start_in_dungeon=True, # skip town, start at the dungeon level 1 entrance
+        include_raw=False,     # training does not pass the big raw dict (less multi-process IPC)
+        descend_ladder=deep,   # v17: descend bonus grows with depth (8×N), giving "going down alive" a future
+        death_ladder=death_ladder,  # v18: dying on level N costs 8×N -- "arriving alive" must beat "touching depth"
+        # R16 amendment: environment-side parameters pass through (default False/False/0 = old rule, bit for bit)
         explore_global_fallback=explore_global_fallback,
         explore_global_hunt=explore_global_hunt,
         progress_far_tiles=progress_far_tiles,
@@ -8486,9 +8486,9 @@ def _asymmetric_worker_deployment_evidence_complete(model) -> bool:
 def _training_completion_report(model, target_global_steps: int) -> dict:
     """Evaluate the existing publication predicates once and name each result.
 
-    Callback 返回 ``False`` 时 SB3 的 ``learn`` 会正常返回；仅检查 full
-    buffer 会把任意较早 rollout 边界误认成完整腿。严格相等也同时拦住
-    静默 overshoot。
+    When a callback returns ``False``, SB3's ``learn`` returns normally; checking only a full
+    buffer would mistake any earlier rollout boundary for a complete leg. Strict equality also blocks
+    a silent overshoot.
     """
     migration_start = getattr(
         model, "_critic_warmup_start_timesteps", None)
@@ -8569,15 +8569,15 @@ class _TrainingCompletionRejected(RuntimeError):
     def __init__(self, report: dict):
         self.report = report
         checks = report["checks"]
-        prefix = ("训练更新已完成，但最终发布验收未通过"
+        prefix = ("training updates completed, but final release acceptance failed"
                   if checks["rollout_boundary"] and checks["exact_target"]
-                  else "训练未精确停在已完成更新的冻结目标")
+                  else "training did not stop exactly at the frozen target of completed updates")
         super().__init__(f"{prefix}: failed_checks={report['failed_checks']}, "
                          f"counters={report['counters']}")
 
 
 def _require_exact_training_completion(model, target_global_steps: int) -> dict:
-    """把 SB3 的“正常提前返回”提升为进程失败，禁止调度器假成功。"""
+    """Promote SB3's "normal early return" to a process failure, so the scheduler cannot report a false success."""
     report = _training_completion_report(model, target_global_steps)
     if report["publication_eligible"]:
         return report
@@ -8594,7 +8594,7 @@ def _retain_refused_training_diagnostic(
             or getattr(model, "_resource_warm_start_receipt", None) is None):
         return {"status": "NOT_ELIGIBLE", "reason": "no exact inherited completed boundary"}
     _require(_implementation_bundle_sha256() == expected_implementation,
-             "诊断保存前实现/引擎/游戏内容发生漂移")
+             "implementation/engine/game content drifted before the diagnostic save")
     from leashed_ppo import validate_worker_onpolicy_pg_receipt
     from training_diagnostics import archive_refused_training
     return archive_refused_training(
@@ -8604,7 +8604,7 @@ def _retain_refused_training_diagnostic(
 
 
 class AtomicRolloutCheckpointCallback(BaseCallback):
-    """只在上一 rollout 已完成更新的边界保存，杜绝“步数已记、梯度未吃”。"""
+    """Save only at the boundary where the previous rollout has completed its update, ruling out "steps recorded, gradient not consumed"."""
 
     def __init__(self, run_dir: pathlib.Path, every_steps: int = 250_000,
                  implementation_sha256: str | None = None):
@@ -8633,16 +8633,16 @@ class AtomicRolloutCheckpointCallback(BaseCallback):
                 self.model,
                 rollout_buffer_may_be_reset=rollout_buffer_may_be_reset):
             if bool(getattr(self.model, "_calib_tripped", False)):
-                print("   [G-CAL] 当前 rollout 未完成更新，拒绝发布 checkpoint")
+                print("   [G-CAL] current rollout has not completed its update; refusing to publish a checkpoint")
             else:
-                print("   当前 rollout 缺完整 PPO 更新回执，拒绝发布 checkpoint")
+                print("   current rollout lacks a complete PPO update receipt; refusing to publish a checkpoint")
             return
         step = int(self.num_timesteps)
         if self.last_saved != step:
             if self.implementation_sha256 is not None:
                 actual = _implementation_bundle_sha256()
                 _require(actual == self.implementation_sha256,
-                         "训练期间实现/引擎/游戏内容发生漂移，拒绝发布 checkpoint: "
+                         "implementation/engine/game content drifted during training; refusing to publish a checkpoint: "
                          f"{actual} != {self.implementation_sha256}")
             path = self.run_dir / "ckpt" / f"model_{step}_steps.zip"
             _atomic_save_model(self.model, path)
@@ -8652,23 +8652,23 @@ class AtomicRolloutCheckpointCallback(BaseCallback):
             self.next_at += self.period
 
     def _on_rollout_start(self) -> None:
-        # 首次调用 num_timesteps=起点；后续调用发生在上一 rollout train() 之后。
+        # The first call has num_timesteps = the start; later calls happen after the previous rollout's train().
         self._save_due(rollout_buffer_may_be_reset=True)
 
     def _on_step(self) -> bool:
         return True
 
     def _on_training_end(self) -> None:
-        # 正常收官不会进入下一次 _on_rollout_start；只有 buffer.full 才表示
-        # 最后一批确已 train()。回调中途终止的半 rollout 不得冒充 checkpoint。
+        # A normal finish never reaches the next _on_rollout_start; only buffer.full means
+        # the last batch really went through train(). A half rollout cut short by a callback must not pose as a checkpoint.
         if _is_publishable_rollout_boundary(self.model):
             self._save_due()
 
 
 class WorkerSentinelCallback(BaseCallback):
-    """v23 哨兵(PREREG 附录A/C):每 500k 步汇总子进程 WorkerWindowEnv.stats
-    (干/鲜层窗配比、终止原因谱、兜底滚局数)+ 累计动作份额 → sentinel.jsonl。
-    塌缩裁决本身走 2M/4M 检查点组装重放(附录C),此处只供遥测与验尸。"""
+    """v23 sentinel (PREREG appendix A/C): every 500k steps, aggregate subprocess WorkerWindowEnv.stats
+    (dry/fresh level window mix, termination reason spectrum, fallback reroll count) + cumulative action shares -> sentinel.jsonl.
+    The collapse verdict itself uses the 2M/4M checkpoint assembled replay (appendix C); this only serves telemetry and post-mortems."""
 
     def __init__(self, run_dir: pathlib.Path, every: int = 500_000):
         super().__init__()
@@ -8679,14 +8679,14 @@ class WorkerSentinelCallback(BaseCallback):
         self._last_emit_step = None
 
     def _on_training_start(self) -> None:
-        # v24 修正:resume 腿的全局步不从 0 起——对齐到下一个 500k 边界,防空喷
+        # v24 fix: the global step of a resume leg does not start at 0 -- align to the next 500k boundary to prevent an empty burst
         self.next_at = ((self.num_timesteps // self.every) + 1) * self.every
 
     def _on_step(self) -> bool:
         import numpy as np
-        # v24 G-CAL:标定探针置旗即终止本腿(驱动裁决重标定,预注册条款)
+        # v24 G-CAL: a calibration probe that sets its flag ends the leg (the driver decides on recalibration, pre-registered clause)
         if getattr(self.model, "_calib_tripped", False):
-            print("   [G-CAL] 生产校准硬门触发 —— 终止本腿,交驱动裁决")
+            print("   [G-CAL] production calibration hard gate triggered -- ending the leg, handing over to the driver")
             return False
         acts = self.locals.get("actions")
         if acts is not None:
@@ -8706,7 +8706,7 @@ class WorkerSentinelCallback(BaseCallback):
         step = int(self.num_timesteps)
         if self._last_emit_step == step:
             return
-        per_env = self.model.get_env().get_attr("stats")   # 经 Monitor.__getattr__ 透传
+        per_env = self.model.get_env().get_attr("stats")   # passed through Monitor.__getattr__
         count_keys = (
             "windows", "dry", "fresh", "ff_windows", "ff_dry",
             "ff_terminals", "episodes", "reseeds",
@@ -8743,14 +8743,14 @@ class WorkerSentinelCallback(BaseCallback):
             isinstance(per_env, (list, tuple)) and len(per_env) > 0
             and len(credit_modes) == len(per_env)
             and len(configured_costs) == len(per_env),
-            "Worker sentinel 子环境 stats/奖励配置数量不闭合",
+            "Worker sentinel sub-environment stats/reward config counts do not close",
         )
         _require(
             all(isinstance(mode, str)
                 and mode in {"none", "terminal-death-only"}
                 for mode in credit_modes)
             and len(set(credit_modes)) == 1,
-            "Worker sentinel 子环境 fast-forward reward credit 漂移",
+            "Worker sentinel sub-environment fast-forward reward credit drift",
         )
         normalized_costs = [
             _finite_number(value, "Worker sentinel additional death cost")
@@ -8760,7 +8760,7 @@ class WorkerSentinelCallback(BaseCallback):
             all(value >= 0.0 for value in normalized_costs)
             and all(value == normalized_costs[0]
                     for value in normalized_costs),
-            "Worker sentinel 子环境 additional death cost 漂移/非法",
+            "Worker sentinel sub-environment additional death cost drift/invalid",
         )
         agg = {key: 0 for key in count_keys}
         agg.update({key: 0.0 for key in reward_keys})
@@ -8773,14 +8773,14 @@ class WorkerSentinelCallback(BaseCallback):
                 and all(key in stats for key in reward_keys)
                 and isinstance(stats.get("reasons"), dict)
                 and isinstance(stats.get("ff_reasons"), dict),
-                f"Worker sentinel env[{env_index}] stats 字段不完整",
+                f"Worker sentinel env[{env_index}] stats fields incomplete",
             )
             for key in count_keys:
                 value = stats[key]
                 _require(
                     _is_plain_int(value) and value >= 0,
                     f"Worker sentinel env[{env_index}].{key} "
-                    "必须是非负普通整数",
+                    "must be a non-negative plain integer",
                 )
                 agg[key] += value
             for key in reward_keys:
@@ -8792,14 +8792,14 @@ class WorkerSentinelCallback(BaseCallback):
                 _require(
                     isinstance(key, str) and bool(key)
                     and _is_plain_int(value) and value >= 0,
-                    f"Worker sentinel env[{env_index}] reasons 非法",
+                    f"Worker sentinel env[{env_index}] reasons invalid",
                 )
                 reasons[key] = reasons.get(key, 0) + value
             for key, value in stats["ff_reasons"].items():
                 _require(
                     isinstance(key, str) and bool(key)
                     and _is_plain_int(value) and value >= 0,
-                    f"Worker sentinel env[{env_index}] ff_reasons 非法",
+                    f"Worker sentinel env[{env_index}] ff_reasons invalid",
                 )
                 ff_reasons[key] = ff_reasons.get(key, 0) + value
         for key in reward_keys:
@@ -8814,7 +8814,7 @@ class WorkerSentinelCallback(BaseCallback):
                 "configured_additional_terminal_death_cost":
                     normalized_costs[0],
                 "top1_action": top1, "top1_share": round(share, 4),
-                # v24 皮筋读数(与 gate_ledger 双簿对账)
+                # v24 leash readings (reconciled against gate_ledger in the double ledger)
                 "beta_initial":
                     getattr(self.model, "distill_beta", None),
                 "beta": getattr(
@@ -8838,10 +8838,10 @@ class WorkerSentinelCallback(BaseCallback):
         with open(self.run_dir / "sentinel.jsonl", "a") as f:
             f.write(json.dumps(line, ensure_ascii=False) + "\n")
         self._last_emit_step = step
-        print(f"   [哨兵] {line}")
+        print(f"   [sentinel] {line}")
 
     def _on_training_end(self) -> None:
-        # 腿长常取 499,712(<500k)；若只按间隔写，完整腿反而零哨兵记录。
+        # The leg length is usually 499,712 (<500k); writing only by interval would give a complete leg zero sentinel records.
         if self.num_timesteps > 0 and self._last_emit_step != int(self.num_timesteps):
             self._emit(final=True)
 
@@ -8855,7 +8855,7 @@ class PrefixAuditCallback(BaseCallback):
     # R18-B8 (2026-09-08): the per-env prefix ledger carries the WHOLE attempt history with
     # full state dumps per DIVE opening, so writing it at every rollout boundary grows the
     # audit file quadratically (6.2 GB by 254k learner steps; the R18-B arm died of
-    # ENOSPC at 02:19). Rollout boundaries now write a compact receipt (counters + the
+    # ENOSPC). Rollout boundaries now write a compact receipt (counters + the
     # latest attempt without state dumps); the complete ledger is written once at
     # training_end. Nothing in training reads this file.
     _ROLLOUT_ATTEMPT_KEEP = 2
@@ -8911,28 +8911,28 @@ class PrefixAuditCallback(BaseCallback):
 
 
 class R13DiveAuditCallback(BaseCallback):
-    """R13 教室改革审计(纯读+IO,只记不裁):分窗计量与课堂发生性。
+    """R13 classroom-reform audit (pure read + IO, record-only, no verdict): per-window metering and whether the classroom happens.
 
-    仅在 live-DIVE worker scope 挂载。逐 env 读取
-    WorkerWindowEnv.stats 的 dive_live_*/farm_live_steps 计数(旗开分支
-    专属键,.get 容缺),聚合写 r13_dive_audit.jsonl。独立新类,不触碰
-    WorkerSentinelCallback 的冻结发射面(R7 schema/get_attr 白名单)。
+    Mounted only under the live-DIVE worker scope. Reads, per env, the
+    dive_live_*/farm_live_steps counters of WorkerWindowEnv.stats (keys specific to the flag-on branch,
+    .get tolerates absence) and writes the aggregate to r13_dive_audit.jsonl. A new standalone class that never touches
+    the frozen emission surface of WorkerSentinelCallback (R7 schema/get_attr whitelist).
     """
 
     _KEYS = (
         "dive_live_windows", "dive_live_steps", "farm_live_steps",
         "dive_live_descends", "dive_live_stalls", "dive_live_deaths",
         "dive_live_a11_requests", "dive_live_a11_executed",
-        # R17.0 修正案一:过战备门(两把尺均计)的下楼次数
+        # R17.0 amendment 1: number of descends that passed the readiness gate (counted under both rulers)
         "descend_escrow_ready_vested_count",
     )
-    # R13.2:塑形账目(浮点,守恒审计:credited+refunded=策略净得);
-    # R14 乙案:descend_bonus_kept 为各 env 保留额镜像(绝对值,直加)
+    # R13.2: shaping accounts (float, conservation audit: credited+refunded = policy net gain);
+    # R14 plan B: descend_bonus_kept mirrors each env's retained amount (absolute value, added directly)
     _FLOAT_KEYS = ("depth_shaping_credited", "depth_shaping_refunded",
                    "descend_bonus_kept",
                    "descend_escrow_vested", "descend_escrow_forfeited",
                    "descend_escrow_unready_denied",
-                   # R16 修宪:失血计价 / 拾药记账(worker_env stats;缺省 0.0)
+                   # R16 amendment: HP-loss pricing / potion-pickup booking (worker_env stats; default 0.0)
                    "hp_loss_charged", "potion_pickup_credited")
 
     def __init__(self, run_dir: pathlib.Path, every: int = 63_488):
@@ -8951,8 +8951,8 @@ class R13DiveAuditCallback(BaseCallback):
             for key in self._FLOAT_KEYS:
                 agg[key] = round(
                     agg[key] + float(stats.get(key, 0.0)), 3)
-        # R17.0 仪表:逐次过门遥测(worker_env stats descend_escrow_gate_log,
-        # 旗关缺省空)——每次发射整体重写 r17_descend_gate.jsonl,行内附 env 序。
+        # R17.0 gauge: per-pass gate telemetry (worker_env stats descend_escrow_gate_log,
+        # empty by default with the flag off) -- each emission rewrites r17_descend_gate.jsonl in full, with the env index on each row.
         gate_rows = []
         for env_index, stats in enumerate(per_env):
             for row in (stats.get("descend_escrow_gate_log") or ()):
@@ -8976,7 +8976,7 @@ class R13DiveAuditCallback(BaseCallback):
         }
         with open(self.run_dir / "r13_dive_audit.jsonl", "a") as f:
             f.write(json.dumps(line, ensure_ascii=False) + "\n")
-        print(f"   [R13课堂] {line}", flush=True)
+        print(f"   [R13 classroom] {line}", flush=True)
 
     def _on_step(self) -> bool:
         if self.num_timesteps >= self.next_at:
@@ -8990,9 +8990,9 @@ class R13DiveAuditCallback(BaseCallback):
 
 
 class DryAnchorSentinel(BaseCallback):
-    """v26 干层锚哨兵(只记不裁):demos.npz 中双通道 cap-1 前沿教师样本
-    固定抽 2000,每 500k 步测学生 argmax 对教师标签的失配率——skip_dry 下干层行为
-    无锚裸奔,这只表是它唯一的观察者。"""
+    """v26 dry-level anchor sentinel (record-only, no verdict): a fixed draw of 2000 dual-channel cap-1 frontier teacher samples
+    from demos.npz; every 500k steps it measures the student-argmax mismatch rate against the teacher labels -- under skip_dry, dry-level behaviour
+    runs unanchored, and this gauge is its only observer."""
 
     def __init__(self, run_dir: pathlib.Path, demos_npz: str,
                  expected_sha256: str, every: int = 500_000):
@@ -9010,7 +9010,7 @@ class DryAnchorSentinel(BaseCallback):
         self.X, self.Y = X[idx], Y[idx]
         if (not np.isfinite(self.X).all() or np.any(self.Y < 0)
                 or np.any(self.Y >= 15)):
-            raise ValueError("dry-anchor 样本含非有限观测或越界标签")
+            raise ValueError("dry-anchor samples contain non-finite observations or out-of-range labels")
 
     def _on_training_start(self) -> None:
         self.next_at = ((self.num_timesteps // self.every) + 1) * self.every
@@ -9031,10 +9031,10 @@ class DryAnchorSentinel(BaseCallback):
             return
         with th.no_grad():
             raw_obs = th.as_tensor(self.X, device=self.model.device)
-            # 干层锚系只记不裁遥测:掩码保留 v28-v30 旧口径(11/12 恒掩)
-            # 以维持跨腿失配曲线同尺——v32 主权后部署掩码含 12,但教师
-            # 标签(demos)无 12,主权行为由评测 a12 仪表另量(PREREG-v32
-            # 口径注);改此口径会断代历史遥测,故如实登记不改。
+            # The dry-level anchor is record-only telemetry: the mask keeps the old v28-v30 definition (11/12 always masked)
+            # to keep the cross-leg mismatch curve on the same scale -- after v32 autonomy the deployment mask includes 12, but the teacher
+            # labels (demos) have no 12, and autonomy behaviour is measured separately by the evaluation a12 gauge (PREREG-v32
+            # definition note); changing this definition would break the historical telemetry series, so it is recorded as is and not changed.
             masks = th.ones((len(self.X), 15), dtype=th.bool,
                             device=self.model.device)
             masks[:, 11] = masks[:, 12] = False
@@ -9052,7 +9052,7 @@ class DryAnchorSentinel(BaseCallback):
         with open(self.run_dir / "sentinel.jsonl", "a") as f:
             f.write(json.dumps(line) + "\n")
         self._last_emit_step = step
-        print(f"   [干层锚] {line}")
+        print(f"   [dry-anchor] {line}")
 
     def _on_training_end(self) -> None:
         if self.num_timesteps > 0 and self._last_emit_step != int(self.num_timesteps):
@@ -9060,31 +9060,31 @@ class DryAnchorSentinel(BaseCallback):
 
 
 class DryCurriculumCallback(BaseCallback):
-    """E1 ⑤A:register the next p_skip before collecting each rollout.
+    """E1 5A: register the next p_skip before collecting each rollout.
 
-    - p 表锚定腿相对 rollout 序号 (num_timesteps − 3,497,984)/2048,
-      全局步锚定禁用;腿前/失准/越界一律抛(禁钳位——对抗席"越界钳至表尾
-      恒 0.5"构造由此关死);
-    - schedule_table 属性暴露"序号→p"全表(供驱动器落 DRY_CURRICULUM_TABLE);
-    - 首值在训练启动时直接对齐；此后 rollout-start 经
-      ``schedule_skip_dry_p(next_p, n_steps)`` 给每个 Worker env 登记独立
-      倒计时。第 n 个 Worker action 完成后，环境在构造 next_obs、跨窗或
-      VecEnv auto-reset 前原子提交 next_p；
-    - rollout-tail 回调只核验提交回执及 feature 601，不再事后首次切换；
-      逐 rollout 账与 env 读回值仍须精确等于注册表，任一失配即抛。
+    - the p table is anchored to the leg-relative rollout index (num_timesteps − 3,497,984)/2048,
+      global-step anchoring is disabled; before-leg/misaligned/out-of-range all raise (no clamping -- this closes off the adversarial
+      "clamp out-of-range to the table tail, constant 0.5" construction);
+    - the schedule_table attribute exposes the full "index->p" table (for the driver to write DRY_CURRICULUM_TABLE);
+    - the first value is aligned directly at training start; after that rollout-start goes through
+      ``schedule_skip_dry_p(next_p, n_steps)`` to register an independent countdown for each Worker env.
+      After the n-th Worker action completes, the environment atomically commits next_p before building next_obs, crossing a window or
+      a VecEnv auto-reset;
+    - the rollout-tail callback only verifies the commit receipt and feature 601, and no longer switches for the first time after the fact;
+      the per-rollout ledger and the values read back from env must still equal the registered table exactly; any mismatch raises.
     """
 
     def __init__(self, schedule_table, run_dir: pathlib.Path | None = None,
                  leg_start: int = _DRY_CURRICULUM_LEG_START):
         super().__init__()
         table = tuple(float(p) for p in schedule_table)
-        _require(len(table) > 0, "dry-curriculum p 表不能为空")
+        _require(len(table) > 0, "dry-curriculum p table must not be empty")
         _require(all(math.isfinite(p) and 0.0 <= p <= 1.0 for p in table),
-                 "dry-curriculum p 表必须全部在 [0, 1] 内")
+                 "dry-curriculum p table must lie entirely in [0, 1]")
         self.schedule_table = table
         self.leg_start = int(leg_start)
         self.run_dir = pathlib.Path(run_dir) if run_dir is not None else None
-        self.pushed: list[dict] = []   # 逐 rollout 实际推送账(序号→p)
+        self.pushed: list[dict] = []   # per-rollout ledger of what was actually pushed (index->p)
         self.quantum = None
         self._active_index = None
         self._active_p = None
@@ -9104,15 +9104,15 @@ class DryCurriculumCallback(BaseCallback):
     def _rollout_index(self) -> int:
         offset = int(self.num_timesteps) - self.leg_start
         _require(offset >= 0,
-                 f"dry-curriculum 腿相对锚定失义: num_timesteps={self.num_timesteps} "
-                 f"在腿起点 {self.leg_start} 之前(全局步锚定禁用,腿恒自王 zip 复点火)")
+                 f"dry-curriculum leg-relative anchoring meaningless: num_timesteps={self.num_timesteps} "
+                 f"is before the leg start {self.leg_start} (global-step anchoring disabled; the leg always relaunches from the throne zip)")
         _require(offset % self.quantum == 0,
-                 f"dry-curriculum rollout 边界失准: 腿内偏移 {offset} "
-                 f"不是量子 {self.quantum} 的整数倍")
+                 f"dry-curriculum rollout boundary misaligned: in-leg offset {offset} "
+                 f"is not a multiple of the quantum {self.quantum}")
         index = offset // self.quantum
         _require(index < len(self.schedule_table),
-                 f"dry-curriculum 腿相对 rollout 序号 {index} 越界"
-                 f"(p 表长 {len(self.schedule_table)},禁钳位)")
+                 f"dry-curriculum leg-relative rollout index {index} out of range"
+                 f" (p table length {len(self.schedule_table)}, no clamping)")
         return index
 
     def _refresh_dual_observation(
@@ -9133,7 +9133,7 @@ class DryCurriculumCallback(BaseCallback):
             == int(self.model.get_env().num_envs)
             and observation.shape[1] in {
                 298, DUAL_WORKER_OBSERVATION_DIM},
-            f"dry-curriculum {label} cached observation 形状异常:"
+            f"dry-curriculum {label} cached observation shape invalid: "
             f"{getattr(observation, 'shape', None)!r}",
         )
         if observation.shape[1] != DUAL_WORKER_OBSERVATION_DIM:
@@ -9143,7 +9143,7 @@ class DryCurriculumCallback(BaseCallback):
             and np.issubdtype(observation.dtype, np.floating)
             and bool(np.isfinite(observation).all()),
             f"dry-curriculum {label} dual cached observation "
-            "必须可写、浮点且有限",
+            "must be writable, floating-point and finite",
         )
         observation[
             :, DUAL_WORKER_SKIP_DRY_PROBABILITY_FEATURE] = p
@@ -9153,17 +9153,17 @@ class DryCurriculumCallback(BaseCallback):
                     :, DUAL_WORKER_SKIP_DRY_PROBABILITY_FEATURE]
                 == np.asarray(p, dtype=observation.dtype)
             )),
-            f"dry-curriculum {label} dual p_skip 缓存刷新失败",
+            f"dry-curriculum {label} dual p_skip cache refresh failed",
         )
         return True
 
     def _verify_active_probability(self, index: int, p: float) -> None:
         env = self.model.get_env()
-        # rev3 E1② 恒等断言:实际在位 p(逐 env 读回)≡ 注册表对应项,失配即抛。
+        # rev3 E1-2 identity assertion: the actually present p (read back per env) == the matching registered entry; any mismatch raises.
         for rank, actual in enumerate(env.get_attr("skip_dry")):
             _require(float(actual) == p,
-                     f"dry-curriculum 恒等断言失配: env[{rank}] 在位 p={actual} "
-                     f"!= 注册表[{index}]={p}")
+                     f"dry-curriculum identity assertion mismatch: env[{rank}] present p={actual} "
+                     f"!= registered[{index}]={p}")
 
     def _schedule_states(self) -> list[dict]:
         states = self.model.get_env().env_method(
@@ -9172,7 +9172,7 @@ class DryCurriculumCallback(BaseCallback):
             isinstance(states, (list, tuple))
             and len(states) == int(self.model.get_env().num_envs)
             and all(isinstance(state, dict) for state in states),
-            "dry-curriculum per-env schedule state 形状异常",
+            "dry-curriculum per-env schedule state shape invalid",
         )
         return list(states)
 
@@ -9194,7 +9194,7 @@ class DryCurriculumCallback(BaseCallback):
                     else float(state["pending_probability"]) == pending_p
                 )
                 and state["remaining_env_steps"] == remaining,
-                "dry-curriculum per-env schedule state 失配:"
+                "dry-curriculum per-env schedule state mismatch: "
                 f"env[{rank}]={state!r},"
                 f"expected=({current_p},{pending_p},{remaining})",
             )
@@ -9203,13 +9203,13 @@ class DryCurriculumCallback(BaseCallback):
         _require(
             self._scheduled_next_index is None
             and self._scheduled_next_p is None,
-            "dry-curriculum 上一 rollout 倒计时尚未闭合",
+            "dry-curriculum previous rollout countdown not yet closed",
         )
         target = getattr(self.model, "_total_timesteps", None)
         _require(
             _is_plain_int(target)
             and int(target) >= int(self.num_timesteps) + int(self.quantum),
-            "dry-curriculum 缺有效全局训练终点",
+            "dry-curriculum is missing a valid global training end point",
         )
         has_next_rollout = (
             int(self.num_timesteps) + int(self.quantum) < int(target)
@@ -9221,7 +9221,7 @@ class DryCurriculumCallback(BaseCallback):
         next_index = int(index) + 1
         _require(
             next_index < len(self.schedule_table),
-            "dry-curriculum 下一 rollout 超出注册表:"
+            "dry-curriculum next rollout exceeds the registered table: "
             f"{next_index} >= {len(self.schedule_table)}",
         )
         next_p = float(self.schedule_table[next_index])
@@ -9231,7 +9231,7 @@ class DryCurriculumCallback(BaseCallback):
         _require(
             isinstance(receipts, (list, tuple))
             and len(receipts) == int(self.model.get_env().num_envs),
-            "dry-curriculum 倒计时登记回执形状异常",
+            "dry-curriculum countdown registration receipt shape invalid",
         )
         self._verify_schedule_states(
             current_p=p, pending_p=next_p, remaining=remaining)
@@ -9255,7 +9255,7 @@ class DryCurriculumCallback(BaseCallback):
             == int(self.model.get_env().num_envs)
             and observation.shape[1] in {
                 298, DUAL_WORKER_OBSERVATION_DIM},
-            f"dry-curriculum {label} cached observation 形状异常:"
+            f"dry-curriculum {label} cached observation shape invalid: "
             f"{getattr(observation, 'shape', None)!r}",
         )
         if observation.shape[1] != DUAL_WORKER_OBSERVATION_DIM:
@@ -9267,7 +9267,7 @@ class DryCurriculumCallback(BaseCallback):
                     :, DUAL_WORKER_SKIP_DRY_PROBABILITY_FEATURE]
                 == expected
             )),
-            f"dry-curriculum {label} dual p_skip 尚未由环境原子切换",
+            f"dry-curriculum {label} dual p_skip not yet switched atomically by the environment",
         )
         return True
 
@@ -9276,7 +9276,7 @@ class DryCurriculumCallback(BaseCallback):
             *, boundary_preapply: bool) -> bool:
         p = self.schedule_table[index]
         env = self.model.get_env()
-        env.env_method("set_skip_dry_p", p)   # 经 Monitor __getattr__ 透传
+        env.env_method("set_skip_dry_p", p)   # passed through Monitor __getattr__
         self._verify_active_probability(index, p)
         refreshed = self._refresh_dual_observation(
             observation, p,
@@ -9294,7 +9294,7 @@ class DryCurriculumCallback(BaseCallback):
         preapplied = self._boundary_preapplied_index == index
         _require(
             self._active_index == index and self._active_p == p,
-            "dry-curriculum rollout 边界未由环境内倒计时原子切换:"
+            "dry-curriculum rollout boundary not switched atomically by the in-environment countdown: "
             f"active=({self._active_index},{self._active_p}),"
             f"expected=({index},{p})",
         )
@@ -9333,7 +9333,7 @@ class DryCurriculumCallback(BaseCallback):
         if self._scheduled_next_index is None:
             _require(
                 self._scheduled_next_p is None,
-                "dry-curriculum next index/p 部分登记",
+                "dry-curriculum next index/p partially registered",
             )
             self._verify_schedule_states(
                 current_p=float(self._active_p),
@@ -9349,7 +9349,7 @@ class DryCurriculumCallback(BaseCallback):
             and next_index == self._active_index + 1
             and next_index == self._scheduled_next_index
             and next_p == self._scheduled_next_p,
-            "dry-curriculum rollout-tail 序号/概率未连续:"
+            "dry-curriculum rollout-tail index/probability not consecutive: "
             f"active={self._active_index},"
             f"scheduled=({self._scheduled_next_index},"
             f"{self._scheduled_next_p}),next=({next_index},{next_p})",
@@ -9370,15 +9370,15 @@ class DryCurriculumCallback(BaseCallback):
         return True
 
 
-# ---- E5 新增仪表(PREREG-内容案 E5;全数只记不裁,默认零侵入,纳入 W-G0
-# 证明范围;探针示范集绑定当前协议严格 PASS 的 BC-v1 回执) ----
+# ---- New E5 gauges (PREREG-v33-content-case E5; all record-only, no verdict, zero intrusion by default, included in the W-G0
+# proof scope; the probe demo set is bound to the strict-PASS BC-v1 receipt of the current protocol) ----
 
 
 def _probe_legacy_masks(obs):
-    """E5 探针共用旧口径掩码(承 DryAnchorSentinel v28-v30 口径逐字:11/12 恒掩,
-    14 依 gear 位)——示范集系 v1 世代无逐样本掩码,完整部署掩码不可自 obs 全量
-    重构(E2 注记,反推口径系第二真源禁用);取跨腿同尺之旧口径并在输出行注记
-    mask_mode,只记不裁(施工裁量,交接单单列)。"""
+    """Old-definition mask shared by the E5 probes (verbatim from the DryAnchorSentinel v28-v30 definition: 11/12 always masked,
+    14 follows the gear bit) -- the demo set is from the v1 generation with no per-sample masks, and the full deployment mask cannot be fully
+    rebuilt from obs (E2 note: inferring it would be a second source of truth, forbidden); take the old cross-leg same-scale definition and note
+    mask_mode on each output row, record-only, no verdict (implementation discretion, listed separately in the handover notes)."""
     import torch as th
 
     masks = th.ones((len(obs), 15), dtype=th.bool, device=obs.device)
@@ -9409,7 +9409,7 @@ def _probe_policy_observation_view(model, raw_obs):
             return raw_obs
         _require(
             raw_obs.shape[-1] == ASYMMETRIC_WORKER_LEGACY_DIM,
-            "asymmetric Worker 离线探针只接受 298 或当前 dual 维观测",
+            "asymmetric Worker offline probe only accepts 298-dim or the current dual-dim observations",
         )
         # Historical dry-anchor rows contain no trustworthy v4/controller
         # context.  Preserve their exact v3 root and explicitly mark every
@@ -9424,16 +9424,16 @@ def _probe_policy_observation_view(model, raw_obs):
 
 
 class DistillCeProbe(BaseCallback):
-    """E5① 干/鲜 distill_ce 分列离线探针(只记不裁;DryAnchorSentinel 之孪生件)。
+    """E5-1 dry/fresh split distill_ce offline probe (record-only, no verdict; twin of DryAnchorSentinel).
 
-    固定示范态集(当前协议 BC-v1 PASS 回执绑定)上按 col296 short clock 或
-    col297 解码后的 farm_scene_fraction 是否进入 cap-1 前沿分干/鲜两组,
-    算教师-学生 distill CE(公式镜像 leashed_ppo train() 皮筋段:
-    ce = −Σ t_probs·logp_all 之均值;教师/学生同喂旧口径掩码);专用 rng
-    (承 dry-anchor rng(26) 先例),零触训练路径(纯读+IO,不碰训练 RNG/梯度/
-    env 流)。训练内 buffer 分列为守 G0-2a 零侵入证明面而废止(工程 M2),
-    本件即其注册替代形制;课②定标数据供给义务(圈 12 改写)同由此满足。
-    输出 run_dir/distill_ce_probe.jsonl。
+    On the fixed demo-state set (bound to the current-protocol BC-v1 PASS receipt), split into dry/fresh groups by whether the col296 short clock or
+    the decoded col297 farm_scene_fraction reaches the cap-1 frontier, and
+    compute the teacher-student distill CE (formula mirrors the leash block of leashed_ppo train():
+    ce = mean of −Σ t_probs·logp_all; teacher and student are fed the same old-definition mask); dedicated rng
+    (following the dry-anchor rng(26) precedent), zero contact with the training path (pure read + IO, never touching the training RNG/gradients/
+    env streams). The in-training buffer split was abolished to protect the G0-2a zero-intrusion proof surface (engineering M2);
+    this is its registered replacement; the course-2 calibration data supply obligation (rewritten in review round 12) is also met here.
+    Output run_dir/distill_ce_probe.jsonl.
     """
 
     def __init__(self, run_dir: pathlib.Path, demos_npz: str, every: int):
@@ -9442,7 +9442,7 @@ class DistillCeProbe(BaseCallback):
 
         self.run_dir = run_dir
         self.every = int(every)
-        _require(self.every > 0, "distill-ce 探针间隔必须 > 0")
+        _require(self.every > 0, "distill-ce probe interval must be > 0")
         self.next_at = self.every
         self._last_emit_step = None
         expected_sha = _assert_bc_v1_demos_frozen(demos_npz)
@@ -9452,7 +9452,7 @@ class DistillCeProbe(BaseCallback):
         dry_rows = np.flatnonzero(dry)
         fresh_rows = np.flatnonzero(fresh)
         _require(len(dry_rows) > 0 and len(fresh_rows) > 0,
-                 "distill-ce 探针需干/鲜两组示范态均非空(fail-loud)")
+                 "distill-ce probe needs both the dry and fresh demo-state groups non-empty (fail-loud)")
         rng = np.random.default_rng(_E5_PROBE_RNG_SEED)
         dry_idx = rng.choice(dry_rows,
                              size=min(_E5_PROBE_GROUP_CAP, len(dry_rows)),
@@ -9462,7 +9462,7 @@ class DistillCeProbe(BaseCallback):
                                replace=False)
         self.X_dry, self.X_fresh = X[dry_idx], X[fresh_idx]
         if not (np.isfinite(self.X_dry).all() and np.isfinite(self.X_fresh).all()):
-            raise ValueError("distill-ce 探针样本含非有限观测")
+            raise ValueError("distill-ce probe samples contain non-finite observations")
 
     def _on_training_start(self) -> None:
         self.next_at = ((self.num_timesteps // self.every) + 1) * self.every
@@ -9524,7 +9524,7 @@ class DistillCeProbe(BaseCallback):
         if self._last_emit_step == step:
             return
         _require(getattr(self.model, "teacher", None) is not None,
-                 "distill-ce 探针需教师在位(Leashed teacher;fail-loud)")
+                 "distill-ce probe needs the teacher present (Leashed teacher; fail-loud)")
         dry = self._group_metrics(self.X_dry)
         fresh = self._group_metrics(self.X_fresh)
         line = {"probe": "distill-ce", "step": step,
@@ -9557,7 +9557,7 @@ class DistillCeProbe(BaseCallback):
         with open(self.run_dir / "distill_ce_probe.jsonl", "a") as f:
             f.write(json.dumps(line) + "\n")
         self._last_emit_step = step
-        print(f"   [干/鲜蒸馏探针] {line}")
+        print(f"   [dry/fresh distill probe] {line}")
 
     def _on_training_end(self) -> None:
         if self.num_timesteps > 0 and self._last_emit_step != int(self.num_timesteps):
@@ -9565,16 +9565,16 @@ class DistillCeProbe(BaseCallback):
 
 
 class DryWindowMetricsCallback(BaseCallback):
-    """E5② 干窗行为仪表(只记不裁;审计缺口 i 之闭合起点,基线自本案首建)。
+    """E5-2 dry-window behaviour gauge (record-only, no verdict; the starting point for closing audit gap i, with the baseline first built in this case).
 
-    两读数面,均挂现有采样面、零新增训练侧接触:
-    ① 干态动作分布——固定干态示范集(当前协议 BC-v1 PASS 回执绑定,
-       dry-anchor 同款采样面)上学生策略之分布熵与 argmax 直方图(旧口径掩码,
-       mask_mode 注记随行);
-    ② 窗口经济——SB3 rollout infos 流之窗末 option_extra(学习窗,快进窗
-       不经此流)按干/鲜分组聚合工资 W 与宽度(τ̄/depth=dlvl_end);逐 emit
-       区间清零(区间局部均值);n=0 组记 n:0、均值 null 不消失(fail-closed)。
-    输出 run_dir/drywin_metrics.jsonl(台账词 DRYWIN_METRICS 之进程侧原料)。
+    Two reading surfaces, both hung on existing sampling surfaces with zero new training-side contact:
+    (1) dry-state action distribution -- on the fixed dry-state demo set (bound to the current-protocol BC-v1 PASS receipt,
+       the same sampling surface as dry-anchor), the student policy's distribution entropy and argmax histogram (old-definition mask,
+       with a mask_mode note);
+    (2) window economy -- the end-of-window option_extra in the SB3 rollout infos stream (learning windows; fast-forward windows
+       do not pass through this stream), aggregating wage W and width (τ̄/depth=dlvl_end) by dry/fresh group; reset at every emit
+       interval (interval-local means); a group with n=0 records n:0 and mean null rather than vanishing (fail-closed).
+    Output run_dir/drywin_metrics.jsonl (process-side raw material for the ledger entry DRYWIN_METRICS).
     """
 
     _WINDOW_KEYS = ("n", "wage_sum", "tau_sum", "depth_sum")
@@ -9585,7 +9585,7 @@ class DryWindowMetricsCallback(BaseCallback):
 
         self.run_dir = run_dir
         self.every = int(every)
-        _require(self.every > 0, "drywin 仪表间隔必须 > 0")
+        _require(self.every > 0, "drywin gauge interval must be > 0")
         self.next_at = self.every
         self._last_emit_step = None
         expected_sha = _assert_bc_v1_demos_frozen(demos_npz)
@@ -9593,14 +9593,14 @@ class DryWindowMetricsCallback(BaseCallback):
             demos_npz, expected_sha)
         dry, _ = _dry_anchor_partition(X)
         dry_rows = np.flatnonzero(dry)
-        _require(len(dry_rows) > 0, "drywin 仪表需干态示范集非空(fail-loud)")
+        _require(len(dry_rows) > 0, "drywin gauge needs a non-empty dry-state demo set (fail-loud)")
         rng = np.random.default_rng(_E5_PROBE_RNG_SEED)
         idx = rng.choice(dry_rows,
                          size=min(_E5_PROBE_GROUP_CAP, len(dry_rows)),
                          replace=False)
         self.X_dry = X[idx]
         if not np.isfinite(self.X_dry).all():
-            raise ValueError("drywin 仪表干态样本含非有限观测")
+            raise ValueError("drywin gauge dry-state samples contain non-finite observations")
         self._acc = self._fresh_acc()
 
     @classmethod
@@ -9670,29 +9670,29 @@ class DryWindowMetricsCallback(BaseCallback):
             f.write(json.dumps(line) + "\n")
         self._acc = self._fresh_acc()
         self._last_emit_step = step
-        print(f"   [干窗行为] {line}")
+        print(f"   [dry-window behaviour] {line}")
 
     def _on_training_end(self) -> None:
         if self.num_timesteps > 0 and self._last_emit_step != int(self.num_timesteps):
             self._emit(final=True)
 
 
-# E5③ 金丝雀 a12/局 中期仪表(检查点离线序列用;可独立调用的统计函数+记录器,
-# 不挂训练回调——训练路径零接触,RC.11 逐点如实登记,只记不裁)。
+# E5-3 canary a12/episode mid-run gauge (for the offline checkpoint series; a standalone statistics function + recorder,
+# not hung on a training callback -- zero contact with the training path, RC.11 recorded point by point, record-only, no verdict).
 _A12_CANARY_SCHEMA_VERSION = "a12-canary/1"
 _A12_CANARY_STATS_KEYS = frozenset({
     "episodes", "a12_total", "a12_per_episode", "episodes_with_a12", "a12_max"})
 
 
 def a12_canary_stats(a12_counts) -> dict:
-    """E5③ 统计件:逐局 a12 实饮计数序列 → a12/局 读数(驱动器自检查点评测
-    档案逐局提取后调用)。空序列/负数/非整数 fail-loud(零局之 a12/局 无定义,
-    禁静默记 0 冒充实测)。"""
+    """E5-3 statistics: per-episode a12 actual-drink count sequence -> a12/episode reading (called by the driver after extracting
+    per-episode values from the checkpoint evaluation archive). Empty sequences/negatives/non-integers fail loudly (a12/episode over zero episodes is undefined,
+    and silently recording 0 as if measured is forbidden)."""
     counts = list(a12_counts)
-    _require(len(counts) > 0, "a12 金丝雀统计需 ≥1 局(空序列 fail-loud)")
+    _require(len(counts) > 0, "a12 canary statistics need >=1 episode (empty sequence fails loudly)")
     _require(all(_is_plain_int(count) for count in counts),
-             "a12 逐局计数必须全为整数")
-    _require(all(count >= 0 for count in counts), "a12 逐局计数不能为负")
+             "a12 per-episode counts must all be integers")
+    _require(all(count >= 0 for count in counts), "a12 per-episode counts must not be negative")
     total = sum(counts)
     return {"episodes": len(counts),
             "a12_total": int(total),
@@ -9703,19 +9703,19 @@ def a12_canary_stats(a12_counts) -> dict:
 
 def record_a12_canary(out_path: str | pathlib.Path, *, checkpoint_step: int,
                       manager: str, stats: dict, tag: str | None = None) -> dict:
-    """E5③ 记录器:a12 金丝雀读数落 jsonl 一行(台账词 A12_CANARY 之进程侧
-    原料;schema 封闭,键集合精确等断言,fail-loud)。返回落笔行。"""
+    """E5-3 recorder: write one jsonl line with the a12 canary reading (process-side raw material for the ledger entry A12_CANARY;
+    closed schema, exact key-set assertion, fail-loud). Returns the written line."""
     _require(_is_plain_int(checkpoint_step) and checkpoint_step >= 0,
-             "a12 金丝雀 checkpoint_step 必须是非负整数")
+             "a12 canary checkpoint_step must be a non-negative integer")
     _require(isinstance(manager, str) and bool(manager),
-             "a12 金丝雀 manager 必须是非空字符串")
+             "a12 canary manager must be a non-empty string")
     _require(isinstance(stats, dict) and set(stats) == set(_A12_CANARY_STATS_KEYS),
-             f"a12 金丝雀 stats 键集合必须精确等于 {sorted(_A12_CANARY_STATS_KEYS)}")
+             f"a12 canary stats key set must equal exactly {sorted(_A12_CANARY_STATS_KEYS)}")
     line = {"canary": "a12", "schema_version": _A12_CANARY_SCHEMA_VERSION,
             "checkpoint_step": int(checkpoint_step), "manager": manager}
     if tag is not None:
         _require(isinstance(tag, str) and bool(tag),
-                 "a12 金丝雀 tag 给定时必须是非空字符串")
+                 "a12 canary tag, when given, must be a non-empty string")
         line["tag"] = tag
     line.update(stats)
     with open(out_path, "a") as f:
@@ -9724,7 +9724,7 @@ def record_a12_canary(out_path: str | pathlib.Path, *, checkpoint_step: int,
 
 
 class EpisodeJsonlCallback(BaseCallback):
-    """逐局把战绩写进 progress.jsonl;周期性刷新 status.json(供 dashboard 轮询)。"""
+    """Write each episode's results to progress.jsonl; refresh status.json periodically (polled by the dashboard)."""
 
     def __init__(self, run_dir: pathlib.Path, config: dict):
         super().__init__()
@@ -9737,7 +9737,7 @@ class EpisodeJsonlCallback(BaseCallback):
         self._steps0 = 0
 
     def _on_training_start(self) -> None:
-        # v24 修正:sps 按本腿增量计(resume 腿否则虚高几十倍,降档闸门失明)
+        # v24 fix: sps counts this leg's increment (otherwise a resume leg reads tens of times too high and the slowdown gate goes blind)
         self._steps0 = self.num_timesteps
         self.t0 = time.time()
 
@@ -9765,7 +9765,7 @@ class EpisodeJsonlCallback(BaseCallback):
             "target_reached": int(self.num_timesteps) >= int(target_steps),
             "config": self.config,
         }
-        # dashboard 轮询不应读到半截 JSON。
+        # dashboard polling must never read half a JSON file.
         tmp = self.run_dir / "status.tmp.json"
         tmp.write_text(json.dumps(status, ensure_ascii=False))
         tmp.replace(self.run_dir / "status.json")
@@ -9793,13 +9793,13 @@ class EpisodeJsonlCallback(BaseCallback):
         return True
 
     def _on_training_end(self) -> None:
-        # 短训练或早停可在 1s 刷新窗内结束；若不强制落盘，
-        # 驱动会把完整腿误判为少训了数步。
+        # Short runs or early stops can finish inside the 1s refresh window; without a forced flush
+        # the driver would misjudge a complete leg as a few steps short.
         self._write_status(time.time(), training_ended=True)
         self.close()
 
     def close(self) -> None:
-        """异常路径也能幂等关闭逐局日志文件。"""
+        """Close the per-episode log file idempotently, also on error paths."""
         if not self._progress.closed:
             self._progress.close()
 
@@ -9822,20 +9822,20 @@ def _record_run_publication_status(
         "PUBLISHED", "PRODUCTION_CANDIDATE", "DEVELOPMENT_ONLY",
         "TRAINING_ERROR", "PUBLICATION_REFUSED",
     }
-    _require(state in allowed, f"未知发布状态: {state}")
+    _require(state in allowed, f"unknown release state: {state}")
     if state in {"PUBLISHED", "PRODUCTION_CANDIDATE", "DEVELOPMENT_ONLY"}:
         _require(_is_sha256(model_sha256),
-                 f"{state} 状态必须绑定对应模型 SHA-256")
+                 f"{state} state must bind the matching model SHA-256")
     else:
         _require(model_sha256 is None,
-                 f"{state} 状态不得登记已发布模型 SHA-256")
+                 f"{state} state must not register a published model SHA-256")
 
     status_path = run_dir / "status.json"
     try:
         status = json.loads(status_path.read_text()) if status_path.exists() else {}
     except (OSError, json.JSONDecodeError) as exc:
-        raise ValueError(f"无法读取末态 status.json: {exc}") from exc
-    _require(isinstance(status, dict), "status.json 顶层必须是对象")
+        raise ValueError(f"cannot read the final status.json: {exc}") from exc
+    _require(isinstance(status, dict), "status.json top level must be an object")
     status.update({
         "training_ended": True,
         "publication_status": state,
@@ -9860,14 +9860,14 @@ def _record_run_publication_status(
 def _main(resources: _TrainingResources):
     ap = argparse.ArgumentParser()
     ap.add_argument("--total-steps", type=int, default=1_998_848,
-                    help="新增样本数；必须整除 n_steps×num_envs，禁止 SB3 静默超采")
+                    help="number of new samples; must be divisible by n_steps×num_envs, so SB3 cannot silently over-sample")
     ap.add_argument(
         "--artifact-scope",
         choices=tuple(_ARTIFACT_SCOPE_RESULTS),
         default="production",
-        help="development 只生成 model_development.zip/DEVELOPMENT_ONLY，"
-             "candidate 只生成 model_candidate.zip/PRODUCTION_CANDIDATE；"
-             "二者均不得读取 final-heldout 或冒充发布件；production 才生成"
+        help="development only produces model_development.zip/DEVELOPMENT_ONLY, "
+             "candidate only produces model_candidate.zip/PRODUCTION_CANDIDATE; "
+             "neither may read final-heldout or pose as a release artifact; only production produces"
              " model_final.zip/PUBLISHED",
     )
     ap.add_argument("--num-envs", type=int, default=4)
@@ -9875,41 +9875,41 @@ def _main(resources: _TrainingResources):
                     default="disabled",
                     help="Optional single-update evidence capture; fresh resource candidate only; no publication override")
     ap.add_argument("--run-name", default=None)
-    ap.add_argument("--device", default="cpu", help="cpu / mps(小 MLP 通常 cpu 更快)")
+    ap.add_argument("--device", default="cpu", help="cpu / mps (cpu is usually faster for a small MLP)")
     ap.add_argument("--lr", type=float, default=3e-4)
-    ap.add_argument("--n-steps", type=int, default=512, help="每个 env 每轮采样步数")
+    ap.add_argument("--n-steps", type=int, default=512, help="sampling steps per env per round")
     ap.add_argument("--algo", default="ppo", choices=["ppo", "rppo", "mppo"],
-                    help="rppo = RecurrentPPO/LSTM(B 计划:学习记忆替代手写宏状态机);"
-                         "mppo = MaskablePPO(v16:无效动作掩码,env.action_masks)")
+                    help="rppo = RecurrentPPO/LSTM (plan B: learned memory instead of a hand-written macro state machine); "
+                         "mppo = MaskablePPO (v16: invalid-action masking, env.action_masks)")
     ap.add_argument("--arch", default="mlp", choices=["mlp", "attn"],
-                    help="attn = 实体注意力感知(v9:AlphaStar 式 entity encoder + 地图 CNN)")
+                    help="attn = entity-attention perception (v9: AlphaStar-style entity encoder + map CNN)")
     ap.add_argument("--max-steps", type=int, default=1500,
-                    help="episode 步数上限;1500 = 冠军(v6)配方,3000 = v10 长局实验")
+                    help="episode step cap; 1500 = champion (v6) recipe, 3000 = v10 long-episode experiment")
     ap.add_argument("--seed", type=int, default=None,
-                    help="训练种子(SB3 全局种子 + 环境 reset 种子;多进程采样时序仍会引入少量不确定性,只保证近似复现)")
+                    help="training seed (SB3 global seed + environment reset seed; multi-process sampling timing still adds a little nondeterminism, so only approximate reproduction is guaranteed)")
     ap.add_argument("--deep", action="store_true",
-                    help="v17 深水区:下楼奖金层数递进(N→N+1 付 8×N);配合 --max-steps 3000")
+                    help="v17 deep water: descend bonus grows with depth (N->N+1 pays 8×N); use with --max-steps 3000")
     ap.add_argument("--death-ladder", action="store_true",
-                    help="v18:死亡成本随层数定价(死在 N 层罚 8×N,替代恒 -2)")
+                    help="v18: death cost priced by depth (dying on level N costs 8×N, replacing the constant -2)")
     ap.add_argument("--options", action="store_true",
-                    help="v22:策略脑/操作脑(OptionsEnv,Discrete(3);须配 --algo mppo --gamma 1.0)")
+                    help="v22: policy brain/operator brain (OptionsEnv, Discrete(3); requires --algo mppo --gamma 1.0)")
     ap.add_argument("--flat-clock", action="store_true",
-                    help="v22 恶魔臂:296 维平面(停滞钟入观测),配 --bc-init 用")
+                    help="v22 devil arm: 296-dim flat (stall clock in the observation), use with --bc-init")
     ap.add_argument("--worker", action="store_true",
-                    help="v23:FARM 操作脑在位训练(WorkerWindowEnv,Discrete(15) 掩 11/12;"
-                         "须配 --algo mppo --gamma 1.0,见 docs/prereg/PREREG-v23.md)")
+                    help="v23: on-policy training of the FARM operator brain (WorkerWindowEnv, Discrete(15), 11/12 masked; "
+                         "requires --algo mppo --gamma 1.0, see docs/prereg/PREREG-v23.md)")
     ap.add_argument("--manager-npz",
                     default=str(pathlib.Path(__file__).resolve().parent
                                 / "models" / "v22-h-manager" / "policy.npz"),
-                    help="冻结经理权重 npz(export_manager_npz.py 产出)")
+                    help="frozen manager weights npz (produced by export_manager_npz.py)")
     ap.add_argument("--worker-npz", default=None,
-                    help="v25:经理训练时挂 npz 工人(OptionsEnv workers 组装口)")
+                    help="v25: mount an npz worker during manager training (OptionsEnv workers assembly point)")
     ap.add_argument("--worker-zip", default=None,
-                    help="R9:经理训练时挂 SB3 zip 工人(认证发布件,MaskablePPO"
-                         " 冻结前向在子进程内载入;与 --worker-npz 互斥,仅 --options)")
+                    help="R9: mount an SB3 zip worker during manager training (certified release artifact, the MaskablePPO"
+                         " frozen forward is loaded inside subprocesses; mutually exclusive with --worker-npz, --options only)")
     ap.add_argument("--worker-zip-sha256", default=None,
-                    help="R9:--worker-zip 的期望 SHA-256(64 位小写十六进制);"
-                         "给定则载入前先校验 zip 字节身份")
+                    help="R9: expected SHA-256 of --worker-zip (64 lowercase hex digits); "
+                         "if given, the zip byte identity is checked before loading")
     ap.add_argument("--resource-protocol", default="off",
                     choices=("off", "l2-town-v1"),
                     help="Versioned native readiness gate and L1 town service")
@@ -9960,64 +9960,64 @@ def _main(resources: _TrainingResources):
     ap.add_argument("--manager-heuristic", default=None,
                     choices=("level-margin-1", "readiness-v1",
                              "readiness-v2", "readiness-v3"),
-                    help="R12 修正案二:worker 模式脚本教练(榨干或高一级即潜,"
-                         "否则农;仓库正典规则)。与 --manager-npz 互斥")
+                    help="R12 amendment 2: scripted coach in worker mode (dive when drained or one level higher, "
+                         "otherwise farm; the canonical rule in the repo). Mutually exclusive with --manager-npz")
     ap.add_argument("--reward-economy", default="v1",
                     choices=("v1", "v2", "v3", "v3b", "v4"),
-                    help="R10:奖励经济法案。v1=历史常量逐位不变(默认);"
-                         "v2=深度经济(A 下楼奖金上调/B farm 收入深度乘数/"
-                         "C 主席版递减死亡罚金/D 反躺平/E1 装备重定价,"
-                         "记账全额归经理;2026-08-27 批文);v4=R16 修宪"
-                         "经济(语义由 env.py 侧立法)")
-    # R16 修宪:环境侧(DiabloGymEnv)/教室侧(OptionsEnv)新参数——经
-    # make_env 显式直通(worker 路径走 WorkerWindowEnv **env_kwargs →
-    # OptionsEnv → DiabloGymEnv,各自 __init__ 消费具名参数)。默认值
-    # 逐位复现旧法;语义由 A 队/主刀在 env.py/options_env.py 侧实现。
+                    help="R10: reward economy rule. v1 = historical constants unchanged bit for bit (default); "
+                         "v2 = depth economy (A higher descend bonus / B farm income depth multiplier / "
+                         "C decreasing death penalty / D anti-idling / E1 equipment repricing, "
+                         "all booked to the manager; approved 2026-08-27); v4 = R16 amendment "
+                         "economy (semantics defined on the env.py side)")
+    # R16 amendment: new environment-side (DiabloGymEnv)/classroom-side (OptionsEnv) parameters -- passed through
+    # make_env explicitly (the worker path goes WorkerWindowEnv **env_kwargs ->
+    # OptionsEnv -> DiabloGymEnv, each __init__ consuming named parameters). Defaults
+    # reproduce the old rule bit for bit; semantics are implemented in env.py/options_env.py.
     ap.add_argument("--explore-global-fallback", action="store_true",
-                    help="R16(DiabloGymEnv):探索宏全局回退——局部候选耗尽"
-                         "时退到全图未探索目标;默认关=旧法")
+                    help="R16 (DiabloGymEnv): global fallback for the explore macro -- when local candidates run out, "
+                         "fall back to unexplored targets on the whole map; default off = old rule")
     ap.add_argument("--explore-global-hunt", action="store_true",
-                    help="R16 C5 主力(DiabloGymEnv,A 队追加):a10 在 25×25 窗"
-                         "内无可见怪时以越权信息(radius-112 全图 BFS)朝最近"
-                         "存活怪推进;8 种子探针 fallback 375→375 杀几乎不触发,"
-                         "hunt 375→670 杀;默认关=旧法")
+                    help="R16 C5 main lever (DiabloGymEnv, later addition): when no monster is visible in the 25×25 window, a10"
+                         " uses privileged information (radius-112 full-map BFS) to advance toward the nearest"
+                         " living monster; in an 8-seed probe fallback 375->375 kills almost never triggered, "
+                         "hunt 375->670 kills; default off = old rule")
     ap.add_argument("--progress-far-tiles", type=int, default=0,
-                    help="R16(DiabloGymEnv):远格进展判据的格数阈值;"
-                         "0=关闭(旧法)")
+                    help="R16 (DiabloGymEnv): tile-count threshold of the far-cell progress criterion; "
+                         "0 = off (old rule)")
     ap.add_argument("--farm-scene-cap", type=int,
                     default=_FARM_SCENE_CAP_DEFAULT,
-                    help="R16(OptionsEnv):FARM 窗场景步数上限;默认 1800 "
-                         "镜像 options_env.FARM_SCENE_CAP(旧法);仅 "
+                    help="R16 (OptionsEnv): FARM window scene step cap; default 1800 "
+                         "mirrors options_env.FARM_SCENE_CAP (old rule); only "
                          "--worker/--options")
     ap.add_argument("--reset-layer-clock-on-window", action="store_true",
-                    help="R16(OptionsEnv):每个窗口开始时重置层钟;"
-                         "默认关=旧法;仅 --worker/--options")
+                    help="R16 (OptionsEnv): reset the level clock at the start of each window; "
+                         "default off = old rule; --worker/--options only")
     ap.add_argument("--deep-start-curriculum", default=None,
-                    help="R9 课程臂:深层起点 prologue,格式 'p=0.5,target=2,cap=8'"
-                         "(p=每局独立触发概率[局种子派生确定性 RNG],target=目标"
-                         " dungeon_level,cap=代打窗数上限;死亡/截断重抽封顶 8;"
-                         "prologue 在 _SeedDiscipline.reset 内完成,不进 Monitor 账;"
-                         "仅 --options)")
+                    help="R9 curriculum arm: deep-start prologue, format 'p=0.5,target=2,cap=8'"
+                         " (p = per-episode independent trigger probability [deterministic RNG derived from the episode seed], target = target"
+                         " dungeon_level, cap = cap on play-through windows; death/truncation redraws capped at 8; "
+                         "the prologue completes inside _SeedDiscipline.reset and stays out of the Monitor ledger; "
+                         "--options only)")
     ap.add_argument("--deep-start-form", choices=["dive", "exhausted"], default=None,
-                    help="R9 课程 prologue 形态(缺省 dive):dive=循环选 DIVE(被掩则"
-                         " FARM)至 dungeon_level≥target;exhausted=FARM 至榨干∧DIVE"
-                         " 合法即交棒;仅与 --deep-start-curriculum 同用")
+                    help="R9 curriculum prologue form (default dive): dive = repeatedly choose DIVE (FARM if"
+                         " masked) until dungeon_level>=target; exhausted = FARM until drained and DIVE"
+                         " is legal, then hand over; only with --deep-start-curriculum")
     ap.add_argument(
         "--manager-policy-observation-view",
         choices=["raw-v4", "legacy-v3"],
         default="raw-v4",
-        help="Options 经理策略输入契约：新经理默认 raw-v4；仅续训/复现"
-             "旧 M29 时显式选 legacy-v3。WorkerWindow 内的冻结 M29 "
-             "不读取此旗，而由环境固定为 legacy-v3",
+        help="Options manager policy input contract: new managers default to raw-v4; choose legacy-v3 explicitly only when continuing/reproducing"
+             " the old M29. The frozen M29 inside WorkerWindow "
+             "does not read this flag; the environment fixes it to legacy-v3",
     )
     ap.add_argument("--skip-dry", action="store_true",
-                    help="v26 绿洲:干层复访窗脚本代跑,工人只在鲜层窗上课")
+                    help="v26 oasis: dry-level revisit windows are played by the script, the worker only takes lessons in fresh-level windows")
     ap.add_argument("--dry-curriculum-schedule", default=None,
-                    help="E1 ⑤A 干窗课程退火表:逗号分隔段,"
-                         "'linear:<p0>:<p1>:<n>'(n≥2,端点含线性)或 'hold:<p>:<n>';"
-                         "p∈[0,1] 为干层复访窗的脚本代跑概率,按腿相对 rollout 序号"
-                         " (num_timesteps−3497984)/2048 取表,逐 rollout 于采集前推送;"
-                         "与 --skip-dry 互斥,仅 --worker。主表 = "
+                    help="E1 5A dry-window course annealing table: comma-separated segments, "
+                         "'linear:<p0>:<p1>:<n>' (n>=2, endpoints inclusive, linear) or 'hold:<p>:<n>'; "
+                         "p in [0,1] is the probability that the script plays a dry-level revisit window; the table is indexed by the leg-relative rollout index"
+                         " (num_timesteps−3497984)/2048 and pushed per rollout before collection; "
+                         "mutually exclusive with --skip-dry, --worker only. Main table = "
                          "linear:1.0:0.5:147,hold:0.5:97")
     action12_group = ap.add_mutually_exclusive_group()
     action12_group.add_argument(
@@ -10025,57 +10025,57 @@ def _main(resources: _TrainingResources):
         dest="drink_sovereignty",
         action="store_const",
         const=True,
-        help="显式要求环境管理 Worker action12；挂严格 Worker NPZ 时"
-             "必须与其 metadata 一致",
+        help="explicitly ask the environment to manage Worker action12; when a strict Worker NPZ is mounted it "
+             "must match its metadata",
     )
     action12_group.add_argument(
         "--no-drink-sovereignty",
         dest="drink_sovereignty",
         action="store_const",
         const=False,
-        help="关闭工人喝药主权(m[12] 恢复恒掩)；挂严格 Worker NPZ 时"
-             "必须与其 metadata 一致",
+        help="turn off the worker's potion autonomy (m[12] always masked again); when a strict Worker NPZ is mounted it "
+             "must match its metadata",
     )
     ap.set_defaults(drink_sovereignty=None)
     ap.add_argument(
         "--legacy-worker-policy-observation-view",
         action="store_true",
-        help="rev15 普通 Worker actor/value 必选：在环境边界把 feature286/297 "
-             "连同怪物/地图/物品通道重建为完整 protocol-v3；"
-             "A12 custom policy 禁用此旗并接收 legacy-v3-a12-overlay，"
-             "由其内部解码旧网络输入",
+        help="required for rev15 ordinary Worker actor/value: at the environment boundary rebuild feature286/297 "
+             "together with the monster/map/item channels into the full protocol-v3; "
+             "an A12 custom policy disables this flag and receives legacy-v3-a12-overlay, "
+             "decoding the old network input internally",
     )
     ap.add_argument(
         "--worker-policy-observation-view",
         choices=[
             _WORKER_VIEW_LEGACY_V3,
             _WORKER_VIEW_DUAL_V4_ASYMMETRIC,
-            # v5(dual-v5-window-mode-v1)为 R13.2 预备役:环境侧观测已
-            # 实现,但 asymmetric policy 的冻结布局/参数计数尚未扩容,
-            # 故 CLI 不放行,防止 13012/13024 拓扑错配深水炸弹。
+            # v5 (dual-v5-window-mode-v1) is kept in reserve for R13.2: the environment-side observation is
+            # implemented, but the frozen layout/parameter count of the asymmetric policy has not been widened yet,
+            # so the CLI does not allow it, preventing a 13012/13024 topology-mismatch time bomb.
         ],
         default=None,
-        help="显式 Worker 输入契约。dual-v4-asymmetric-v3 保留前298列"
-             "为 V28/KING 根输入，并追加完整 v4/controller/mask 上下文；"
-             "可从旧 Worker 以 fresh critic 一次性点火；后续 checkpoint "
-             "只允许显式环境重启式参数续接",
+        help="explicit Worker input contract. dual-v4-asymmetric-v3 keeps the first 298 columns"
+             " as the V28/KING root input and appends the full v4/controller/mask context; "
+             "it can be launched once from an old Worker with a fresh critic; later checkpoints "
+             "only allow an explicit environment-restart parameter continuation",
     )
     ap.add_argument(
         "--worker-fast-forward-reward-credit",
         choices=["none", "terminal-death-only"],
         default="none",
-        help="rev13 Worker 奖励契约：默认 none 保持旧语义；"
-             "terminal-death-only 只把同一 transition 内冻结经理/脚本"
-             "阶段发生的真实底层死亡分量传给 PPO，不领取其正收益",
+        help="rev13 Worker reward contract: default none keeps the old semantics; "
+             "terminal-death-only passes to PPO only the real underlying death component that happened within the same transition during the frozen manager/script"
+             " phase, without collecting its positive returns",
     )
     ap.add_argument(
         "--worker-learning-window-scope",
         choices=["farm-only", "farm-dive-v1", EARNED_DIVE_SUFFIX_SCOPE],
         default="farm-only",
-        help="R13 教室改革：默认 farm-only 逐位复现旧法(非 FARM 窗脚本"
-             "快进)；farm-dive-v1 使 DIVE 窗成为一等 live 学习窗并移交"
-             "窗内 a11/踏格主权；earned-dive-suffix-v1 由固定R16完成前缀后从首个战备DIVE接手"
-             "(两者须搭配 dual-v4-asymmetric-v3 视图)",
+        help="R13 classroom reform: default farm-only reproduces the old rule bit for bit (non-FARM windows are fast-forwarded"
+             " by the script); farm-dive-v1 makes DIVE windows first-class live learning windows and hands over"
+             " a11/stepping autonomy inside the window; earned-dive-suffix-v1 takes over from the first ready DIVE after a fixed R16 completion prefix"
+             " (both require the dual-v4-asymmetric-v3 view)",
     )
     ap.add_argument("--worker-prefix-model", default=None,
                     help="earned suffix only: exact registered R16 sampled prefix model")
@@ -10091,172 +10091,172 @@ def _main(resources: _TrainingResources):
         "--worker-dive-action11-logit-bonus",
         type=float,
         default=0.0,
-        help="R13 冷启动杠杆(G0 课堂发生性验收未达标时凭预授权启用):"
-             "live DIVE 窗内对合法 a11 施加 on-policy logit prior,"
-             "a14 bonus 同款机制;a11 在旧法域恒被掩,先验自动惰性",
+        help="R13 cold-start lever (enabled under pre-authorisation if G0 classroom-occurrence acceptance falls short): "
+             "applies an on-policy logit prior to legal a11 inside live DIVE windows, "
+             "same mechanism as the a14 bonus; a11 is always masked under the old rules, so the prior is automatically inert",
     )
     ap.add_argument(
         "--worker-potion-action13-logit-bonus",
         type=float,
         default=0.0,
-        help="R16 拾药冷启动先验([0,10],默认 0=关):仅在环境掩码判 a13"
-             "(拾药)合法的行上施加 on-policy logit prior,a11/a14 同款"
-             "机制,梯度照流;掩码恒掩的旧法域先验自动惰性;"
-             "dual-v4 Worker MaskablePPO 专用",
+        help="R16 potion-pickup cold-start prior ([0,10], default 0 = off): applies an on-policy logit prior only on rows where the environment mask marks a13"
+             " (pick up potion) legal, same mechanism as a11/a14"
+             ", gradients flow; under the old always-masked rules the prior is automatically inert; "
+             "dual-v4 Worker MaskablePPO only",
     )
     ap.add_argument(
         "--worker-depth-shaping-unit",
         type=float,
         default=0.0,
-        help="R13.2 甲案(主席批):势函数深度塑形 φ=unit×(dungeon_level−1),"
-             "F=unit×Δd 逐 transition + true-terminal 退款(φ(absorbing)=0);"
-             "只进工人 policy_reward,不进经理账本/考卷,剥薪法条零触碰",
+        help="R13.2 plan A (approved): potential-based depth shaping φ=unit×(dungeon_level−1), "
+             "F=unit×Δd per transition + true-terminal refund (φ(absorbing)=0); "
+             "enters only the worker policy_reward, never the manager ledger/exam; the wage-stripping rule is untouched",
     )
     ap.add_argument(
         "--worker-descend-bonus-fraction",
         type=float,
         default=0.0,
-        help="R14 乙案(主席批「先做乙」):live DIVE 窗内工人保留的下楼"
-             "奖金比例([0,1],默认 0=全额剥薪旧法);修宪试验——检验"
-             "有界返还是否复活速通哥;恒等式 R≡W+实际剥除额 继续成立",
+        help="R14 plan B (design decision, 2026-08-31): share of the descend bonus the worker keeps inside live DIVE windows"
+             " ([0,1], default 0 = the old rule of stripping it all from the wage); an amendment trial -- tests"
+             " whether a bounded refund revives the speedrunning behaviour; the identity R≡W+actual stripped amount still holds",
     )
     ap.add_argument(
         "--worker-descend-escrow-fraction",
         type=float,
         default=0.0,
-        help="R14.2 丁案(主席夜间条例):下楼费托管发放——新最深层下楼"
-             "费×fraction 入托管,下一非死亡收窗 vest 进 policy_reward,"
-             "死亡全额罚没(R11 认证阀门工人侧移植);与乙案互斥",
+        help="R14.2 plan D (fallback design decision): escrowed descend fee -- a descend fee for a new deepest level"
+             " ×fraction goes into escrow and vests into policy_reward at the next non-death window close; "
+             "death forfeits all of it (worker-side transplant of the R11 certified valve); mutually exclusive with plan B",
     )
     ap.add_argument(
         "--worker-descend-escrow-readiness-gate",
         action="store_true",
-        help="R15 修正案二(工资侧执法):托管只为 readiness>=1 的下楼"
-             "计账——掩码法可强制交权,但未达标下楼分文不入;"
-             "仅与 escrow_fraction>0 同用",
+        help="R15 amendment 2 (wage-side enforcement): escrow books only descends with readiness>=1"
+             " -- the mask law can force a handover, but a descend below the bar earns nothing; "
+             "only with escrow_fraction>0",
     )
     ap.add_argument(
         "--worker-descend-escrow-readiness-table",
         choices=("v1", "v2"),
         default="v1",
-        help="R17.0 修正案一(合议庭更正二.1):托管战备门的尺子——v1="
-             "readiness_power_ratio(v0.1 表,旧法逐位默认);v2="
-             "readiness_power_ratio_v2(v0.2 表,与 readiness-v3 教练同尺,"
-             "修复 R16 vested 0/denied 6441 的尺子伪影);仅与"
-             "--worker-descend-escrow-readiness-gate 同用",
+        help="R17.0 amendment 1 (panel correction 2.1): ruler of the escrow readiness gate -- v1="
+             "readiness_power_ratio (v0.1 table, old rule, default bit for bit); v2="
+             "readiness_power_ratio_v2 (v0.2 table, same ruler as the readiness-v3 coach, "
+             "fixes the ruler artefact of R16 vested 0/denied 6441); only with"
+             " --worker-descend-escrow-readiness-gate",
     )
     ap.add_argument(
         "--worker-descend-escrow-power",
         type=float,
         default=1.0,
-        help="R14.3 戊案(主席夜令):托管工钱凸曲线,每层计价 d^power"
-             "([1,3],默认 1.0=线性旧法)。实测风险几何上涨(h≈0.23×"
-             "1.53^(d−1)),凸度须追上风险凸度(拟合建议 1.6);仅与"
-             "escrow_fraction>0 同时生效",
+        help="R14.3 plan E (design decision): convex escrow wage curve, each level priced at d^power"
+             " ([1,3], default 1.0 = the old linear rule). Measured risk grows geometrically (h≈0.23×"
+             "1.53^(d−1)), so convexity must keep up with risk convexity (fit suggests 1.6); only takes effect with"
+             " escrow_fraction>0",
     )
     ap.add_argument(
         "--worker-additional-terminal-death-cost",
         type=float,
         default=0.0,
-        help="rev13 Worker 生存风险成本；仅真实 death 恰好计一次，"
-             "FARM 内/快进终局同构，默认 0 保持旧语义",
+        help="rev13 Worker survival risk cost; counted exactly once per real death, "
+             "same inside FARM and at fast-forward terminals; default 0 keeps the old semantics",
     )
-    # R16 修宪:工资侧新旋钮(WorkerWindowEnv 显式参数,不进 env_kwargs)。
+    # R16 amendment: new wage-side knobs (explicit WorkerWindowEnv parameters, not in env_kwargs).
     ap.add_argument(
         "--worker-hp-loss-price",
         type=float,
         default=0.0,
-        help="R16(WorkerWindowEnv):工人掉血计价(每点 HP 损失的 "
-             "policy_reward 扣减,≥0);默认 0=旧法;仅 --worker",
+        help="R16 (WorkerWindowEnv): worker HP-loss pricing (policy_reward deduction per HP point "
+             "lost, >=0); default 0 = old rule; --worker only",
     )
     ap.add_argument(
         "--worker-potion-pickup-bonus",
         type=float,
         default=0.0,
-        help="R16(WorkerWindowEnv):工人拾药(a13 成功入腰带)奖金(≥0);"
-             "默认 0=旧法;仅 --worker",
+        help="R16 (WorkerWindowEnv): worker potion-pickup bonus (a13 successfully into the belt) (>=0); "
+             "default 0 = old rule; --worker only",
     )
     ap.add_argument(
         "--worker-no-progress-timeout-credit",
         choices=list(_WORKER_NO_PROGRESS_TIMEOUT_CREDITS),
         default=_WORKER_NO_PROGRESS_TIMEOUT_CREDIT_DEFAULT,
-        help="R16(WorkerWindowEnv):停滞超时记账口径。death-equivalent=旧法"
-             "(超时按死亡等价计账);zero=超时不计死亡罚金;仅 --worker",
+        help="R16 (WorkerWindowEnv): stall-timeout booking definition. death-equivalent = old rule"
+             " (a timeout is booked as death-equivalent); zero = no death penalty for timeouts; --worker only",
     )
     ap.add_argument(
         "--worker-action14-logit-bonus",
         type=float,
         default=0.0,
-        help="仅在 exact a14 mask 为真时施加的可训练装备 logit 先验；"
-             "0=关闭，dual-v4 Worker 专用",
+        help="trainable equipment logit prior applied only when the exact a14 mask is true; "
+             "0 = off, dual-v4 Worker only",
     )
     ap.add_argument("--ent-coef", type=float, default=0.02,
-                    help="熵系数(v22 恶魔臂微调用 0.005 防 BC 漂移)")
+                    help="entropy coefficient (v22 devil-arm fine-tuning uses 0.005 to prevent BC drift)")
     ap.add_argument("--bc-init", default=None,
-                    help="行为克隆热启动:载入策略头 state_dict 路径")
+                    help="behaviour-cloning warm start: path of the policy-head state_dict to load")
     ap.add_argument("--init-source", choices=["bc", "checkpoint"], default="bc",
-                    help="--bc-init 的来源类型；checkpoint 必须带 export_manager_sd 清单")
+                    help="source type of --bc-init; checkpoint requires an export_manager_sd manifest")
     ap.add_argument("--freeze-policy-steps", type=int, default=0,
-                    help="BC 热启动后冻结策略头只训价值头的步数")
+                    help="steps after the BC warm start during which the policy head is frozen and only the value head trains")
     ap.add_argument("--gamma", type=float, default=0.99,
-                    help="折扣因子。0.99 半衰期 69 步(1500 步旧章口径);"
-                         "v20 深水区用 0.997;--options(v22)应为 1.0")
+                    help="discount factor. 0.99 has a half-life of 69 steps (definition from the old 1500-step chapter); "
+                         "v20 deep water uses 0.997; --options (v22) should be 1.0")
     ap.add_argument("--distill-beta", type=float, default=0.0,
-                    help="v24 皮筋系数 β(CE 对冻结 BC 教师;0=纯 v23 配方,G-KL-B 证逐位等价)")
+                    help="v24 leash coefficient β (CE to the frozen BC teacher; 0 = pure v23 recipe, G-KL-B proves bit-for-bit equivalence)")
     ap.add_argument(
         "--distill-anneal-actor-rollouts",
         type=int,
         default=0,
-        help="仅计 actor 解冻后的完整 rollout，将 β 从初值线性退火"
-             "至 0；0=恒定，非零必须 >=2",
+        help="counting only complete rollouts after the actor unfreezes, anneal β linearly from its initial value"
+             " to 0; 0 = constant, nonzero must be >=2",
     )
     ap.add_argument("--teacher-sd",
                     default=str(pathlib.Path(__file__).resolve().parent
                                 / "runs" / "bc-worker" / "policy_sd.pt"),
-                    help="v24 教师 state_dict(SB3 键名)")
+                    help="v24 teacher state_dict (SB3 key names)")
     ap.add_argument("--bc-aux-lambda", type=float, default=0.0,
-                    help="E3 ④乙:辅助校准系数 λ_bc(a12 正例 + 合法非 a12"
-                         " hard negatives + 持久根策略 KL；只消费 training"
-                         " episodes；主案冻结常量 0.015625,D7)。"
-                         "须与 --bc-aux-demos 同在方在位;两旗互不强制,"
-                         "任一不在 → 零侵入(不加载不采样不进损失图)")
+                    help="E3 4B: auxiliary calibration coefficient λ_bc (a12 positives + legal non-a12"
+                         " hard negatives + persistent root policy KL; consumes only training"
+                         " episodes; main-case frozen constant 0.015625, D7). "
+                         "Present only together with --bc-aux-demos; the two flags do not force each other, "
+                         "if either is absent -> zero intrusion (no loading, no sampling, not in the loss graph)")
     ap.add_argument("--bc-aux-demos", default=None,
-                    help="E3 ④乙:bc-worker-v2 示范集 demos.npz 路径(v2 schema="
-                         "X/Y/episode_id+逐样本 masks,专用验证器;v1 canonical"
-                         " 路径 runs/bc-worker 分毫不动)")
+                    help="E3 4B: path of the bc-worker-v2 demo set demos.npz (v2 schema="
+                         "X/Y/episode_id + per-sample masks, dedicated validator; the v1 canonical"
+                         " path runs/bc-worker is untouched)")
     ap.add_argument(
         "--bc-aux-graft", action="store_true",
-        help="rev10:把 V28 actor 无损扩为 68 宽，并在策略分布内安装"
-             "逐 eligible 状态初始精确 5%% 的 contextual a12 mixture；"
-             "rollout/log-prob 同源，五个稳定 raw-feature gate 参数由 PPO"
-             "按战斗回报自主裁决；正式路径要求"
+        help="rev10: widen the V28 actor losslessly to 68 and install inside the policy distribution"
+             " a contextual a12 mixture initialised at exactly 5%% per eligible state; "
+             "rollout/log-prob share a source, and the five stable raw-feature gate parameters are decided by PPO"
+             " autonomously from combat return; the formal path requires"
              " --bc-aux-lambda=0")
     ap.add_argument(
         "--bc-aux-liveness-preflight", action="store_true",
-        help="在位 aux 正式腿的必选门：环境点火前，以 resume worker/Adam 的隔离 clone "
-             "运行本腿同数 aux 调用；仅 training episodes 裁安全可学门，"
-             "FAIL 即拒绝训练")
+        help="required gate for a formal leg with aux present: before the environment launches, on an isolated clone of the resume worker/Adam, "
+             "run the same number of aux calls as this leg; only training episodes judge the safe-learnability gate, "
+             "and FAIL refuses training")
     ap.add_argument("--resource-warm-start", default=None,
                     help="Exact zero-step resource initialization manifest; independent of --resume-from")
     ap.add_argument("--resume-from", default=None,
-                    help="v24 分腿续训:上一腿 model_final.zip 路径(禁与 --bc-init/--freeze 同用)")
+                    help="v24 split-leg continuation: path of the previous leg's model_final.zip (must not be used with --bc-init/--freeze)")
     ap.add_argument("--reset-optimizer", action="store_true",
-                    help="continuation 安全旋钮:load 后重建 optimizer，清空全部 "
-                         "Adam step/exp_avg/exp_avg_sq；默认关闭以兼容旧配方。"
-                         "启用时允许显式降低 --lr，policy 权重保持逐位不变")
+                    help="continuation safety knob: rebuild the optimizer after load, clearing all "
+                         "Adam step/exp_avg/exp_avg_sq; off by default for compatibility with old recipes. "
+                         "When on, --lr may be lowered explicitly; policy weights stay unchanged bit for bit")
     ap.add_argument(
         "--reset-worker-critic",
         action="store_true",
-        help="把旧窗口终止目标的 Worker value MLP/head 按 SB3 原生"
-             "正交初始化重建；actor 位级保留。须配 reset-optimizer、"
-             "显式 seed、critic warmup 与分组裁剪",
+        help="rebuild the Worker value MLP/head of the old window-termination target with SB3's native"
+             " orthogonal initialisation; the actor is kept bit for bit. Requires reset-optimizer, "
+             "an explicit seed, critic warmup and grouped clipping",
     )
     ap.add_argument(
         "--critic-warmup-steps",
         type=int,
         default=0,
-        help="fresh critic 的 critic-only 样本数；必须整除完整 rollout "
-             "量子且小于 total-steps。warmup 后 actor 才开始联合更新",
+        help="number of critic-only samples for the fresh critic; must divide the full rollout "
+             "quantum and be less than total-steps. The actor starts joint updates only after warmup",
     )
     ap.add_argument(
         "--gradient-clip-mode",
@@ -10266,55 +10266,55 @@ def _main(resources: _TrainingResources):
             "separate-root-context-critic-v2",
         ],
         default="global",
-        help="主 PPO 梯度裁剪；v2 把 actor root/context 各裁至"
-             " max_grad_norm/sqrt(2)，critic 独立裁至 max_grad_norm，"
-             "仍使用同一个 Adam",
+        help="main PPO gradient clipping; v2 clips actor root/context each to"
+             " max_grad_norm/sqrt(2), and the critic separately to max_grad_norm, "
+             "still using a single Adam",
     )
     ap.add_argument("--target-kl", type=float, default=None,
-                    help="PPO 近似 KL 早停阈值；默认 None 保持旧配方。"
-                         "continuation 建议配合更低 --lr 与 --reset-optimizer "
-                         "显式启用（如 0.02），值须为有限正数")
+                    help="PPO approximate-KL early-stop threshold; default None keeps the old recipe. "
+                         "For continuations, enable it explicitly together with a lower --lr and --reset-optimizer "
+                         "(e.g. 0.02); the value must be a finite positive number")
     ap.add_argument("--calib-probes", default="",
-                    help="v24 G-CAL 探针全局步(逗号分隔,只在腿 1 传 300000,600000)")
+                    help="v24 G-CAL probe global steps (comma-separated; pass 300000,600000 only on leg 1)")
     ap.add_argument("--calib-record-only", action="store_true",
-                    help="v28:G-CAL 只记不裁——tripped 位照写 calib.jsonl,旗不武装"
-                         "(续航起点分歧 41.5%%,20%% 阈值对定居点失义;面板修正)")
+                    help="v28: G-CAL record-only, no verdict -- the tripped bit is still written to calib.jsonl, the flag is not armed"
+                         " (the continuation starts at 41.5%% divergence, where the 20%% threshold is meaningless; review-panel fix)")
     ap.add_argument("--teacher-override", default=None,
-                    help="v30 锚随王走:resume 时以此 sd 覆写 zip 驮带的 teacher_path"
-                         "(经 load kwargs 注入,_setup_model 一次建对;仅 resume 分支有效)")
+                    help="v30 anchor follows the throne: on resume, overwrite the teacher_path carried in the zip with this sd"
+                         " (injected via load kwargs so _setup_model builds it right the first time; only effective on the resume branch)")
     ap.add_argument("--allow-manager-change", action="store_true",
-                    help="显式允许 worker resume 更换 manager_npz；默认契约禁止")
+                    help="explicitly allow a worker resume to change manager_npz; the contract forbids it by default")
     ap.add_argument("--allow-legacy-resume", action="store_true",
-                    help="一次性迁移无 training_contract 的旧 checkpoint；默认拒绝")
+                    help="one-off migration of an old checkpoint without a training_contract; refused by default")
     ap.add_argument(
         "--allow-environment-restart-resume",
         action="store_true",
-        help="明确承认带契约 Worker checkpoint 只续接 policy/Adam/全局计数，"
-             "不会恢复原生世界、wrapper/controller 或完整 RNG/轨迹状态；"
-             "缺此旗时 fail-closed",
+        help="explicitly acknowledge that a Worker checkpoint with a contract only continues policy/Adam/global counters, "
+             "and does not restore the native world, wrapper/controller or full RNG/trajectory state; "
+             "without this flag it fails closed",
     )
-    # B1-E0 仪表旋钮(封闭枚举三枚,PREREG-B1;皆纯读+IO,不触 RNG/梯度/env 流/
-    # 掩码/契约字段;默认值逐字承继原写死常量,缺省行为零漂移,W-G0 实弹钉死)
+    # B1-E0 gauge knobs (a closed enumeration of three, PREREG-B1; all pure read + IO, never touching RNG/gradients/env streams/
+    # masks/contract fields; defaults inherit the formerly hard-coded constants verbatim, zero drift in default behaviour, pinned by live W-G0 runs)
     ap.add_argument("--ckpt-every-steps", type=int, default=250_000,
-                    help="B1-E0:暴露 AtomicRolloutCheckpointCallback.every_steps"
-                         "(全局步;量子对齐与拒发半更新 ckpt 由回调原逻辑保证)")
+                    help="B1-E0: expose AtomicRolloutCheckpointCallback.every_steps"
+                         " (global steps; quantum alignment and refusing half-updated ckpts are guaranteed by the callback's original logic)")
     ap.add_argument("--sentinel-every", type=int, default=500_000,
-                    help="B1-E0:WorkerSentinelCallback 汇总间隔(全局步,纯读+IO)")
+                    help="B1-E0: WorkerSentinelCallback aggregation interval (global steps, pure read + IO)")
     ap.add_argument("--dry-anchor-every", type=int, default=500_000,
-                    help="B1-E0:DryAnchorSentinel 间隔(全局步;干态按 col296 "
-                         "exhausted 或 col297 farm_scene_fraction 饱和判定;"
-                         "自有 rng(26),不碰训练 RNG)")
-    # E5 仪表旋钮(PREREG-内容案 E5,封闭枚举两枚;皆纯读+IO,只记不裁,
-    # 默认 0 = 不在位 = 代码路径与 HEAD 等价,G0-2a 先决;探针示范集钉
-    # BC-v1 demos 字节,E6)
+                    help="B1-E0: DryAnchorSentinel interval (global steps; dry states are judged by col296 "
+                         "exhausted or col297 farm_scene_fraction saturation; "
+                         "own rng(26), never touching the training RNG)")
+    # E5 gauge knobs (PREREG-v33-content-case E5, a closed enumeration of two; all pure read + IO, record-only, no verdict,
+    # default 0 = absent = code path equivalent to HEAD, G0-2a prerequisite; the probe demo set is pinned to
+    # the BC-v1 demos bytes, E6)
     ap.add_argument("--distill-ce-probe-every", type=int, default=0,
-                    help="E5①:干/鲜 distill_ce 分列离线探针间隔(全局步;"
-                         "0=不在位;固定示范态集按 col296 exhausted 或 "
-                         "col297 farm_scene_fraction 饱和分组,专用 rng,"
-                         "零触训练路径;输出 distill_ce_probe.jsonl)")
+                    help="E5-1: dry/fresh split distill_ce offline probe interval (global steps; "
+                         "0 = absent; the fixed demo-state set is grouped by col296 exhausted or "
+                         "col297 farm_scene_fraction saturation, dedicated rng, "
+                         "zero contact with the training path; writes distill_ce_probe.jsonl)")
     ap.add_argument("--drywin-metrics-every", type=int, default=0,
-                    help="E5②:干窗行为仪表间隔(全局步;0=不在位;干态动作"
-                         "分布熵/a 分布 + 干/鲜窗工资与宽度 τ̄/depth,只记 "
+                    help="E5-2: dry-window behaviour gauge interval (global steps; 0 = absent; dry-state action"
+                         " distribution entropy/a distribution + dry/fresh window wage and width τ̄/depth, record-only to "
                          "drywin_metrics.jsonl)")
     invocation_argv = list(sys.argv[1:])
     args = ap.parse_args()
@@ -10347,7 +10347,7 @@ def _main(resources: _TrainingResources):
     if args.options and args.worker_zip:
         protected_inputs.append(args.worker_zip)
     if _bc_aux_active(args):
-        protected_inputs.append(args.bc_aux_demos)   # E3:v2 示范集同受保护
+        protected_inputs.append(args.bc_aux_demos)   # E3: the v2 demo set is protected too
     _prepare_run_dir(run_dir, args.resume_from, protected_inputs)
 
     # Capture all externally supplied brains before any VecEnv/subprocess can
@@ -10363,9 +10363,9 @@ def _main(resources: _TrainingResources):
     worker_zip_sha256 = (_capture_file_sha256(args.worker_zip, "worker_zip")
                          if args.worker_zip else None)
     if args.worker_zip_sha256 is not None:
-        # R9:命令行钉死的 zip 身份先于一切子进程载入核对(fail-loud)。
+        # R9: the zip identity pinned on the command line is checked before any subprocess loads it (fail-loud).
         _require(worker_zip_sha256 == args.worker_zip_sha256,
-                 "--worker-zip-sha256 与实际 zip 字节不一致: "
+                 "--worker-zip-sha256 disagrees with the actual zip bytes: "
                  f"{worker_zip_sha256} != {args.worker_zip_sha256}")
     args.resolved_drink_sovereignty = (
         _resolve_training_drink_sovereignty(
@@ -10384,23 +10384,23 @@ def _main(resources: _TrainingResources):
         teacher_override_sha256 = _validate_export_manifest(
             pathlib.Path(args.teacher_override))["artifact_sha256"]
 
-    # E1 四门之 demos_sha256 捕获门:skip_dry ∨ schedule(谓词在助手内,断言原封)
+    # E1 four gates: demos_sha256 capture gate: skip_dry or schedule (predicate inside the helper, assertion unchanged)
     demos_sha256 = _capture_dry_window_demos_sha256(args)
 
-    # E1 ⑤A:课程表在此解析一次,供 env 初值与课程回调共用(_validate_args 已验)。
+    # E1 5A: the course table is parsed once here, shared by the env initial value and the course callback (already validated by _validate_args).
     dry_curriculum_table = (
         _parse_dry_curriculum_schedule(args.dry_curriculum_schedule)
         if args.dry_curriculum_schedule else None)
 
-    # R9:深层起点课程解析一次(_validate_args 已验);形态缺省 dive。
+    # R9: the deep-start curriculum is parsed once (already validated by _validate_args); the form defaults to dive.
     deep_start_curriculum = (
         _parse_deep_start_curriculum(args.deep_start_curriculum)
         if args.deep_start_curriculum else None)
     deep_start_form = args.deep_start_form or "dive"
 
-    # E3 ④乙:在位方加载 v2 示范集；辅助优化 bank 只能消费固定 training
-    # episodes，原始 held-out episodes 完整留给最终发布硬门。随后在训练切分
-    # 内过 12 类/hard-negative 过滤。不在位 → 零侵入,不加载(图纸字面)。
+    # E3 4B: when present, load the v2 demo set; the auxiliary optimisation bank may only consume the fixed training
+    # episodes, and the original held-out episodes are left whole for the final release hard gate. Then, inside the training split,
+    # the class-12/hard-negative filter runs. Absent -> zero intrusion, nothing loaded (literal design).
     bc_aux_bank = None
     bc_aux_fit = None
     bc_aux_validation = None
@@ -10427,10 +10427,10 @@ def _main(resources: _TrainingResources):
             bc_aux_bank = _build_bc_aux_training_bank(
                 _aux_x, _aux_y, _aux_episode_id, _aux_masks)
     elif args.bc_aux_lambda > 0:
-        # 图纸字面:未给 --bc-aux-demos 即零侵入(两旗互不强制);
-        # 如实打印防误配静默(施工裁量注记)。
-        print("   [④乙] --bc-aux-lambda>0 但未给 --bc-aux-demos:"
-              "辅助通路按 E3 零侵入条款不在位")
+        # Literal design: without --bc-aux-demos there is zero intrusion (the two flags do not force each other);
+        # print it honestly so a misconfiguration is not silent (implementation discretion note).
+        print("   [4b] --bc-aux-lambda>0 but no --bc-aux-demos given: "
+              "the auxiliary pathway is absent under the E3 zero-intrusion clause")
 
     resource_warm_start_payload = None
     resource_warm_start_manifest = None
@@ -10447,12 +10447,12 @@ def _main(resources: _TrainingResources):
         (resume_checkpoint_bytes, resume_data,
          resume_checkpoint_sha256) = _capture_leashed_checkpoint(args.resume_from)
     elif args.resume_from:
-        # v31 经理续训口:通用捕获(字节冻结 + 通用闸 + sha),类保真交由加载段
+        # v31 manager continuation entry: generic capture (byte freeze + generic gate + sha); class fidelity is left to the loading section
         _resume_path = _checkpoint_path(args.resume_from)
         try:
             resume_checkpoint_bytes = _resume_path.read_bytes()
         except OSError as exc:
-            raise ValueError(f"resume 检查点不可读: {_resume_path}: {exc}") from exc
+            raise ValueError(f"resume checkpoint unreadable: {_resume_path}: {exc}") from exc
         resume_data = _validate_checkpoint_bytes(
             resume_checkpoint_bytes, str(_resume_path), False)
         resume_checkpoint_sha256 = hashlib.sha256(
@@ -10472,18 +10472,18 @@ def _main(resources: _TrainingResources):
             "resource_service_recipe": _resource_service_recipe_for(
                 args.resource_protocol, args.resource_purchase_mode, args.resource_service_policy,
                 getattr(args, "worker_time_protocol", "legacy")),
-            # R18-B3: 只为重算 loot 的 expected 配方而带上时钟;它不进
-            # resource 恒等键组(时钟自有 _validate_worker_time_resume_identity)。
+            # R18-B3: the clock is carried only to recompute the expected loot recipe; it does not join the
+            # resource identity key group (the clock has its own _validate_worker_time_resume_identity).
             "worker_time_protocol": (getattr(args, "worker_time_protocol", "legacy")
                                      if getattr(args, "worker_time_protocol", "legacy") != "legacy"
                                      else None),
-            # R18-B: 与 _training_contract 同款 None-off 写法。
+            # R18-B: same None-off form as _training_contract.
             "resource_retreat": (getattr(args, "resource_retreat", "off")
                                  if getattr(args, "resource_retreat", "off") != "off" else None),
-            # R18-B5: 与 _training_contract 同款 None-off 写法。
+            # R18-B5: same None-off form as _training_contract.
             "resource_portal": (getattr(args, "resource_portal", "off")
                                 if getattr(args, "resource_portal", "off") != "off" else None),
-            # R18-B6: 与 _training_contract 同款 None-off 写法。
+            # R18-B6: same None-off form as _training_contract.
             "resource_sweep": (getattr(args, "resource_sweep", "off")
                                if getattr(args, "resource_sweep", "off") != "off" else None),
             "resource_identify": (getattr(args, "resource_identify", "off")
@@ -10512,13 +10512,13 @@ def _main(resources: _TrainingResources):
     bc_aux_preflight = None
     bc_aux_preflight_sha256 = None
     if args.bc_aux_liveness_preflight:
-        # 生产 aux 是 continuation 配方；只有 resume zip 才同时携真实起始
-        # worker 与 Adam moments。没有它就无法在环境点火前做同构 liveness
-        # 沙盒，宁可 fail-closed，不以随机新模型冒充预检。
+        # Production aux is a continuation recipe; only the resume zip carries both the real starting
+        # worker and the Adam moments. Without it an isomorphic liveness sandbox cannot run before the environment launches,
+        # so fail closed rather than let a random new model pose as the preflight.
         _require(resume_checkpoint_bytes is not None
                  and resume_checkpoint_sha256 is not None,
-                 "bc_aux 在位训练须提供 --resume-from，"
-                 "以便环境点火前执行真实 worker/optimizer liveness preflight")
+                 "training with bc_aux present requires --resume-from, "
+                 "so the real worker/optimizer liveness preflight can run before the environment launches")
         (bc_aux_preflight,
          bc_aux_preflight_sha256) = _run_bc_aux_liveness_preflight(
             run_dir=run_dir, args=args,
@@ -10536,7 +10536,7 @@ def _main(resources: _TrainingResources):
     effective_deep = True if hierarchical else args.deep
     effective_death_ladder = True if hierarchical else args.death_ladder
     config = {
-        # 审计回执：精确保留本进程实际交给 argparse 的 argv；不参与训练契约。
+        # Audit receipt: keep exactly the argv this process gave argparse; not part of the training contract.
         "invocation_argv": invocation_argv,
         "total_steps": args.total_steps,
         "num_envs": args.num_envs,
@@ -10549,14 +10549,14 @@ def _main(resources: _TrainingResources):
         "algo": ({"rppo": "RecurrentPPO/MlpLstmPolicy",
                   "mppo": "MaskablePPO/MlpPolicy(gear-key mask)"}.get(args.algo, "PPO/MlpPolicy")
                  + ("+EntityAttention" if args.arch == "attn" else "")),
-        "goal": ("深水区:层数递进奖金,活着往下潜(L3/L4)" if effective_deep
-                 else "地牢 1 层:杀怪拿 XP,找楼梯下 2 层"),
+        "goal": ("deep water: depth-scaled bonus, dive down alive (L3/L4)" if effective_deep
+                 else "dungeon level 1: kill monsters for XP, find the stairs to level 2"),
         "deep": effective_deep,
         "death_ladder": effective_death_ladder,
         "gamma": args.gamma,
-        "options": args.options,      # v22:True 时 Monitor ep_len 口径=策略脑决策数
+        "options": args.options,      # v22: when True, the Monitor ep_len definition = number of policy-brain decisions
         "flat_clock": args.flat_clock,
-        "worker": args.worker,        # v4:True 时 ep=底层整局；FARM 窗边界 nonterminal
+        "worker": args.worker,        # v4: when True, ep = one whole underlying game; FARM window boundaries are nonterminal
         "skip_dry": args.skip_dry,
         "drink_sovereignty":
             _effective_drink_sovereignty(args),   # resolved action12 contract
@@ -10576,8 +10576,8 @@ def _main(resources: _TrainingResources):
             float(args.worker_additional_terminal_death_cost),
         "artifact_scope": args.artifact_scope,
         "diagnostic_rollout": args.diagnostic_rollout,
-        # E4 rev5 双键(契约与 config 回执同构增键;skip_dry 键仍 CLI 旗
-        # 字面值,机制在位状态由此二键承载,rev3 勘正)
+        # E4 rev5 dual keys (keys added isomorphically to the contract and the config receipt; the skip_dry key is still the CLI flag
+        # literal, and whether the mechanism is present is carried by these two keys, rev3 correction)
         "dry_curriculum": _contract_dry_curriculum(args),
         "dry_curriculum_start_index": dry_curriculum_start_index,
         "dry_curriculum_start_probability":
@@ -10601,7 +10601,7 @@ def _main(resources: _TrainingResources):
         "critic_warmup_steps": args.critic_warmup_steps,
         "gradient_clip_mode": args.gradient_clip_mode,
         "freeze_policy_steps": args.freeze_policy_steps,
-        "distill_beta": args.distill_beta,    # v24 皮筋
+        "distill_beta": args.distill_beta,    # v24 leash
         "distill_anneal_actor_rollouts": int(getattr(
             args, "distill_anneal_actor_rollouts", 0)),
         "resume_from": args.resume_from,
@@ -10609,18 +10609,18 @@ def _main(resources: _TrainingResources):
         "resource_warm_start_receipt": (resource_warm_start_manifest["receipt"]
             if resource_warm_start_manifest else None),
         "resume_checkpoint_sha256": resume_checkpoint_sha256,
-        "worker_npz": args.worker_npz,        # v25 换届:经理训练挂 npz 工人
-        # R9 换届:经理训练挂认证 SB3 zip 工人(与 npz 组装口互斥)
+        "worker_npz": args.worker_npz,        # v25 re-election: manager training mounts an npz worker
+        # R9 re-election: manager training mounts a certified SB3 zip worker (mutually exclusive with the npz assembly point)
         "worker_zip": args.worker_zip,
         "worker_zip_sha16": (worker_zip_sha256[:16]
                              if worker_zip_sha256 else None),
-        # R9 课程臂回执(CLI 字面值 + 解析后生效值;不入 training_contract,
-        # 全 CLI 已由 invocation_argv 留痕)
+        # R9 curriculum arm receipt (CLI literals + parsed effective values; not in training_contract,
+        # the full CLI is already recorded by invocation_argv)
         "deep_start_curriculum": args.deep_start_curriculum,
         "deep_start_curriculum_resolved": deep_start_curriculum,
         "deep_start_form": (deep_start_form
                             if deep_start_curriculum else None),
-        # v30 接力:自证据链——本腿在谁治下、拴谁的锚,进程侧留回执(面板 minor)
+        # v30 relay: self-evidence chain -- which incumbent this leg ran under and which anchor it is tied to, receipted on the process side (review-panel minor finding)
         "manager_npz": args.manager_npz,
         "manager_npz_sha16": (manager_npz_sha256[:16]
                                if manager_npz_sha256 else None),
@@ -10633,11 +10633,11 @@ def _main(resources: _TrainingResources):
         "allow_legacy_resume": args.allow_legacy_resume,
         "allow_environment_restart_resume":
             args.allow_environment_restart_resume,
-        # B1-E0 仪表旋钮回执(只读遥测,不入 training_contract,契约零触碰)
+        # B1-E0 gauge knob receipt (read-only telemetry, not in training_contract, contract untouched)
         "ckpt_every_steps": args.ckpt_every_steps,
         "sentinel_every": args.sentinel_every,
         "dry_anchor_every": args.dry_anchor_every,
-        # E5 仪表旋钮回执(同上:只读遥测,不入 training_contract)
+        # E5 gauge knob receipt (as above: read-only telemetry, not in training_contract)
         "distill_ce_probe_every": args.distill_ce_probe_every,
         "drywin_metrics_every": args.drywin_metrics_every,
     }
@@ -10658,7 +10658,7 @@ def _main(resources: _TrainingResources):
         })
     if args.dive_blocker_recovery != "off":
         config["dive_blocker_recovery_recipe"] = dive_blocker_recovery_recipe(args.dive_blocker_recovery)
-    print(f"== DiabloGym PPO 训练 == run={run_name}")
+    print(f"== DiabloGym PPO training == run={run_name}")
     print(f"   {config}")
 
     env_fn = functools.partial(
@@ -10671,9 +10671,9 @@ def _main(resources: _TrainingResources):
         worker=args.worker,
         manager_npz=args.manager_npz,
         worker_npz=args.worker_npz,
-        # SB3 _setup_learn 的 env.reset() 先于 callback training_start。
-        # 首次迁移从表首起跑；native continuation 必须从 checkpoint 对应项
-        # 起跑，不能先按 table[0] 选择窗口再只改观测中的 p。
+        # SB3 _setup_learn's env.reset() happens before callback training_start.
+        # A first migration starts from the table head; a native continuation must start from the entry matching the checkpoint,
+        # and must not pick a window by table[0] first and then only change p in the observation.
         skip_dry=(dry_curriculum_start_probability
                   if dry_curriculum_table else args.skip_dry),
         drink_sovereignty=_effective_drink_sovereignty(args),
@@ -10701,7 +10701,7 @@ def _main(resources: _TrainingResources):
             args, "worker_descend_escrow_readiness_gate", False)),
         worker_descend_escrow_readiness_table=str(getattr(
             args, "worker_descend_escrow_readiness_table", "v1")),
-        # R16 修宪:工资侧显式参数 + 环境/教室侧直通参数(_validate_args 已验)
+        # R16 amendment: explicit wage-side parameters + pass-through environment/classroom parameters (already validated by _validate_args)
         worker_hp_loss_price=float(getattr(
             args, "worker_hp_loss_price", 0.0)),
         worker_potion_pickup_bonus=float(getattr(
@@ -10723,11 +10723,11 @@ def _main(resources: _TrainingResources):
         resource_service_policy=getattr(args, "resource_service_policy", "legacy-v1"),
         resource_readiness_law=getattr(args, "resource_readiness_law", "veto-v1"),
         resource_retreat=getattr(args, "resource_retreat", "off"),
-        # R18-B5 (2026-09-07):传送载具与猎怪作用域直通(默认 off/all 不改变
-        # make_env 的任何构造调用)。
+        # R18-B5 (2026-09-07): portal vehicle and hunt scope pass through (defaults off/all do not change
+        # any make_env construction call).
         resource_portal=getattr(args, "resource_portal", "off"),
-        # R18-B6 (2026-09-07):扫箱/鉴定/武器升级直通(默认 off 不改变
-        # make_env 的任何构造调用)。
+        # R18-B6 (2026-09-07): sweep/identify/weapon upgrade pass through (default off does not change
+        # any make_env construction call).
         resource_sweep=getattr(args, "resource_sweep", "off"),
         resource_identify=getattr(args, "resource_identify", "off"),
         resource_weapon_upgrade=getattr(args, "resource_weapon_upgrade", "off"),
@@ -10752,7 +10752,7 @@ def _main(resources: _TrainingResources):
     common = dict(
         learning_rate=args.lr,
         gamma=args.gamma,
-        ent_coef=args.ent_coef,  # 默认 0.02(首训 0.01 曾面壁塌缩);v22 恶魔臂 0.005
+        ent_coef=args.ent_coef,  # default 0.02 (the first run's 0.01 once collapsed into wall-hugging); v22 devil arm 0.005
         gae_lambda=_ALGORITHM_RECIPE["gae_lambda"],
         n_epochs=_ALGORITHM_RECIPE["n_epochs"],
         clip_range=_ALGORITHM_RECIPE["clip_range"],
@@ -10783,8 +10783,8 @@ def _main(resources: _TrainingResources):
                 args, "worker_dive_action11_logit_bonus", 0.0)) > 0.0:
             policy_kwargs["action11_logit_bonus"] = float(
                 args.worker_dive_action11_logit_bonus)
-        # R16:a13 拾药先验同 a11 先例——非零才进 policy_kwargs(默认路径
-        # 逐位不变)。
+        # R16: the a13 potion-pickup prior follows the a11 precedent -- only nonzero values enter policy_kwargs (the default path
+        # is unchanged bit for bit).
         if float(getattr(
                 args, "worker_potion_action13_logit_bonus", 0.0)) > 0.0:
             policy_kwargs["action13_logit_bonus"] = float(
@@ -10806,10 +10806,10 @@ def _main(resources: _TrainingResources):
             **common,
         )
     elif args.algo == "mppo":
-        # v16:掩码采样与掩码更新都由 MaskablePPO 处理;掩码本身来自
-        # env.action_masks()(经 VecEnv.env_method 收集)。注意这是算法实现的
-        # 整体更换,开牌异常时首要嫌疑人(诚实账本已记)。
-        # v24:worker 路一律走 LeashedMaskablePPO(β=0 时 G-KL-B 证与原版逐位等价)
+        # v16: masked sampling and masked updates are both handled by MaskablePPO; the mask itself comes from
+        # env.action_masks() (collected via VecEnv.env_method). Note this replaces the whole algorithm
+        # implementation, so it is the prime suspect when a run misbehaves (recorded in the honest ledger).
+        # v24: the worker path always uses LeashedMaskablePPO (with β=0, G-KL-B proves bit-for-bit equivalence with the original)
         calib = [int(x) for x in args.calib_probes.split(",") if x.strip()]
         if args.resource_warm_start:
             from migrate_resource_candidate import load_initialization
@@ -10823,11 +10823,11 @@ def _main(resources: _TrainingResources):
             critic_migration_receipt = dict(model._critic_migration_receipt)
             print("   [resource warm-start] preserved parent weights; new-world steps=0, empty Adam")
         elif args.resume_from and args.options:
-            # v31 经理续训口:类保真(存什么类续什么类,M29 系平 MaskablePPO;
-            # 不涉教师/β,无 G-KL-B 义务);封条断言照 v24 原封。
+            # v31 manager continuation entry: class fidelity (continue with whatever class was saved; M29 is a plain MaskablePPO;
+            # no teacher/β involved, no G-KL-B obligation); seal assertions unchanged from v24.
             from sb3_contrib import MaskablePPO
             _require(resume_checkpoint_bytes is not None and resume_data is not None,
-                     "resume checkpoint 捕获状态缺失")
+                     "resume checkpoint capture state missing")
             _load_kw = {"seed": args.seed} if args.seed is not None else {}
             model = MaskablePPO.load(io.BytesIO(resume_checkpoint_bytes), env=vec_env,
                                      device=args.device, **_load_kw)
@@ -10839,8 +10839,8 @@ def _main(resources: _TrainingResources):
                 _require(not callable(saved_lr)
                          and math.isclose(float(saved_lr), args.lr,
                                           rel_tol=0, abs_tol=1e-12),
-                         f"resume 学习率不符: checkpoint={saved_lr}, CLI={args.lr};"
-                         "如需安全降 lr 请显式 --reset-optimizer")
+                         f"resume learning rate mismatch: checkpoint={saved_lr}, CLI={args.lr}; "
+                         "to lower lr safely, pass --reset-optimizer explicitly")
             model.target_kl = args.target_kl
             _require(math.isclose(float(model.ent_coef), args.ent_coef,
                                   rel_tol=0, abs_tol=1e-12)
@@ -10848,44 +10848,44 @@ def _main(resources: _TrainingResources):
                                       rel_tol=0, abs_tol=1e-12)
                      and model.n_steps == args.n_steps
                      and model.batch_size == batch_size,
-                     "PREREG-v24 封-5:resume 腿超参与冻结配方不符")
+                     "PREREG-v24 seal-5: resume leg hyperparameters do not match the frozen recipe")
             _require(model.target_kl == args.target_kl,
-                     "resume target_kl 显式覆盖失败")
+                     "resume target_kl explicit override failed")
             if args.seed is not None:
                 model.set_random_seed(args.seed)
-                model.seed = args.seed  # set_random_seed 不更新持久化属性,防 zip 续写旧 seed
-            print(f"   [v31] options resume @ {model.num_timesteps} 步(经理续训口)")
+                model.seed = args.seed  # set_random_seed does not update the persisted attribute; keeps the zip from carrying the old seed forward
+            print(f"   [v31] options resume @ {model.num_timesteps} steps (manager continuation entry)")
         elif args.resume_from:
             from leashed_ppo import (
                 AsymmetricWorkerMaskableActorCriticPolicy,
                 LeashedMaskablePPO,
             )
             _require(resume_checkpoint_bytes is not None and resume_data is not None,
-                     "resume checkpoint 捕获状态缺失")
+                     "resume checkpoint capture state missing")
             _load_kw = {"seed": args.seed} if args.seed is not None else {}
             if args.distill_beta == 0:
-                # β=0 不消费教师；旧 zip 中的绝对路径不应让可用检查点因搬家而失效。
+                # β=0 consumes no teacher; an absolute path in an old zip must not invalidate a usable checkpoint after a move.
                 _load_kw.update(teacher_path=None, teacher_sha256=None)
             elif args.teacher_override:
-                # v30 锚随王走:kwargs 在 zip data 之后、_setup_model 之前生效,
-                # 教师一次建对(post-load 重建系次优解,面板 major 裁定弃用)
+                # v30 anchor follows the throne: kwargs take effect after the zip data and before _setup_model,
+                # so the teacher is built right the first time (a post-load rebuild is second best; dropped after a major review-panel finding)
                 _load_kw["teacher_path"] = args.teacher_override
                 _load_kw["teacher_sha256"] = teacher_override_sha256
             else:
                 saved_teacher = resume_data.get("teacher_path")
                 _require(isinstance(saved_teacher, str) and saved_teacher,
-                         "β>0 resume 检查点没有 teacher_path；请显式 --teacher-override")
+                         "β>0 resume checkpoint has no teacher_path; pass --teacher-override explicitly")
                 teacher_report = _validate_bc_report(
                     pathlib.Path(saved_teacher), "data_gate")
                 current_teacher_sha = teacher_report["policy_sha256"]
                 saved_teacher_sha = resume_data.get("teacher_sha256")
                 if saved_teacher_sha is not None:
                     _require(saved_teacher_sha == current_teacher_sha,
-                             "检查点教师 SHA 与当前 BC 报告不一致；"
-                             "换锚必须显式 --teacher-override")
+                             "checkpoint teacher SHA disagrees with the current BC report; "
+                             "changing the anchor requires an explicit --teacher-override")
                     _load_kw["teacher_sha256"] = saved_teacher_sha
                 else:
-                    # 旧检查点没有 SHA 字段：只允许以当前 PASS+绑定报告做一次 TOFU 迁移。
+                    # Old checkpoints have no SHA field: only a single TOFU migration with the current PASS + bound report is allowed.
                     _load_kw["teacher_sha256"] = current_teacher_sha
                 _load_kw["teacher_path"] = saved_teacher
             dual_actor_migration = (
@@ -10906,7 +10906,7 @@ def _main(resources: _TrainingResources):
                 source_steps = resume_data.get("num_timesteps")
                 _require(
                     _is_plain_int(source_steps) and source_steps >= 0,
-                    "dual-v4 actor migration 的 source num_timesteps 非法",
+                    "dual-v4 actor migration source num_timesteps invalid",
                 )
                 model = LeashedMaskablePPO(
                     AsymmetricWorkerMaskableActorCriticPolicy,
@@ -10936,7 +10936,7 @@ def _main(resources: _TrainingResources):
                 _require(
                     not dual_actor_migration
                     or dual_resume_kind == _DUAL_ENV_RESTART_CONTINUATION,
-                    "dual-v4 resume 分类未闭合",
+                    "dual-v4 resume classification not closed",
                 )
                 model = LeashedMaskablePPO.load(
                     io.BytesIO(resume_checkpoint_bytes),
@@ -10953,36 +10953,36 @@ def _main(resources: _TrainingResources):
                         isinstance(actor_migration_receipt, dict)
                         and isinstance(critic_migration_receipt, dict),
                         "dual-v4 continuation checkpoint "
-                        "缺完整 migration receipts",
+                        "is missing complete migration receipts",
                     )
                 _a11_bonus = float(getattr(
                     args, "worker_dive_action11_logit_bonus", 0.0))
                 if _a11_bonus > 0.0:
-                    # R13 冷启动杠杆:旧 zip 无此 kwarg,load 后显式双写——
-                    # 活体属性(本腿 forward 生效)与 policy_kwargs(save 时
-                    # 烘焙进产物 zip,考卷载入同先验,杠杆不在考场蒸发)。
+                    # R13 cold-start lever: old zips lack this kwarg, so write it twice explicitly after load --
+                    # the live attribute (effective in this leg's forward) and policy_kwargs (baked into the output
+                    # zip at save, so exam loading uses the same prior and the lever does not evaporate in the exam room).
                     _require(
                         hasattr(model.policy, "action11_logit_bonus"),
-                        "policy 缺 action11_logit_bonus(leashed 版本过旧)")
+                        "policy is missing action11_logit_bonus (leashed version too old)")
                     model.policy.action11_logit_bonus = _a11_bonus
                     model.policy_kwargs["action11_logit_bonus"] = _a11_bonus
                 _a13_bonus = float(getattr(
                     args, "worker_potion_action13_logit_bonus", 0.0))
                 if _a13_bonus > 0.0:
-                    # R16 拾药先验:旧 zip 无此 kwarg,load 后显式双写(a11
-                    # 先例)——活体属性(本腿 forward 生效)与 policy_kwargs
-                    # (save 时烘焙进产物 zip,考卷载入同先验)。
+                    # R16 potion-pickup prior: old zips lack this kwarg, so write it twice explicitly after load (a11
+                    # precedent) -- the live attribute (effective in this leg's forward) and policy_kwargs
+                    # (baked into the output zip at save, so exam loading uses the same prior).
                     _require(
                         hasattr(model.policy, "action13_logit_bonus"),
-                        "policy 缺 action13_logit_bonus(leashed 版本过旧)")
+                        "policy is missing action13_logit_bonus (leashed version too old)")
                     model.policy.action13_logit_bonus = _a13_bonus
                     model.policy_kwargs["action13_logit_bonus"] = _a13_bonus
             if getattr(model, "teacher_path", None) and not args.teacher_override:
                 _validate_bc_report(pathlib.Path(model.teacher_path), "data_gate")
-            # PREREG-v24 D4:β 显式覆盖(load 直写 __dict__ 无校验,不许静默续命);
-            # tb 路径同理(否则腿 2-8 曲线全写进腿 1 目录);旋钮封条断言。
+            # PREREG-v24 D4: explicit β override (load writes __dict__ directly without checks, so no silent carry-over);
+            # same for the tb path (otherwise the curves of legs 2-8 all land in leg 1's directory); knob seal assertions.
             _require(hasattr(model, "distill_beta"),
-                     "LeashedMaskablePPO.load 后缺少 distill_beta 内部属性")
+                     "LeashedMaskablePPO.load left the distill_beta internal attribute missing")
             model.distill_beta = args.distill_beta
             model.distill_anneal_actor_rollouts = int(getattr(
                 args, "distill_anneal_actor_rollouts", 0))
@@ -10997,7 +10997,7 @@ def _main(resources: _TrainingResources):
                 and not isinstance(
                     model._distill_actor_rollouts_completed, bool)
                 and model._distill_actor_rollouts_completed >= 0,
-                "resume checkpoint distill actor rollout 计数非法",
+                "resume checkpoint distill actor rollout count invalid",
             )
             model.calib_probes, model.calib_out = calib, (
                 str(run_dir / "calib.jsonl") if calib else None)
@@ -11012,13 +11012,13 @@ def _main(resources: _TrainingResources):
             if args.reset_worker_critic:
                 _require(
                     resume_data.get("diablogym_contract") is None,
-                    "已有 full-game training_contract 的 Worker "
-                    "禁止重复重建 critic",
+                    "a Worker that already has a full-game training_contract "
+                    "must not rebuild the critic again",
                 )
                 _require(
                     not bc_aux_adapter_existing
                     and not _bc_aux_structural_active(args),
-                    "fresh critic 迁移不得与 A12 circuit 同时改写拓扑",
+                    "fresh critic migration must not rewrite the topology together with the A12 circuit",
                 )
                 source_actor_sha256 = (
                     actor_migration_receipt["source_actor_sha256"]
@@ -11037,14 +11037,14 @@ def _main(resources: _TrainingResources):
                 )
             if args.reset_optimizer:
                 _require(not bc_aux_adapter_existing,
-                         "已有 a12 mixture 不得清空 optimizer")
+                         "an existing a12 mixture must not clear the optimizer")
                 _reset_policy_optimizer(model, args.lr)
             else:
                 _require(not callable(saved_lr)
                          and math.isclose(float(saved_lr), args.lr,
                                           rel_tol=0, abs_tol=1e-12),
-                         f"resume 学习率不符: checkpoint={saved_lr}, CLI={args.lr};"
-                         "如需安全降 lr 请显式 --reset-optimizer")
+                         f"resume learning rate mismatch: checkpoint={saved_lr}, CLI={args.lr}; "
+                         "to lower lr safely, pass --reset-optimizer explicitly")
             if args.reset_worker_critic:
                 migration = model.configure_critic_migration(
                     gradient_clip_mode=args.gradient_clip_mode,
@@ -11072,7 +11072,7 @@ def _main(resources: _TrainingResources):
                         and critic_migration_receipt["actor_sha256"]
                         == actor_migration_receipt[
                             "migrated_actor_sha256"],
-                        "asymmetric actor 与 critic migration 回执未闭合",
+                        "asymmetric actor and critic migration receipts not closed",
                     )
                 model._critic_migration_receipt = dict(
                     critic_migration_receipt)
@@ -11083,17 +11083,17 @@ def _main(resources: _TrainingResources):
                                       rel_tol=0, abs_tol=1e-12)
                      and model.n_steps == args.n_steps
                      and model.batch_size == batch_size,
-                     "PREREG-v24 封-5:resume 腿超参与冻结配方不符")
+                     "PREREG-v24 seal-5: resume leg hyperparameters do not match the frozen recipe")
             _require(model.target_kl == args.target_kl,
-                     "resume target_kl 显式覆盖失败")
+                     "resume target_kl explicit override failed")
             if args.teacher_override:
-                # v30 身份链断言(面板 blocker:闸过的文件与训练吃进的文件必须同一)
-                _require(model.teacher_path == args.teacher_override, "教师覆写未生效")
+                # v30 identity-chain assertion (review-panel blocker: the file that passed the gate and the file training consumed must be the same)
+                _require(model.teacher_path == args.teacher_override, "teacher override did not take effect")
                 _require(model.teacher[0].in_features == 298
                          and model.teacher[-1].out_features == 15,
-                         "自锚教师形状异常(须 298→15 工人网)")
+                         "self-anchored teacher shape invalid (must be the 298->15 worker net)")
             if args.distill_beta > 0:
-                _require(model.teacher is not None, "β>0 但教师未随 teacher_path 重建")
+                _require(model.teacher is not None, "β>0 but the teacher was not rebuilt from teacher_path")
             if _bc_aux_structural_active(args):
                 if bc_aux_adapter_existing:
                     columns = list(
@@ -11125,11 +11125,11 @@ def _main(resources: _TrainingResources):
                         "candidate_policy_head_sha256"]
                     == bc_aux_preflight["policy"][
                         "grafted_head_sha256"],
-                    "正式 a12 circuit 与隔离 preflight 权重不逐位相同")
+                    "formal a12 circuit is not bit-identical to the isolated preflight weights")
             if args.seed is not None:
                 model.set_random_seed(args.seed)
-                model.seed = args.seed  # set_random_seed 不会更新持久化属性，防 zip 继续写腿1 seed
-            print(f"   [v24] resume @ {model.num_timesteps} 步,β={model.distill_beta}")
+                model.seed = args.seed  # set_random_seed does not update the persisted attribute; keeps the zip from writing leg 1's seed
+            print(f"   [v24] resume @ {model.num_timesteps} steps, β={model.distill_beta}")
         elif args.worker:
             from leashed_ppo import LeashedMaskablePPO
             model = LeashedMaskablePPO(
@@ -11160,7 +11160,7 @@ def _main(resources: _TrainingResources):
         _require(
             resume_data is not None
             and resume_checkpoint_sha256 is not None,
-            "dual Worker resume lineage 缺 parent payload identity",
+            "dual Worker resume lineage is missing the parent payload identity",
         )
         resume_lineage = _build_resume_lineage(
             resume_data,
@@ -11178,7 +11178,7 @@ def _main(resources: _TrainingResources):
         actual_clip_mode = getattr(model, "gradient_clip_mode", "global")
         _require(
             actual_clip_mode == args.gradient_clip_mode,
-            "CLI gradient clip mode 与实际 Leashed 模型不一致:"
+            "CLI gradient clip mode disagrees with the actual Leashed model: "
             f"{args.gradient_clip_mode!r} != {actual_clip_mode!r}",
         )
     config["critic_migration_receipt"] = (
@@ -11188,12 +11188,12 @@ def _main(resources: _TrainingResources):
         dict(actor_migration_receipt)
         if actor_migration_receipt is not None else None)
 
-    # E3 ④乙:这里只显式覆盖 λ；示范 bank 必须等 BC init/continuation 全部
-    # 落位后再挂，才能把“真实训练起点策略”冻结为锚。旧顺序在 fresh
-    # --bc-init 时错误地锚住随机初始化。
+    # E3 4B: only λ is overridden explicitly here; the demo bank must be mounted after BC init/continuation
+    # are fully in place, so that "the real training starting policy" is frozen as the anchor. The old order wrongly anchored
+    # the random initialisation under a fresh --bc-init.
     if bc_aux_bank is not None:
         _require(hasattr(model, "bc_aux_lambda"),
-                 "④乙辅助通路要求 LeashedMaskablePPO(--worker --algo mppo)")
+                 "the 4B auxiliary pathway requires LeashedMaskablePPO (--worker --algo mppo)")
         model.bc_aux_lambda = args.bc_aux_lambda
     elif hasattr(model, "bc_aux_lambda"):
         model.bc_aux_lambda = 0.0
@@ -11207,7 +11207,7 @@ def _main(resources: _TrainingResources):
         worker_zip_sha256=worker_zip_sha256,
         demos_sha256=demos_sha256,
         implementation_sha256=implementation_sha256,
-        bc_aux_demos_sha256=bc_aux_demos_sha256,   # E4 rev5:④乙在位载荷
+        bc_aux_demos_sha256=bc_aux_demos_sha256,   # E4 rev5: 4B presence payload
     )
     if args.resume_from:
         _validate_resume_contract(
@@ -11228,7 +11228,7 @@ def _main(resources: _TrainingResources):
     config["training_contract"] = current_contract
     config["teacher_sha256"] = getattr(model, "teacher_sha256", None)
 
-    # status 的 total_steps 是 SB3 全局步；target_steps 也必须同口径。
+    # status total_steps is the SB3 global step; target_steps must use the same definition.
     config["start_steps"] = int(model.num_timesteps)
     target_global_steps = int(model.num_timesteps + args.total_steps)
     config["target_global_steps"] = target_global_steps
@@ -11256,8 +11256,8 @@ def _main(resources: _TrainingResources):
                 "expanded-trainable-a12-contextual-mixture",
             "calib_record_only": bool(args.calib_record_only),
         }
-        # 在任何真实 rollout 前先验证完整谱系；最终发布时再以实际终点
-        # 复验一次，防训练路径中途篡改字段。
+        # Validate the full lineage before any real rollout; at final release validate once more with the actual end point,
+        # so the training path cannot tamper with fields midway.
         _validate_publication_provenance(
             publication_provenance,
             demos_sha256=bc_aux_demos_sha256,
@@ -11265,17 +11265,17 @@ def _main(resources: _TrainingResources):
         config["publication_provenance"] = publication_provenance
 
     if args.bc_init:
-        # v22 恶魔臂:BC 热启动策略头;冻结期只训价值头(经典雷:新价值头的
-        # 首次 PPO 更新会摧毁 BC 策略,先冻结抗住)
+        # v22 devil arm: BC warm-start policy head; during the freeze only the value head trains (classic pitfall: the first PPO update
+        # of a new value head destroys the BC policy, so freeze first to withstand it)
         gate = ("data_gate" if args.worker else "hypothesis" if args.options
                 else "memoryless_hypothesis")
         sd = _load_bc_state_dict(args.bc_init, model.policy, gate, args.init_source)
         missing, unexpected = model.policy.load_state_dict(
             sd, strict=args.init_source == "checkpoint")
-        _require(not unexpected, f"BC state_dict 含未知键: {unexpected}")
+        _require(not unexpected, f"BC state_dict contains unknown keys: {unexpected}")
         _require(all(k not in missing for k in _POLICY_HEAD_KEYS),
-                 f"BC 策略头未完整加载: {missing}")
-        print(f"   BC 热启动:loaded(missing={len(missing)}, unexpected={len(unexpected)})")
+                 f"BC policy head not fully loaded: {missing}")
+        print(f"   BC warm start: loaded (missing={len(missing)}, unexpected={len(unexpected)})")
         if args.freeze_policy_steps > 0:
             from stable_baselines3.common.callbacks import BaseCallback
 
@@ -11283,8 +11283,8 @@ def _main(resources: _TrainingResources):
                          + list(model.policy.action_net.parameters()))
             if getattr(model.policy, "share_features_extractor", False):
                 pi_params += list(model.policy.features_extractor.parameters())
-            # 共享特征提取器若仍被 value loss 更新，即使头部 requires_grad=False，
-            # BC 策略输出也会在“冻结”期漂移。去重后一并冻结。
+            # If the shared feature extractor were still updated by the value loss, the BC policy output would drift during the "freeze"
+            # even with requires_grad=False on the head. Deduplicate and freeze them together.
             pi_params = list({id(p): p for p in pi_params}.values())
             for p in pi_params:
                 p.requires_grad = False
@@ -11295,15 +11295,15 @@ def _main(resources: _TrainingResources):
                     self.when, self.done_ = when, False
 
                 def _on_rollout_start(self):
-                    # PPO 在 rollout 收完后才统一更新。若在跨过阈值的
-                    # _on_step 中解冻，该整批(包含阈值前样本)都会更新
-                    # 策略。只在下一个 rollout 起点解冻，硬保证前
-                    # freeze_policy_steps 个样本只训价值头。
+                    # PPO updates only after the rollout is collected. Unfreezing in the _on_step that crosses the
+                    # threshold would let the whole batch (including pre-threshold samples) update the
+                    # policy. Unfreezing only at the start of the next rollout guarantees that the first
+                    # freeze_policy_steps samples train only the value head.
                     if not self.done_ and self.num_timesteps >= self.when:
                         for p in pi_params:
                             p.requires_grad = True
                         self.done_ = True
-                        print(f"   策略头解冻 @ {self.num_timesteps}")
+                        print(f"   policy head unfrozen @ {self.num_timesteps}")
 
                 def _on_step(self):
                     return True
@@ -11318,15 +11318,15 @@ def _main(resources: _TrainingResources):
     if bc_aux_bank is not None:
         from leashed_ppo import derive_bc_aux_rng
 
-        # 此时 resume/BC-init 均已完成。首次 aux 腿建立 persistent root；
-        # continuation 从 checkpoint 复用同一根锚。必须先恢复/建立根锚再 mount，
-        # 让负例 KL 与 rollout monitor 都不发生逐腿重锚。原始 held-out
-        # X/Y/episode/masks 另存内存供最终发布门。
+        # By now resume/BC-init are both done. The first aux leg establishes the persistent root;
+        # continuations reuse the same root anchor from the checkpoint. The root anchor must be restored/established before mount,
+        # so neither the negative KL nor the rollout monitor re-anchors per leg. The original held-out
+        # X/Y/episode/masks are kept in memory separately for the final release gate.
         bc_aux_anchor_sd = _persistent_bc_aux_root_anchor(model)
         if _bc_aux_structural_active(args):
             _require(bc_aux_fit is not None
                      and bc_aux_validation is not None,
-                     "a12 circuit fit/validation 未构造")
+                     "a12 circuit fit/validation not constructed")
             model.mount_bc_aux_circuit_fit(*bc_aux_fit)
             model.mount_bc_aux_circuit_validation(
                 *bc_aux_validation)
@@ -11334,21 +11334,21 @@ def _main(resources: _TrainingResources):
             _require(
                 initial_monitor is not None
                 and not initial_monitor["tripped"],
-                "a12 circuit 点火前在线门未 PASS")
+                "a12 circuit pre-launch online gate did not PASS")
         else:
             model.mount_bc_aux_demos(
                 *bc_aux_bank, rng=derive_bc_aux_rng(args.seed))
         model.bc_aux_monitor_out = str(run_dir / "bc_aux_monitor.jsonl")
-        # 第一个真实 rollout 就读取 PPO/value/entropy/KING/aux 的联合梯度
-        # 与固定 bank；不能等到 +49,152 才发现方向冲突。这个探针只窥视
-        # 示范流，rev5 的真实独立 aux step 仍在 epochs 后严格消费一批。
+        # The very first real rollout reads the joint PPO/value/entropy/KING/aux gradient
+        # and the fixed bank; we cannot wait until +49,152 to discover a directional conflict. This probe only peeks at
+        # the demo stream; the real standalone rev5 aux step still consumes exactly one batch after the epochs.
         first_real_probe = int(model.num_timesteps) + int(
             model.n_steps * model.get_env().num_envs)
         model.calib_probes = sorted(set(
             list(getattr(model, "calib_probes", ())) + [first_real_probe]))
         model.calib_out = str(run_dir / "calib.jsonl")
         config["calib_probes_effective"] = list(model.calib_probes)
-        print(f"   [④乙] 辅助示范通路在位: λ_bc={model.bc_aux_lambda},"
+        print(f"   [4b] auxiliary demo pathway present: λ_bc={model.bc_aux_lambda},"
               f" bank n={len(bc_aux_bank[1])}"
               f"(a12={int((bc_aux_bank[1] == 12).sum())},"
               f" hard-neg={int((bc_aux_bank[1] != 12).sum())}),"
@@ -11357,14 +11357,14 @@ def _main(resources: _TrainingResources):
               f" demos_sha16={bc_aux_demos_sha256[:16]},"
               " anchor=first-aux-root(persistent across continuations))")
 
-    # 每 ~25 万个已完成更新的样本存一次原子检查点；499,712 步腿至少有中点保护。
-    # B1-E0:三处间隔改由 CLI 旋钮供值(默认逐字承旧常量,缺省行为零漂移)。
+    # Save an atomic checkpoint every ~250k samples with completed updates; a 499,712-step leg is protected at least at its midpoint.
+    # B1-E0: the three intervals now come from CLI knobs (defaults inherit the old constants verbatim, zero drift in default behaviour).
     ckpt = AtomicRolloutCheckpointCallback(
         run_dir, every_steps=args.ckpt_every_steps,
         implementation_sha256=implementation_sha256)
     sentinel_cb = (WorkerSentinelCallback(run_dir, every=args.sentinel_every)
                    if args.worker else None)
-    # R13:课堂审计仪表(纯读+IO,独立于冻结哨兵发射面),仅旗开挂载
+    # R13: classroom audit gauge (pure read + IO, independent of the frozen sentinel emission surface), mounted only with the flag on
     r13_dive_audit_cb = (
         R13DiveAuditCallback(run_dir, every=args.sentinel_every)
         if (args.worker
@@ -11373,16 +11373,16 @@ def _main(resources: _TrainingResources):
         else None)
     prefix_audit_cb = (PrefixAuditCallback(run_dir)
                        if worker_prefix_identity is not None else None)
-    # E1 四门之 dry_cb 挂载门:worker ∧ (skip_dry ∨ schedule)(谓词在助手内)
+    # E1 four gates: dry_cb mount gate: worker and (skip_dry or schedule) (predicate inside the helper)
     dry_cb = (DryAnchorSentinel(run_dir, str(pathlib.Path(__file__).resolve().parent
                                              / "runs" / "bc-worker" / "demos.npz"),
                                   demos_sha256, every=args.dry_anchor_every)
               if _mount_dry_anchor_sentinel(args) else None)
-    # E1 ⑤A 课程回调(schedule 仅 --worker,_validate_args 已断言)
+    # E1 5A course callback (schedule is --worker only, already asserted by _validate_args)
     curriculum_cb = (DryCurriculumCallback(dry_curriculum_table, run_dir=run_dir)
                      if (args.worker and dry_curriculum_table) else None)
-    # E5 仪表挂载(只记不裁;旋钮 0 = 不挂载 = 回调列与 HEAD 等价,G0-2a
-    # 先决;探针示范集一律钉 canonical BC-v1 demos 字节,E6 构造内断言)
+    # E5 gauge mounting (record-only, no verdict; knob 0 = not mounted = callback list equivalent to HEAD, G0-2a
+    # prerequisite; the probe demo set is always pinned to the canonical BC-v1 demos bytes, asserted at construction, E6)
     _probe_demos = str(pathlib.Path(__file__).resolve().parent
                        / "runs" / "bc-worker" / "demos.npz")
     distill_ce_cb = (DistillCeProbe(run_dir, _probe_demos,
@@ -11391,12 +11391,12 @@ def _main(resources: _TrainingResources):
                      else None)
     if distill_ce_cb is not None:
         _require(getattr(model, "teacher", None) is not None,
-                 "--distill-ce-probe-every>0 需 Leashed 教师在位"
-                 "(β>0 或 teacher_path;fail-loud 于点火前)")
+                 "--distill-ce-probe-every>0 requires a Leashed teacher present"
+                 " (β>0 or teacher_path; fails loudly before launch)")
     drywin_cb = (DryWindowMetricsCallback(run_dir, _probe_demos,
                                           every=args.drywin_metrics_every)
                  if (args.worker and args.drywin_metrics_every > 0) else None)
-    # 让唯一持有文件句柄的 callback 最后构造；其后的 setup 不再有可失败 I/O。
+    # Construct the only callback that holds a file handle last; the setup after it has no I/O that can fail.
     callback = EpisodeJsonlCallback(run_dir, config)
     learn_returned = False
     learn_completed = False
@@ -11405,26 +11405,26 @@ def _main(resources: _TrainingResources):
     try:
         first_update_cb = _first_update_diagnostic_callback(
             args, run_dir, implementation_sha256)
-        # E1 回调序钉死:课程回调居列首——rollout-start 先登记下一边界的
-        # per-env 倒计时，rollout-tail 再先于其他回调核验环境内原子提交。
+        # E1 callback order pinned: the course callback is first in the list -- rollout-start first registers the next boundary's
+        # per-env countdown, and rollout-tail verifies the in-environment atomic commit before the other callbacks.
         cbs = (([curriculum_cb] if curriculum_cb else [])
                + [callback, ckpt] + ([unfreeze_cb] if unfreeze_cb else [])
                + ([sentinel_cb] if sentinel_cb else [])
                + ([r13_dive_audit_cb] if r13_dive_audit_cb else [])
                + ([prefix_audit_cb] if prefix_audit_cb else [])
                + ([dry_cb] if dry_cb else [])
-               # E5 仪表居列尾(纯读+IO;不在位时本两项为空,列与 HEAD 等价)
+               # E5 gauges at the end of the list (pure read + IO; when absent these two entries are empty and the list equals HEAD)
                + ([distill_ce_cb] if distill_ce_cb else [])
                + ([drywin_cb] if drywin_cb else [])
                + ([first_update_cb] if first_update_cb else []))
-        # v24:resume 腿 reset_num_timesteps=False(False 语义 = 再训 N 步,全局步连续
-        # → ckpt 文件名全局唯一、β 日程与预算记账不断;审计 BLOCKER 2)
+        # v24: resume legs use reset_num_timesteps=False (False means train N more steps with continuous global steps
+        # -> ckpt file names globally unique, β schedule and budget accounting unbroken; audit BLOCKER 2)
         model.learn(total_timesteps=args.total_steps, callback=cbs,
                     reset_num_timesteps=not args.resume_from)
         learn_returned = True
-        # collect_rollouts 被 callback 中途终止时 learn() 也会正常返回；此外
-        # G-CAL 可在 full buffer 的首个 minibatch 拒绝整个更新。两者都不能
-        # 把 num_timesteps 已记、梯度未吃的权重发布成正式终点。
+        # learn() also returns normally when collect_rollouts is cut short by a callback; in addition
+        # G-CAL can refuse the whole update at the first minibatch of a full buffer. Neither may
+        # publish weights with num_timesteps recorded but gradients not consumed as the formal end point.
         try:
             completion_report = _require_exact_training_completion(
                 model, target_global_steps)
@@ -11440,7 +11440,7 @@ def _main(resources: _TrainingResources):
                         "status": "FAILED",
                         "error": f"{type(diagnostic_exc).__name__}: {diagnostic_exc}",
                     }
-                    print(f"诊断工件保存失败: {diagnostic_exc}")
+                    print(f"diagnostic artifact save failed: {diagnostic_exc}")
             raise
         learn_completed = True
     finally:
@@ -11456,18 +11456,18 @@ def _main(resources: _TrainingResources):
             try:
                 _require(
                     int(model.num_timesteps) == target_global_steps,
-                    "最终发布步数不等于冻结目标:"
+                    "final release step count does not equal the frozen target: "
                     f"{int(model.num_timesteps)} != {target_global_steps}")
                 final_implementation = _implementation_bundle_sha256()
                 _require(final_implementation == implementation_sha256,
-                         "训练期间实现/引擎/游戏内容发生漂移，"
-                         f"拒绝生成 {output_name}: "
+                         "implementation/engine/game content drifted during training; "
+                         f"refusing to produce {output_name}: "
                          f"{final_implementation} != {implementation_sha256}")
                 if args.artifact_scope != "production":
                     _require(
                         bc_aux_bank is None,
-                        "非 production 工件不得进入 bc_aux "
-                        "final-heldout 发布门",
+                        "non-production artifacts must not enter the bc_aux "
+                        "final-heldout release gate",
                     )
                     _atomic_save_model(model, output_path)
                 elif bc_aux_bank is not None:
@@ -11475,7 +11475,7 @@ def _main(resources: _TrainingResources):
                         all(value is not None for value in (
                             _aux_x, _aux_y, _aux_episode_id, _aux_masks,
                             bc_aux_demos_sha256, bc_aux_anchor_sd)),
-                        "bc_aux 最终发布门证据/起点锚缺失")
+                        "bc_aux final release gate evidence/starting anchor missing")
                     _publish_model_final_with_bc_aux_gate(
                         model, run_dir / "model_final.zip",
                         x=_aux_x, y=_aux_y,
@@ -11487,23 +11487,23 @@ def _main(resources: _TrainingResources):
                     _atomic_save_model(model, output_path)
                 model_saved = True
             except Exception as exc:
-                # close 必须执行；原实现在 save 失败时会直接跳过子进程清理。
+                # close must run; the original implementation skipped subprocess cleanup when save failed.
                 save_error = exc
-                print(f"模型保存失败: {exc}")
+                print(f"model save failed: {exc}")
         else:
-            # 异常或半 rollout 早停时，num_timesteps 已可能包含尚未更新的样本；
-            # 这类权重不能冒充正式终点。最近的 rollout-boundary ckpt 仍可恢复。
+            # After an error or a half-rollout early stop, num_timesteps may already include samples not yet updated;
+            # such weights must not pose as the formal end point. The latest rollout-boundary ckpt can still be restored.
             if (completion_report is not None
                     and completion_report["checks"]["rollout_boundary"]
                     and completion_report["checks"]["exact_target"]):
-                print(f"训练更新已完成，发布验收未通过，拒绝生成 {output_name}: "
+                print(f"training updates completed, release acceptance failed; refusing to produce {output_name}: "
                       f"{completion_report['failed_checks']}")
             else:
-                print(f"训练未停在完整更新边界，拒绝生成 {output_name}")
+                print(f"training did not stop on a complete update boundary; refusing to produce {output_name}")
         if model_saved:
             publication_state = successful_publication_state
             publication_sha256 = _capture_file_sha256(
-                output_path, f"已冻结 {output_name}")
+                output_path, f"frozen {output_name}")
             publication_detail = None
         elif active_error:
             publication_state = "TRAINING_ERROR"
@@ -11527,21 +11527,21 @@ def _main(resources: _TrainingResources):
                 diagnostic_artifact=diagnostic_artifact,
                 learn_returned=learn_returned)
         except Exception as status_exc:
-            # 先保留异常并完成资源回收。若训练/保存本身没有更早异常，
-            # terminal status 是正式工件事务的一部分，失败必须令子进程
-            # 非零退出；否则 R7 会看到已生成模型却永远缺完成回执。
+            # Keep the error first and finish reclaiming resources. If training/saving itself had no earlier error,
+            # the terminal status is part of the formal artifact transaction, and a failure must make the subprocess
+            # exit non-zero; otherwise R7 would see a produced model that never gets its completion receipt.
             status_error = status_exc
-            print(f"最终状态写入失败: {status_exc}")
-        # 工作进程崩溃时 close 可能在断管上阻塞；资源所有者
-        # 统一做超时清理，并恢复宿主的 SIGALRM handler/timer。
+            print(f"final status write failed: {status_exc}")
+        # When a worker process crashes, close may block on a broken pipe; the resource owner
+        # does the timeout cleanup centrally and restores the host's SIGALRM handler/timer.
         resources.close()
         if model_saved:
-            print(f"模型已保存: {output_path}")
+            print(f"model saved: {output_path}")
         if save_error is not None and not active_error:
             raise save_error
         if status_error is not None and not active_error:
             raise RuntimeError(
-                "模型/训练终态无法事务化写入 status.json"
+                "model/training terminal state could not be written transactionally to status.json"
             ) from status_error
 
 

@@ -1,18 +1,18 @@
-"""内容案 E4/E5/E6/E8 基建面之自包含快速回归(PREREG-内容案-课⑤x④乙 对应件;
-不启动引擎/训练产物,循 tests/test_b1_infra.py 与 tests/test_content_case.py 风格)。
+"""Self-contained fast regression for the content-case E4/E5/E6/E8 infrastructure surface (counterpart of PREREG-v33-content-case;
+no engine is started and no training output is needed; follows the style of tests/test_b1_infra.py and tests/test_content_case.py).
 
-覆盖:
-- E4 契约 4→5:修订号单一真源、三腿形制(L-base 双键 disabled / L-cur
-  dry_curriculum 载荷 / L-full 双键载荷)、skip_dry 键仍 CLI 旗字面值、
-  契约与 config 回执同构增键、旧 rev4 检查点非 legacy 续训拒绝路径(R8);
-- E5 三仪表:① 干/鲜 distill_ce 分列离线探针(schema/公式面/零触训练路径)、
-  ② 干窗行为仪表(干态熵与 a 分布/干鲜窗工资与宽度聚合/区间清零/fail-closed)、
-  ③ 金丝雀 a12/局 统计函数+记录器(封闭 schema,fail-loud);
-  三仪表不在位 = 代码路径与 HEAD 等价(旋钮默认 0/挂载守卫/RNG 与参数零触);
-- E6 探针集钉死:BC-v1 demos 字节 ≡ 冻结常量(真件必过、伪字节必炸、
-  两处加载门接线、探针构造内断言);
-- E8 launcher:bash -n 语法 + PID 簿记修复面关键逻辑(B1 判决 OPS 段
-  "查错进程号"误报之修复:caffeinate 断言改进程树内;行为面不变)。
+Covers:
+- E4 contract 4->5: single source of the revision number, the three leg shapes (L-base both keys disabled / L-cur
+    dry_curriculum payload / L-full both payloads), the skip_dry key still holds the literal CLI flag value,
+    keys added isomorphically to the contract and the config receipt, the rejection path for non-legacy continuation of old rev4 checkpoints (R8);
+- E5 three instruments: (1) offline probe of dry/fresh distill_ce in separate columns (schema / formula surface / training path untouched),
+    (2) dry-window behaviour instrument (dry-state entropy and action distribution / dry and fresh window wage and width aggregation / interval reset / fail-closed),
+    (3) canary a12-per-episode statistics function + recorder (closed schema, fail-loud);
+    with the three instruments inactive, the code path equals HEAD (knobs default 0 / mount guard / RNG and parameters untouched);
+- E6 probe set pinned: BC-v1 demos bytes == the frozen constant (real file must pass, fake bytes must fail,
+    both loading gates wired, assertion inside the probe construction);
+- E8 launcher: bash -n syntax + key logic of the PID bookkeeping fix (fix for the false alarm "checked the wrong PID" in the OPS
+    section of the B1 verdict: the caffeinate assertion now looks inside the process tree; behaviour unchanged).
 """
 
 from __future__ import annotations
@@ -72,7 +72,7 @@ def _run_cli(*extra_args):
 
 
 def _leg_args(**kw):
-    """D3 三腿共用命令形之契约相关面(worker/mppo 形制)缩样命名空间。"""
+    """Scaled-down namespace of the contract-relevant surface of the D3 shared command form of the three legs (worker/mppo shape)."""
     base = dict(worker=True, options=False, flat_clock=False, arch="mlp",
                 max_steps=3000, num_envs=4, n_steps=512, gamma=1.0, lr=3e-4,
                 ent_coef=0.005, skip_dry=False, dry_curriculum_schedule=None,
@@ -106,7 +106,7 @@ class ExactTrainingCompletionTests(unittest.TestCase):
         self.assertFalse(
             _is_exact_training_completion(model, 3_997_696))
         with self.assertRaisesRegex(
-                RuntimeError, "未精确停在已完成更新的冻结目标"):
+                RuntimeError, "did not stop exactly at the frozen target of completed updates"):
             _require_exact_training_completion(model, 3_997_696)
         model._calib_tripped = False
         _require_exact_training_completion(model, 3_997_696)
@@ -125,7 +125,7 @@ def _contract_for(args, bc_aux_demos_sha256=None):
 
 
 class Tiny298MaskedEnv(gym.Env):
-    """免引擎 298 维观测 / Discrete(15) 微环境(供探针喂真策略前向)。"""
+    """Engine-free micro-environment with 298-dim observations / Discrete(15) (feeds the probe a real policy forward pass)."""
 
     observation_space = gym.spaces.Box(-np.inf, np.inf, shape=(298,),
                                        dtype=np.float32)
@@ -171,7 +171,7 @@ def _teacher_298(preferred_action=9):
 
 
 def _fake_demos(directory, n=8):
-    """伪字节示范件(形制合法、字节非冻结常量)。"""
+    """Fake-bytes demonstration file (legal shape, bytes differ from the frozen constant)."""
     path = pathlib.Path(directory) / "demos.npz"
     x = np.zeros((n, 298), dtype=np.float32)
     x[: n // 2, 297] = 1.0
@@ -182,17 +182,17 @@ def _fake_demos(directory, n=8):
 
 
 class CurrentContractTests(unittest.TestCase):
-    """当前合同仍完整携带 contextual graft、奖励信用、scope 与观测视图。"""
+    """The current contract still carries the contextual graft, reward credit, scope and observation view in full."""
 
     def test_revision_constant_is_26(self):
         self.assertEqual(_CONTRACT_REVISION, 26)
 
     def test_l_base_carries_disabled_keys(self):
-        # L-base(--skip-dry):双键均 disabled——同案零双版本(圈 7)。
+        # L-base (--skip-dry): both keys disabled; no two versions within the same case (design decision 7).
         contract = _contract_for(_leg_args(skip_dry=True))
         self.assertEqual(contract["contract_revision"], 26)
         self.assertIs(contract["legacy_policy_observation_view"], True)
-        self.assertIs(contract["skip_dry"], True)          # CLI 旗字面值
+        self.assertIs(contract["skip_dry"], True)          # literal CLI flag value
         self.assertEqual(contract["dry_curriculum"], "disabled")
         self.assertEqual(contract["bc_aux"], "disabled")
         self.assertEqual(contract["actor_migration"], "disabled")
@@ -203,7 +203,7 @@ class CurrentContractTests(unittest.TestCase):
     def test_l_cur_carries_schedule_payload(self):
         contract = _contract_for(
             _leg_args(dry_curriculum_schedule=MAIN_TABLE_LITERAL))
-        self.assertIs(contract["skip_dry"], False)          # 字面值,禁谓词覆写
+        self.assertIs(contract["skip_dry"], False)          # literal value; must not be overwritten by the predicate
         self.assertEqual(contract["dry_curriculum"],
                          {"schedule": MAIN_TABLE_LITERAL})
         self.assertEqual(contract["bc_aux"], "disabled")
@@ -242,7 +242,7 @@ class CurrentContractTests(unittest.TestCase):
                           },
                           "liveness_preflight": True})
         self.assertIs(contract["legacy_policy_observation_view"], False)
-        json.dumps(contract)   # stdlib JSON 可序列化(status.json/zip 内嵌)
+        json.dumps(contract)   # serialisable with stdlib JSON (embedded in status.json/zip)
 
     def test_main_table_literal_matches_frozen_constant(self):
         self.assertEqual(MAIN_TABLE_LITERAL, _DRY_CURRICULUM_MAIN_TABLE)
@@ -250,10 +250,10 @@ class CurrentContractTests(unittest.TestCase):
     def test_bc_aux_payload_requires_sha_when_active(self):
         args = _leg_args(bc_aux_graft=True, bc_aux_lambda=0.0,
                          bc_aux_demos="x.npz")
-        with self.assertRaisesRegex(ValueError, "缺 bc-worker-v2 示范集 sha256"):
+        with self.assertRaisesRegex(ValueError, "bc-worker-v2 demo set sha256 is missing"):
             _contract_bc_aux(args, None)
-        with self.assertRaisesRegex(ValueError, "缺 bc-worker-v2 示范集 sha256"):
-            _contract_for(args)   # 契约装配面同炸
+        with self.assertRaisesRegex(ValueError, "bc-worker-v2 demo set sha256 is missing"):
+            _contract_for(args)   # the contract assembly surface fails too
 
     def test_helper_truth_table(self):
         self.assertEqual(_contract_dry_curriculum(_leg_args()), "disabled")
@@ -261,7 +261,7 @@ class CurrentContractTests(unittest.TestCase):
             _contract_dry_curriculum(_leg_args(
                 dry_curriculum_schedule=MAIN_TABLE_LITERAL)),
             {"schedule": MAIN_TABLE_LITERAL})
-        # 两旗互不强制:单独任一旗 → 不在位 → disabled(E3 谓词单一真源)
+        # neither flag forces the other: either flag alone -> inactive -> disabled (single source of the E3 predicate)
         self.assertEqual(_contract_bc_aux(
             _leg_args(bc_aux_lambda=_BC_AUX_MAIN_LAMBDA), None), "disabled")
         self.assertEqual(_contract_bc_aux(
@@ -269,7 +269,7 @@ class CurrentContractTests(unittest.TestCase):
         self.assertEqual(_contract_bc_aux(
             _leg_args(bc_aux_graft=True), None), "disabled")
         with self.assertRaisesRegex(
-                ValueError, "只接受 structural graft"):
+                ValueError, "only accepts a structural graft"):
             _contract_bc_aux(
                 _leg_args(
                     bc_aux_lambda=_BC_AUX_MAIN_LAMBDA,
@@ -277,30 +277,30 @@ class CurrentContractTests(unittest.TestCase):
                 "a" * 64)
 
     def test_config_receipt_mirrors_contract_keys_in_source(self):
-        # 契约与 config 回执同构增键:两助手各被两处消费(契约 + 回执);
-        # skip_dry 回执键仍 CLI 旗字面值(rev3 勘正原封)。
+        # Keys added isomorphically to the contract and the config receipt: each of the two helpers is consumed in two places (contract + receipt);
+        # the skip_dry receipt key still holds the literal CLI flag value (rev3 correction unchanged).
         src = TRAIN_PPO.read_text()
         self.assertEqual(
             src.count('"dry_curriculum": _contract_dry_curriculum(args),'), 2)
         self.assertEqual(
             src.count('"bc_aux": _contract_bc_aux(args, bc_aux_demos_sha256),'),
             2)
-        self.assertIn('"skip_dry": bool(args.skip_dry),', src)   # 契约键
-        self.assertIn('"skip_dry": args.skip_dry,', src)          # 回执键
+        self.assertIn('"skip_dry": bool(args.skip_dry),', src)   # contract key
+        self.assertIn('"skip_dry": args.skip_dry,', src)          # receipt key
 
     def test_legacy_print_follows_constant(self):
         src = TRAIN_PPO.read_text()
-        self.assertIn("contract_revision {_CONTRACT_REVISION} 契约", src)
-        self.assertNotIn("写入 contract_revision 4 契约", src)
-        self.assertNotIn("写入 contract_revision 5 契约", src)   # 禁写死
+        self.assertIn("contract_revision {_CONTRACT_REVISION} contract", src)
+        self.assertNotIn("write a contract_revision 4 contract", src)
+        self.assertNotIn("write a contract_revision 5 contract", src)   # must not be hard-coded
 
 
 class Rev4CheckpointRejectionTests(unittest.TestCase):
-    """E4/R8:旧检查点(rev4 契约)非 legacy 续训将拒——已知代价照录。"""
+    """E4/R8: non-legacy continuation of an old checkpoint (rev4 contract) is rejected; the known cost is recorded as is."""
 
     @staticmethod
     def _rev4_saved():
-        # 模拟 E4 之前(rev4)腿存进 zip 的契约:无 dry_curriculum/bc_aux 键。
+        # Simulate the contract stored in the zip by a leg before E4 (rev4): no dry_curriculum/bc_aux keys.
         contract = _contract_for(_leg_args(skip_dry=True))
         saved = {key: value for key, value in contract.items()
                  if key not in ("dry_curriculum", "bc_aux")}
@@ -309,7 +309,7 @@ class Rev4CheckpointRejectionTests(unittest.TestCase):
 
     def test_rev4_resume_rejected_with_drift(self):
         current = _contract_for(_leg_args(skip_dry=True))
-        with self.assertRaisesRegex(ValueError, "契约漂移") as ctx:
+        with self.assertRaisesRegex(ValueError, "contract drift") as ctx:
             _validate_resume_contract(self._rev4_saved(), current)
         message = str(ctx.exception)
         self.assertIn("contract_revision", message)
@@ -317,9 +317,9 @@ class Rev4CheckpointRejectionTests(unittest.TestCase):
         self.assertIn("bc_aux", message)
 
     def test_legacy_route_unchanged(self):
-        # 无契约旧件仍走显式 --allow-legacy-resume 一次性迁移口(R8 原语义)。
+        # Old artifacts without a contract still go through the explicit one-time --allow-legacy-resume migration (original R8 semantics).
         current = _contract_for(_leg_args(skip_dry=True))
-        with self.assertRaisesRegex(ValueError, "无 training_contract"):
+        with self.assertRaisesRegex(ValueError, "has no training_contract"):
             _validate_resume_contract(None, current)
         _validate_resume_contract(None, current, allow_legacy_resume=True)
 
@@ -329,7 +329,7 @@ class Rev4CheckpointRejectionTests(unittest.TestCase):
 
 
 class ContinuationOptimizerContractTests(unittest.TestCase):
-    """reset 是本腿事件；lr/target_kl 才是持久配方。"""
+    """reset is an event of this leg; only lr/target_kl are the persistent recipe."""
 
     def test_reset_clears_all_adam_state_and_preserves_policy_weights(self):
         model = _real_policy(seed=31)
@@ -349,8 +349,8 @@ class ContinuationOptimizerContractTests(unittest.TestCase):
             self.assertTrue(th.equal(before[key], value), key)
 
     def test_reset_checkpoint_can_resume_normally_next_leg(self):
-        # reset_optimizer 不入 contract，因此 reset 腿产物不会永久要求下一腿
-        # 继续携旗；其已落定的 lr/target_kl 则照常持久相等。
+        # reset_optimizer does not enter the contract, so a reset leg's artifacts do not permanently require the next leg
+        # to keep carrying the flag; its settled lr/target_kl remain persistently equal as usual.
         reset_leg = _contract_for(
             _leg_args(lr=1e-4, reset_optimizer=True, target_kl=0.02))
         normal_next = _contract_for(
@@ -370,7 +370,7 @@ class ContinuationOptimizerContractTests(unittest.TestCase):
 
 
 class E6FrozenDemosTests(unittest.TestCase):
-    """v4:当前严格 PASS 回执绑定；v3 历史常量不再获训练信任。"""
+    """v4: bound to the current strict PASS receipt; the historical v3 constants no longer earn training trust."""
 
     def test_v3_constant_is_compat_only_and_stale_report_rejected(self):
         self.assertEqual(
@@ -381,8 +381,8 @@ class E6FrozenDemosTests(unittest.TestCase):
             fake.with_name("policy_sd.pt").write_bytes(b"policy")
             with mock.patch.object(
                     train_ppo, "_validate_bc_report",
-                    side_effect=ValueError("BC 回执协议过期")):
-                with self.assertRaisesRegex(ValueError, "协议过期"):
+                    side_effect=ValueError("BC receipt protocol outdated")):
+                with self.assertRaisesRegex(ValueError, "protocol outdated"):
                     _assert_bc_v1_demos_frozen(fake)
 
     def test_current_pass_report_binds_live_bytes_and_rejects_drift(self):
@@ -397,17 +397,17 @@ class E6FrozenDemosTests(unittest.TestCase):
             with mock.patch.object(
                     train_ppo, "_validate_bc_report",
                     return_value={"demos_sha256": "d" * 64}):
-                with self.assertRaisesRegex(ValueError, "当前 PASS 回执字节漂移"):
+                with self.assertRaisesRegex(ValueError, "bytes drifted from the current PASS receipt"):
                     _assert_bc_v1_demos_frozen(fake)
-            with self.assertRaisesRegex(ValueError, "不可读"):
+            with self.assertRaisesRegex(ValueError, "unreadable"):
                 _assert_bc_v1_demos_frozen(pathlib.Path(d) / "absent.npz")
 
     def test_probe_constructors_require_current_pass_binding(self):
         with tempfile.TemporaryDirectory() as d:
             fake = _fake_demos(d)
-            with self.assertRaisesRegex(ValueError, "当前权重缺失"):
+            with self.assertRaisesRegex(ValueError, "current weights missing"):
                 DistillCeProbe(pathlib.Path(d), str(fake), every=49_152)
-            with self.assertRaisesRegex(ValueError, "当前权重缺失"):
+            with self.assertRaisesRegex(ValueError, "current weights missing"):
                 DryWindowMetricsCallback(pathlib.Path(d), str(fake),
                                          every=49_152)
 
@@ -418,12 +418,12 @@ class E6FrozenDemosTests(unittest.TestCase):
             src.count("expected_sha = _assert_bc_v1_demos_frozen(demos_npz)"),
             2)
         self.assertNotIn("demos_npz, _BC_V1_DEMOS_SHA256", src)
-        # v2 面不受钉:BC-v2 仅经 --bc-aux-demos 进辅助损失(canonical 不动)
+        # the v2 surface is not pinned: BC-v2 enters the auxiliary loss only through --bc-aux-demos (canonical unchanged)
         self.assertNotIn("_assert_bc_v1_demos_frozen(args.bc_aux_demos)", src)
 
 
 class DryAnchorPartitionTests(unittest.TestCase):
-    """worker v4 pre-dry = col296/解码后 col297 到 cap-1 前沿。"""
+    """worker v4 pre-dry = col296 / decoded col297 up to the cap-1 frontier."""
 
     def test_dual_channel_cap_minus_one_latch_decode_and_complement(self):
         from diablogym.options_env import FARM_SCENE_CAP, KILL_PATIENCE
@@ -436,7 +436,7 @@ class DryAnchorPartitionTests(unittest.TestCase):
             (FARM_SCENE_CAP - 1) / FARM_SCENE_CAP)
         x[4, 297] = np.float32(
             (FARM_SCENE_CAP - 2) / FARM_SCENE_CAP)
-        # 负域公开“本窗已饮”，但 abs(value)-1 仍须恢复同一 scene clock。
+        # The negative domain discloses "already drank in this window", but abs(value)-1 must still recover the same scene clock.
         x[5, 297] = np.float32(
             -(1.0 + (FARM_SCENE_CAP - 1) / FARM_SCENE_CAP))
         x[6, 297] = -1.5
@@ -466,14 +466,14 @@ class DryAnchorPartitionTests(unittest.TestCase):
 
     def test_all_four_consumers_use_single_partition_helper(self):
         src = TRAIN_PPO.read_text()
-        # helper 定义 1 次 + loader/sentinel/distill/drywin 四个消费点。
+        # one helper definition + four consumers: loader/sentinel/distill/drywin.
         self.assertEqual(src.count("_dry_anchor_partition("), 5)
         self.assertNotIn("X[:, 297] == 1.0", src)
         self.assertNotIn("X[:, 297] == 0.0", src)
 
 
 class DistillCeProbeTests(unittest.TestCase):
-    """E5①:干/鲜 distill_ce 分列离线探针(孪生 DryAnchorSentinel 形制)。"""
+    """E5-1: offline probe of dry/fresh distill_ce in separate columns (the twin DryAnchorSentinel shape)."""
 
     @classmethod
     def setUpClass(cls):
@@ -547,7 +547,7 @@ class DistillCeProbeTests(unittest.TestCase):
             self.assertGreater(line["fresh_ce"], 0.0)
 
     def test_zero_touch_of_params_and_global_rng(self):
-        # 零触训练路径:探针构造+发射不改策略参数、不耗全局 RNG(专用 rng)。
+        # Training path untouched: building and firing the probe changes no policy parameter and consumes no global RNG (dedicated rng).
         with tempfile.TemporaryDirectory() as d:
             before_params = [p.detach().clone()
                             for p in self.model.policy.parameters()]
@@ -576,7 +576,7 @@ class DistillCeProbeTests(unittest.TestCase):
             cb.model = types.SimpleNamespace(
                 policy=self.model.policy, teacher=None, device="cpu")
             cb.num_timesteps = 100
-            with self.assertRaisesRegex(ValueError, "需教师在位"):
+            with self.assertRaisesRegex(ValueError, "needs the teacher present"):
                 cb._emit(final=False)
 
     def test_cadence_aligns_to_next_boundary(self):
@@ -585,11 +585,11 @@ class DistillCeProbeTests(unittest.TestCase):
             cb.num_timesteps = 3_497_984
             cb._on_training_start()
             self.assertEqual(cb.next_at, 3_538_944)   # ((⌊·/49152⌋)+1)×49152
-        with self.assertRaisesRegex(ValueError, "间隔必须 > 0"):
+        with self.assertRaisesRegex(ValueError, "interval must be > 0"):
             DistillCeProbe(pathlib.Path("."), str(CANONICAL_DEMOS), every=0)
 
     def test_ce_formula_mirrors_leashed_rubberband(self):
-        # 公式面:−Σ t_probs·logp_all 均值(镜像 leashed_ppo train() :356)。
+        # Formula surface: mean of -sum t_probs*logp_all (mirrors leashed_ppo train() :356).
         src = TRAIN_PPO.read_text()
         self.assertIn("-(t_probs * logp_all).sum(dim=-1).mean()", src)
         leashed_src = (ROOT / "train" / "leashed_ppo.py").read_text()
@@ -597,7 +597,7 @@ class DistillCeProbeTests(unittest.TestCase):
 
 
 class DryWindowMetricsTests(unittest.TestCase):
-    """E5②:干窗行为仪表(干态熵/a 分布 + 干/鲜窗工资与宽度,只记不裁)。"""
+    """E5-2: dry-window behaviour instrument (dry-state entropy / action distribution + dry and fresh window wage and width; recorded, not enforced)."""
 
     @classmethod
     def setUpClass(cls):
@@ -623,13 +623,13 @@ class DryWindowMetricsTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             run_dir = pathlib.Path(d)
             cb = self._cb(run_dir)
-            cb.num_timesteps = 10_000            # 未到界:只聚合不发射
+            cb.num_timesteps = 10_000            # boundary not reached: aggregate only, do not fire
             cb.locals = {"infos": [
                 self._info(True, -0.5, 20, 3), self._info(True, -0.1, 30, 3),
                 self._info(False, 2.0, 40, 4), {"overridden": False}]}
             self.assertTrue(cb._on_step())
             self.assertFalse((run_dir / "drywin_metrics.jsonl").exists())
-            cb.num_timesteps = 49_152            # 到界发射
+            cb.num_timesteps = 49_152            # boundary reached: fire
             cb.locals = {"infos": []}
             self.assertTrue(cb._on_step())
             line = json.loads(
@@ -654,11 +654,11 @@ class DryWindowMetricsTests(unittest.TestCase):
             hist = line["dry_state_argmax_hist"]
             self.assertEqual(len(hist), 15)
             self.assertEqual(sum(hist), line["dry_state_n"])
-            self.assertEqual(hist[11], 0)   # 旧口径掩码:11/12 恒掩
+            self.assertEqual(hist[11], 0)   # old-criterion mask: 11/12 always masked
             self.assertEqual(hist[12], 0)
 
     def test_interval_reset_and_fail_closed_zero_coverage(self):
-        # 区间清零:发射后无新窗 → n=0 组记 n:0、均值 null 不消失。
+        # Interval reset: no new window after firing -> the n=0 group records n:0, with a null mean that is not dropped.
         with tempfile.TemporaryDirectory() as d:
             run_dir = pathlib.Path(d)
             cb = self._cb(run_dir)
@@ -684,12 +684,12 @@ class DryWindowMetricsTests(unittest.TestCase):
             cb.num_timesteps = 49_152
             cb.locals = {"infos": []}
             cb._on_step()
-            cb._on_training_end()   # 同步点已发射 → 去重不重写
+            cb._on_training_end()   # the sync point has already fired -> deduplicated, not rewritten
             lines = (run_dir / "drywin_metrics.jsonl").read_text() \
                 .strip().splitlines()
             self.assertEqual(len(lines), 1)
             cb.num_timesteps = 60_000
-            cb._on_training_end()   # 尾部未对齐点 → final 行
+            cb._on_training_end()   # unaligned tail point -> final row
             lines = [json.loads(raw) for raw in
                      (run_dir / "drywin_metrics.jsonl").read_text()
                      .strip().splitlines()]
@@ -698,7 +698,7 @@ class DryWindowMetricsTests(unittest.TestCase):
 
 
 class A12CanaryTests(unittest.TestCase):
-    """E5③:金丝雀 a12/局 统计函数 + 记录器(检查点离线序列用,只记不裁)。"""
+    """E5-3: canary a12-per-episode statistics function + recorder (for offline checkpoint sequences; recorded, not enforced)."""
 
     def test_stats_correctness(self):
         stats = a12_canary_stats([0, 0, 4, 1])
@@ -706,7 +706,7 @@ class A12CanaryTests(unittest.TestCase):
                                  "a12_per_episode": 1.25,
                                  "episodes_with_a12": 2, "a12_max": 4})
         zero = a12_canary_stats([0] * 32)
-        self.assertEqual(zero["a12_per_episode"], 0.0)   # 零行使如实记 0.0
+        self.assertEqual(zero["a12_per_episode"], 0.0)   # zero use is recorded faithfully as 0.0
         self.assertEqual(zero["episodes"], 32)
 
     def test_stats_fail_loud(self):
@@ -729,7 +729,7 @@ class A12CanaryTests(unittest.TestCase):
             self.assertEqual(written["manager"], "M29")
             self.assertEqual(written["tag"], "lfull-canary")
             self.assertEqual(written["a12_per_episode"], 1.5)
-            # tag 缺省行不携 tag 键(schema 封闭可判)
+            # a row without a tag carries no tag key (the closed schema can decide)
             second = record_a12_canary(out, checkpoint_step=0,
                                        manager="H", stats=stats)
             self.assertNotIn("tag", second)
@@ -751,11 +751,11 @@ class A12CanaryTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 record_a12_canary(out, checkpoint_step=1, manager="H",
                                   stats=extra)
-            self.assertFalse(out.exists())   # fail-loud 不落半行
+            self.assertFalse(out.exists())   # fail-loud writes no half line
 
 
 class E5ZeroIntrusionTests(unittest.TestCase):
-    """E5:不在位 = 代码路径与 HEAD 等价(G0-2a 先决;旋钮默认 0+挂载守卫)。"""
+    """E5: inactive = the code path equals HEAD (G0-2a precondition; knobs default 0 + mount guard)."""
 
     def test_cli_defaults_are_off(self):
         src = TRAIN_PPO.read_text()
@@ -773,7 +773,7 @@ class E5ZeroIntrusionTests(unittest.TestCase):
         self.assertIn("([drywin_cb] if drywin_cb else [])", src)
 
     def test_a12_functions_have_no_training_path_caller(self):
-        # ③ 系离线统计件:训练进程内零调用(定义处各恰一现)。
+        # (3) is an offline statistics component: zero calls inside the training process (exactly one definition each).
         src = TRAIN_PPO.read_text()
         self.assertEqual(src.count("def a12_canary_stats("), 1)
         self.assertEqual(src.count("a12_canary_stats("), 1)
@@ -788,24 +788,24 @@ class E5ZeroIntrusionTests(unittest.TestCase):
         bad = _run_cli("--total-steps", "2048",
                        "--distill-ce-probe-every", "-1")
         self.assertNotEqual(bad.returncode, 0)
-        self.assertIn("--distill-ce-probe-every 不能为负", bad.stderr)
+        self.assertIn("--distill-ce-probe-every must not be negative", bad.stderr)
         nonworker = _run_cli("--total-steps", "2048",
                              "--distill-ce-probe-every", "49152")
         self.assertNotEqual(nonworker.returncode, 0)
-        self.assertIn("只适用于 --worker --algo mppo", nonworker.stderr)
+        self.assertIn("only applies to --worker --algo mppo", nonworker.stderr)
         nonworker2 = _run_cli("--total-steps", "2048",
                               "--drywin-metrics-every", "49152")
         self.assertNotEqual(nonworker2.returncode, 0)
-        self.assertIn("--drywin-metrics-every 只适用于 --worker",
+        self.assertIn("--drywin-metrics-every only applies to --worker",
                       nonworker2.stderr)
 
     def test_probe_teacher_preflight_wired(self):
         src = TRAIN_PPO.read_text()
-        self.assertIn("--distill-ce-probe-every>0 需 Leashed 教师在位", src)
+        self.assertIn("--distill-ce-probe-every>0 requires a Leashed teacher present", src)
 
 
 class LauncherFixTests(unittest.TestCase):
-    """E8:launch_case.sh PID 簿记误报修复(B1 判决 OPS 段 minor)。"""
+    """E8: fix for the false alarm in launch_case.sh PID bookkeeping (minor, OPS section of the B1 verdict)."""
 
     def test_bash_syntax(self):
         run = subprocess.run(["bash", "-n", str(LAUNCHER)],
@@ -814,15 +814,15 @@ class LauncherFixTests(unittest.TestCase):
 
     def test_tree_assertion_replaces_wrong_pid_check(self):
         src = LAUNCHER.read_text()
-        # 修复面:caffeinate 断言改"$PID 进程树内"(本体或子进程双形兼容)。
+        # Fix surface: the caffeinate assertion now checks "inside the $PID process tree" (compatible with the process itself or a child).
         self.assertIn('pgrep -P "$PID" -f caffeinate', src)
         self.assertIn('ps -o command= -p "$PID" | grep -q "caffeinate"', src)
-        self.assertIn("进程树内无 caffeinate", src)
-        self.assertNotIn("不是 caffeinate 进程", src)   # 旧误报文案退场
+        self.assertIn("no caffeinate in the process tree", src)
+        self.assertNotIn("is not a caffeinate process", src)   # the old false-alarm text is gone
 
     def test_behavior_surface_unchanged(self):
         src = LAUNCHER.read_text()
-        # 行为面不变:nohup+caffeinate -is+孤儿化+日志+receipt+心跳细则照旧。
+        # Behaviour unchanged: nohup + caffeinate -is + orphaning + log + receipt + heartbeat details as before.
         self.assertIn('nohup caffeinate -is "$PY" "$DRIVER" "$@"', src)
         self.assertIn('disown "$PID"', src)
         self.assertIn("launch_receipt.json", src)

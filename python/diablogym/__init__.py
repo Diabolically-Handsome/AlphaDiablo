@@ -1,11 +1,11 @@
-"""DiabloGym —— 基于 DevilutionX 的 Diablo I 强化学习环境(v0)。"""
+"""DiabloGym: a Diablo I reinforcement-learning environment built on DevilutionX (v0)."""
 
 import importlib.util
 import pathlib
 import sysconfig
 import sys
 
-# C++ 扩展 _diablogym 由 build.sh 产出于 ../../build/,按文件路径加载,免安装
+# The C++ extension _diablogym is built by build.sh into ../../build/ and loaded by file path, no install needed
 _build_dir = pathlib.Path(__file__).resolve().parents[2] / "build"
 
 
@@ -14,15 +14,15 @@ def _load_bridge():
     exact = _build_dir / f"_diablogym{suffix}" if suffix else None
     candidates = sorted(_build_dir.glob("_diablogym*.so"))
     if exact is None or not exact.is_file():
-        found = ", ".join(p.name for p in candidates) or "无"
+        found = ", ".join(p.name for p in candidates) or "none"
         raise ImportError(
-            f"找不到当前 Python ABI({suffix})对应的 _diablogym 扩展"
-            f"(查找于 {_build_dir}；现有: {found})。请用当前解释器重新运行 build.sh"
-            "；本项目当前只支持源码检出目录中的 editable install，不提供独立 wheel 运行时"
+            f"No _diablogym extension found for the current Python ABI ({suffix})"
+            f" (searched {_build_dir}; present: {found}). Rerun build.sh with the current interpreter"
+            "; this project currently supports only an editable install in a source checkout, not a standalone wheel runtime"
         )
     spec = importlib.util.spec_from_file_location("_diablogym", exact)
     if spec is None or spec.loader is None:
-        raise ImportError(f"无法为原生扩展创建加载器: {exact}")
+        raise ImportError(f"Cannot create a loader for the native extension: {exact}")
     module = importlib.util.module_from_spec(spec)
     sys.modules["_diablogym"] = module
     try:

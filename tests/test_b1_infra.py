@@ -1,8 +1,8 @@
-"""B1 捆绑评测基建之自包含快速回归(PREREG-B1 E7;不启动引擎/训练/评测)。
+"""Self-contained fast regression for the B1 bundled evaluation infrastructure (PREREG-B1 E7; no engine, training or evaluation is started).
 
-覆盖:三旋钮步集行为(E0)、MS 计算(E1)、签名判别器 v2(E5)、
-calib 步表解析(E3)、W-G0 烟测步表窗内保证、腿配方逐字断言、
-统计纪律工具(符号检验/去杠杆/临线/Clopper-Pearson)、E8 提取器。
+Covers: the step-set behaviour of the three knobs (E0), the MS computation (E1), signature discriminator v2 (E5),
+parsing of the calib step table (E3), the in-window guarantee of the W-G0 smoke step table, verbatim leg-recipe assertions,
+statistical-discipline tools (sign test / deleveraging / borderline / Clopper-Pearson), and the E8 extractor.
 """
 
 from __future__ import annotations
@@ -43,7 +43,7 @@ def _row(seed, ret=100.0, depth=1, died=False, kills=10, farm_n=5,
 
 
 class KnobStepSetTests(unittest.TestCase):
-    """E0 三旋钮:步集行为与 CLI 校验(旋钮封闭枚举三枚)。"""
+    """E0 three knobs: step-set behaviour and CLI validation (a closed enumeration of three knobs)."""
 
     def test_ckpt_every_steps_quantizes_and_aligns_from_resume_start(self):
         cb = AtomicRolloutCheckpointCallback(
@@ -53,9 +53,9 @@ class KnobStepSetTests(unittest.TestCase):
             get_env=lambda: types.SimpleNamespace(num_envs=4))
         cb.num_timesteps = b1.KING_STEPS
         cb._on_training_start()
-        self.assertEqual(cb.period, 98_304)          # 恰為 48×2048,量子对齐
-        self.assertEqual(cb.next_at, 3_596_288)      # 腿内第一个金丝雀点
-        # 亚量子输入被抬到量子(回调原逻辑,旋钮不改变语义)
+        self.assertEqual(cb.period, 98_304)          # exactly 48x2048, quantum-aligned
+        self.assertEqual(cb.next_at, 3_596_288)      # first canary point inside the leg
+        # a sub-quantum input is raised to one quantum (original callback logic; the knob does not change semantics)
         cb2 = AtomicRolloutCheckpointCallback(
             pathlib.Path("/unused"), every_steps=1)
         cb2.model = cb.model
@@ -100,16 +100,16 @@ class KnobStepSetTests(unittest.TestCase):
              "--total-steps", "2048", "--ckpt-every-steps", "0"],
             text=True, capture_output=True, check=False)
         self.assertNotEqual(bad.returncode, 0)
-        self.assertIn("--ckpt-every-steps 必须 > 0", bad.stderr)
+        self.assertIn("--ckpt-every-steps must be > 0", bad.stderr)
 
 
 class SmokeStepTableTests(unittest.TestCase):
-    """W-G0 烟测专用步表:窗内 ≥1 calib/ckpt/sentinel/dry-anchor 保证。"""
+    """Step table dedicated to the W-G0 smoke test: at least one calib/ckpt/sentinel/dry-anchor inside the window."""
 
     def test_window_and_quantum(self):
         self.assertEqual(b1.SMOKE_STEPS % 2_048, 0)
         self.assertEqual(b1.SMOKE_END, b1.KING_STEPS + b1.SMOKE_STEPS)
-        self.assertEqual(b1.SMOKE_SEED, 307_000)  # 承 4ad4aac 勘正(305000 撞 v30 leg_start,台账 PREFLIGHT_FAIL×2 在案)
+        self.assertEqual(b1.SMOKE_SEED, 307_000)  # corrected in 4ad4aac: 305000 collided with the v30 leg_start and failed preflight twice
 
     def test_at_least_one_of_each_instrument_fires_in_window(self):
         window = range(b1.KING_STEPS + 1, b1.SMOKE_END + 1)
@@ -129,7 +129,7 @@ class SmokeStepTableTests(unittest.TestCase):
         bare, knobs = b1._smoke_cmd("bare"), b1._smoke_cmd("knobs")
         bare_renamed = ["b1-smoke-knobs" if x == "b1-smoke-bare" else x
                         for x in bare]
-        self.assertEqual(knobs[:len(bare)], bare_renamed)  # 仅 run-name 异
+        self.assertEqual(knobs[:len(bare)], bare_renamed)  # only the run name differs
         self.assertEqual(knobs[len(bare):], [
             "--calib-probes", ",".join(str(x) for x in b1.SMOKE_CALIB),
             "--ckpt-every-steps", str(b1.CKPT_EVERY),
@@ -137,12 +137,12 @@ class SmokeStepTableTests(unittest.TestCase):
             "--dry-anchor-every", str(b1.DRY_ANCHOR_EVERY)])
         for cmd in (bare, knobs):
             self.assertIn("--seed", cmd)
-            self.assertEqual(cmd[cmd.index("--seed") + 1], "307000")  # 承 4ad4aac 勘正
+            self.assertEqual(cmd[cmd.index("--seed") + 1], "307000")  # the corrected smoke seed (4ad4aac)
             self.assertNotIn("--board", cmd)
 
 
 class CalibStepTableTests(unittest.TestCase):
-    """E3 十点步表:腿内每 +49,152,k=1..10,量子对齐,预注册逐字。"""
+    """E3 ten-point step table: every +49,152 inside the leg, k=1..10, quantum-aligned, verbatim from the pre-registration."""
 
     PREREG_LITERAL = (3547136, 3596288, 3645440, 3694592, 3743744,
                       3792896, 3842048, 3891200, 3940352, 3989504)
@@ -156,7 +156,7 @@ class CalibStepTableTests(unittest.TestCase):
 
     def test_cli_string_roundtrip_matches_train_ppo_parser(self):
         cli = ",".join(str(x) for x in b1.CALIB_PROBES)
-        parsed = [int(x) for x in cli.split(",") if x.strip()]   # train_ppo 同式
+        parsed = [int(x) for x in cli.split(",") if x.strip()]   # same form as train_ppo
         self.assertEqual(tuple(parsed), b1.CALIB_PROBES)
 
     def test_canary_points_and_leg_account(self):
@@ -169,7 +169,7 @@ class CalibStepTableTests(unittest.TestCase):
 
 
 class LegRecipeTests(unittest.TestCase):
-    """P8 腿:ctrl 配方逐字承继,偏离封闭枚举五处。"""
+    """P8 leg: the ctrl recipe is inherited verbatim, with a closed enumeration of five deviations."""
 
     def test_leg_cmd_carries_ctrl_recipe_verbatim_plus_five_deviations(self):
         cmd = b1.leg_cmd()
@@ -203,7 +203,7 @@ class LegRecipeTests(unittest.TestCase):
 
 
 class MsComputationTests(unittest.TestCase):
-    """E1/D3:MS(s) = |Δ_H − Δ_M29|,带符号量并列,超线计数。"""
+    """E1/D3: MS(s) = |dH - dM29|, the signed quantity alongside, and the over-line count."""
 
     def test_ms_vectors_hand_computed(self):
         leg_h = {s: _row(s, ret=r) for s, r in
@@ -223,7 +223,7 @@ class MsComputationTests(unittest.TestCase):
         self.assertEqual(v["flag_line"], 20.0)
 
     def test_signed_quantity_catches_m29_worse_flip(self):
-        # 'M29 侧更差'型:Δ_H=0、Δ_M29=−40 → 带符号 +40(绝对值会吞没方向)
+        # 'M29 side worse' case: dH=0, dM29=-40 -> signed +40 (the absolute value would swallow the direction)
         leg_h = {1: _row(1, ret=100.0)}
         ref_h = {1: _row(1, ret=100.0)}
         leg_m29 = {1: _row(1, ret=60.0)}
@@ -233,7 +233,7 @@ class MsComputationTests(unittest.TestCase):
 
 
 class SignatureDiscriminatorTests(unittest.TestCase):
-    """E5:复合签名(D3 常量)与判别器 v2(近失判据)。"""
+    """E5: composite signature (D3 constants) and discriminator v2 (near-miss criterion)."""
 
     def test_invariant_class_v2(self):
         a = _row(7000)
@@ -251,9 +251,9 @@ class SignatureDiscriminatorTests(unittest.TestCase):
         ref = {7001: _row(7001, depth=2), 7002: _row(7002, depth=3),
                7003: _row(7003, depth=1), 7004: _row(7004, depth=2)}
         leg = {7001: _row(7001, mode_seq="FFFF"),          # D=0
-               7002: _row(7002, mode_seq="FDFF"),          # D=1 → (ii) 失守
+               7002: _row(7002, mode_seq="FDFF"),          # D=1 -> (ii) fails
                7003: _row(7003, mode_seq="FFFF"),
-               7004: _row(7004, mode_seq="FFFF")}          # D=0 但 τ 出带
+               7004: _row(7004, mode_seq="FFFF")}          # D=0 but tau outside the band
         tau = {7001: 26.0, 7002: 25.0, 7004: 55.0}
         sig = pcs.composite_signature(ref, leg, tau)
         self.assertEqual(sig["ref_depth2_seeds"], [7001, 7002, 7004])
@@ -261,7 +261,7 @@ class SignatureDiscriminatorTests(unittest.TestCase):
         self.assertTrue(sig["per_seed"][7002]["cond_iii_tau_floor"])
         self.assertFalse(sig["per_seed"][7002]["cond_ii_leg_d_windows_zero"])
         self.assertFalse(sig["per_seed"][7004]["cond_iii_tau_floor"])
-        # τ 地板闭区间端点
+        # closed-interval endpoints of the tau floor
         self.assertTrue(pcs.TAU_FLOOR_LO <= 25.0 <= pcs.TAU_FLOOR_HI)
         self.assertEqual((pcs.TAU_FLOOR_LO, pcs.TAU_FLOOR_HI), (25.0, 40.0))
 
@@ -269,11 +269,11 @@ class SignatureDiscriminatorTests(unittest.TestCase):
         ref = {7001: _row(7001, depth=2), 7002: _row(7002, depth=2)}
         leg_h = {7001: _row(7001, ret=50.0, mode_seq="FFFF"),
                  7002: _row(7002, ret=40.0, mode_seq="FFFF")}
-        leg_m29 = {7001: _row(7001, ret=150.0, mode_seq="FDFF"),  # 轨迹可变
-                   7002: _row(7002, ret=40.0, mode_seq="FFFF")}   # 严格不变
+        leg_m29 = {7001: _row(7001, ret=150.0, mode_seq="FDFF"),  # trajectory variable
+                   7002: _row(7002, ret=40.0, mode_seq="FFFF")}   # strictly invariant
         sig = pcs.composite_signature(ref, leg_h, {7001: 30.0, 7002: 30.0})
         tri = pcs.triage(sig, leg_h, leg_m29)
-        self.assertEqual(tri["per_seed"][7001]["verdict"], "F-lock 型")
+        self.assertEqual(tri["per_seed"][7001]["verdict"], "F-lock type")
         self.assertEqual(tri["n_flock_type"], 1)
         self.assertEqual(tri["n_worker_damage_candidate"], 1)
 
@@ -282,7 +282,7 @@ class SignatureDiscriminatorTests(unittest.TestCase):
 
 
 class StatsDisciplineTests(unittest.TestCase):
-    """D3 统计纪律:符号检验/去杠杆/临线/CP 区间/RB.4 判决格。"""
+    """D3 statistical discipline: sign test / deleveraging / borderline / CP interval / RB.4 verdict grid."""
 
     def test_sign_test_and_deleveraged(self):
         st = b1.sign_test([-1.0, -2.0, 3.0, -4.0, 0.0])
@@ -293,12 +293,12 @@ class StatsDisciplineTests(unittest.TestCase):
         self.assertAlmostEqual(dl["mean"], -1.5)
 
     def test_band_judge_borderline_clauses(self):
-        j = b1.band_judge(-2.1, -45.0, -2.0)      # 距边界 0.1 ≤ 0.05×43
+        j = b1.band_judge(-2.1, -45.0, -2.0)      # 0.1 from the boundary <= 0.05x43
         self.assertTrue(j["in_band"])
         self.assertIn("borderline_note", j)
         j2 = b1.band_judge(-20.0, -45.0, -2.0)
         self.assertNotIn("borderline_note", j2)
-        j3 = b1.band_judge(3, 2, 14, integer=True)   # 计数量距边界 1
+        j3 = b1.band_judge(3, 2, 14, integer=True)   # a count quantity 1 from the boundary
         self.assertIn("borderline_note", j3)
 
     def test_clopper_pearson_known_values(self):
@@ -315,23 +315,23 @@ class StatsDisciplineTests(unittest.TestCase):
         delev_in = {"dropped_seed": 1, "dropped_value": -1.0, "mean": -20.0}
         delev_out = {"dropped_seed": 1, "dropped_value": -1.0, "mean": 0.0}
         self.assertEqual(
-            b1.rb4_grid(-20.0, -8.0, strong_sign, delev_in)["cell"], "复现")
+            b1.rb4_grid(-20.0, -8.0, strong_sign, delev_in)["cell"], "reproduced")
         self.assertEqual(
             b1.rb4_grid(-20.0, -1.0, weak_sign, delev_out)["cell"],
-            "杠杆驱动候选")
+            "leverage-driven candidate")
         self.assertEqual(
-            b1.rb4_grid(1.0, -1.0, weak_sign, delev_out)["cell"], "不复现")
+            b1.rb4_grid(1.0, -1.0, weak_sign, delev_out)["cell"], "not reproduced")
         self.assertEqual(
             b1.rb4_grid(1.0, -6.0, weak_sign, delev_out)["cell"],
-            "均值掩蔽候选")
+            "mean-masking candidate")
         self.assertEqual(
             b1.rb4_grid(-50.0, -30.0, strong_sign,
                         {"dropped_seed": 1, "dropped_value": -200.0,
-                         "mean": -50.0})["cell"], "放大")
+                         "mean": -50.0})["cell"], "amplified")
 
 
 class ExtractorTests(unittest.TestCase):
-    """E8:W-C depth≥2 机器提取(depth2_count 先例口径)。"""
+    """E8: machine extraction of W-C depth>=2 (depth2_count precedent criterion)."""
 
     def test_depth2_extraction_and_control_guards(self):
         rows = [_row(7000, depth=1), _row(7001, depth=2), _row(7002, depth=3),
@@ -344,19 +344,19 @@ class ExtractorTests(unittest.TestCase):
             self.assertEqual(info["depth2_seeds"], [7001, 7002])
             self.assertEqual(info["n_D"], 2)
             self.assertEqual(info["C"], [7001, 7002, 7003])
-            with self.assertRaisesRegex(ValueError, "阴性对照失义"):
+            with self.assertRaisesRegex(ValueError, "negative control void"):
                 extract_canary_set.extract(arch, (7001,))
-            with self.assertRaisesRegex(ValueError, "不在档案种子面内"):
+            with self.assertRaisesRegex(ValueError, "not in the archive seed set"):
                 extract_canary_set.extract(arch, (9999,))
 
     def test_duplicate_seed_rejected(self):
         rows = [_row(7001, depth=2), _row(7001, depth=2)]
-        with self.assertRaisesRegex(ValueError, "重复 seed"):
+        with self.assertRaisesRegex(ValueError, "duplicate seed"):
             extract_canary_set.depth2_seeds(rows)
 
 
 class NullIntrusionComparatorTests(unittest.TestCase):
-    """W-G0 张量级判据工具:torch.equal 树比对与状态摘要。"""
+    """W-G0 tensor-level criterion tools: torch.equal tree comparison and state digest."""
 
     def test_tree_equal_detects_tensor_and_scalar_diffs(self):
         a = {"w": torch.zeros(3), "g": [{"lr": 3e-4, "step": 1}]}

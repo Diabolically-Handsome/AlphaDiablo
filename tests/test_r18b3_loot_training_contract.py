@@ -1,22 +1,22 @@
-"""R18-B3 (2026-09-07): sustain-loot-v1 进入工人训练的完成时钟。
+"""R18-B3 (2026-09-07): the completion clock under which sustain-loot-v1 enters worker training.
 
-主席今晨裁定「进城卖装备是滚雪球计划的核心」——训练世界必须等于被测世界,
-因此 L1 两趟战利品经济(sustain-loot-v1)与 sustain-v6 并列为一等训练服务法。
+The training world must equal the evaluated world, and the evaluated world includes selling gear in town,
+so the two-trip L1 loot economy (sustain-loot-v1) becomes a first-class training service rule alongside sustain-v6.
 
-本卷盯住的法条:
+The rules this file watches:
 
-* 窗口(WorkerWindowEnv)在 earned-dive-suffix-v1 下同时接受 sustain-v6 与
-  sustain-loot-v1;loot 只在完成时钟(completion-l2-v1 / completion-l2-r18c)
-  下成立,配旧 legacy 时钟一律 fail closed;
-* 训练器(train/train_ppo.py)的时钟校验、earned 前缀钉死值与 CLI 选项都admit
-  loot,而 sustain-v5 之类照旧被拒;
-* 配方(train/eval_contract.py)缺省输出与 R18-B3 之前逐字节相同——旧调用者
-  拿到的仍是同一个 dict(键序在内);带 completion-l2-r18c 时才换新版本号;
-* 迁移操作名(train/migrate_resource_candidate.py)给 loot 一个全新版本串,
-  sustain-v6 的旧串一字未动。
+* the window (WorkerWindowEnv) under earned-dive-suffix-v1 accepts both sustain-v6 and
+    sustain-loot-v1; loot holds only under a completion clock (completion-l2-v1 / completion-l2-r18c),
+    and with the old legacy clock it always fails closed;
+* the trainer's (train/train_ppo.py) clock check, pinned earned-prefix values and CLI choices all admit
+    loot, while sustain-v5 and the like are still rejected;
+* the default output of the recipe (train/eval_contract.py) is byte-for-byte the same as before R18-B3: old callers
+    still get the same dict (including key order); only with completion-l2-r18c does the version number change;
+* the migration operation name (train/migrate_resource_candidate.py) gives loot a brand-new version string,
+    and sustain-v6's old string is unchanged.
 
-窗口一侧沿用 tests/test_completion_r18c_training.py 的私有包别名 + bridge 桩,
-不 build/reset/step 任何原生引擎。
+The window side reuses the private package alias + bridge stub of tests/test_completion_r18c_training.py
+and does not build/reset/step any native engine.
 """
 import argparse
 import ast
@@ -60,8 +60,8 @@ ARRIVAL = clock.COMPLETION_L2_V1.arrival_microsteps  # 12000, shared by both rec
 R16 = "7e31dc5402caed733443abb9fef383c877d93b3623b199ba4b5c6293092592f0"
 
 
-# R18-B3 之前 resource_service_recipe("l2-town-v1", "full", "sustain-loot-v1")
-# 的逐字节输出(含键序),抄成字面量钉在此处:缺省路径永不许漂移。
+# The byte-for-byte output (including key order) of resource_service_recipe("l2-town-v1", "full", "sustain-loot-v1")
+# before R18-B3, copied as a literal and pinned here: the default path must never drift.
 OLD_LOOT_RECIPE = {
     'version': 'l1-two-trip-loot-economy-v1',
     'service_policy': 'sustain-loot-v1',
@@ -122,7 +122,7 @@ OLD_LOOT_RECIPE = {
 
 
 # ---------------------------------------------------------------------------
-# (a)(b) 训练窗口:WorkerWindowEnv
+# (a)(b) training window: WorkerWindowEnv
 # ---------------------------------------------------------------------------
 
 class StubOptions:
@@ -153,13 +153,13 @@ def prefix_callback():
 
 @contextlib.contextmanager
 def patched_options(stub=True):
-    """R18-B3 复审 (2026-09-07):OptionsEnv 的桩改由调用方持有。
+    """R18-B3 review (2026-09-07): the OptionsEnv stub is now held by the caller.
 
-    从前 build() 自己开一层 patch.object,把调用方那只 Mock 遮住了,于是
-    `options.assert_not_called()` 盯的是一只**永远不会被调用**的 Mock ——
-    「loot + legacy 在构造 OptionsEnv 之前就死」这条断言当时是空的:把守卫
-    挪到 `self.oe = OptionsEnv(...)` 之后,整卷照样全绿。现在正负两路观察的
-    是同一只 Mock,顺序断言才真的有牙。
+    build() used to open its own patch.object, which hid the caller's Mock, so
+    `options.assert_not_called()` watched a Mock that would **never be called**:
+    the assertion "loot + legacy dies before OptionsEnv is constructed" was empty at the time: moving the guard
+    after `self.oe = OptionsEnv(...)` left the whole file green. Now the positive and negative paths observe
+    the same Mock, so the order assertion really has teeth.
     """
     side_effect = (lambda **kw: StubOptions(**kw)) if stub else None
     with patch.object(worker_env, "OptionsEnv", side_effect=side_effect) as options:
@@ -167,9 +167,9 @@ def patched_options(stub=True):
 
 
 def build(protocol, policy, **overrides):
-    """构造 WorkerWindowEnv;必须在调用方的 patched_options() 之内调用。"""
+    """Construct a WorkerWindowEnv; must be called inside the caller's patched_options()."""
     assert isinstance(worker_env.OptionsEnv, Mock), (
-        "OptionsEnv 必须由调用方打桩,否则顺序断言又会变空")
+        "OptionsEnv must be stubbed by the caller, otherwise the order assertion becomes empty again")
     arguments = dict(
         manager_npz=None, manager_heuristic="readiness-v1", max_steps=6000,
         learning_window_scope=SCOPE, policy_observation_view="dual-v4-asymmetric-v3",
@@ -204,7 +204,7 @@ def test_window_still_accepts_sustain_v6_unchanged(protocol):
 
 
 def test_window_refuses_loot_under_the_legacy_clock():
-    """战利品经济没有旧时钟版本:loot + legacy 在构造 OptionsEnv 之前就死。"""
+    """The loot economy has no old-clock version: loot + legacy dies before OptionsEnv is constructed."""
     with patched_options(stub=False) as options:
         with pytest.raises(ValueError,
                            match="sustain-loot-v1 requires an explicit completion-l2"):
@@ -232,7 +232,7 @@ def test_loot_still_requires_l2_town_v1_and_full(protocol, key, value):
 
 
 # ---------------------------------------------------------------------------
-# (c) 训练器:时钟校验 + earned 前缀钉死值
+# (c) trainer: clock check + pinned earned-prefix values
 # ---------------------------------------------------------------------------
 
 def time_config_args(policy, protocol=R18C):
@@ -257,10 +257,10 @@ def test_validate_worker_time_config_still_rejects_the_other_policies(policy, pr
 
 @pytest.mark.parametrize("scope", ["farm-only", "farm-dive-v1"])
 def test_loot_needs_a_completion_clock_in_every_learning_window_scope(scope):
-    """R18-B3 复审 (2026-09-07):这条法与作用域无关。
+    """R18-B3 review (2026-09-07): this rule does not depend on the scope.
 
-    从前 farm-only / farm-dive-v1 下的 loot + legacy 走完整个参数校验层,直到
-    OptionsEnv 构造(原生引擎已启动、run 目录已落盘)才死。
+    Under farm-only / farm-dive-v1, loot + legacy used to pass the whole argument-validation layer and only die at
+    OptionsEnv construction (native engine already started, run directory already written).
     """
     args = SimpleNamespace(worker=True, worker_learning_window_scope=scope,
                            resource_protocol="l2-town-v1", resource_purchase_mode="full",
@@ -282,7 +282,7 @@ def test_the_non_earned_scopes_are_otherwise_untouched(policy, scope):
 
 
 def prefix_cli_args(policy=ARMOR, protocol="legacy", **overrides):
-    """R18-B2 的 earned 前缀 CLI 参数,逐字沿用注册父代的钉死值。"""
+    """The earned-prefix CLI arguments of R18-B2, reusing the pinned values of the registered parent verbatim."""
     args = dict(
         worker_policy_observation_view="dual-v4-asymmetric-v3", reward_economy="v4",
         farm_scene_cap=3600, worker_action14_logit_bonus=2.5,
@@ -333,18 +333,18 @@ def test_fixed_prefix_dict_still_refuses_sustain_v5_and_friends(policy):
     ("device", "cuda"), ("worker", False), ("seed", None), ("max_steps", 10000),
     ("distill_beta", 1.0)])
 def test_the_prefix_requires_around_the_fixed_dict_are_untouched_for_loot(key, value):
-    """`fixed` 之外的那几条 _require(设备/工人/种子/步长/蒸馏)对 loot 同样成立。"""
+    """The _require checks beyond `fixed` (device/worker/seed/step size/distillation) hold for loot too."""
     with patch.object(training, "_capture_file_sha256", return_value=R16):
         with pytest.raises(ValueError):
             training._validate_worker_prefix_args(prefix_cli_args(LOOT, R18C, **{key: value}))
 
 
 def prefix_fixed_dict():
-    """把 train_ppo._validate_worker_prefix_args 里的 `fixed` 钉死表原样取出来。
+    """Take the `fixed` pin table in train_ppo._validate_worker_prefix_args exactly as it is.
 
-    R18-B3 复审 (2026-09-07):从前这里是一张手抄的 12 条清单,其中只有 7 条
-    真是 `fixed` 的键,余下 9 个钉死值从没在 loot 路径上被试过。改成由字典本身
-    驱动:将来新增的钉死键自动进卷,漂移立刻红。
+    R18-B3 review (2026-09-07): this used to be a hand-copied list of 12 entries, of which only 7
+    were really keys of `fixed`, and the other 9 pinned values were never tried on the loot path. Now it is driven
+    by the dict itself: pinned keys added later join the file automatically, and drift turns red at once.
     """
     tree = ast.parse((ROOT / "train/train_ppo.py").read_text(encoding="utf-8"))
     function = next(node for node in ast.walk(tree)
@@ -356,7 +356,7 @@ def prefix_fixed_dict():
 
 
 def drifted(value):
-    """一个必定不合法的取值(元组 = 集合成员,取一个非成员)。"""
+    """A value that is certainly illegal (tuple = set membership; take a non-member)."""
     if isinstance(value, tuple):
         return "-or-".join(value) + "-not-a-member"
     if isinstance(value, bool):
@@ -378,7 +378,7 @@ def test_every_pinned_value_in_the_fixed_dict_is_untouched_for_loot(key):
 
 
 def test_the_fixed_dict_covers_the_whole_registered_pin_list():
-    """钉死表既没缩水也没换位:R16 注册父代的 17 个键,顺序与主树一致。"""
+    """The pin table neither shrank nor reordered: the 17 keys of the R16 registered parent, in the same order as the main tree."""
     assert len(FIXED) == 17
     assert list(FIXED)[:4] == ["resource_protocol", "resource_purchase_mode",
                                "resource_service_policy", "dive_blocker_recovery"]
@@ -386,10 +386,10 @@ def test_the_fixed_dict_covers_the_whole_registered_pin_list():
 
 
 def test_an_already_invalid_caller_still_gets_the_same_first_error_as_before_b3():
-    """R18-B3 复审 (2026-09-07):服务法留在 `fixed` 原位 ⇒ 首个报错不变。
+    """R18-B3 review (2026-09-07): the service rule stays in its place in `fixed` => the first error is unchanged.
 
-    主树对 (resource_protocol='off', resource_service_policy='sustain-v5') 先喊
-    resource_protocol;把成员检查提到循环之前会让它先喊服务法。
+    For (resource_protocol='off', resource_service_policy='sustain-v5') the main tree reports
+    resource_protocol first; moving the membership check before the loop would make it report the service rule first.
     """
     with patch.object(training, "_capture_file_sha256", return_value=R16):
         with pytest.raises(ValueError, match=r"requires resource_protocol='l2-town-v1'"):
@@ -399,7 +399,7 @@ def test_an_already_invalid_caller_still_gets_the_same_first_error_as_before_b3(
 
 
 # ---------------------------------------------------------------------------
-# (d) CLI 选项
+# (d) CLI choices
 # ---------------------------------------------------------------------------
 
 def cli_node(flag):
@@ -427,13 +427,13 @@ def test_cli_admits_loot_and_keeps_every_old_choice_and_default():
 
 
 # ---------------------------------------------------------------------------
-# (e)(f) 配方版本号
+# (e)(f) recipe version numbers
 # ---------------------------------------------------------------------------
 
 def test_the_default_loot_recipe_is_byte_identical_to_the_pre_b3_dict():
     recipe = eval_contract.resource_service_recipe("l2-town-v1", "full", LOOT)
     assert recipe == OLD_LOOT_RECIPE
-    assert list(recipe) == list(OLD_LOOT_RECIPE)          # 键序也不许动
+    assert list(recipe) == list(OLD_LOOT_RECIPE)          # key order must not change either
     assert eval_contract.resource_service_recipe("l2-town-v1", "full", LOOT,
                                                  time_protocol=V1) == OLD_LOOT_RECIPE
 
@@ -467,7 +467,7 @@ def test_an_unregistered_clock_fails_closed_for_loot(value):
 
 
 def test_the_not_supplied_sentinel_is_the_registered_default_for_loot():
-    """R18-B3 复审:哨兵是 None(未传),不是「缺省时钟值」——见下一条。"""
+    """R18-B3 review: the sentinel is None (not passed), not "the default clock value"; see the next test."""
     assert eval_contract.resource_service_recipe(
         "l2-town-v1", "full", LOOT, time_protocol=None) == OLD_LOOT_RECIPE
 
@@ -475,11 +475,11 @@ def test_the_not_supplied_sentinel_is_the_registered_default_for_loot():
 @pytest.mark.parametrize("value", [V1, R18C, "legacy", "", 1, True])
 @pytest.mark.parametrize("policy", ["legacy-v1", "sustain-v5", ARMOR])
 def test_any_explicit_clock_on_a_non_loot_policy_fails_closed(policy, value):
-    """R18-B3 复审 (2026-09-07):连缺省时钟值也不许静默落在非 loot 服务法上。
+    """R18-B3 review (2026-09-07): not even the default clock value may silently land on a non-loot service rule.
 
-    从前 time_protocol 的哨兵就是 completion-l2-v1 本身,于是
+    time_protocol's sentinel used to be completion-l2-v1 itself, so
     resource_service_recipe(...,"sustain-v6",time_protocol="completion-l2-v1")
-    被静默接受并忽略,而同一写法配 completion-l2-r18c 却报错。
+    was silently accepted and ignored, while the same call with completion-l2-r18c raised.
     """
     assert eval_contract.resource_service_recipe("l2-town-v1", "full", policy) is not None
     with pytest.raises(ValueError, match="only applies to sustain-loot-v1"):
@@ -488,7 +488,7 @@ def test_any_explicit_clock_on_a_non_loot_policy_fails_closed(policy, value):
 
 
 # ---------------------------------------------------------------------------
-# R18-B3 复审:评测档案身份仍然没有时钟键 —— loot 档案一律 fail closed
+# R18-B3 review: evaluation archive identities still have no clock key, so loot archives always fail closed
 # ---------------------------------------------------------------------------
 
 LOOT_ARCHIVE_ENVIRONMENT = {
@@ -498,7 +498,7 @@ LOOT_ARCHIVE_ENVIRONMENT = {
 
 
 def test_a_loot_eval_archive_cannot_be_minted_under_the_default_clock():
-    """训练侧 loot 配方随时钟分版,档案身份却没有时钟键——不许用缺省值作证。"""
+    """The training-side loot recipe is versioned by clock, but archive identities have no clock key: a default value may not serve as evidence."""
     with pytest.raises(eval_contract.EvalContractError,
                        match="sustain-loot-v1 archives require the completion-l2 clock"):
         eval_contract.make_protocol([1, 2, 3],
@@ -521,7 +521,7 @@ def test_the_sustain_v6_archive_identity_is_untouched_by_that_refusal():
 
 
 def test_the_shipped_eval_cli_never_offered_loot_in_the_first_place():
-    """档案生产端(train/eval_assembled.py)的 choices 里本就没有 loot。"""
+    """The choices of the archive producer (train/eval_assembled.py) never included loot."""
     source = (ROOT / "train/eval_assembled.py").read_text(encoding="utf-8")
     tree = ast.parse(source)
     nodes = [node for node in ast.walk(tree) if isinstance(node, ast.Expr)
@@ -539,7 +539,7 @@ def test_the_training_side_helper_states_the_real_clock(protocol):
     assert training._resource_service_recipe_for("l2-town-v1", "full", LOOT, protocol) == (
         eval_contract.resource_service_recipe("l2-town-v1", "full", LOOT,
                                               time_protocol=protocol))
-    # 非 loot 的服务法走原调用:时钟一个字都不进配方。
+    # Non-loot service rules take the original call: the clock does not enter the recipe at all.
     for policy in ("legacy-v1", "sustain-v5", ARMOR):
         assert training._resource_service_recipe_for("l2-town-v1", "full", policy, protocol) == (
             eval_contract.resource_service_recipe("l2-town-v1", "full", policy))
@@ -551,7 +551,7 @@ def test_the_training_side_helper_refuses_loot_on_the_legacy_clock():
 
 
 # ---------------------------------------------------------------------------
-# 训练契约与续训身份
+# training contract and continuation identity
 # ---------------------------------------------------------------------------
 
 def loot_args(protocol=R18C, policy=LOOT):
@@ -619,7 +619,7 @@ def test_loot_and_armor_are_separate_identities_under_the_same_clock(protocol):
 
 @pytest.mark.parametrize("protocol", PROTOCOLS)
 def test_loot_sits_inside_the_protected_resume_policies(protocol):
-    """手改的 loot 配方(哪怕只动版本号)不许靠 legacy 旁路续训。"""
+    """A hand-edited loot recipe (even with only the version number changed) may not continue training through the legacy bypass."""
     current = loot_contract(protocol)
     saved = copy.deepcopy(current)
     saved["resource_service_recipe"]["version"] = "l1-two-trip-loot-economy-v9"
@@ -630,7 +630,7 @@ def test_loot_sits_inside_the_protected_resume_policies(protocol):
 
 
 # ---------------------------------------------------------------------------
-# (g) 迁移操作名
+# (g) migration operation name
 # ---------------------------------------------------------------------------
 
 FROZEN_OPERATIONS = {
@@ -650,7 +650,7 @@ def test_the_frozen_operation_names_are_never_renamed():
 
 
 def test_the_loot_operation_name_is_registered_but_not_yet_mintable():
-    """新版本串已登记(永不改名),但迁移 schema 还没有时钟键——先 fail closed。"""
+    """The new version string is registered (never renamed), but the migration schema has no clock key yet: fail closed for now."""
     assert migration.OPERATIONS[LOOT] == "r16-to-sustain-loot-v1-weights-only-v1"
     assert migration.OPERATIONS[LOOT] not in FROZEN_OPERATIONS.values()
     assert len(set(migration.OPERATIONS.values())) == len(migration.OPERATIONS)
@@ -659,12 +659,12 @@ def test_the_loot_operation_name_is_registered_but_not_yet_mintable():
 @pytest.mark.parametrize("recovery,scope", [("off", None), ("adjacent-v1", None),
                                             ("adjacent-v1", SCOPE)])
 def test_every_loot_migration_fails_closed_until_the_schema_carries_the_clock(recovery, scope):
-    """R18-B3 复审 (2026-09-07):迁移收据是冻结产物,不许冻结没人核实过的时钟。
+    """R18-B3 review (2026-09-07): the migration receipt is a frozen artifact and must not freeze a clock nobody has verified.
 
-    ALLOWED_CONTRACT_KEYS / target_contract 里没有 worker_time_protocol,而
-    train_ppo._validate_resource_warm_start_args 又无条件拒绝一切 loot
-    warm-start——真放行只会冻出一份永远没人能消费、却写着
-    time_protocol=completion-l2-v1 的收据。
+    ALLOWED_CONTRACT_KEYS / target_contract have no worker_time_protocol, and
+    train_ppo._validate_resource_warm_start_args unconditionally rejects every loot
+    warm start; really letting it through would only freeze a receipt that nobody could ever consume, yet that says
+    time_protocol=completion-l2-v1.
     """
     with pytest.raises(ValueError,
                        match="requires a completion-l2 clock in the migration schema"):
@@ -672,7 +672,7 @@ def test_every_loot_migration_fails_closed_until_the_schema_carries_the_clock(re
 
 
 def test_the_loot_refusal_comes_before_anything_is_written():
-    """target_contract 的第一步之一就是 operation_for,早于 mkdir/落盘。"""
+    """One of the first steps of target_contract is operation_for, before any mkdir or write."""
     source = (ROOT / "train/migrate_resource_candidate.py").read_text(encoding="utf-8")
     tree = ast.parse(source)
     function = next(node for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)
@@ -694,7 +694,7 @@ def test_the_depth_signal_experiment_stays_a_sustain_v6_only_registration():
         migration.operation_for("sustain-v5", "adjacent-v1", SCOPE, 24.0)
     with pytest.raises(ValueError, match="Depth signal requires"):
         migration.operation_for(ARMOR, "off", SCOPE, 24.0)
-    # loot + depth24 仍然被拒(现在死在更早的 loot 时钟法上)。
+    # loot + depth24 is still rejected (it now dies earlier, at the loot clock rule).
     with pytest.raises(ValueError, match="completion-l2 clock in the migration schema"):
         migration.operation_for(LOOT, "adjacent-v1", SCOPE, 24.0)
 

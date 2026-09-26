@@ -1,8 +1,8 @@
-"""v22 保险臂 H-BC(P6 触发时发车):选项级教师示范 → 策略脑 BC 热启动。
+"""v22 insurance arm H-BC (launched when P6 triggers): option-level teacher demos -> BC warm start of the policy brain.
 
-教师 = probe_options 的 teacher(榨干旗或 clvl≥dlvl+2 → DIVE,否则 FARM)。
-示范种子 100-227(与探针/评估池零交叉)。产出 policy_sd.pt 供
-train_ppo --options --bc-init 使用;附重放检查(303 维无记忆假设,选项级)。
+Teacher = the probe_options teacher (drained flag or clvl >= dlvl+2 -> DIVE, otherwise FARM).
+Demo seeds 100-227 (disjoint from the probe/evaluation pools). Writes policy_sd.pt for
+train_ppo --options --bc-init; includes a replay check (303-dim memoryless hypothesis, option level).
 """
 import json
 import hashlib
@@ -104,7 +104,7 @@ def main():
         for o, a in pairs:
             X.append(o); Y.append(a)
     t_mean = sum(rets) / len(rets)
-    print(f"示范:{len(Y)} 决策对,教师均回报 {t_mean:.1f}(示范池)", flush=True)
+    print(f"demos: {len(Y)} decision pairs, teacher mean return {t_mean:.1f} (demo pool)", flush=True)
 
     torch.manual_seed(22)
     X = torch.from_numpy(np.stack(X)); Y = torch.from_numpy(np.asarray(Y, dtype=np.int64))
@@ -123,7 +123,7 @@ def main():
             corr += int((logits.argmax(1) == yb).sum())
         print(f"BC ep{ep}: loss {tot/n:.4f} acc {corr/n:.3f}", flush=True)
 
-    # 重放(7000 池,选项级无记忆假设)
+    # replay (7000 pool, option-level memoryless hypothesis)
     model.eval()
     def bc_policy(e, o, m):
         with torch.no_grad():
@@ -131,13 +131,13 @@ def main():
             lg[~torch.from_numpy(m)] = -1e9
             return int(lg.argmax())
     replay = [rollout(env, bc_policy, s)[0] for s in REPLAY_SEEDS]
-    # 教师同池基准(公平比)
+    # same-pool teacher baseline (fair ratio)
     t7000 = [rollout(env, lambda e, o, m: teacher(e), s)[0] for s in REPLAY_SEEDS]
     bc_mean, t7_mean = sum(replay) / 32, sum(t7000) / 32
     if t7_mean <= 0:
-        raise RuntimeError(f"同池教师均回报 {t7_mean:.3f} <= 0，比值闸无定义")
+        raise RuntimeError(f"same-pool teacher mean return {t7_mean:.3f} <= 0; ratio gate undefined")
     ratio = bc_mean / t7_mean
-    print(f"重放:BC {bc_mean:.1f} vs 同池教师 {t7_mean:.1f} = {ratio:.2f} 倍(线 0.85)", flush=True)
+    print(f"replay: BC {bc_mean:.1f} vs same-pool teacher {t7_mean:.1f} = {ratio:.2f}x (line 0.85)", flush=True)
 
     ok = ratio >= 0.85
     report = {
@@ -147,7 +147,7 @@ def main():
     if not ok:
         write_report(report)
         raise RuntimeError(
-            f"无记忆函数闸 FAIL(ratio={ratio:.3f});拒绝覆写 policy_sd.pt")
+            f"memoryless-function gate FAIL (ratio={ratio:.3f}); refusing to overwrite policy_sd.pt")
     sd = {"mlp_extractor.policy_net.0.weight": model.net[0].weight,
           "mlp_extractor.policy_net.0.bias": model.net[0].bias,
           "mlp_extractor.policy_net.2.weight": model.net[2].weight,
@@ -155,7 +155,7 @@ def main():
           "action_net.weight": model.head.weight,
           "action_net.bias": model.head.bias}
     if artifact_provenance() != provenance:
-        raise RuntimeError("BC manager 运行期间实现/引擎/内容发生漂移")
+        raise RuntimeError("implementation/engine/content drifted while BC manager was running")
     policy_tmp = OUT / "policy_sd.tmp.pt"
     torch.save({k: v.detach().clone() for k, v in sd.items()}, policy_tmp)
     policy_tmp.replace(OUT / "policy_sd.pt")
@@ -163,9 +163,9 @@ def main():
         (OUT / "policy_sd.pt").read_bytes()).hexdigest()
     write_report(report)
     env.close()
-    print(f"已存 {OUT}/policy_sd.pt", flush=True)
+    print(f"saved {OUT}/policy_sd.pt", flush=True)
 
 
 if __name__ == "__main__":
-    with exclusive_lock(OUT / ".bc.lock", "BC manager 产物"):
+    with exclusive_lock(OUT / ".bc.lock", "BC manager artifacts"):
         main()

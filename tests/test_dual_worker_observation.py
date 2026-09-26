@@ -225,7 +225,7 @@ class DualWorkerObservationTests(unittest.TestCase):
             bool(live[12]))
 
         options.drink_sovereignty = True
-        with self.assertRaisesRegex(RuntimeError, "不一致"):
+        with self.assertRaisesRegex(RuntimeError, "inconsistent"):
             options._validate_worker_action12_contract(
                 callback, callback.diablogym_worker_observation_view)
 
@@ -246,12 +246,12 @@ class DualWorkerObservationTests(unittest.TestCase):
             _resolve_worker_drink_sovereignty({0: permanent}, None))
         self.assertTrue(
             _resolve_worker_drink_sovereignty({0: environment}, None))
-        with self.assertRaisesRegex(ValueError, "不一致"):
+        with self.assertRaisesRegex(ValueError, "inconsistent"):
             _resolve_worker_drink_sovereignty({0: permanent}, True)
-        with self.assertRaisesRegex(ValueError, "多个 Worker"):
+        with self.assertRaisesRegex(ValueError, "multiple Worker"):
             _resolve_worker_drink_sovereignty(
                 {0: permanent, 1: environment}, None)
-        with self.assertRaisesRegex(ValueError, "无 contract"):
+        with self.assertRaisesRegex(ValueError, "without a contract"):
             _resolve_worker_drink_sovereignty(
                 {0: permanent, 1: lambda *_args: 9}, None)
 
@@ -541,7 +541,7 @@ class DualWorkerObservationTests(unittest.TestCase):
                 for segment in DUAL_WORKER_LAYOUT.segments
             ),
         )
-        with self.assertRaisesRegex(RuntimeError, "encoding 数量"):
+        with self.assertRaisesRegex(RuntimeError, "encoding count"):
             _validate_layout_spec(malformed_layout)
 
         malformed_shape = replace(
@@ -724,7 +724,7 @@ class DualWorkerObservationTests(unittest.TestCase):
             dual.policy_observation_view,
             WORKER_OBSERVATION_VIEW_DUAL_V4_ASYMMETRIC,
         )
-        with self.assertRaisesRegex(ValueError, "冲突"):
+        with self.assertRaisesRegex(ValueError, "conflicts with"):
             WorkerWindowEnv(
                 "manager.npz",
                 legacy_policy_observation_view=True,

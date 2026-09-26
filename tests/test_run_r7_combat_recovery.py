@@ -410,7 +410,7 @@ class R7FrozenProtocolTests(unittest.TestCase):
         with mock.patch.object(
                 r7.eval_contract, "game_data_identity",
                 return_value=source):
-            with self.assertRaisesRegex(r7.CampaignError, "SHA 漂移"):
+            with self.assertRaisesRegex(r7.CampaignError, "SHA drift"):
                 r7._full_game_data_identity()
 
     def test_generic_eval_contract_still_accepts_spawn(self):
@@ -823,7 +823,7 @@ class R7GearProgressionGateTests(unittest.TestCase):
             r7.MIN_ACTION14_MASK_OPPORTUNITIES,
             0, 0, 0,
         )
-        # rev21 诊断消费真实 rows;本测试聚焦 verdict 合并,给最小配对行。
+        # rev21 diagnostics consume real rows; this test focuses on the verdict merge and gives minimal paired rows.
         paired_row = {"seed": 7000, "micro_steps": 100,
                       "farm_worker_wage": 1.0, "died": False}
         baseline = {"baseline": True, "rows": [dict(paired_row)]}
@@ -1086,7 +1086,7 @@ class R7TerminalDeathEvidenceTests(unittest.TestCase):
                 _last_diverge=None,
             )
             callback.num_timesteps = r7.TARGET_STEPS
-            with self.assertRaisesRegex(ValueError, "credit 漂移"):
+            with self.assertRaisesRegex(ValueError, "credit drift"):
                 callback._emit(final=True)
 
 
@@ -1155,7 +1155,7 @@ class R7WorkerOnPolicyPgEvidenceTests(unittest.TestCase):
 
         for name, checkpoint in mutations.items():
             with self.subTest(case=name), self.assertRaisesRegex(
-                    r7.CampaignError, "timeout 分账"):
+                    r7.CampaignError, "timeout accounting"):
                 self._summarize(checkpoint)
 
 
@@ -1167,7 +1167,7 @@ class StableIoTests(unittest.TestCase):
             target.write_bytes(b"payload")
             link = root / "link.bin"
             link.symlink_to(target)
-            with self.assertRaisesRegex(r7.CampaignError, "符号链接"):
+            with self.assertRaisesRegex(r7.CampaignError, "symlink"):
                 r7._stable_read(link)
 
     def test_exclusive_json_round_trip_and_staging_is_read_only(self):
@@ -1190,7 +1190,7 @@ class StableIoTests(unittest.TestCase):
             self.assertEqual(destination.stat().st_mode & 0o222, 0)
 
             source.write_bytes(b"changed")
-            with self.assertRaisesRegex(r7.CampaignError, "源 SHA 漂移"):
+            with self.assertRaisesRegex(r7.CampaignError, "source SHA drift"):
                 r7._stage_eval_file(
                     source, destination, expected_sha256=digest)
 
@@ -1216,7 +1216,7 @@ class StableIoTests(unittest.TestCase):
                     r7, "_frozen_inputs_identity", return_value={}),
             ):
                 with self.assertRaisesRegex(
-                        r7.CampaignError, "V28 baseline SHA 漂移"):
+                        r7.CampaignError, "V28 baseline SHA drift"):
                     r7._prepare_eval_launch(
                         worker, (1, 2), "baseline-toctou")
 
@@ -1234,7 +1234,7 @@ class StableIoTests(unittest.TestCase):
                 mock.patch.object(r7, "LOCK_PATH", campaign_link),
             ):
                 with self.assertRaisesRegex(
-                        r7.CampaignError, "不可安全打开"):
+                        r7.CampaignError, "cannot be opened safely"):
                     with r7._campaign_lock():
                         self.fail("symlink lock must not be acquired")
 
@@ -1249,7 +1249,7 @@ class StableIoTests(unittest.TestCase):
                 mock.patch.object(r7, "FINAL_REGISTRY_LOCK", registry_lock),
             ):
                 with self.assertRaisesRegex(
-                        r7.CampaignError, "单链接普通文件"):
+                        r7.CampaignError, "single-link regular file"):
                     with r7._final_registry_lock():
                         self.fail("multi-link lock must not be acquired")
 
@@ -1391,7 +1391,7 @@ class R7OneShotTests(unittest.TestCase):
                 with self.assertRaises(CampaignInterrupted):
                     r7._run_training_once("risk32", 42, "development")
                 self.assertTrue(marker.exists())
-                with self.assertRaisesRegex(r7.CampaignError, "禁止重发"):
+                with self.assertRaisesRegex(r7.CampaignError, "relaunch forbidden"):
                     r7._run_training_once("risk32", 42, "development")
 
     def test_completed_training_is_adopted_without_refiring(self):
@@ -1462,7 +1462,7 @@ class R7OneShotTests(unittest.TestCase):
                     r7._run_eval_once(
                         pathlib.Path("/worker.zip"), (1, 2), "unit-tag")
                 self.assertTrue(marker.exists())
-                with self.assertRaisesRegex(r7.CampaignError, "禁止.*重试"):
+                with self.assertRaisesRegex(r7.CampaignError, "retry.*forbidden"):
                     r7._run_eval_once(
                         pathlib.Path("/worker.zip"), (1, 2), "unit-tag")
 
@@ -1682,7 +1682,7 @@ class R7OneShotTests(unittest.TestCase):
                 mock.patch.object(r7, "_eval_path", return_value=archive),
             ):
                 with self.assertRaisesRegex(
-                        r7.CampaignError, "路径漂移"):
+                        r7.CampaignError, "path drift"):
                     r7._validate_eval_archive(
                         launch, (1, 2), "unit")
 
@@ -1760,7 +1760,7 @@ class R7OneShotTests(unittest.TestCase):
                 (inputs / "unit-tag" / "bc_aux_behavior_receipt.json").write_text(
                     "{}", encoding="utf-8")
                 with self.assertRaisesRegex(
-                        r7.CampaignError, "成员集合"):
+                        r7.CampaignError, "member set"):
                     r7._prepare_eval_launch(
                         worker, (1, 2), "unit-tag",
                         require_existing_staging=True)
@@ -1788,7 +1788,7 @@ class FinalRegistryTests(unittest.TestCase):
                     "a" * 64, continuing=True)
                 self.assertEqual(continued, first)
                 with self.assertRaisesRegex(
-                        r7.CampaignError, "全局 registry"):
+                        r7.CampaignError, "global registry"):
                     r7._register_final_pool("a" * 64, continuing=False)
 
     def test_global_registry_rejects_partial_overlap(self):
@@ -1819,7 +1819,7 @@ class FinalRegistryTests(unittest.TestCase):
                 mock.patch.object(r7, "CONTROL_DIR", control),
                 mock.patch.object(r7, "FINAL_POOL", (10, 11)),
             ):
-                with self.assertRaisesRegex(r7.CampaignError, "重叠"):
+                with self.assertRaisesRegex(r7.CampaignError, "overlaps"):
                     r7._register_final_pool("a" * 64, continuing=False)
 
     def test_residue_scan_catches_corrupt_void_with_final_seed(self):
@@ -1898,7 +1898,7 @@ class FinalRegistryTests(unittest.TestCase):
                 r7._write_json_atomic(
                     r7._final_registry_path(), registry_record)
                 with self.assertRaisesRegex(
-                        r7.CampaignError, "evidence|证据|registry"):
+                        r7.CampaignError, "evidence|registry"):
                     r7._validate_final_opened_registry(bind_core)
 
 
@@ -1907,7 +1907,7 @@ class PublicationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             published = pathlib.Path(directory) / "published"
             with mock.patch.object(r7, "PUBLISHED_DIR", published):
-                with self.assertRaisesRegex(r7.CampaignError, "只有 final PASS"):
+                with self.assertRaisesRegex(r7.CampaignError, "only a final PASS"):
                     r7._promote_passed_candidate(
                         {}, pathlib.Path("/unused"),
                         {"verdict": {"status": "FAIL"}},
@@ -2009,7 +2009,7 @@ class PublicationTests(unittest.TestCase):
                 (published / "unexpected.txt").write_text(
                     "residue", encoding="utf-8")
                 with self.assertRaisesRegex(
-                        r7.CampaignError, "成员集合"):
+                        r7.CampaignError, "member set"):
                     r7._promote_passed_candidate(
                         bind, candidate,
                         {"verdict": {"status": "PASS"}},
@@ -2080,7 +2080,7 @@ class PublicationTests(unittest.TestCase):
                     return_value=publication),
             ):
                 with self.assertRaisesRegex(
-                        r7.CampaignError, "commit 前"):
+                        r7.CampaignError, "before the publication commit"):
                     r7._promote_passed_candidate(
                         bind, candidate, analysis,
                         baseline_sha="a" * 64,
@@ -2129,7 +2129,7 @@ class CampaignInterrupted(RuntimeError):
 
 
 class Rev21DiagnosticsTests(unittest.TestCase):
-    """rev21 每步效率记分肢与存活分解(只记不裁)的纯函数回归。"""
+    """Pure-function regressions of the rev21 per-step efficiency score limb and the survival decomposition (recorded, not enforced)."""
 
     @staticmethod
     def _archive(rows):
@@ -2158,7 +2158,7 @@ class Rev21DiagnosticsTests(unittest.TestCase):
                          r7.REV21_DIAGNOSTICS_SCHEMA)
         report = diag["rate_report"]
         self.assertEqual(report["n_pairs"], 3)
-        # 逐种子 rate delta:7000: .04-.03=+.01;7001: .02-.025=-.005;7002: +.004
+        # per-seed rate delta: 7000: .04-.03=+.01; 7001: .02-.025=-.005; 7002: +.004
         self.assertAlmostEqual(report["rows"][0]["delta_rate"], 0.01)
         self.assertAlmostEqual(report["rows"][1]["delta_rate"], -0.005)
         self.assertAlmostEqual(report["rows"][2]["delta_rate"], 0.004)
@@ -2215,7 +2215,7 @@ class Amendment5GateTest(unittest.TestCase):
         self.assertEqual(r7.AMENDMENT5_PRE_CAMPAIGN_REVISION, 21)
         self.assertEqual(len(r7.AMENDMENT5_PRE_LAUNCHER_SHA256), 64)
         self.assertEqual(len(r7.AMENDMENT5_PRE_RECIPE_SHA256), 64)
-        # 修正案五后的当前身份必须已离开 rev21 快照
+        # after amendment 5 the current identity must have left the rev21 snapshot
         self.assertNotEqual(
             r7.CAMPAIGN_RECIPE_SHA256, r7.AMENDMENT5_PRE_RECIPE_SHA256)
         self.assertEqual(
@@ -2263,7 +2263,7 @@ class Amendment5GateTest(unittest.TestCase):
         ni = "deaths.noninferiority_upper_bound"
         seeds = r7.DEVELOPMENT_TRAIN_SEEDS
         fail_map = {
-            # risk32:s2130200 双池带侧翼失败;s2130100 B 池死亡观测上升
+            # risk32: s2130200 flank failure in both pools; s2130100 observed deaths rise in pool B
             f"dev-a:risk32:{seeds[0]}": [ni],
             f"dev-a:risk32:{seeds[1]}": [ni],
             f"dev-a:risk32:{seeds[2]}": [
@@ -2273,7 +2273,7 @@ class Amendment5GateTest(unittest.TestCase):
             f"dev-b:risk32:{seeds[1]}": [ni, "deaths.observed_not_higher"],
             f"dev-b:risk32:{seeds[2]}": [
                 ni, "deaths.observed_not_higher", "ret.exact_sign"],
-            # risk64:仅 dev-a 第三种子带 kills/ret 符号失败
+            # risk64: only the third seed of dev-a has kills/ret sign failures
             f"dev-a:risk64:{seeds[0]}": [ni],
             f"dev-a:risk64:{seeds[1]}": [ni],
             f"dev-a:risk64:{seeds[2]}": [
@@ -2323,7 +2323,7 @@ class Amendment5GateTest(unittest.TestCase):
 
 
 class Amendment5MachineryTest(unittest.TestCase):
-    """夹具战役:伪造 rev21 scientific-fail 终态,全链演练收养机器。"""
+    """Fixture campaign: forge a rev21 scientific-fail terminal state and rehearse the adoption machinery end to end."""
 
     _PATCHED = (
         "CONTROL_DIR", "STATE_PATH", "DEVELOPMENT_DECISION_PATH",
@@ -2361,7 +2361,7 @@ class Amendment5MachineryTest(unittest.TestCase):
         r7._training_receipt_path = self._saved_receipt
         self._tmp.cleanup()
 
-    # ---- 夹具构造 ----
+    # ---- fixture construction ----
 
     def _write_json(self, path, value):
         path.write_text(
@@ -2463,7 +2463,7 @@ class Amendment5MachineryTest(unittest.TestCase):
         }
         self._write_json(r7.STATE_PATH, state)
 
-    # ---- 测试 ----
+    # ---- tests ----
 
     def test_adopt_migrates_selects_risk64_and_is_idempotent(self):
         r7.command_adopt_development()
@@ -2483,20 +2483,20 @@ class Amendment5MachineryTest(unittest.TestCase):
         self.assertEqual(
             document["post"]["selection"]["per_recipe"]["risk32"]["count"],
             1)
-        # 幂等重跑 + 改道复验
+        # idempotent rerun + re-verification after a path change
         r7.command_adopt_development()
         verdict = r7._validate_development_decision(
             r7._load_state())
         self.assertEqual(verdict["selected_recipe"], "risk64")
 
     def test_adopt_refuses_judgment_anchor_tamper(self):
-        # 对抗复核实证的伪造路径:改单文件使 risk32 达 2/3 —— 锚定必须拦截
+        # the forgery path shown by the adversarial review: change a single file so that risk32 reaches 2/3; anchoring must stop it
         seeds = r7.DEVELOPMENT_TRAIN_SEEDS
         path = r7._analysis_path("dev-b", "risk32", seeds[1])
         self._write_json(
             path,
             self._analysis(["deaths.noninferiority_upper_bound"]))
-        with self.assertRaisesRegex(r7.CampaignError, "失锚"):
+        with self.assertRaisesRegex(r7.CampaignError, "lost (?:its|their) anchor"):
             r7.command_adopt_development()
         self.assertFalse(r7.AMENDMENT5_PATH.exists())
         self.assertEqual(
@@ -2506,7 +2506,7 @@ class Amendment5MachineryTest(unittest.TestCase):
     def test_adopt_crash_window_repair(self):
         pre_state_bytes = r7.STATE_PATH.read_bytes()
         r7.command_adopt_development()
-        # 模拟 doc 已落、state 未迁的崩溃窗
+        # simulate the crash window where the doc is written but the state is not migrated
         r7.STATE_PATH.write_bytes(pre_state_bytes)
         r7.command_adopt_development()
         state = r7._stable_json(r7.STATE_PATH)
@@ -2518,11 +2518,11 @@ class Amendment5MachineryTest(unittest.TestCase):
     def test_post_adoption_development_commands_sealed(self):
         r7.command_adopt_development()
         state_before = r7.STATE_PATH.read_bytes()
-        with self.assertRaisesRegex(r7.CampaignError, "封存"):
+        with self.assertRaisesRegex(r7.CampaignError, "sealed"):
             r7.command_eval_development()
-        with self.assertRaisesRegex(r7.CampaignError, "封存"):
+        with self.assertRaisesRegex(r7.CampaignError, "sealed"):
             r7.command_train_development()
-        # phase 记录必须原封不动(不得被 locked-failed 覆写)
+        # the phase record must stay untouched (must not be overwritten by locked-failed)
         self.assertEqual(r7.STATE_PATH.read_bytes(), state_before)
 
     def test_validate_rejects_wiped_phase(self):
@@ -2534,7 +2534,7 @@ class Amendment5MachineryTest(unittest.TestCase):
         }
         self._write_json(r7.STATE_PATH, state)
         with self.assertRaisesRegex(
-                r7.CampaignError, "amendment5 state phase 未闭合"):
+                r7.CampaignError, "amendment5 state phase not closed"):
             r7._validate_amendment5_adoption(state)
 
     def test_adopt_refuses_when_no_recipe_qualifies(self):
@@ -2544,7 +2544,7 @@ class Amendment5MachineryTest(unittest.TestCase):
             for key in self._frozen_fail_map()
         }
         self._build_rev21_terminal(fail_map)
-        with self.assertRaisesRegex(r7.CampaignError, "拒绝收养"):
+        with self.assertRaisesRegex(r7.CampaignError, "refusing to adopt"):
             r7.command_adopt_development()
         self.assertFalse(r7.AMENDMENT5_PATH.exists())
 
@@ -2552,13 +2552,13 @@ class Amendment5MachineryTest(unittest.TestCase):
         tag = "r7-dev-a-baseline-v28"
         archive = r7._eval_path(tag)
         self._write_json(archive, {"tag": tag, "kind": "archive", "x": 1})
-        with self.assertRaisesRegex(r7.CampaignError, "失锚"):
+        with self.assertRaisesRegex(r7.CampaignError, "lost (?:its|their) anchor"):
             r7.command_adopt_development()
         self.assertFalse(r7.AMENDMENT5_PATH.exists())
 
 
 class Amendment6MachineryTest(unittest.TestCase):
-    """夹具:伪造 rev22 修五收养态 + 终考事故现场,演练修六机器。"""
+    """Fixture: forge the rev22 amendment-5 adoption state + a simulated incident state in the final exam, and rehearse the amendment-6 machinery."""
 
     _A6_PATCHED = (
         "AMENDMENT6_PATH", "FINAL_OPENED_PATH", "FINAL_FIRED_PATH",
@@ -2593,7 +2593,7 @@ class Amendment6MachineryTest(unittest.TestCase):
 
     def _promote_to_rev22_incident(self, root, control):
         wj = self._a5._write_json
-        # 伪造修五收养文档(post 钉 rev22 = A6_PRE 三元组)
+        # forge the amendment-5 adoption document (post pinned rev22 = the A6_PRE triple)
         state_sha = r7._sha256(r7.STATE_PATH)
         analyses = r7._amendment5_read_frozen_analyses()
         self._selection = r7._amendment5_selection(analyses)
@@ -2614,7 +2614,7 @@ class Amendment6MachineryTest(unittest.TestCase):
         })
         recipe = self._selection["selected_recipe"]
         self._recipe = recipe
-        # 生产件三件套
+        # the three production artifacts
         receipt_path = r7._training_receipt_path(
             recipe, r7.PRODUCTION_TRAIN_SEED, "candidate")
         model_path = r7._training_model_path(
@@ -2628,7 +2628,7 @@ class Amendment6MachineryTest(unittest.TestCase):
         artifact = r7._stable_json(receipt_path)
         artifact["receipt_sha256"] = r7._sha256(receipt_path)
         self._artifact = artifact
-        # 事故现场:被烧池 opened + 基线点火标记 + registry 一条 + 日志副本
+        # simulated incident state: burned pool opened + baseline launch marker + one registry entry + a copy of the log
         wj(r7.FINAL_OPENED_PATH, {
             "seeds": list(range(*r7.AMENDMENT6_BURNED_POOL)),
             "kind": "burned-opened"})
@@ -2659,7 +2659,7 @@ class Amendment6MachineryTest(unittest.TestCase):
         log_copy = incident_dir / "eval-final.partial.log"
         log_copy.write_text("seed 2120213: fixture tail\n")
         r7.AMENDMENT6_INCIDENT_LOG_SHA256 = r7._sha256(log_copy)
-        # state 提升到 rev22 修五收养态 + 事故停点
+        # raise the state to the rev22 amendment-5 adoption state + the incident stop point
         state = r7._stable_json(r7.STATE_PATH)
         state["campaign_revision"] = r7.AMENDMENT6_PRE_CAMPAIGN_REVISION
         state["launcher_sha256"] = r7.AMENDMENT6_PRE_LAUNCHER_SHA256
@@ -2704,17 +2704,17 @@ class Amendment6MachineryTest(unittest.TestCase):
         self.assertFalse(r7.FINAL_OPENED_PATH.exists())
         self.assertTrue(
             (incident_dir / r7.FINAL_OPENED_PATH.name).exists())
-        # 幂等重跑 + 生产件改道复验
+        # idempotent rerun + re-verification of production artifacts after a path change
         r7.command_adopt_final_incident()
         receipt = r7._production_receipt(self._recipe)
         self.assertEqual(receipt, self._artifact)
-        # a5 链在 a6 生效后仍闭合
+        # the a5 chain still closes after a6 takes effect
         verdict = r7._validate_development_decision(r7._load_state())
         self.assertEqual(verdict["selected_recipe"], self._recipe)
 
 
     def test_all_production_receipt_sites_rerouted(self):
-        # 复核 blocker 回归网:三处生产回执消费点必须全部走 _production_receipt
+        # regression net for the review blocker: all three consumers of production receipts must go through _production_receipt
         for func in (r7._capture_final_evidence, r7._final_bind,
                      r7.command_eval_final):
             source = inspect.getsource(func)
@@ -2725,11 +2725,11 @@ class Amendment6MachineryTest(unittest.TestCase):
                 r7._capture_final_evidence))
 
     def test_adopt_refuses_forged_opened_document(self):
-        # 锚定回归:伪造 opened(seeds 正确但字节不同)必失锚
+        # anchoring regression: a forged opened (correct seeds but different bytes) must lose its anchor
         self._a5._write_json(r7.FINAL_OPENED_PATH, {
             "seeds": list(range(*r7.AMENDMENT6_BURNED_POOL)),
             "kind": "forged-opened"})
-        with self.assertRaisesRegex(r7.CampaignError, "失锚"):
+        with self.assertRaisesRegex(r7.CampaignError, "lost (?:its|their) anchor"):
             r7.command_adopt_final_incident()
         self.assertFalse(r7.AMENDMENT6_PATH.exists())
 
@@ -2762,7 +2762,7 @@ class Amendment6MachineryTest(unittest.TestCase):
         self._a5._write_json(
             r7.CONTROL_DIR / "eval-fired" / f"{tag}.json",
             {"kind": "candidate-fired"})
-        with self.assertRaisesRegex(r7.CampaignError, "候选必须从未"):
+        with self.assertRaisesRegex(r7.CampaignError, "the candidate must never have been"):
             r7.command_adopt_final_incident()
         self.assertFalse(r7.AMENDMENT6_PATH.exists())
 
@@ -2771,13 +2771,13 @@ class Amendment6MachineryTest(unittest.TestCase):
         receipt_path = r7._training_receipt_path(
             self._recipe, r7.PRODUCTION_TRAIN_SEED, "candidate")
         self._a5._write_json(receipt_path, {"kind": "tampered"})
-        with self.assertRaisesRegex(r7.CampaignError, "生产回执漂移"):
+        with self.assertRaisesRegex(r7.CampaignError, "production receipt drift"):
             r7.command_adopt_final_incident()
 
     def test_train_production_sealed_after_adoption(self):
         r7.command_adopt_final_incident()
         state_before = r7.STATE_PATH.read_bytes()
-        with self.assertRaisesRegex(r7.CampaignError, "禁止重训"):
+        with self.assertRaisesRegex(r7.CampaignError, "retraining forbidden"):
             r7.command_train_production()
         self.assertEqual(r7.STATE_PATH.read_bytes(), state_before)
 

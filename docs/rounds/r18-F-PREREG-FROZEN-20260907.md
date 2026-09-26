@@ -1,37 +1,37 @@
-# R18-F 预注册:回城卷轴 portal-v1 的零训练探针(2026-09-07 凌晨)
+# R18-F pre-registration: a zero-training probe of the Town Portal scroll portal-v1 (2026-09-07)
 
-## 〇、案由
+## 0. Background
 
-主席 01:05:「回城卷轴肯定是要做的」。R18-C 显示撤退循环能转但每次撤退要走回楼梯,25–28% 的撤退死在路上;
-卷轴把"走到楼梯"换成"原地开门",把回城的代价压到最低,代价是 200 金一张、回来落在施法原地。
+Design requirement: the Town Portal scroll has to be built. R18-C showed that the retreat cycle can turn, but every retreat has to walk back to the stairs, and 25–28% of retreats die on the way;
+the scroll replaces "walk to the stairs" with "open a door where you stand", pushing the cost of a town trip to the minimum, at a price of 200 gold per scroll and returning to the spot where it was cast.
 
-## 一、接口(默认关 = 逐位不变;Opus R18-F 工程师实装,主刀集成)
+## 1. Interface (default off = unchanged bit for bit)
 
-- 引擎:女巫 Adria 进入无头商店(`patches/0013-headless-witch-vendor.patch`,漂移门 PASS);桥:传送门的门分成两支
-  (`portal_to_town` L2+→城、`portal_return` 城→L2+,均需 Python 授权;其余传送消息照旧拒绝);`configure_resource_protocol(..., portal=True)`;
-  `configure_resource_portal`;`act_cast_town_portal`;每局至多 2 次;观测 `portal_enabled` 恒有,开时另有授权/次数/门状态/卷轴数。
-  跨桥同一性:关时四种传送消息在城内与地牢的回执、整个 resource_state 与旧桥逐位相同(仅多一个 `portal_enabled` 键)。
-- Python:`resource_portal="portal-v1"` 要求 l2-town-v1 + coach-v03 + retreat-v1;`PortalService`:回城时到 Adria 补卷轴
-  (留足 4 格药带才买)、在 L2+ 撤退法开火且身上有卷轴时优先开门(否则走楼梯撤退)、进门、城内流程照旧、从城里的门回来;
-  失败从不终止本局。三级优先链:门 → 撤退 → 回城服务。
-- 已知未解:回来落在施法原地、面对幸存的怪群,血量不变;卷轴 200 金;放置失败照样耗卷。
+- Engine: the witch Adria enters the headless shop (`patches/0013-headless-witch-vendor.patch`, drift gate PASS); bridge: the portal gate splits into two branches
+  (`portal_to_town` L2+→town and `portal_return` town→L2+, both requiring Python authorization; all other teleport messages are still refused); `configure_resource_protocol(..., portal=True)`;
+  `configure_resource_portal`; `act_cast_town_portal`; at most 2 per game; the observation always has `portal_enabled`, and when on also the authorization/count/portal state/scroll count.
+  Cross-bridge identity: when off, the receipts of the four teleport messages in town and in the dungeon, and the whole resource_state, are bit-identical to the old bridge (only one extra `portal_enabled` key).
+- Python: `resource_portal="portal-v1"` requires l2-town-v1 + coach-v03 + retreat-v1; `PortalService`: restocks scrolls at Adria during a town trip
+  (buying only when enough is left for a 4-slot potion belt), opens a portal first when the retreat rule fires on L2+ and a scroll is carried (otherwise retreats by the stairs), walks through, runs the town flow as before and comes back through the town-side portal;
+  a failure never ends the game. Three-level priority chain: portal → retreat → town service.
+- Known open issues: the return lands on the casting spot, facing the surviving crowd, with HP unchanged; a scroll costs 200 gold; a failed placement still consumes the scroll.
 
-## 二、探针
+## 2. Probe
 
-驱动 `r10-staging/run_r18f_probe.py`;池 2_133 同种子配对;工人 7e31dc54;时钟 completion-l2-r18c;经理 coach-v03;
-经济 sustain-loot-v1;撤退 retreat-v1;两臂:ctl `r18f-retreat`(重跑)与 P `r18f-retreat-portal`(+ portal-v1)。
+Driver `r10-staging/run_r18f_probe.py` (not published); pool 2_133 with same-seed pairs; worker 7e31dc54; clock completion-l2-r18c; manager coach-v03;
+economy sustain-loot-v1; retreat retreat-v1; two arms: ctl `r18f-retreat` (re-run) and P `r18f-retreat-portal` (+ portal-v1).
 
-判据:回归(硬)——ctl 行与 R18-G 对照行逐位相同;两臂首次 L2 到达前缀逐局相同;否则 VOID。
-主假设(只报不判,方向事先写死):H1 P 的 L2 每千拍风险率低于 ctl;H2 配对 saved−lost > 0 且 UCB95 < 0;
-H3 P 的"撤退途中死亡"份额(含门与楼梯两种)低于 ctl 的 25%;H4 P 的再下局数与 L2+ 占用份额不低于 ctl(门保住了深度);
-H5 卷轴经济:买卷数、门次数、失败原因分布、末期金币。
+Criteria: regression (hard): the ctl rows are bit-identical to the R18-G control rows; the prefix up to the first L2 arrival is identical game by game in both arms; otherwise VOID.
+Main hypotheses (reported, not judged; directions fixed in advance): H1 P's L2 hazard per 1000 ticks is lower than ctl; H2 paired saved−lost > 0 with UCB95 < 0;
+H3 P's share of "deaths during retreat" (portal and stairs combined) is below ctl's 25%; H4 P's number of games descending again and L2+ occupancy share are not lower than ctl (the portal keeps depth);
+H5 scroll economy: scrolls bought, portal count, failure-reason distribution, final gold.
 
-## 三、认证链
+## 3. Certification chain
 
-新桥(build-res 从同一源码重建)→ 全套件 0 失败(含 `tests/test_resource_portal.py`)→ 探针回归相等 → 双向重烤在新桥/最终字节上 4/4 + 4/4 →
-本文件 sha256 记台账。
+New bridge (build-res rebuilt from the same source) → full suite with 0 failures (including `tests/test_resource_portal.py`) → probe regression equal → two-way re-bake on the new bridge/final bytes 4/4 + 4/4 →
+the sha256 of this file recorded in the ledger.
 
-## 四、种子与文件
+## 4. Seeds and files
 
-2_133 再消耗 2 组(累计 18 组);处女池零接触。新文件:本预注册、`run_r18f_probe.py`、`resource_portal.py`、`tests/test_resource_portal.py`、
-`patches/0013-*.patch`、`r18f-probe/`。改动协议文件:`src/resource_protocol.hpp`、`src/diablogym.cpp`、`resource_protocol.py`、`env.py`、`options_env.py`、探针。
+2_133 consumes 2 more groups (18 in total); the virgin pools are untouched. New files: this pre-registration, `run_r18f_probe.py` (not published), `resource_portal.py`, `tests/test_resource_portal.py`,
+`patches/0013-*.patch`, `r18f-probe/` (not published). Changed protocol files: `src/resource_protocol.hpp`, `src/diablogym.cpp`, `resource_protocol.py`, `env.py`, `options_env.py`, the probe.

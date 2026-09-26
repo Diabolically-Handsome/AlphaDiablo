@@ -7,7 +7,9 @@ scored the exam. Results: [`docs/rounds/round9-exam.md`](../docs/rounds/round9-e
 head) nor any training data or teacher labels are published; only their sha256 values are (below and in
 [`PROVENANCE.md`](PROVENANCE.md)). Our own game logs are not published either. Without the weights the games
 cannot be re-run, and without the logs the replay tool cannot be pointed at our games. The code is here to show
-exactly what ran.
+what ran: the files are the frozen round-9 copies, except that the comments and messages of seven files (and six
+comment lines of `runtime-deps/runtime-deps.patch`) were translated to English or neutralised; their original
+sha256 values are in [`PROVENANCE.md`](PROVENANCE.md) where they are published.
 
 ## How one decision works
 
@@ -42,6 +44,10 @@ imports a module called `config`; in a game process that name is already bound t
 `strategist-rl-king-continuation-20260921/config.py`, so the hands folder's own `config.py` is never loaded
 and is not included.
 
+The files are working copies, so their comments keep development timestamps and pointers to unpublished working
+notes. Internal planning documents cited in comments (`PREREG-ROUND9.md`, `ROADMAP-20260923.md`, `REPORT.md` and
+others) are not published.
+
 ## What is where
 
 | Path | What |
@@ -62,10 +68,10 @@ and is not included.
 | `option-brain-20260922/TEACHER.md` | Written guidance given to the teacher models for the round-9 labels (new arm); the student never sees it |
 | `teacher/` | The two guidance versions closest in time to the round-8 labels of the released adapter (the exact text used cannot be confirmed) |
 | `replay/replay_verify.py` | CPU replay of a native journal through the same engine and bridge, row by row (no model, no brain) |
-| `runtime-deps/runtime-deps.patch` | Turns this repository's `python/diablogym/env.py`, `options_env.py` and `train/leashed_ppo.py` into the frozen versions the game process loads |
+| `runtime-deps/runtime-deps.patch` | Turns `python/diablogym/env.py`, `options_env.py` and `train/leashed_ppo.py` of the version-9 release (tag `round9-stable-kills-20260924`) into the frozen versions the game process loads |
 | `native/` | Bridge-r3 sources, the LoadMonster engine fix, sanitized build records ([README](native/README.md)) |
 | `localize.py` | Makes a copy with your own paths (the published files use placeholders) |
-| `PROVENANCE.md`, `provenance.json` | Original and published sha256 of every file |
+| `PROVENANCE.md`, `provenance.json` | Published sha256 of every file, and the original sha256 where it is published |
 
 ## The released model ("version 9") and the candidate
 
@@ -91,8 +97,8 @@ shortest-path step or the game raises an error).
 
 You need, besides this folder: Linux or WSL2; a GPU with enough memory for a 24B model in NF4 (the exam used
 one RTX 5090); the base model at the revision above; an adapter (not published); model158 and the goal head
-(not published); the engine and bridge built from `patches/`, `native/` and DevilutionX `34c4cfc`; a copy of
-this repository with `runtime-deps.patch` applied where `strategist-rl-king-continuation-20260921/config.py`
+(not published); the engine and bridge built from `patches/`, `native/` and DevilutionX `34c4cfc`; a checkout of
+this repository at tag `round9-stable-kills-20260924` with `runtime-deps.patch` applied where `strategist-rl-king-continuation-20260921/config.py`
 (`SOURCE`, `NETWORK_SOURCE`) expects it; and your own `DIABDAT.MPQ`. The exam used Python 3.12.3 with
 torch 2.12.1 (CPU) for the game process, and torch 2.12.1+cu130, transformers 5.17.0, peft 0.21.0,
 bitsandbytes 0.50.2, accelerate 1.15.0 and mistral_common 1.11.7 for the broker.

@@ -8,32 +8,35 @@ Every game of the round-9 exam, and of the earlier round-8 checks, ran on the sa
 | Bridge `_diablogym.cpython-312-x86_64-linux-gnu.so` ("bridge-r3") | `05fc300940ac491d9e05fdd37dacecf7e9e139811de102d0c886caee8f0952b1` | `bridge-r3/` compiled against the patched engine; see `bridge-r3-build.json` |
 
 **The compiled `.so` files are not included**, and no game data is included (bring your own `DIABDAT.MPQ`).
-A rebuild from these sources is not guaranteed to be byte-identical, and an exact journal replay needs the
-exact binaries.
+A rebuild from these sources is not byte-identical (the translated messages alone change the binary), and an
+exact journal replay needs the exact binaries.
 
 ## Engine source = upstream + this repository's patches + one fix
 
 - Upstream: [DevilutionX](https://github.com/diasurgical/devilutionX) commit `34c4cfc` (the commit that
   `bootstrap.sh` pins).
-- Patches: `patches/0001` to `patches/0014` of this repository, unchanged. The development copies used on the
-  machine differ from the committed ones only in line endings of context lines (the engine sources use CRLF);
-  `build.sh` applies them with `--ignore-space-change`.
+- Patches: `patches/0001` to `patches/0014` of this repository; `0014` differs from the version that ran only in
+  three comment lines translated to English. The development copies used for the games differ from the committed
+  ones only in line endings of context lines (the engine sources use CRLF); `build.sh` applies them with
+  `--ignore-space-change`.
 - One more fix, `engine-r11-loadmonster.patch` (not in `patches/`, so the environment build in this repository
   is unchanged): when a monster is loaded from a level save, the six `reducePlayer*` fields (attribute drains)
   are restored from the monster's type data. Upstream does not store them in the save record, so a reused
   monster slot could keep the previous occupant's values. The engine's own level-change path saves and reloads
   a level's monsters, so this matters whenever the hero returns to a level.
-- Checked on 2026-09-24: `git archive 34c4cfc Source test`, then `git apply --ignore-space-change` of
-  `patches/0001`–`0014` gives a tree whose `Source/` and `test/` equal the development engine tree
-  (`diff -r --strip-trailing-cr`); applying `engine-r11-loadmonster.patch` on top gives the r11 `Source/` tree
-  exactly.
+- Checked on 2026-09-24, before the three comment lines of `0014` were translated: `git archive 34c4cfc Source test`, then
+  `git apply --ignore-space-change` of `patches/0001`–`0014` gives a tree whose `Source/` and `test/` equal the
+  development engine tree (`diff -r --strip-trailing-cr`); applying `engine-r11-loadmonster.patch` on top gives
+  the r11 `Source/` tree exactly. With the current `0014` the tree differs from it only in those three comment
+  lines.
 - What the patches do (four kinds): crash guards for headless running; default-off hooks that can only refuse a
   level change; a shop/unequip transaction refactor that keeps prices and random-number use; read-only
   interfaces. Neither they nor the LoadMonster fix above change a combat, drop, price, experience, quest or
   map-generation formula or data table.
 
 To build the engine the way the games used it, apply `patches/0001`–`0014` and then
-`option_brain/native/engine-r11-loadmonster.patch` to DevilutionX `34c4cfc`:
+`option_brain/native/engine-r11-loadmonster.patch` to DevilutionX `34c4cfc` (the three translated comment lines
+of `0014` do not change the compiled code):
 
 ```bash
 git -C devilutionX apply --ignore-space-change "$PWD/option_brain/native/engine-r11-loadmonster.patch"
@@ -41,7 +44,9 @@ git -C devilutionX apply --ignore-space-change "$PWD/option_brain/native/engine-
 
 ## Bridge source (`bridge-r3/`, 17 files)
 
-The 17 files are byte-identical to the `source_files` digests in the bridge's build record. They differ from
+The 17 files are identical to the `source_files` digests in `bridge-r3-build.json` except for comment and message
+translation (in `diablogym.cpp`, `resource_identify.hpp`, `resource_protocol.hpp` and `resource_sweep.hpp`; original
+and published digests in [`../PROVENANCE.md`](../PROVENANCE.md)). They differ from
 this repository's `src/` (the bridge of the Gymnasium environment in `python/diablogym`): three headers are the
 same (`resource_combinations.hpp`, `resource_identify.hpp`, `resource_sweep.hpp`); `diablogym.cpp`,
 `resource_loot.hpp` and `resource_protocol.hpp` are newer; eleven headers are new. The most relevant one is

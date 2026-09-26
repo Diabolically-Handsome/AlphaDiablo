@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# DiabloGym 一键构建:引擎(共享库+资产)+ pybind11 桥
+# DiabloGym one-step build: engine (shared library + assets) + pybind11 bridge
 set -euo pipefail
 cd "$(dirname "$0")"
 # A candidate can be built without replacing the installed runtime in build/.
@@ -8,47 +8,47 @@ mkdir -p "$BUILD_DIR"
 BUILD_DIR="$(cd "$BUILD_DIR" && pwd -P)"
 [ "$(uname -s)" = "Darwin" ] && export PATH="/opt/homebrew/bin:$PATH" || true
 
-# Python 解释器解析顺序:$PYTHON 环境变量 > ./.venv > ../.venv
+# Python interpreter lookup order: $PYTHON environment variable > ./.venv > ../.venv
 VENV_PY="${PYTHON:-}"
 [ -x "$VENV_PY" ] || VENV_PY="$PWD/.venv/bin/python"
 [ -x "$VENV_PY" ] || VENV_PY="$(cd .. && pwd)/.venv/bin/python"
-[ -x "$VENV_PY" ] || { echo "找不到 Python venv(设 \$PYTHON 或在仓库根/上级建 .venv)"; exit 1; }
+[ -x "$VENV_PY" ] || { echo "Python venv not found (set \$PYTHON or create .venv in the repo root or its parent)"; exit 1; }
 # CMake must receive an absolute venv path while preserving the venv symlink
 # itself (realpath would collapse it to the base interpreter and lose sys.prefix).
 VENV_PY="$(cd "$(dirname "$VENV_PY")" && pwd -P)/$(basename "$VENV_PY")"
 PYBIND11_DIR="$("$VENV_PY" -m pybind11 --cmakedir)"
 PYTHON_EXT_SUFFIX="$("$VENV_PY" -c \
   'import sysconfig; print(sysconfig.get_config_var("EXT_SUFFIX") or "")')"
-[ -n "$PYTHON_EXT_SUFFIX" ] || { echo "当前 Python 没有 EXT_SUFFIX:$VENV_PY"; exit 1; }
+[ -n "$PYTHON_EXT_SUFFIX" ] || { echo "The current Python has no EXT_SUFFIX: $VENV_PY"; exit 1; }
 PYTHON_INCLUDE_DIR="$("$VENV_PY" -c \
   'import sysconfig; print(sysconfig.get_path("include") or "")')"
-[ -d "$PYTHON_INCLUDE_DIR" ] || { echo "当前 Python headers 不存在:$PYTHON_INCLUDE_DIR"; exit 1; }
+[ -d "$PYTHON_INCLUDE_DIR" ] || { echo "The current Python headers do not exist: $PYTHON_INCLUDE_DIR"; exit 1; }
 DEVX="${DEVILUTIONX_SRC:-${TMPDIR:-/tmp}/alphadiablo-dev/devilutionX}"
-[ -d "$DEVX/Source" ] || { echo "引擎源码缺失($DEVX),先运行 ./bootstrap.sh"; exit 1; }
+[ -d "$DEVX/Source" ] || { echo "Engine source missing ($DEVX); run ./bootstrap.sh first"; exit 1; }
 if [ "$(uname -s)" = "Darwin" ]; then JOBS="$(sysctl -n hw.physicalcpu)"; else JOBS="$(nproc)"; fi
 ENGINE_REF="${DEVILUTIONX_REF:-34c4cfc2e733240ac717f23bba2def887c793008}"
 
 ACTUAL_REF="$(git -C "$DEVX" rev-parse HEAD)"
 [ "$ACTUAL_REF" = "$ENGINE_REF" ] || {
-  echo "引擎 HEAD 漂移:$ACTUAL_REF(期望 $ENGINE_REF);请重新运行 ./bootstrap.sh"
+  echo "Engine HEAD drift: $ACTUAL_REF (expected $ENGINE_REF); rerun ./bootstrap.sh"
   exit 1
 }
 
-# 幂等应用引擎补丁(目前:无头城镇贴图回落修复,可回馈上游)
+# Idempotently apply the registered engine patches (patches/*.patch)
 for patch in patches/*.patch; do
   if git -C "$DEVX" apply --ignore-space-change --reverse --check "$PWD/$patch" 2>/dev/null; then
-    echo "补丁已在位: $patch"
+    echo "Patch already applied: $patch"
   elif git -C "$DEVX" apply --ignore-space-change --check "$PWD/$patch" 2>/dev/null; then
-    git -C "$DEVX" apply --ignore-space-change "$PWD/$patch" && echo "已应用补丁: $patch"
+    git -C "$DEVX" apply --ignore-space-change "$PWD/$patch" && echo "Applied patch: $patch"
   else
     # A later registered patch can change an earlier patch's context. The
     # complete expected-index comparison below is authoritative in that case.
-    echo "补丁上下文重叠，交由完整补丁栈校验: $patch"
+    echo "Patch context overlaps; deferring to the full patch-stack check: $patch"
   fi
 done
 
-# 用独立临时 index 从钉死 HEAD 重放登记补丁，再与真实工作树比较。
-# 这样即使额外改动落在同一个已补丁文件里，也不会被“补丁已在位”误放行。
+# Replay the registered patches from the pinned HEAD into a separate temporary index, then compare with the real work tree.
+# This way an extra change inside an already patched file cannot slip through as "patch already applied".
 EXPECTED_INDEX="$(mktemp)"
 rm -f "$EXPECTED_INDEX"
 trap 'rm -f "$EXPECTED_INDEX"' EXIT
@@ -58,16 +58,16 @@ for patch in patches/*.patch; do
     --cached "$PWD/$patch"
 done
 if ! GIT_INDEX_FILE="$EXPECTED_INDEX" git -C "$DEVX" diff --quiet --; then
-  echo "引擎工作树含登记补丁之外的漂移，拒绝构建:"
+  echo "Engine work tree has drift beyond the registered patches; refusing to build:"
   GIT_INDEX_FILE="$EXPECTED_INDEX" git -C "$DEVX" diff --stat --
-  echo "恢复专用临时 clone: BOOTSTRAP_CLEAN=1 ./bootstrap.sh"
+  echo "To restore the dedicated temporary clone: BOOTSTRAP_CLEAN=1 ./bootstrap.sh"
   exit 1
 fi
 UNTRACKED="$(git -C "$DEVX" ls-files --others --exclude-standard)"
 [ -z "$UNTRACKED" ] || {
-  echo "引擎工作树含未登记文件，拒绝构建:"
+  echo "Engine work tree has unregistered files; refusing to build:"
   echo "$UNTRACKED"
-  echo "恢复专用临时 clone: BOOTSTRAP_CLEAN=1 ./bootstrap.sh"
+  echo "To restore the dedicated temporary clone: BOOTSTRAP_CLEAN=1 ./bootstrap.sh"
   exit 1
 }
 rm -f "$EXPECTED_INDEX"
@@ -80,14 +80,14 @@ if [ "$(uname -s)" = "Darwin" ]; then
   OSX_DEPLOYMENT_TARGET="${CMAKE_OSX_DEPLOYMENT_TARGET:-${MACOSX_DEPLOYMENT_TARGET:-}}"
   if [ -n "$OSX_DEPLOYMENT_TARGET" ]; then
     DEPLOYMENT_SOURCE="user-explicit"
-    echo "macOS deployment target(显式): $OSX_DEPLOYMENT_TARGET;将审计全部非系统 dylib"
+    echo "macOS deployment target (explicit): $OSX_DEPLOYMENT_TARGET; auditing all non-system dylibs"
   else
     OSX_DEPLOYMENT_TARGET="$(sw_vers -productVersion)"
     DEPLOYMENT_SOURCE="host-default"
-    echo "macOS deployment target(宿主): $OSX_DEPLOYMENT_TARGET"
+    echo "macOS deployment target (host): $OSX_DEPLOYMENT_TARGET"
   fi
   [[ "$OSX_DEPLOYMENT_TARGET" =~ ^[0-9]+\.[0-9]+(\.[0-9]+)?$ ]] || {
-    echo "非法 macOS deployment target:$OSX_DEPLOYMENT_TARGET"
+    echo "Invalid macOS deployment target: $OSX_DEPLOYMENT_TARGET"
     exit 1
   }
   OSX_CMAKE_ARGS=(
@@ -107,7 +107,7 @@ cmake -S . -B "$BUILD_DIR" \
   "${OSX_CMAKE_ARGS[@]}"
 
 BUILD_IDENTITY="$BUILD_DIR/alphadiablo-python-build.txt"
-[ -f "$BUILD_IDENTITY" ] || { echo "CMake 未产出 Python 构建身份:$BUILD_IDENTITY"; exit 1; }
+[ -f "$BUILD_IDENTITY" ] || { echo "CMake produced no Python build identity: $BUILD_IDENTITY"; exit 1; }
 "$VENV_PY" - "$BUILD_IDENTITY" "$VENV_PY" "$PYTHON_EXT_SUFFIX" \
   "$PYTHON_INCLUDE_DIR" "$OSX_DEPLOYMENT_TARGET" "$DEPLOYMENT_SOURCE" <<'PY'
 import pathlib
@@ -117,34 +117,34 @@ manifest = {}
 for line in pathlib.Path(sys.argv[1]).read_text(encoding="utf-8").splitlines():
     key, sep, value = line.partition("=")
     if not sep or key in manifest:
-        raise SystemExit(f"非法 CMake Python 构建身份行:{line!r}")
+        raise SystemExit(f"Invalid CMake Python build identity line: {line!r}")
     manifest[key] = value
 expected = {"executable": sys.argv[2], "ext_suffix": sys.argv[3]}
 for key, value in expected.items():
     if manifest.get(key) != value:
         raise SystemExit(
-            f"CMake Python 构建身份漂移:{key}={manifest.get(key)!r},期望 {value!r}")
+            f"CMake Python build identity drift: {key}={manifest.get(key)!r}, expected {value!r}")
 includes = manifest.get("include_dirs", "").split(";")
 if sys.argv[4] not in includes:
     raise SystemExit(
-        f"CMake Python headers 漂移:{includes!r},期望包含 {sys.argv[4]!r}")
+        f"CMake Python headers drift: {includes!r}, expected to include {sys.argv[4]!r}")
 if sys.argv[5]:
     deployment = {
         "deployment_target": sys.argv[5], "deployment_source": sys.argv[6]}
     for key, value in deployment.items():
         if manifest.get(key) != value:
             raise SystemExit(
-                f"CMake deployment 身份漂移:{key}={manifest.get(key)!r},"
-                f"期望 {value!r}")
+                f"CMake deployment identity drift: {key}={manifest.get(key)!r}, "
+                f"expected {value!r}")
 PY
 
-# 注意:分目标构建,不用 all(macOS 上引擎测试资源目标必失败)
-cmake --build "$BUILD_DIR" -j "$JOBS" --target devilutionx   # 出 .app → 运行时资产
-cmake --build "$BUILD_DIR" -j "$JOBS" --target _diablogym    # pybind11 桥
+# Note: build the targets separately, not `all` (the engine's test-resource target always fails on macOS)
+cmake --build "$BUILD_DIR" -j "$JOBS" --target devilutionx   # produces the .app -> runtime assets
+cmake --build "$BUILD_DIR" -j "$JOBS" --target _diablogym    # pybind11 bridge
 
 BRIDGE="$BUILD_DIR/_diablogym${PYTHON_EXT_SUFFIX}"
 [ -f "$BRIDGE" ] || {
-  echo "构建未产出当前 Python ABI 对应模块:$BRIDGE"
+  echo "The build produced no module for the current Python ABI: $BRIDGE"
   find "$BUILD_DIR" -maxdepth 1 -type f -name '_diablogym*.so' -print
   exit 1
 }
@@ -152,25 +152,25 @@ BRIDGE="$BUILD_DIR/_diablogym${PYTHON_EXT_SUFFIX}"
 if [ "$(uname -s)" = "Darwin" ]; then
   ENGINE_DYLIB="$BUILD_DIR/engine/liblibdevilutionx_so.dylib"
   GAME_BINARY="$BUILD_DIR/engine/devilutionx.app/Contents/MacOS/devilutionx"
-  [ -f "$ENGINE_DYLIB" ] || { echo "找不到嵌入引擎 dylib:$ENGINE_DYLIB"; exit 1; }
-  [ -f "$GAME_BINARY" ] || { echo "找不到资源宿主程序:$GAME_BINARY"; exit 1; }
+  [ -f "$ENGINE_DYLIB" ] || { echo "Embedded engine dylib not found: $ENGINE_DYLIB"; exit 1; }
+  [ -f "$GAME_BINARY" ] || { echo "Resource host binary not found: $GAME_BINARY"; exit 1; }
   "$VENV_PY" cmake/audit_macos_minos.py \
     --deployment-target "$OSX_DEPLOYMENT_TARGET" \
     --search-root "$BUILD_DIR" \
     "$BRIDGE" "$ENGINE_DYLIB" "$GAME_BINARY"
 else
   ENGINE_SO="$BUILD_DIR/engine/liblibdevilutionx_so.so"
-  [ -f "$ENGINE_SO" ] || { echo "找不到嵌入引擎 so:$ENGINE_SO"; exit 1; }
-  # 评测协议(eval_contract/env.py)钉死资产路径为 devilutionx.app/Contents/Resources;
-  # Linux 上引擎资产落在 build/engine/assets,这里以真实拷贝(禁符号链接)摆出同一布局
+  [ -f "$ENGINE_SO" ] || { echo "Embedded engine .so not found: $ENGINE_SO"; exit 1; }
+  # The evaluation contract (eval_contract/env.py) pins the asset path to devilutionx.app/Contents/Resources;
+  # on Linux the engine assets land in build/engine/assets, so lay out the same structure with a real copy (no symlinks)
   RES="$BUILD_DIR/engine/devilutionx.app/Contents/Resources"
-  [ -d "$BUILD_DIR/engine/assets" ] || { echo "找不到引擎资产目录 $BUILD_DIR/engine/assets"; exit 1; }
+  [ -d "$BUILD_DIR/engine/assets" ] || { echo "Engine asset directory not found: $BUILD_DIR/engine/assets"; exit 1; }
   rm -rf "$RES" && mkdir -p "$RES"
   cp -a "$BUILD_DIR/engine/assets/." "$RES/"
-  echo "资产已布局: $RES ($(find "$RES" -type f | wc -l) files)"
+  echo "Assets laid out: $RES ($(find "$RES" -type f | wc -l) files)"
 fi
 
 echo ""
-echo "✅ 构建完成"
+echo "Build complete."
 ls -lh "$BRIDGE"
-echo "冒烟测试:  $VENV_PY tests/smoke_random_agent.py"
+echo "Smoke test:  $VENV_PY tests/smoke_random_agent.py"

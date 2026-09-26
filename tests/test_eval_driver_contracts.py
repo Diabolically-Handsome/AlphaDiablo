@@ -1,4 +1,4 @@
-"""选举/续判驱动的评测身份与退出码故障注入测试。"""
+"""Fault-injection tests for the evaluation identity and exit codes of the election/continuation drivers."""
 
 from __future__ import annotations
 

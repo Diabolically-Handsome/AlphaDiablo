@@ -1,13 +1,13 @@
-"""v23 G0' 单元测试:WorkerWindowEnv 机械保真(纯脚本断言,同 G0 惯例)。
+"""v23 G0' unit tests: mechanical fidelity of WorkerWindowEnv (plain script assertions, same convention as G0).
 
-前置:train/models/v22-h-manager/policy.npz(export_manager_npz.py 产出)。
-(a) 脚本工人驱动 WorkerWindowEnv ≡ OptionsEnv+冻结H 直跑(种子 7000-7007 逐位);
-(b) 工人掩码(恒掩 11、12 依主权与腰带、14 透传);
-(c) 工资恒等式 Σw ≡ R − bonus，且 option_extra.worker_wage/worker_kills
-    只累计 _win_step_worker 对应的真实 policy transition；
-(d) numpy 经理 ≡ SB3 predict(1000 obs);
-(e) 自然收窗连续到下一 FARM；真实底层结束或隐藏动画预算中断才
-    terminated，只有 idle 的基础局时限才 truncated。
+Precondition: train/models/v22-h-manager/policy.npz (produced by export_manager_npz.py).
+(a) a scripted worker driving WorkerWindowEnv == OptionsEnv + frozen H run directly (seeds 7000-7007, bit for bit);
+(b) worker mask (11 always masked, 12 depends on sovereignty and the belt, 14 passed through);
+(c) wage identity sum(w) == R - bonus, and option_extra.worker_wage/worker_kills
+        accumulate only the real policy transitions of _win_step_worker;
+(d) numpy manager == SB3 predict (1000 obs);
+(e) a natural window close continues into the next FARM; only a real underlying end or a hidden animation-budget interruption is
+        terminated, and only an idle base-episode time limit is truncated.
 """
 from collections import Counter
 import hashlib
@@ -40,7 +40,7 @@ from diablogym.worker_env import (
 )
 
 NPZ = ROOT / "train" / "models" / "v22-h-manager" / "policy.npz"
-assert NPZ.exists(), f"缺 {NPZ} —— 先跑 train/export_manager_npz.py"
+assert NPZ.exists(), f"missing {NPZ}: run train/export_manager_npz.py first"
 
 SEEDS = list(range(7000, 7008))
 
@@ -92,7 +92,7 @@ def native_trajectory_state_digest(options_env):
 
 
 def decision_boundary_busy(raw):
-    """295/298 维未编码的执行态绝不能泄漏到下一次 worker 决策。"""
+    """An unencoded 295/298-dim execution state must never leak into the next worker decision."""
     return (
         int(raw.get("player_mode", -1)) != bridge.PM_STAND
         or int(raw.get("dest_action", bridge.ACTION_NONE))
@@ -104,7 +104,7 @@ def decision_boundary_busy(raw):
     )
 
 
-# --- (d) numpy 经理 ≡ SB3 predict ---
+# --- (d) numpy manager == SB3 predict ---
 from sb3_contrib import MaskablePPO
 
 sb3_mgr = MaskablePPO.load(str(ROOT / "train" / "models" / "v22-h-manager" / "model_final"),
@@ -117,7 +117,7 @@ for i in range(1000):
     a_np = np_mgr.choose(o, mask3)
     a_sb, _ = sb3_mgr.predict(o, action_masks=mask3, deterministic=True)
     assert a_np == int(a_sb), f"obs {i}: numpy {a_np} != sb3 {int(a_sb)}"
-print("G0'.d PASS: numpy 经理与 SB3 predict 1000 obs 逐位一致")
+print("G0'.d PASS: numpy manager and SB3 predict agree bit for bit on 1000 obs")
 
 with tempfile.TemporaryDirectory() as td:
     bad = {name: getattr(np_mgr, name).copy()
@@ -130,10 +130,10 @@ with tempfile.TemporaryDirectory() as td:
     except ValueError as exc:
         assert "NaN/Inf" in str(exc)
     else:
-        raise AssertionError("NumpyManager 接受了非有限权重")
-print("G0'.d2 PASS: 损坏/NaN 权重在加载边界 fail-loud")
+        raise AssertionError("NumpyManager accepted non-finite weights")
+print("G0'.d2 PASS: corrupt/NaN weights fail loud at the load boundary")
 
-# --- (d3) 纯单元:快进 DIVE 奖励/死亡必须成为上一 worker transition 的后果 ---
+# --- (d3) pure unit: fast-forward DIVE reward/death must be the consequence of the previous worker transition ---
 class _ScriptedOptions:
     def __init__(self, events):
         self.events = list(events)
@@ -229,8 +229,8 @@ assert advanced.extras[-1]["reason"] == "death"
 assert advanced.obs is not None and not fake._alive
 assert advanced.terminal_base_info["episode_extra"]["kills"] == 3
 
-# Worker 的重建路径必须真正委托 env.py 的共享纯函数，而不是保留第二份
-# 数值公式。其余 episode/raw 账目校验仍在 Worker 边界 fail closed。
+# The Worker's rebuild path must really delegate to env.py's shared pure function instead of keeping a second copy of
+# the numeric formula. The remaining episode/raw account checks still fail closed at the Worker boundary.
 shared_calls = []
 original_death_component = worker_env_module.terminal_death_reward_component
 try:
@@ -247,7 +247,7 @@ finally:
     worker_env_module.terminal_death_reward_component = (
         original_death_component)
 assert rebuilt == -123.0
-# R12 经济法案:委托调用显式携带经济规格(替身走 v1 默认,数值不变)。
+# R12 economy act: the delegated call carries the economy spec explicitly (the stand-in uses the v1 default, numbers unchanged).
 from diablogym.env import REWARD_ECONOMY_V1 as _ECON_V1
 assert shared_calls == [{
     "dead": True,
@@ -255,9 +255,9 @@ assert shared_calls == [{
     "death_ladder": True,
     "economy": _ECON_V1,
 }]
-print("G0'.d3 PASS: DIVE 奖励及其后续死亡在同一快进结果中完整返回")
+print("G0'.d3 PASS: the DIVE reward and the death that follows are returned in full in the same fast-forward result")
 
-# --- (d4) 两条 Worker terminal 路径都必须把底层 episode_extra 交给 Monitor ---
+# --- (d4) both Worker terminal paths must hand the underlying episode_extra to Monitor ---
 class _StepOptions:
     def __init__(self, *, direct_terminal: bool, base_info: dict):
         self._win = {"window_id": 1, "W": 0.0}
@@ -273,8 +273,8 @@ class _StepOptions:
         )
 
     def _win_step_worker(self, action):
-        # 直接 death 的底层 FARM 拍已含 -16 既有死亡罚分；
-        # 非直接路径的最后一拍仍只有 +2.5 worker wage。
+        # The underlying FARM tick of a direct death already contains the existing -16 death penalty;
+        # the last tick of the indirect path still has only the +2.5 worker wage.
         self._win["W"] += -13.5 if self._direct_terminal else 2.5
         return types.SimpleNamespace(
             reason="death" if self._direct_terminal else "levelup",
@@ -415,8 +415,8 @@ assert direct_shell.stats["direct_existing_terminal_death_reward"] == -16.0
 ff_shell = _step_shell(_StepOptions(
     direct_terminal=False, base_info=terminal_base))
 ff_extra = {
-    # 即便整段 manager/script 净回报为正，也只能提取死亡负分，
-    # 绝不能把 +37 正收益交给 worker。
+    # Even if the whole manager/script segment has a positive net return, only the negative death score may be extracted;
+    # the +37 positive gain must never go to the worker.
     "window_id": 2, "opt": DIVE, "reason": "death", "R": 37.0,
     "base_done": True, "base_trunc": False,
     "budget_boundary": False,
@@ -440,8 +440,8 @@ assert ff_info["terminal_option_extra"] == ff_extra
 assert ff_shell.stats["transition_ff_terminal_deaths"] == 1
 assert ff_shell.stats["transition_ff_terminal_death_reward"] == -16.0
 
-# R7 显式模式：既有快进死亡罚分与用户配置的额外 death cost 可传回，
-# 但两者都只计一次；直接 FARM death 只追加 cost，不重复既有罚分。
+# R7 explicit mode: the existing fast-forward death penalty and the user-configured extra death cost can be passed back,
+# but each is counted only once; a direct FARM death only adds the cost and does not repeat the existing penalty.
 ff_credit_shell = _step_shell(
     _StepOptions(direct_terminal=False, base_info=terminal_base),
     fast_forward_reward_credit="terminal-death-only",
@@ -515,19 +515,19 @@ for invalid_mode in (None, False, "death", "terminal_death_only"):
     except ValueError:
         pass
     else:
-        raise AssertionError(f"接受了非法 fast-forward credit mode: {invalid_mode!r}")
+        raise AssertionError(f"accepted an illegal fast-forward credit mode: {invalid_mode!r}")
 for invalid_cost in (-1, float("nan"), float("inf")):
     try:
         _coerce_additional_terminal_death_cost(invalid_cost)
     except ValueError:
         pass
     else:
-        raise AssertionError(f"接受了非法 additional death cost: {invalid_cost!r}")
-print("G0'.d4 PASS: 默认旧语义不领取快进回报；terminal-death-only "
-      "只传真实死亡负分，额外 death cost 在 FARM 内外均恰好一次；"
-      "开窗 recovery 已有账不混入首拍 worker wage")
+        raise AssertionError(f"accepted an illegal additional death cost: {invalid_cost!r}")
+print("G0'.d4 PASS: the default old semantics do not collect the fast-forward return; terminal-death-only "
+      "passes only the real negative death score, and the extra death cost applies exactly once inside and outside FARM; "
+      "existing window-open recovery accounts are not mixed into the first worker wage tick")
 
-# --- (d5) WorkerSentinel 必须分别聚合全窗原因谱与 manager 快进子谱 ---
+# --- (d5) WorkerSentinel must aggregate the whole-window reason spectrum and the manager fast-forward sub-spectrum separately ---
 sys.path.insert(0, str(ROOT / "train"))
 from train_ppo import WorkerSentinelCallback
 
@@ -625,9 +625,9 @@ with tempfile.TemporaryDirectory() as td:
     assert line["transition_ff_terminal_death_reward"] == -24.0
     assert line["credited_ff_terminal_death_reward"] == -120.0
     assert line["additional_terminal_death_reward"] == -160.0
-print("G0'.d5 PASS: sentinel 聚合全窗 reasons 与快进 ff_reasons")
+print("G0'.d5 PASS: the sentinel aggregates whole-window reasons and fast-forward ff_reasons")
 
-# --- (a)+(c) 等价性 + 工资恒等式 ---
+# --- (a)+(c) equivalence + wage identity ---
 oe = OptionsEnv(
     max_steps=3000,
     # The frozen M29 manager was trained on protocol-v3.  Fresh manager
@@ -724,8 +724,8 @@ for seed in SEEDS:
             assert abs(w - expected_policy_reward) < 1e-6, info
             if not ex["base_done"]:
                 if term or trunc:
-                    # 自然 FARM 之后的真实底层终结必须来自同一 transition
-                    # 中的 manager/script 快进，而不是下一次 reset。
+                    # A real underlying end after a natural FARM must come from the manager/script fast-forward
+                    # within the same transition, not from the next reset.
                     assert ff and ff[-1]["base_done"], info
                     assert info["terminal_option_extra"] == ff[-1]
                     fast_forward_terminals += 1
@@ -740,7 +740,7 @@ for seed in SEEDS:
     entries = wwe.window_log[n0:]
     from diablogym.env import DESCEND_UNIT
     for e in entries:
-        assert abs(e["W"] - (e["R"] - e["bonus"])) < 1e-6, e   # (c) 账本自洽
+        assert abs(e["W"] - (e["R"] - e["bonus"])) < 1e-6, e   # (c) the ledger is self-consistent
         assert 0 <= e["worker_kills"] <= e["kills_delta"], e
         if e["window_id"] in credited_wage:
             assert abs(e["worker_wage"]
@@ -750,18 +750,18 @@ for seed in SEEDS:
                     and abs(e["W"] - e["worker_wage"]) > 1e-12):
                 excluded_opening_windows += 1
         else:
-            # 冻结 DIVE/RESUPPLY、课程代跑或开窗排水直接收窗都没有
-            # _win_step_worker transition，不能伪造网络工资/击杀。
+            # Frozen DIVE/RESUPPLY, curriculum proxy play, or windows closed directly by the window-open drain have no
+            # _win_step_worker transition and must not fake network wage/kills.
             assert e["worker_wage"] == 0.0 and e["worker_kills"] == 0, e
-        # (c') 剥薪公式独立对账:bonus ≡ DESCEND_UNIT×Σrange(dlvl0, dlvl_end)
-        # (七级阶梯保证换层即收窗,故逐窗 ΣΔdlvl⁺ 塌缩为端点差)
+        # (c') independent reconciliation of the wage-stripping formula: bonus == DESCEND_UNIT x sum(range(dlvl0, dlvl_end))
+        # (the seven-step ladder guarantees that a level change closes the window, so the per-window sum of positive dlvl deltas collapses to the endpoint difference)
         expect = (DESCEND_UNIT * sum(range(e["dlvl0"], e["dlvl_end"]))
                   if e["dlvl_end"] > e["dlvl0"] else 0.0)
         assert abs(e["bonus"] - expect) < 1e-6, e
         if e["reason"] == "descend":
             assert e["bonus"] > 0.0, e
         elif e["opt"] == FARM and not e["base_done"]:
-            assert e["bonus"] == 0.0, e   # 换层拍与局终同拍时豁免(reason=death/end)
+            assert e["bonus"] == 0.0, e   # exempt when the level-change tick coincides with the episode end (reason=death/end)
     assert sum(e["kills_delta"] for e in entries) == wwe.oe.env._ep_kills
     runB[seed] = {"wins": [win_sig(e) for e in entries],
                   "steps": wwe.oe.env._steps,
@@ -772,7 +772,7 @@ for seed in SEEDS:
 for seed in SEEDS:
     A, B = runA[seed], runB[seed]
     assert A["wins"] == B["wins"], (
-        f"seed {seed} 窗口序列失配:\nA={A['wins'][:8]}...\nB={B['wins'][:8]}...\n"
+        f"seed {seed} window sequence mismatch:\nA={A['wins'][:8]}...\nB={B['wins'][:8]}...\n"
         f"len A {len(A['wins'])} B {len(B['wins'])}")
     assert A["steps"] == B["steps"] and A["seq"] == B["seq"], (seed, A["steps"], B["steps"])
 
@@ -835,17 +835,17 @@ for replay_index in range(3):
     })
 oe._win_beat = original_win_beat
 assert replays[1:] == [replays[0], replays[0]], (
-    "seed7001 同进程重复 reset/轨迹不确定",
+    "seed7001: repeated reset in the same process / trajectory not deterministic",
     [(r["initial_digest"], r["windows"], r["steps"], r["kills"])
      for r in replays],
 )
-print("G0'.a0 PASS: seed7001 同进程连续3次初态/原生kill总账/"
-      "逐拍动作轨迹/逐窗结果完全一致")
+print("G0'.a0 PASS: seed7001, three consecutive runs in the same process: initial state / native kill ledger / "
+      "per-tick action trajectory / per-window results identical")
 
-# protocol-v4 的 action10 不再越权暗中下楼；冻结 H 若在 exhausted 后仍
-# 允许 FARM，会在真实种子上连续复选 46--96 个干窗并整局困死 L1。经理
-# 掩码必须把榨干态交给合法 DIVE：这组装断言同时覆盖真实 H 前向、掩码、
-# Worker 快进和普通门感知探索，不接受只在合成 fixture 上“修好”。
+# protocol-v4's action10 no longer sneaks downstairs; if the frozen H still allowed FARM after exhausted,
+# it would reselect 46--96 dry windows in a row on real seeds and trap the whole episode on L1. The manager
+# mask must hand the exhausted state to a legal DIVE: this assembled assertion covers the real H forward pass, the mask,
+# the Worker fast-forward and ordinary door-aware exploration together, and does not accept a fix that only works on a synthetic fixture.
 assert all(runB[s]["depth"] >= 2 for s in SEEDS), {
     s: runB[s]["depth"] for s in SEEDS
 }
@@ -859,20 +859,20 @@ assert wwe.stats["reasons"] == all_reason_hist
 assert wwe.stats["ff_reasons"] == ff_reason_hist
 assert sum(wwe.stats["reasons"].values()) == len(wwe.window_log)
 assert sum(wwe.stats["ff_reasons"].values()) == wwe.stats["ff_windows"]
-print(f"G0'.a PASS: {len(SEEDS)} 种子窗口序列/τ/逐窗R/mode_seq/微步终点逐位一致 "
-      f"(共 {sum(len(runA[s]['wins']) for s in SEEDS)} 窗)")
-print("G0'.a2 PASS: 冻结 H 在 7000-7007 全部离开 L1，且 exhausted 后无干窗复选")
-print("G0'.c PASS: 工资恒等式成立；全窗 reasons/快进 ff_reasons 无漏记")
-assert natural_continuations > 0, "真实种子未观察到自然 FARM→下一 FARM 连续 transition"
-print(f"G0'.c2 PASS: 自然 FARM 连续 transition {natural_continuations} 次;"
-      f"其中冻结 H 自发含 DIVE 后果 {dive_continuations} 次、"
-      f"快进底层终结 {fast_forward_terminals} 次")
+print(f"G0'.a PASS: {len(SEEDS)} seeds: window sequence / tau / per-window R / mode_seq / micro-step end point identical bit for bit "
+      f"({sum(len(runA[s]['wins']) for s in SEEDS)} windows in total)")
+print("G0'.a2 PASS: the frozen H leaves L1 on all of 7000-7007, with no dry-window reselection after exhausted")
+print("G0'.c PASS: the wage identity holds; whole-window reasons / fast-forward ff_reasons miss nothing")
+assert natural_continuations > 0, "no natural FARM -> next FARM continuation transition observed on real seeds"
+print(f"G0'.c2 PASS: natural FARM continuation transitions {natural_continuations}; "
+      f"of which with a spontaneous DIVE consequence from the frozen H {dive_continuations}, "
+      f"fast-forward underlying ends {fast_forward_terminals}")
 assert worker_decision_boundaries > 0
-print(f"G0'.c3 PASS: {worker_decision_boundaries} 个真实 worker 决策边界 busy=0")
-print(f"G0'.c4 PASS: 开窗 recovery 排薪由确定性单元测试封死；本次真实种子另覆盖 "
-      f"{excluded_opening_windows} 个非零 opening recovery 窗")
+print(f"G0'.c3 PASS: {worker_decision_boundaries} real worker decision boundaries with busy=0")
+print(f"G0'.c4 PASS: window-open recovery wage exclusion is sealed by a deterministic unit test; the real seeds here also cover "
+      f"{excluded_opening_windows} non-zero opening recovery windows")
 
-# --- (b) 工人掩码(v32 ④丙:12 依主权旋钮,默认透传;11 恒掩不变)---
+# --- (b) worker mask (v32 course 4c: 12 follows the sovereignty knob, passed through by default; 11 always masked, unchanged) ---
 obs, _ = wwe.reset(seed=7008)
 m = wwe.action_masks()
 base = wwe.oe.env.action_masks()
@@ -893,10 +893,10 @@ legacy.reset(seed=7008)
 lm = legacy.action_masks()
 assert not lm[11] and not lm[12], lm
 legacy.close()
-print("G0'.b PASS: 掩码恒掩11、12仅依可见[0.5,0.75)+有药"
-      "(旧协议旋钮恒掩)、14透传;工人观测298维")
+print("G0'.b PASS: mask always masks 11; 12 depends only on visible [0.5,0.75) + having potions "
+      "(always masked under the old protocol knob); 14 passed through; worker observation 298-dim")
 
-# --- (b1) Worker info 必须如实报告 fuse 拒绝，不能把动作 10 结果错标成请求动作 ---
+# --- (b1) Worker info must report fuse refusals truthfully and must not mislabel the result of action 10 as the requested action ---
 fuse_env = WorkerWindowEnv(
     str(NPZ), max_steps=3000, rng_seed=0, seed_scope="replay")
 fuse_env.reset(seed=7008)
@@ -904,8 +904,8 @@ requested = 10
 assert fuse_env.action_masks()[requested]
 fuse_env.oe._fuse_sig = fuse_env.oe._sig(requested, fuse_env.oe.env._raw)
 fuse_env.oe._fuse = 24
-# 真实 seed 7008 此刻 DIVE 合法；强制定向 manager 路径，证明 FARM
-# 边界后的真实 DIVE 窗奖励/后果被同一 worker transition 消费。
+# On real seed 7008 DIVE is legal at this point; force the manager path to show that the real DIVE window reward/consequence after the FARM
+# boundary is consumed by the same worker transition.
 manager_choices = iter([DIVE, FARM])
 fuse_env._mgr_choose = lambda: next(manager_choices)
 steps_before = fuse_env.oe.env._steps
@@ -915,8 +915,8 @@ assert finfo["requested_action"] == requested
 assert finfo["executed_action"] is None
 assert finfo["fuse_tripped"] and finfo["fuse_requested_action"] == requested
 assert finfo["overridden"] is True
-# 同一 step 随后的 manager 快进可以合法推进微步；当前被拒 worker 拍本身
-# 在 option_extra 中必须保持 beats=0/R=W=0，证明没有偷执行探索 10。
+# The manager fast-forward later in the same step may legally advance micro-steps; the refused worker tick itself
+# must keep beats=0/R=W=0 in option_extra, proving that exploration 10 was not executed behind the scenes.
 fex = finfo["option_extra"]
 assert fex["beats"] == 0 and fex["R"] == 0.0 and fex["W"] == 0.0
 assert fex["fuse_trips"] == 1
@@ -926,9 +926,9 @@ assert finfo["fast_forward_extras"][0]["opt"] == DIVE
 assert finfo["fast_forward_extras"][0]["recovery_actions"] == 1
 assert finfo["fast_forward_extras"][0]["last_recovery_action"] == 11
 fuse_env.close()
-print("G0'.b1 PASS: fuse 显式拒绝且真实 seed 的后续 DIVE 后果归入同一 transition")
+print("G0'.b1 PASS: the fuse refuses explicitly, and on a real seed the following DIVE consequence goes into the same transition")
 
-# --- (b1b) 真实底层 DIVE 快进终局不能吞 episode_extra/末拍奖励 ---
+# --- (b1b) a real underlying DIVE fast-forward terminal must not swallow episode_extra / the last-tick reward ---
 ff_terminal_env = WorkerWindowEnv(
     str(NPZ), max_steps=3000, rng_seed=0, seed_scope="replay")
 ff_terminal_env.reset(seed=7008)
@@ -949,13 +949,13 @@ assert terminal_info["episode_extra"] == (
     terminal_info["terminal_base_info"]["episode_extra"])
 assert reward == terminal_info["transition_reward"]
 ff_terminal_env.close()
-print("G0'.b1b PASS: 真实 seed 的 DIVE 快进终局奖励/episode_extra 同 transition 返回")
+print("G0'.b1b PASS: on a real seed the DIVE fast-forward terminal reward / episode_extra return in the same transition")
 
-# --- (b1c) 等待动作不能冒领冻结 manager/script 的战斗与下楼收益 ---
-# 这是一条真实可利用的旧训练漏洞：worker 只输出 a0，等 FARM 收窗后让
-# 冻结 DIVE 代打/下楼；若把 continuation.reward 加回当前 transition，
-# a0-only 在这些种子上也能取得十几到几十点正回报。现在保留 FF 原账供
-# 守恒审计，但策略回报必须逐拍只等于本次 FARM 工资，且 a0 自身非正。
+# --- (b1c) a wait action must not claim the combat and descent gains of the frozen manager/script ---
+# This is a real, exploitable old training loophole: the worker outputs only a0 and, after the FARM window closes, lets the
+# frozen DIVE fight / descend for it; if continuation.reward were added back to the current transition,
+# a0-only would also earn a dozen to dozens of points of positive return on these seeds. The FF account is now kept for
+# conservation audits, but the policy return must equal only this FARM wage tick by tick, and a0 itself is non-positive.
 a0_positive_fast_forward = 0.0
 a0_boundary_steps = 0
 a0_policy_return = 0.0
@@ -986,17 +986,17 @@ for seed in SEEDS:
 assert a0_boundary_steps > 0
 assert a0_positive_fast_forward > 8.0, a0_positive_fast_forward
 assert a0_policy_return < 0.0, a0_policy_return
-print("G0'.b1c PASS: 真实 8 种子 a0-only 逐拍工资非正；冻结脚本的正 FF "
-      f"{a0_positive_fast_forward:.2f} 仅入审计、未泄漏给策略")
+print("G0'.b1c PASS: on 8 real seeds a0-only has a non-positive wage every tick; the frozen script's positive FF "
+      f"{a0_positive_fast_forward:.2f} goes only into the audit and does not leak to the policy")
 
-# --- (b2) Gym seed 必须接管后续自动滚局的采样器 ---
+# --- (b2) the Gym seed must take over the sampler of later automatic episode rolls ---
 wwe_seed = WorkerWindowEnv(
     str(NPZ), max_steps=3000, rng_seed=999, seed_scope="replay")
 obs, info = wwe_seed.reset(seed=7008)
 assert info["episode_seed"] == 7008 and wwe_seed.np_random is not None
 expected_rng = np.random.default_rng(7008)
 assert sample_train_seed(wwe_seed._rng) == sample_train_seed(expected_rng)
-print("G0'.b2 PASS: reset(seed) 同步工人滚局 RNG,后续局可复现")
+print("G0'.b2 PASS: reset(seed) synchronises the worker's episode-roll RNG; later episodes are reproducible")
 
 assert EVAL_RESERVED_SEED_RANGES == (
     (7000, 7032), (9000, 9032), (12000, 12032),
@@ -1005,7 +1005,7 @@ assert BC_RESERVED_SEED_RANGES == (
     (2000, 2128), (3000, 3384),
     (2_100_000, 2_100_128), (2_101_000, 2_101_384),
     (2_102_000, 2_102_128), (2_103_000, 2_103_384),
-    # 2026-07-27:2_102/2_104 相继烧毁,活动段推进(A2 修正案)
+    # 2026-07-27: 2_102/2_104 were burned one after the other; the active range advances (amendment A2)
     (2_104_000, 2_104_128), (2_106_000, 2_106_128),
     (2_108_000, 2_108_128), (2_140_000, 2_140_128),
     (2_141_000, 2_141_384), (2_142_000, 2_142_128),
@@ -1057,16 +1057,16 @@ class _ReservedPoolFirstRng:
 reserved_first_rng = _ReservedPoolFirstRng()
 assert sample_train_seed(reserved_first_rng) == 42
 assert reserved_first_rng.calls == 9
-print("G0'.b2a PASS: 全部历史池、新 BC 池及 R7 eval 银行共用训练拒采表")
+print("G0'.b2a PASS: all historical pools, the new BC pools and the R7 eval bank share the training rejection table")
 
 train_scope = WorkerWindowEnv(
     str(NPZ), max_steps=3000, rng_seed=0, seed_scope="train")
 try:
     train_scope.reset(seed=2_120_000)
 except ValueError as exc:
-    assert "拒绝保留种子" in str(exc)
+    assert "refuses reserved seed" in str(exc)
 else:
-    raise AssertionError("普通训练显式 reset 绕过了 R7 保留池")
+    raise AssertionError("an explicit reset in ordinary training bypassed the R7 reserved pool")
 train_scope.close()
 
 scope_shell = object.__new__(WorkerWindowEnv)
@@ -1080,10 +1080,10 @@ for burned_seed in (100, 1000):
     try:
         scope_shell._new_episode(seed=burned_seed)
     except ValueError as exc:
-        assert "拒绝保留种子" in str(exc)
+        assert "refuses reserved seed" in str(exc)
     else:
         raise AssertionError(
-            f"普通训练接受了历史已烧 BC seed {burned_seed}")
+            f"ordinary training accepted a historically burned BC seed {burned_seed}")
 scope_shell.seed_scope = "replay"
 scope_shell._new_episode(seed=100)
 assert scope_shell._episode_seed == 100
@@ -1091,28 +1091,28 @@ scope_shell.seed_scope = "bc-v1"
 try:
     scope_shell._new_episode(seed=2_100_000)
 except ValueError as exc:
-    assert "bc-v1 只允许登记池" in str(exc)
+    assert "bc-v1 only allows the registered pool" in str(exc)
 else:
-    raise AssertionError("BC-v1 scope 接受了 burned v1 seed")
+    raise AssertionError("the BC-v1 scope accepted a burned v1 seed")
 scope_shell._new_episode(seed=2_142_000)
 scope_shell.seed_scope = "bc-v2"
 try:
     scope_shell._new_episode(seed=2_101_000)
 except ValueError as exc:
-    assert "bc-v2 只允许登记池" in str(exc)
+    assert "bc-v2 only allows the registered pool" in str(exc)
 else:
-    raise AssertionError("BC-v2 scope 接受了 burned v2 seed")
+    raise AssertionError("the BC-v2 scope accepted a burned v2 seed")
 scope_shell._new_episode(seed=2_143_000)
 try:
     scope_shell._new_episode()
 except RuntimeError as exc:
-    assert "禁止自动滚入" in str(exc)
+    assert "automatic rollover into an unregistered seed" in str(exc)
 else:
-    raise AssertionError("BC scope 自动滚入了普通训练 seed")
-print("G0'.b2a2 PASS: 显式 train/BC seed scope 阻断保留池绕过与示范逃逸")
+    raise AssertionError("the BC scope rolled into an ordinary training seed automatically")
+print("G0'.b2a2 PASS: explicit train/BC seed scopes block reserved-pool bypasses and demonstration escapes")
 
-# p_skip 流必须按每个实际 episode seed 重新派生；第二个 auto episode
-# 不得继续消费第一局的流。
+# The p_skip stream must be re-derived for each actual episode seed; the second auto episode
+# must not keep consuming the first episode's stream.
 seed_shell = object.__new__(WorkerWindowEnv)
 seed_shell._rng = np.random.default_rng(404)
 seed_shell._p_rng = np.random.default_rng(0)
@@ -1130,9 +1130,9 @@ seed_shell._new_episode()
 assert seed_shell._episode_seed == expected_s2
 assert seed_shell._p_rng.bit_generator.state == (
     _derive_p_skip_rng(expected_s2).bit_generator.state)
-print("G0'.b2b PASS: p_skip 专用流逐真实 episode_seed 重建，第二局可独立重放")
+print("G0'.b2b PASS: the dedicated p_skip stream is rebuilt per real episode_seed; the second episode can be replayed independently")
 
-# --- (b3) 窗口中途 reset 必须丢弃旧局，不能覆盖未结算窗口后串账 ---
+# --- (b3) a reset in the middle of a window must discard the old episode and must not overwrite an unsettled window and mix accounts ---
 episodes_before = wwe_seed.stats["episodes"]
 interrupted_before = wwe_seed.stats["interrupted_resets"]
 assert wwe_seed.oe._win is not None
@@ -1140,16 +1140,16 @@ _, reset_info = wwe_seed.reset()
 assert wwe_seed.stats["episodes"] == episodes_before + 1
 assert wwe_seed.stats["interrupted_resets"] == interrupted_before + 1
 assert wwe_seed.oe._win is not None and reset_info["episode_seed"] == wwe_seed._episode_seed
-print("G0'.b3 PASS: 活跃窗口中途 reset 强制新开底层局,不串经理/工资状态")
+print("G0'.b3 PASS: a reset in the middle of an active window forces a new underlying episode without mixing manager/wage state")
 
-# --- (e) 真实底层边界语义 + 仅 idle 的 VecEnv TimeLimit.truncated ---
+# --- (e) real underlying boundary semantics + VecEnv TimeLimit.truncated only when idle ---
 seen_natural = natural_continuations > 0
 seen_term = seen_trunc = False
-# 自然 FARM→下一 FARM 已由上面的 7000--7007 主回放逐 transition
-# 证明。这里的短预算扫描只负责底层 terminal/truncation；不能再依赖同一
-# seed 跨 reset 泄漏出不同掉落/边界来“碰巧”制造自然窗口。
-# 150 微拍会让 exhausted 后强制交权的 DIVE 在同一 transition 直接撞上
-# TimeLimit，无法观测“自然边界→下一 FARM”；600 同时覆盖连续与截断路径。
+# Natural FARM -> next FARM is already proven transition by transition by the main 7000--7007 replay above.
+# The short-budget sweep here covers only underlying terminal/truncation; it must no longer rely on the same
+# seed leaking different drops/boundaries across resets to create natural windows "by luck".
+# 150 micro-ticks would make the DIVE forced after exhausted hit the TimeLimit within the same transition,
+# so "natural boundary -> next FARM" could not be observed; 600 covers both the continuation and the truncation paths.
 wwe_s = WorkerWindowEnv(
     str(NPZ), max_steps=600, rng_seed=3, log_windows=False,
     seed_scope="replay")
@@ -1181,8 +1181,8 @@ for _ in range(2000):
         if seen_term and seen_trunc:
             break
         obs, _ = wwe_s.reset()
-assert seen_trunc, "600 步局未观察到 truncated 路径"
-assert seen_natural, "自然 FARM 边界仍被错误标成 terminal/truncated"
+assert seen_trunc, "no truncated path observed in a 600-step episode"
+assert seen_natural, "a natural FARM boundary is still wrongly marked terminal/truncated"
 
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.vec_env import DummyVecEnv
@@ -1199,9 +1199,9 @@ for _ in range(3000):
             tl_seen = True
             break
 vec.close()
-assert tl_seen, "VecEnv 未注入 TimeLimit.truncated(SB3 bootstrap 分支依赖)"
-print("G0'.e PASS: 自然收窗连续且可 bootstrap;底层终结/不安全预算中断 "
-      "terminated,仅 idle 时限 truncated;"
-      f"VecEnv 仍注入安全 TimeLimit.truncated(本扫描 terminated={seen_term})")
+assert tl_seen, "VecEnv did not inject TimeLimit.truncated (the SB3 bootstrap branch depends on it)"
+print("G0'.e PASS: natural window closes continue and can bootstrap; underlying ends / unsafe budget interruptions are "
+      "terminated, only idle time limits are truncated; "
+      f"VecEnv still injects the safe TimeLimit.truncated (this sweep terminated={seen_term})")
 
 print("G0' ALL PASS")

@@ -47,8 +47,8 @@ class CompletionReportTests(unittest.TestCase):
                 training._require_exact_training_completion(model, 2048)
         failure = raised.exception
         self.assertEqual(failure.report, report())
-        self.assertIn('训练更新已完成', str(failure))
-        self.assertNotIn('未精确停在', str(failure))
+        self.assertIn('training updates completed', str(failure))
+        self.assertNotIn('did not stop exactly at', str(failure))
         deployment.assert_called_once_with(model)
         pg.assert_called_once_with(model)
         model._assert_critic_migration_contract.assert_called_once_with()
@@ -117,7 +117,7 @@ class CompletionReportTests(unittest.TestCase):
         model = self.model()
         with patch.object(training, '_implementation_bundle_sha256', return_value='b' * 64), \
                 patch('training_diagnostics.archive_refused_training') as archive:
-            with self.assertRaisesRegex(ValueError, '实现/引擎/游戏内容发生漂移'):
+            with self.assertRaisesRegex(ValueError, 'implementation/engine/game content drifted'):
                 training._retain_refused_training_diagnostic(model, Path('/unused'), report(), 'a' * 64)
         archive.assert_not_called()
 

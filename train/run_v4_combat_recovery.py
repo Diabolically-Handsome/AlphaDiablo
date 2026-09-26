@@ -1,18 +1,18 @@
-"""唯一的 protocol-v4 战斗恢复发车器。
+"""The one and only protocol-v4 combat-recovery launcher.
 
-这不是历史 ``run_v33_content.py`` 的升级版。旧驱动绑定 protocol v3、
-旧评测档案和旧训练配方，只能作法证阅读；本文件是 v4 的独立入口。
+This is not an upgrade of the historical ``run_v33_content.py``. The old driver is bound to protocol v3,
+old evaluation archives and an old training recipe, and may only be read for forensics; this file is the independent v4 entry point.
 
-支持的闭环：
+Supported closed loop:
 
-* ``prepare-bc``：重采当前实现绑定的 BC-v1，以及 M29 绑定的 BC-v2；
-* ``train``：只允许 v28→M29/KING 的 249,856 步安全前缀重放；
-* ``eval-regression``：7000–7031 双臂回归；
-* ``eval-fresh``：12000–12031 新鲜双臂终考；
-* ``analyze`` / ``status``：复验并汇总冻结档案。
+* ``prepare-bc``: re-sample the BC-v1 bound to the current implementation and the BC-v2 bound to M29;
+* ``train``: only allows the 249,856-step safe-prefix replay v28->M29/KING;
+* ``eval-regression``: two-arm regression on 7000-7031;
+* ``eval-fresh``: fresh two-arm final exam on 12000-12031;
+* ``analyze`` / ``status``: re-verify and summarize the frozen archives.
 
-本驱动不会提供任意步数、任意经理、短跑发布或旧协议兼容旋钮。需要改变
-任何冻结常量时，应另立新 campaign，而不是给这里增加逃生旗。
+This driver offers no arbitrary step counts, arbitrary managers, short-run publication or old-protocol compatibility knobs. To change
+any frozen constant, open a new campaign instead of adding an escape flag here.
 """
 
 from __future__ import annotations
@@ -56,11 +56,11 @@ from eval_contract import (  # noqa: E402
 
 
 class CampaignError(RuntimeError):
-    """正式 campaign 的 fail-closed 错误。"""
+    """Fail-closed error of the official campaign."""
 
 
 class CommandFailed(CampaignError):
-    """子进程非零退出。"""
+    """Non-zero subprocess exit."""
 
 
 LEGACY_STATE_SCHEMA = "official-v4-combat-recovery-state/1"
@@ -184,7 +184,7 @@ def _require_seed_pool_discipline() -> None:
     _require(
         all(seed_range in tuple(BC_RESERVED_SEED_RANGES)
             for seed_range in registered_bc_ranges),
-        "正式 launcher 的历史 BC 池已从 worker 拒采表中消失",
+        "the historical BC pools of the official launcher have disappeared from the worker rejection table",
     )
     pools = {
         "bc-v1": set(range(*registered_bc_ranges[0])),
@@ -197,7 +197,7 @@ def _require_seed_pool_discipline() -> None:
         for right_name in names[index + 1:]:
             _require(
                 pools[left_name].isdisjoint(pools[right_name]),
-                f"正式种子池重叠:{left_name}/{right_name}",
+                f"official seed pools overlap: {left_name}/{right_name}",
             )
     _require(
         all(
@@ -205,15 +205,15 @@ def _require_seed_pool_discipline() -> None:
             for pool in pools.values()
             for seed in pool
         ),
-        "正式 BC/eval 种子未被普通训练采样器完整拒采",
+        "official BC/eval seeds are not fully rejected by the ordinary training sampler",
     )
 
 
 PAIRED_METRIC_DIRECTIONS = {
     "farm_worker_wage": "higher",
     "farm_worker_kills": "higher",
-    # dry/fresh 分层只用于归因训练课程与正式全量评测的分布差异；
-    # 原始分层总量同时受窗口暴露量影响，不得悄悄升级为选模硬门。
+    # The dry/fresh stratification is only for attributing distribution differences between the training course and the official full evaluation;
+    # raw stratum totals also depend on window exposure, so they must not quietly become a hard model-selection gate.
     "farm_dry_n": "descriptive",
     "farm_fresh_n": "descriptive",
     "farm_dry_worker_wage": "descriptive",
@@ -223,7 +223,7 @@ PAIRED_METRIC_DIRECTIONS = {
     "ret": "higher",
     "kills": "higher",
     "died": "lower",
-    # 主动饮数量本身没有单调好坏；是否重复饮由下面两个指标单独裁决。
+    # The number of active drinks has no monotonic good or bad in itself; whether drinks repeat is judged separately by the two metrics below.
     "farm_voluntary_drinks": "descriptive",
     "farm_reflex_drains": "lower",
     "farm_multi_drink_windows": "lower",
@@ -231,10 +231,10 @@ PAIRED_METRIC_DIRECTIONS = {
     "ending_belt_heals": "higher",
 }
 
-# 发车前精确冻结的完整 17-key 谱系。training contract 可由当前 strict
-# trainer 的单一真源纯函数预计算；liveness receipt 则先在隔离 clone 上运行
-# 同一生产 preflight（不启动环境、不读 final heldout），再把其字节 SHA 写进
-# expectations。正式 trainer 必须逐字复现这张 preflight，否则候选拒绝发布。
+# The complete 17-key lineage frozen exactly before launch. The training contract can be precomputed by the single-source-of-truth
+# pure function of the current strict trainer; the liveness receipt is produced by first running the same production preflight on an isolated clone
+# (no environment started, final heldout not read), and then writing its byte SHA into
+# expectations. The official trainer must reproduce this preflight verbatim, otherwise the candidate is refused publication.
 EXPECTED_PROVENANCE_KEYS = frozenset({
     "protocol_version",
     "implementation_sha256",
@@ -329,24 +329,24 @@ def _stat_signature(value: os.stat_result) -> tuple[int, int, int, int, int]:
 
 
 def _stable_read(path: pathlib.Path, label: str) -> bytes:
-    """读取同一普通文件的一组稳定字节，拒绝 symlink/读中替换。"""
+    """Read a stable set of bytes from the same regular file; reject symlinks/replacement during the read."""
     path = pathlib.Path(path)
-    _require(not path.is_symlink(), f"{label} 不允许符号链接:{path}")
+    _require(not path.is_symlink(), f"{label} must not be a symlink: {path}")
     try:
         with open(path, "rb") as stream:
             before = os.fstat(stream.fileno())
-            _require(stat.S_ISREG(before.st_mode), f"{label} 不是普通文件:{path}")
+            _require(stat.S_ISREG(before.st_mode), f"{label} is not a regular file: {path}")
             payload = stream.read()
             after = os.fstat(stream.fileno())
         current = path.stat()
     except OSError as exc:
-        raise CampaignError(f"{label} 缺失/不可稳定读取:{path}: {exc}") from exc
+        raise CampaignError(f"{label} missing/cannot be read stably: {path}: {exc}") from exc
     signature = _stat_signature(before)
     _require(
         signature == _stat_signature(after)
         and signature == _stat_signature(current)
         and len(payload) == before.st_size,
-        f"{label} 在读取期间发生变化:{path}",
+        f"{label} changed while being read: {path}",
     )
     return payload
 
@@ -356,7 +356,7 @@ def _stable_sha256(path: pathlib.Path, label: str) -> str:
 
 
 def _launcher_identity() -> dict:
-    """把实际执行的状态机源码纳入 campaign、评测与分析身份。"""
+    """Bring the source of the state machine actually executed into the campaign, evaluation and analysis identity."""
     return {
         "rules_revision": LAUNCHER_RULES_REVISION,
         "sha256": _stable_sha256(pathlib.Path(__file__).resolve(), "official launcher"),
@@ -365,7 +365,7 @@ def _launcher_identity() -> dict:
 
 def _require_sha(path: pathlib.Path, expected: str, label: str) -> str:
     actual = _stable_sha256(path, label)
-    _require(actual == expected, f"{label} SHA 漂移:{actual} != {expected}")
+    _require(actual == expected, f"{label} SHA drift: {actual} != {expected}")
     return actual
 
 
@@ -395,7 +395,7 @@ def _atomic_write_json(path: pathlib.Path, value: Any) -> None:
 
 
 def _exclusive_create_json(path: pathlib.Path, value: Any, label: str) -> None:
-    """建立不可重用的一次性 marker；已存在即拒绝，不覆盖历史。"""
+    """Create a non-reusable one-time marker; refuse if it already exists, never overwriting history."""
     path.parent.mkdir(parents=True, exist_ok=True)
     payload = json.dumps(
         value,
@@ -408,7 +408,7 @@ def _exclusive_create_json(path: pathlib.Path, value: Any, label: str) -> None:
     try:
         descriptor = os.open(path, flags, 0o444)
     except FileExistsError as exc:
-        raise CampaignError(f"{label} 一次性 marker 已存在:{path}") from exc
+        raise CampaignError(f"{label} one-time marker already exists: {path}") from exc
     try:
         with os.fdopen(descriptor, "wb") as stream:
             stream.write(payload)
@@ -420,19 +420,19 @@ def _exclusive_create_json(path: pathlib.Path, value: Any, label: str) -> None:
         finally:
             os.close(directory_fd)
     except Exception:
-        # 创建成功就代表池已打开。异常时也绝不删除 marker，否则可能二次点火。
+        # A successful creation means the pool is open. Never delete the marker even on error, or a second launch could happen.
         raise
 
 
 def _run_lock_is_held() -> bool:
-    """只读探测 trainer 的内核 flock；不相信残留 PID 文本。"""
+    """Read-only probe of the trainer's kernel flock; leftover PID text is not trusted."""
     path = CANDIDATE_DIR / ".run.lock"
     if not path.exists():
         return False
     try:
         stream = open(path, "r", encoding="utf-8")
     except OSError as exc:
-        raise CampaignError(f"无法探测 trainer run lock:{path}: {exc}") from exc
+        raise CampaignError(f"cannot probe trainer run lock: {path}: {exc}") from exc
     try:
         try:
             fcntl.flock(stream.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -450,7 +450,7 @@ def _lock_file_is_held(path: pathlib.Path) -> bool:
     try:
         stream = open(path, "r", encoding="utf-8")
     except OSError as exc:
-        raise CampaignError(f"无法探测 lock:{path}: {exc}") from exc
+        raise CampaignError(f"cannot probe lock: {path}: {exc}") from exc
     try:
         try:
             fcntl.flock(stream.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -475,11 +475,11 @@ def _new_state() -> dict:
 
 
 def _migrate_pre_scientific_legacy_state(state: dict, payload: bytes) -> dict:
-    """只迁移尚未训练/评测的旧控制记录，并把原记录完整嵌入新状态。
+    """Migrate only old control records that have not yet trained/evaluated, embedding the original record in full in the new state.
 
-    旧 campaign 只允许留下 prepare-bc 的运维记录。任何候选、回归、fresh
-    或分析阶段一旦出现，都必须由旧 launcher 自己封存，不能借 schema 升级
-    改写科学历史。
+    An old campaign may only have left prepare-bc operational records. Once any candidate, regression, fresh
+    or analysis phase appears, the old launcher must seal it itself; a schema upgrade must not be used to
+    rewrite scientific history.
     """
     _require(
         isinstance(state, dict)
@@ -493,12 +493,12 @@ def _migrate_pre_scientific_legacy_state(state: dict, payload: bytes) -> dict:
         }
         and state.get("schema_version") == LEGACY_STATE_SCHEMA
         and isinstance(state.get("phases"), dict),
-        "旧 campaign 状态 schema/字段异常，拒绝自动迁移",
+        "old campaign state schema/fields are malformed; refusing automatic migration",
     )
     _require(
         state["campaign_recipe_sha256"] == CAMPAIGN_RECIPE_SHA256
         and state["campaign_recipe"] == CAMPAIGN_RECIPE,
-        "旧 campaign 配方/经理身份与当前 campaign 不一致，拒绝迁移",
+        "old campaign recipe/manager identity differs from the current campaign; refusing migration",
     )
     scientific_phases = set(state["phases"]) - {"prepare_bc"}
     scientific_residue = [
@@ -530,7 +530,7 @@ def _migrate_pre_scientific_legacy_state(state: dict, payload: bytes) -> dict:
     _require(
         not scientific_phases
         and not scientific_residue,
-        "旧 launcher 已产生训练/评测科学状态或残件；禁止自动迁移:"
+        "the old launcher already produced training/evaluation scientific state or leftovers; automatic migration is forbidden: "
         f"phases={sorted(scientific_phases)},"
         f"files={[str(path) for path in scientific_residue]}",
     )
@@ -546,13 +546,13 @@ def _migrate_pre_scientific_legacy_state(state: dict, payload: bytes) -> dict:
 
 def _load_state(*, required: bool = False) -> dict:
     if not STATE_PATH.is_file():
-        _require(not required, f"official-v4 状态不存在:{STATE_PATH}")
+        _require(not required, f"official-v4 state does not exist: {STATE_PATH}")
         return _new_state()
     try:
-        payload = _stable_read(STATE_PATH, "campaign 状态")
+        payload = _stable_read(STATE_PATH, "campaign state")
         state = strict_json_loads(payload)
     except (EvalContractError, ValueError) as exc:
-        raise CampaignError(f"campaign 状态损坏:{STATE_PATH}") from exc
+        raise CampaignError(f"campaign state corrupted: {STATE_PATH}") from exc
     if (
         isinstance(state, dict)
         and state.get("schema_version") == LEGACY_STATE_SCHEMA
@@ -570,17 +570,17 @@ def _load_state(*, required: bool = False) -> dict:
             "updated_at_ns",
             "phases",
         },
-        "campaign 状态 schema/字段异常",
+        "campaign state schema/fields are malformed",
     )
-    _require(state["schema_version"] == STATE_SCHEMA, "campaign 状态 schema 过期")
+    _require(state["schema_version"] == STATE_SCHEMA, "campaign state schema is outdated")
     _require(
         state["campaign_recipe_sha256"] == CAMPAIGN_RECIPE_SHA256
         and state["campaign_recipe"] == CAMPAIGN_RECIPE,
-        "campaign 冻结配方与当前 launcher 不一致；禁止原地迁移",
+        "campaign frozen recipe differs from the current launcher; in-place migration is forbidden",
     )
     _require(
         state["launcher"] == _launcher_identity(),
-        "campaign 状态绑定的 launcher 源码/规则已漂移；禁止继续点火",
+        "the launcher source/rules bound to the campaign state have drifted; further launches are forbidden",
     )
     _require(
         state["migration"] is None
@@ -601,9 +601,9 @@ def _load_state(*, required: bool = False) -> dict:
             and state["migration"]["source_state_sha256"]
             == _canonical_sha256(state["migration"]["source_state"])
         ),
-        "campaign migration 记录异常",
+        "campaign migration record is malformed",
     )
-    _require(isinstance(state["phases"], dict), "campaign phases 不是对象")
+    _require(isinstance(state["phases"], dict), "campaign phases is not an object")
     return state
 
 
@@ -623,23 +623,23 @@ def _set_phase(state: dict, name: str, status: str, **fields: Any) -> None:
 
 def _python_executable() -> str:
     executable = pathlib.Path(sys.executable)
-    _require(executable.is_file(), f"当前 Python 不可执行:{executable}")
+    _require(executable.is_file(), f"current Python is not executable: {executable}")
     return str(executable)
 
 
 def _invoke(command: list[str], label: str) -> None:
-    """无 shell 执行唯一冻结命令，继承终端便于长任务实时观察。"""
+    """Run the single frozen command without a shell, inheriting the terminal so long tasks can be watched live."""
     completed = subprocess.run(command, cwd=ROOT, check=False)
     if completed.returncode != 0:
         raise CommandFailed(
-            f"{label} 子进程失败(returncode={completed.returncode}):"
+            f"{label} subprocess failed (returncode={completed.returncode}): "
             f"{command!r}"
         )
 
 
 def _assert_native_build_fresh() -> dict:
     suffix = sysconfig.get_config_var("EXT_SUFFIX")
-    _require(bool(suffix), "当前 Python 缺 EXT_SUFFIX")
+    _require(bool(suffix), "current Python lacks EXT_SUFFIX")
     bridge = ROOT / "build" / f"_diablogym{suffix}"
     from eval_contract import engine_binary_path
 
@@ -662,7 +662,7 @@ def _assert_native_build_fresh() -> dict:
     ]
     _require(
         not stale_bridge and not stale_engine,
-        "原生源码/补丁比已构建二进制更新；先运行 ./build.sh:"
+        "native source/patches are newer than the built binaries; run ./build.sh first:"
         f" bridge={stale_bridge}, engine={stale_engine}",
     )
     return {
@@ -676,13 +676,13 @@ def _checkpoint_data(payload: bytes, label: str) -> dict:
         with zipfile.ZipFile(io.BytesIO(payload)) as archive:
             data = strict_json_loads(archive.read("data"))
     except (KeyError, ValueError, zipfile.BadZipFile, EvalContractError) as exc:
-        raise CampaignError(f"{label} checkpoint data 不可读") from exc
-    _require(isinstance(data, dict), f"{label} checkpoint data 不是对象")
+        raise CampaignError(f"{label} checkpoint data unreadable") from exc
+    _require(isinstance(data, dict), f"{label} checkpoint data is not an object")
     return data
 
 
 def _checkpoint_policy_heads(payload: bytes, label: str) -> dict:
-    """从 checkpoint 现场重算当前六张量 head 与持久 root anchor。"""
+    """Recompute the current six-tensor head and the persistent root anchor from the checkpoint on site."""
     import torch
     from sb3_contrib import MaskablePPO
     import train_ppo
@@ -690,11 +690,11 @@ def _checkpoint_policy_heads(payload: bytes, label: str) -> dict:
     try:
         model = MaskablePPO.load(io.BytesIO(payload), env=None, device="cpu")
     except Exception as exc:
-        raise CampaignError(f"{label} 无法安全加载并重算策略头") from exc
+        raise CampaignError(f"{label} cannot safely load and recompute the policy head") from exc
     current = train_ppo._policy_head_snapshot(model.policy)
     _require(
         all(bool(tensor.detach().isfinite().all().item()) for tensor in current.values()),
-        f"{label} 当前策略头含 NaN/Inf",
+        f"{label} current policy head contains NaN/Inf",
     )
     root = getattr(model, "bc_aux_root_anchor_sd", None)
     root_sha = None
@@ -704,7 +704,7 @@ def _checkpoint_policy_heads(payload: bytes, label: str) -> dict:
             and set(root) == set(train_ppo._POLICY_HEAD_KEYS)
             and all(isinstance(value, torch.Tensor) for value in root.values())
             and all(bool(value.detach().isfinite().all().item()) for value in root.values()),
-            f"{label} 持久 root anchor 字段/张量异常",
+            f"{label} persistent root anchor fields/tensors are malformed",
         )
         root_sha = train_ppo._policy_head_sha256(root)
     return {
@@ -714,18 +714,18 @@ def _checkpoint_policy_heads(payload: bytes, label: str) -> dict:
 
 
 def _base_artifact_snapshot() -> dict:
-    """复验 v28/M29/KING、原生 build 与当前训练实现。"""
-    _require(PROTOCOL_VERSION == 4, "official launcher 只接受 protocol v4")
+    """Re-verify v28/M29/KING, the native build and the current training implementation."""
+    _require(PROTOCOL_VERSION == 4, "the official launcher only accepts protocol v4")
     _require(
         LEG_STEPS == TRAIN_CALLS * ROLLOUT_QUANTUM,
-        "249,856 步/122 rollout 算术漂移",
+        "249,856 steps/122 rollouts arithmetic drift",
     )
-    _require(START_STEPS + LEG_STEPS == TARGET_STEPS, "训练总步数闭合失败")
+    _require(START_STEPS + LEG_STEPS == TARGET_STEPS, "total training steps do not close")
     native = _assert_native_build_fresh()
     v28_payload = _stable_read(V28_ZIP, "v28 resume checkpoint")
     _require(
         hashlib.sha256(v28_payload).hexdigest() == V28_SHA256,
-        "v28 resume checkpoint SHA 漂移",
+        "v28 resume checkpoint SHA drift",
     )
     v28_data = _checkpoint_data(v28_payload, "v28")
     _require(
@@ -736,12 +736,12 @@ def _base_artifact_snapshot() -> dict:
         and v28_data.get("ent_coef") == ENT_COEF
         and v28_data.get("n_steps") == N_STEPS
         and v28_data.get("batch_size") == 256,
-        "v28 resume checkpoint 步数/Leashed 配方异常",
+        "v28 resume checkpoint step count/Leashed recipe is malformed",
     )
     v28_heads = _checkpoint_policy_heads(v28_payload, "v28")
     _require(
         v28_heads["current_policy_head_sha256"] == V28_POLICY_HEAD_SHA256,
-        "v28 六张量策略头 SHA 漂移",
+        "v28 six-tensor policy head SHA drift",
     )
     _require_sha(M29_NPZ, M29_SHA256, "M29 manager")
     _require_sha(KING_SD, KING_SHA256, "KING teacher")
@@ -749,12 +749,12 @@ def _base_artifact_snapshot() -> dict:
 
     import train_ppo
 
-    # 同时验证 manifest 所指源 ZIP、源 SHA 与全部导出张量，而不只信清单文本。
+    # Also verify the source ZIP the manifest points to, the source SHA and all exported tensors, rather than trusting only the manifest text.
     manifest = train_ppo._validate_export_manifest(KING_SD)
     _require(
         manifest["artifact_sha256"] == KING_SHA256
         and manifest["source_checkpoint_sha256"] == V28_SHA256,
-        "KING manifest 未精确绑定 v28",
+        "KING manifest is not exactly bound to v28",
     )
     implementation = train_ppo._implementation_bundle_sha256()
     return {
@@ -773,7 +773,7 @@ def _validate_r5_safe_replay_anchor() -> dict:
     payload = _stable_read(R5_SAFE_CHECKPOINT, "R5 safe-prefix checkpoint")
     _require(
         hashlib.sha256(payload).hexdigest() == R5_SAFE_CHECKPOINT_SHA256,
-        "R5 safe-prefix checkpoint SHA 漂移",
+        "R5 safe-prefix checkpoint SHA drift",
     )
     heads = _checkpoint_policy_heads(payload, "R5 safe-prefix checkpoint")
     data = _checkpoint_data(payload, "R5 safe-prefix checkpoint")
@@ -785,7 +785,7 @@ def _validate_r5_safe_replay_anchor() -> dict:
         and data.get("_last_completed_ppo_rollout_steps") == TARGET_STEPS
         and data.get("_ppo_optimizer_steps_completed")
         == TRAIN_CALLS * 80,
-        "R5 safe-prefix 策略头/根锚/完成更新证明不闭合",
+        "R5 safe-prefix policy head/root anchor/completed-update proof is not closed",
     )
     return {
         "checkpoint_sha256": R5_SAFE_CHECKPOINT_SHA256,
@@ -802,7 +802,7 @@ def _bc_v1_identity() -> dict:
     v1_demos_sha = train_ppo._assert_bc_v1_demos_frozen(BC_V1_DEMOS)
     _require(
         v1.get("implementation_sha256") == train_ppo._implementation_bundle_sha256(),
-        "BC-v1 implementation 与当前不一致",
+        "BC-v1 implementation differs from the current one",
     )
     return {
         "v1_demos_sha256": v1_demos_sha,
@@ -828,12 +828,12 @@ def _bc_v2_identity() -> dict:
         == train_ppo._implementation_bundle_sha256()
         and v2_report.get("manager_npz_sha256") == M29_SHA256
         and v2_report.get("demos_sha256") == v2_demos_sha,
-        "BC-v2 implementation/manager/demos 链不闭合",
+        "BC-v2 implementation/manager/demos chain is not closed",
     )
     _require(
         v2_report.get("preventive_threshold") == 0.65,
-        "本 campaign 只预注册 BC-v2 主案 threshold=0.65；"
-        "拒绝把观察结果后生成的 OC 件混入同一训练谱系",
+        "this campaign pre-registers only the BC-v2 main case threshold=0.65; "
+        "refusing to mix OC items generated after seeing results into the same training lineage",
     )
     return {
         "v2_demos_sha256": v2_demos_sha,
@@ -845,7 +845,7 @@ def _bc_v2_identity() -> dict:
 
 
 def _bc_identities() -> dict:
-    """用训练入口的生产 validators 复验当前 canonical BC 两件套。"""
+    """Re-verify the current canonical BC pair with the production validators of the training entry point."""
     return {**_bc_v1_identity(), **_bc_v2_identity()}
 
 
@@ -866,7 +866,7 @@ def _reject_current_bc_scientific_failure(
     implementation_sha256: str,
     label: str,
 ) -> None:
-    """同一实现+生成器已写终态回执时，禁止无身份变化的重复窥看。"""
+    """Once the same implementation + generator has written a terminal receipt, repeated peeking without an identity change is forbidden."""
     if not report_path.is_file():
         return
     try:
@@ -878,13 +878,13 @@ def _reject_current_bc_scientific_failure(
         and report.get("protocol_version") == PROTOCOL_VERSION
         and report.get("implementation_sha256") == implementation_sha256
         and report.get("generator_sha256")
-        == _stable_sha256(TRAIN / "bc_worker.py", "当前 BC generator")
+        == _stable_sha256(TRAIN / "bc_worker.py", "current BC generator")
         and report.get("data_gate") in {"PASS", "FAIL"}
     ):
         raise CampaignError(
-            f"{label} 已在当前 implementation 写出 {report.get('data_gate')} 终态"
-            "但严格工件不完整；final 已可能消费，禁止 launcher 自动重采/调阈值。"
-            "须先做法证并以新 implementation/campaign 身份再发"
+            f"{label} already wrote terminal state {report.get('data_gate')} under the current implementation"
+            " but the strict artifacts are incomplete; final may already have been consumed, so the launcher must not automatically re-sample/adjust the threshold."
+            " Do forensics first and relaunch under a new implementation/campaign identity"
         )
 
 
@@ -916,7 +916,7 @@ def command_prepare_bc() -> None:
             implementation_sha256=snapshot["implementation_sha256"],
             **current,
         )
-        print("BC-v1/v2 已是当前 protocol-v4 + M29 严格 PASS 件；无需重采。")
+        print("BC-v1/v2 are already strict PASS items for the current protocol-v4 + M29; no re-sampling needed.")
         return
 
     v1_command, v2_command = _prepare_bc_commands()
@@ -944,21 +944,21 @@ def command_prepare_bc() -> None:
         commands=commands,
     )
     try:
-        # v1 固定 H 只服务 dry-anchor/遥测；v2 必须显式 M29，绝不吃默认 H。
+        # v1 uses the fixed H only for dry-anchor/telemetry; v2 must use M29 explicitly and never take the default H.
         if v1 is None:
-            _invoke(v1_command, "BC-v1 重采")
+            _invoke(v1_command, "BC-v1 re-sample")
             v1 = _bc_v1_identity()
         if v2 is None:
             _set_phase(state, "prepare_bc", "running-v2")
-            _invoke(v2_command, "BC-v2(M29, threshold=0.65) 重采")
+            _invoke(v2_command, "BC-v2 (M29, threshold=0.65) re-sample")
             v2 = _bc_v2_identity()
-        _require(v1 is not None and v2 is not None, "BC 两件套未同时闭合")
+        _require(v1 is not None and v2 is not None, "the BC pair did not close together")
         identities = _bc_identities()
         final_snapshot = _base_artifact_snapshot()
         _require(
             final_snapshot["implementation_sha256"]
             == snapshot["implementation_sha256"],
-            "BC 重采期间 implementation 漂移",
+            "implementation drifted during BC re-sampling",
         )
     except Exception as exc:
         _set_phase(
@@ -967,8 +967,8 @@ def command_prepare_bc() -> None:
             "failed",
             error=f"{type(exc).__name__}: {exc}",
             note=(
-                "旧 0.70 OC 与 0.65 共用 final pool，rev13 已禁用。若 n12 "
-                "不足，必须先注册独立 fresh pool；任何失败都不得同池调参。"
+                "the old 0.70 OC shares the final pool with 0.65 and is disabled since rev13. If n12 "
+                "is insufficient, register an independent fresh pool first; no failure may tune on the same pool."
             ),
         )
         raise
@@ -979,11 +979,11 @@ def command_prepare_bc() -> None:
         implementation_sha256=final_snapshot["implementation_sha256"],
         **identities,
     )
-    print("BC-v1 与 M29-BC-v2 已重采、复验并冻结。")
+    print("BC-v1 and M29-BC-v2 re-sampled, re-verified and frozen.")
 
 
 def _official_training_args() -> types.SimpleNamespace:
-    """供 trainer 单一真源预计算使用；字段逐字镜像唯一 CLI。"""
+    """For precomputation by the trainer's single source of truth; the fields mirror the single CLI verbatim."""
     return types.SimpleNamespace(
         worker=True,
         options=False,
@@ -1013,7 +1013,7 @@ def _official_training_args() -> types.SimpleNamespace:
 
 
 def _expected_training_contract(snapshot: dict, bc: dict) -> tuple[dict, str]:
-    """在环境点火前由当前 trainer 的 contract 构造器预计算精确 rev12。"""
+    """Precompute the exact rev12 with the current trainer's contract constructor before the environment launches."""
     import train_ppo
 
     args = _official_training_args()
@@ -1044,15 +1044,15 @@ def _expected_training_contract(snapshot: dict, bc: dict) -> tuple[dict, str]:
         and contract.get("demos_sha256") == bc["v1_demos_sha256"]
         and isinstance(contract.get("bc_aux"), dict)
         and contract["bc_aux"].get("mode") == BC_AUX_MODE
-        # 方案A(2026-07-27 批):时代解耦——本归档发射器只对自身冻结
-        # 常量(rev10)校验,不再链到活 train_ppo 常量(07-25 起已为 rev11)。
+        # Plan A (design decision, 2026-07-27): era decoupling. This archived launcher checks only its own frozen
+        # constants (rev10) and no longer chains to the live train_ppo constants (rev11 since 07-25).
         and contract["bc_aux"].get("objective_revision")
         == BC_AUX_OBJECTIVE_REVISION
         and isinstance(contract["bc_aux"].get("circuit"), dict)
         and contract["bc_aux"]["circuit"].get("schema_version")
         == BC_AUX_CIRCUIT_SCHEMA
         and contract["bc_aux"].get("trainable_adapter_parameters") == 5,
-        "预计算 training contract 未命中 official-v4-r6 rev10 固定输入",
+        "precomputed training contract does not match the official-v4-r6 rev10 fixed inputs",
     )
     return contract, train_ppo._canonical_json_sha256(contract)
 
@@ -1069,7 +1069,7 @@ def _validate_liveness_preflight(
     try:
         document = strict_json_loads(payload)
     except EvalContractError as exc:
-        raise CampaignError("bc_aux liveness preflight 不可解析") from exc
+        raise CampaignError("bc_aux liveness preflight cannot be parsed") from exc
     top_keys = {
         "schema_version",
         "protocol_version",
@@ -1099,7 +1099,7 @@ def _validate_liveness_preflight(
         and document["schema_version"]
         == train_ppo._BC_AUX_LIVENESS_PREFLIGHT_SCHEMA_VERSION
         and document["protocol_version"] == PROTOCOL_VERSION == 4
-        # 方案A(2026-07-27 批):时代解耦,同 _frozen_training_contract 注记。
+        # Plan A (design decision, 2026-07-27): era decoupling, same note as _frozen_training_contract.
         and document["objective_revision"]
         == BC_AUX_OBJECTIVE_REVISION
         and document["status"] == "PASS"
@@ -1110,7 +1110,7 @@ def _validate_liveness_preflight(
         and isinstance(document["heldout_rows_consumed"], int)
         and not isinstance(document["heldout_rows_consumed"], bool)
         and document["heldout_rows_consumed"] == 0,
-        "liveness preflight 顶层 schema/状态/隔离域不精确",
+        "liveness preflight top-level schema/status/isolation domain is not exact",
     )
     first_install = installation == "first-install"
 
@@ -1120,7 +1120,7 @@ def _validate_liveness_preflight(
         "manager_npz_sha256": M29_SHA256,
         "implementation_sha256": snapshot["implementation_sha256"],
     }
-    _require(document["inputs"] == expected_inputs, "liveness 输入谱系不精确")
+    _require(document["inputs"] == expected_inputs, "liveness input lineage is not exact")
 
     plan = {
         "rollout_quantum": ROLLOUT_QUANTUM,
@@ -1132,7 +1132,7 @@ def _validate_liveness_preflight(
     }
     _require(
         LEG_STEPS // ROLLOUT_QUANTUM == plan["train_calls"],
-        "trainer contextual-mixture 调用计划已偏离 122 个 rollout",
+        "trainer contextual-mixture call plan has deviated from 122 rollouts",
     )
     circuit = {
         **train_ppo._bc_aux_circuit_spec(),
@@ -1145,7 +1145,7 @@ def _validate_liveness_preflight(
         and circuit.get("probability_max") == 0.95
         and len(circuit.get("gate_feature_indices", ())) == 4
         and len(circuit.get("gate_parameter_columns", ())) == 4,
-        "trainer rev10 contextual circuit 常量漂移",
+        "trainer rev10 contextual circuit constant drift",
     )
     expected_config = {
         "bc_aux_lambda": BC_AUX_LAMBDA,
@@ -1165,7 +1165,7 @@ def _validate_liveness_preflight(
     }
     _require(
         document["config"] == expected_config,
-        "liveness preflight config 不是 official-v4 精确配方",
+        "liveness preflight config is not the exact official-v4 recipe",
     )
     config = document["config"]
     _require(
@@ -1189,7 +1189,7 @@ def _validate_liveness_preflight(
                 "trainable_adapter_parameters",
             )
         ),
-        "liveness config 禁止 bool 冒充数值计数",
+        "liveness config must not let a bool pose as a numeric count",
     )
     expected_calls = {
         "planned_train_calls": TRAIN_CALLS,
@@ -1202,7 +1202,7 @@ def _validate_liveness_preflight(
     _require(
         isinstance(calls, dict)
         and calls == expected_calls,
-        "liveness exact-mixture planned/initial 调用数不精确",
+        "liveness exact-mixture planned/initial call counts are not exact",
     )
     _require(
         all(
@@ -1210,7 +1210,7 @@ def _validate_liveness_preflight(
             and not isinstance(calls[key], bool)
             for key in expected_calls
         ),
-        "liveness calls 禁止 bool 冒充数值计数",
+        "liveness calls must not let a bool pose as a numeric count",
     )
 
     policy = document["policy"]
@@ -1234,20 +1234,20 @@ def _validate_liveness_preflight(
         )
         and policy["actor_width_after"]
         == train_ppo._BC_AUX_CIRCUIT_EXPANDED_WIDTH,
-        "liveness 策略头没有从冻结 v28 根锚闭合",
+        "liveness policy head does not close from the frozen v28 root anchor",
     )
     if first_install:
         _require(
             policy["start_head_sha256"] == V28_POLICY_HEAD_SHA256,
-            "liveness first-install 起点不是冻结 v28 根头",
+            "liveness first-install starting point is not the frozen v28 root head",
         )
     else:
         _require(
             policy["start_head_sha256"] == policy["grafted_head_sha256"],
-            "liveness preserved-continuation 不得重写策略头",
+            "liveness preserved-continuation must not rewrite the policy head",
         )
     _require(document["circuit"] == circuit,
-             "liveness circuit 常量/KING support 漂移")
+             "liveness circuit constants/KING support drift")
     canary = document["policy_gradient_canary"]
     canary_keys = {
         "schema_version",
@@ -1292,7 +1292,7 @@ def _validate_liveness_preflight(
             or canary["stepped_policy_head_sha256"]
             != canary["start_policy_head_sha256"]
         ),
-        "liveness policy-gradient canary schema/隔离身份不精确",
+        "liveness policy-gradient canary schema/isolation identity is not exact",
     )
     for key in (
             "probability_12_before",
@@ -1307,7 +1307,7 @@ def _validate_liveness_preflight(
             isinstance(canary[key], (int, float))
             and not isinstance(canary[key], bool)
             and math.isfinite(float(canary[key])),
-            f"liveness policy-gradient canary {key} 非有限数值",
+            f"liveness policy-gradient canary {key} is not a finite number",
         )
     _require(
         0.0 < canary["probability_12_before"] < 1.0
@@ -1331,7 +1331,7 @@ def _validate_liveness_preflight(
                 and canary["gate_bias_delta"] > 0.0
             )
         ),
-        "liveness policy-gradient canary 未证明真实 optimizer 可提升 p(a12)",
+        "liveness policy-gradient canary did not prove the real optimizer can raise p(a12)",
     )
     optimizer = document["optimizer"]
     state_entries = (
@@ -1355,7 +1355,7 @@ def _validate_liveness_preflight(
         and optimizer["learning_rates_at_start"] == [LEARNING_RATE]
         and optimizer["reset_after_topology_change"] is first_install
         and (state_entries == 0 if first_install else True),
-        "liveness optimizer 未证明 first-install reset/continuation preserved",
+        "liveness optimizer did not prove first-install reset/continuation preserved",
     )
     calibration = document["calibration"]
     target_probability = float(circuit["initial_probability"])
@@ -1463,7 +1463,7 @@ def _validate_liveness_preflight(
             == float(circuit["probability_max"])
             and calibration["candidate_policy_head_sha256"]
             == policy["grafted_head_sha256"],
-            "liveness contextual-mixture initializer 证据不闭合",
+            "liveness contextual-mixture initializer evidence is not closed",
         )
     else:
         preserved_keys = {
@@ -1514,12 +1514,12 @@ def _validate_liveness_preflight(
             )
             and calibration["candidate_policy_head_sha256"]
             == policy["grafted_head_sha256"],
-            "liveness preserved-continuation gate/计数证据不闭合",
+            "liveness preserved-continuation gate/count evidence is not closed",
         )
     _require(
         isinstance(document["metrics"], dict)
         and set(document["metrics"]) == set(train_ppo._BC_AUX_BEHAVIOR_METRIC_KEYS),
-        "liveness metrics schema 不精确",
+        "liveness metrics schema is not exact",
     )
     recomputed_gate = train_ppo.bc_aux_behavior_gate(
         document["metrics"], require_root_anchor=True,
@@ -1543,7 +1543,7 @@ def _validate_liveness_preflight(
             )
         )
         and recomputed_gate.get("verdict") == "PASS",
-        "liveness 无 recall 下界安全门未由现场 metrics 精确重算为 PASS",
+        "liveness no-recall lower-bound safety gate was not recomputed exactly as PASS from the on-site metrics",
     )
     return document
 
@@ -1588,7 +1588,7 @@ def _validate_candidate_behavior_receipt(
         and set(receipt) == top_keys
         and receipt["schema_version"]
         == train_ppo._BC_AUX_BEHAVIOR_RECEIPT_SCHEMA_VERSION
-        # 方案A(2026-07-27 批):时代解耦,同 _frozen_training_contract 注记。
+        # Plan A (design decision, 2026-07-27): era decoupling, same note as _frozen_training_contract.
         and receipt["objective_revision"]
         == BC_AUX_OBJECTIVE_REVISION
         and isinstance(receipt["step"], int)
@@ -1604,7 +1604,7 @@ def _validate_candidate_behavior_receipt(
         and receipt["candidate_policy_head_sha256"]
         == expected_policy_head_sha256
         and receipt["save_error"] is None,
-        "candidate behavior receipt schema/身份/发布状态不精确",
+        "candidate behavior receipt schema/identity/publication status is not exact",
     )
     anchor = receipt["anchor"]
     _require(
@@ -1612,14 +1612,14 @@ def _validate_candidate_behavior_receipt(
         and set(anchor) == {"identity", "policy_head_sha256"}
         and anchor["identity"] == "bc-aux-root-policy"
         and anchor["policy_head_sha256"] == V28_POLICY_HEAD_SHA256,
-        "candidate behavior receipt 根策略锚不精确",
+        "candidate behavior receipt root policy anchor is not exact",
     )
     metrics = receipt["metrics"]
     _require(
         isinstance(metrics, dict)
         and set(metrics) == set(train_ppo._BC_AUX_BEHAVIOR_METRIC_KEYS)
         and metrics.get("scope") == "heldout",
-        "candidate behavior metrics schema/scope 不精确",
+        "candidate behavior metrics schema/scope is not exact",
     )
     recomputed_gate = train_ppo.bc_aux_behavior_gate(
         metrics,
@@ -1633,7 +1633,7 @@ def _validate_candidate_behavior_receipt(
         and recomputed_gate.get("thresholds", {}).get(
             "deployable_a12_required"
         ) is False,
-        "candidate behavior receipt 未通过 PPO 自主 action-12 发布安全门",
+        "candidate behavior receipt did not pass the PPO autonomous action-12 publication safety gate",
     )
 
     evidence = receipt["exploration_evidence"]
@@ -1700,13 +1700,13 @@ def _validate_candidate_behavior_receipt(
         == train_ppo._BC_AUX_MIN_ACTUAL_A12_SAMPLES
         and evidence["information_status"] == "INFORMATIVE"
         and evidence["reasons"] == [],
-        "candidate exploration evidence 未命中冻结的 20/10 严格下界",
+        "candidate exploration evidence does not meet the frozen 20/10 strict lower bounds",
     )
     return recomputed_gate
 
 
 def _preregister_dynamic_provenance(snapshot: dict, bc: dict) -> dict:
-    """在真实 rollout 前冻结 contract 与隔离 liveness 的两个动态 SHA。"""
+    """Freeze the two dynamic SHAs of the contract and the isolated liveness before the real rollout."""
     import train_ppo
 
     _, contract_sha = _expected_training_contract(snapshot, bc)
@@ -1717,7 +1717,7 @@ def _preregister_dynamic_provenance(snapshot: dict, bc: dict) -> dict:
             BC_V2_DEMOS,
             expected_manager_sha256=M29_SHA256,
         )
-        _require(demos_sha == bc["v2_demos_sha256"], "preflight demos SHA 漂移")
+        _require(demos_sha == bc["v2_demos_sha256"], "preflight demos SHA drift")
         bank = train_ppo._build_bc_aux_training_bank(x, y, episode_id, masks)
         PREREG_PREFLIGHT_DIR.mkdir(parents=True, exist_ok=True)
         train_ppo._run_bc_aux_liveness_preflight(
@@ -1735,7 +1735,7 @@ def _preregister_dynamic_provenance(snapshot: dict, bc: dict) -> dict:
             implementation_sha256=snapshot["implementation_sha256"],
             batch_size=train_ppo._select_batch_size(N_STEPS, NUM_ENVS),
         )
-    payload = _stable_read(PREREG_PREFLIGHT_PATH, "预注册 liveness preflight")
+    payload = _stable_read(PREREG_PREFLIGHT_PATH, "pre-registered liveness preflight")
     _validate_liveness_preflight(payload, snapshot=snapshot, bc=bc)
     return {
         "bc_aux_liveness_preflight_sha256": hashlib.sha256(payload).hexdigest(),
@@ -1770,7 +1770,7 @@ def _known_expected_provenance(
     }
     _require(
         set(expected) == EXPECTED_PROVENANCE_KEYS,
-        "launcher expectations 字段集合漂移",
+        "launcher expectations field set drift",
     )
     return expected
 
@@ -1787,14 +1787,14 @@ def _read_expectations() -> tuple[dict, str]:
     try:
         document = strict_json_loads(payload)
     except EvalContractError as exc:
-        raise CampaignError("publication expectations 不可解析") from exc
+        raise CampaignError("publication expectations cannot be parsed") from exc
     _require(
         isinstance(document, dict)
         and set(document) == {"schema_version", "expected_provenance"}
         and document["schema_version"] == EXPECTATIONS_SCHEMA
         and isinstance(document["expected_provenance"], dict)
         and set(document["expected_provenance"]) == EXPECTED_PROVENANCE_KEYS,
-        "publication expectations 不是 official-v4 精确字段集",
+        "publication expectations are not the exact official-v4 field set",
     )
     return document, hashlib.sha256(payload).hexdigest()
 
@@ -1806,12 +1806,12 @@ def _freeze_expectations(state: dict, snapshot: dict, bc: dict) -> tuple[dict, s
         existing, digest = _read_expectations()
         _require(
             existing == expected,
-            "已有 publication expectations 与当前冻结输入不一致；禁止覆写历史发车令",
+            "existing publication expectations differ from the current frozen inputs; overwriting the historical launch order is forbidden",
         )
         return existing, digest
     _atomic_write_json(EXPECTATIONS_PATH, expected)
     document, digest = _read_expectations()
-    _require(document == expected, "publication expectations 写后复验失败")
+    _require(document == expected, "publication expectations read-back after write failed")
     _set_phase(
         state,
         "expectations",
@@ -1875,7 +1875,7 @@ def _training_command() -> list[str]:
 
 
 def _validate_candidate(*, state: dict | None = None) -> dict:
-    """复验 strict chain，并补齐 evaluator 尚未覆盖的 head/liveness 缺口。"""
+    """Re-verify the strict chain and fill the head/liveness gaps the evaluator does not cover yet."""
     from eval_assembled import (
         capture_published_worker,
         capture_publication_expectations,
@@ -1888,7 +1888,7 @@ def _validate_candidate(*, state: dict | None = None) -> dict:
     expected = document["expected_provenance"]
     _, expected_contract_sha = _expected_training_contract(snapshot, bc)
     prereg_preflight_payload = _stable_read(
-        PREREG_PREFLIGHT_PATH, "预注册 liveness preflight"
+        PREREG_PREFLIGHT_PATH, "pre-registered liveness preflight"
     )
     _validate_liveness_preflight(
         prereg_preflight_payload,
@@ -1905,9 +1905,9 @@ def _validate_candidate(*, state: dict | None = None) -> dict:
         and expected["bc_aux_liveness_preflight_sha256"] == prereg_preflight_sha
         and expected["training_contract_sha256"] == expected_contract_sha
         and set(expected) == EXPECTED_PROVENANCE_KEYS,
-        "publication expectations 与当前固定工件/实现不一致",
+        "publication expectations differ from the current fixed artifacts/implementation",
     )
-    checkpoint_payload = _stable_read(CANDIDATE_ZIP, "正式 candidate checkpoint")
+    checkpoint_payload = _stable_read(CANDIDATE_ZIP, "official candidate checkpoint")
     receipt_before = _stable_read(
         CANDIDATE_RECEIPT, "candidate publication receipt"
     )
@@ -1917,7 +1917,7 @@ def _validate_candidate(*, state: dict | None = None) -> dict:
     _require(
         hashlib.sha256(preflight_before).hexdigest() == prereg_preflight_sha
         and preflight_before == prereg_preflight_payload,
-        "正式 trainer 未逐字复现发车前预注册 liveness preflight",
+        "the official trainer did not reproduce the pre-launch pre-registered liveness preflight verbatim",
     )
     _validate_liveness_preflight(preflight_before, snapshot=snapshot, bc=bc)
     receipt_payload = capture_published_worker(
@@ -1929,26 +1929,26 @@ def _validate_candidate(*, state: dict | None = None) -> dict:
     )
     _require(
         receipt_payload == receipt_before,
-        "strict evaluator 捕获的 receipt 与 launcher 稳定读取不一致",
+        "the receipt captured by the strict evaluator differs from the launcher's stable read",
     )
     receipt_sha = hashlib.sha256(receipt_payload).hexdigest()
     try:
         receipt = strict_json_loads(receipt_payload)
     except EvalContractError as exc:
-        raise CampaignError("candidate publication receipt 不可解析") from exc
+        raise CampaignError("candidate publication receipt cannot be parsed") from exc
     _require(
         isinstance(receipt, dict)
         and receipt.get("provenance") == expected,
-        "candidate receipt provenance 未精确等于 17-key 预注册谱系",
+        "candidate receipt provenance is not exactly the 17-key pre-registered lineage",
     )
-    heads = _checkpoint_policy_heads(checkpoint_payload, "正式 candidate")
+    heads = _checkpoint_policy_heads(checkpoint_payload, "official candidate")
     _require(
         heads["current_policy_head_sha256"]
         == receipt["candidate_policy_head_sha256"]
         == R6_EXPECTED_POLICY_HEAD_SHA256
         and heads["root_policy_head_sha256"] == V28_POLICY_HEAD_SHA256
         and receipt["anchor"]["policy_head_sha256"] == V28_POLICY_HEAD_SHA256,
-        "candidate/receipt/R6 安全前缀/root-anchor 六张量策略头 SHA 不闭合",
+        "candidate/receipt/R6 safe prefix/root-anchor six-tensor policy head SHAs do not close",
     )
     candidate_sha = hashlib.sha256(checkpoint_payload).hexdigest()
     _validate_candidate_behavior_receipt(
@@ -1958,7 +1958,7 @@ def _validate_candidate(*, state: dict | None = None) -> dict:
         expected_demos_sha256=bc["v2_demos_sha256"],
         expected_provenance=expected,
     )
-    checkpoint_data = _checkpoint_data(checkpoint_payload, "正式 candidate")
+    checkpoint_data = _checkpoint_data(checkpoint_payload, "official candidate")
     _require(
         checkpoint_data.get("num_timesteps") == TARGET_STEPS
         and checkpoint_data.get("_last_completed_ppo_rollout_steps")
@@ -1971,7 +1971,7 @@ def _validate_candidate(*, state: dict | None = None) -> dict:
         and checkpoint_data.get("diablogym_contract") is not None
         and expected_contract_sha
         == _canonical_sha256(checkpoint_data["diablogym_contract"]),
-        "candidate checkpoint 步数/optimizer 更新证明/training contract 不闭合",
+        "candidate checkpoint step count/optimizer update proof/training contract do not close",
     )
     _, expectations_identity = capture_publication_expectations(EXPECTATIONS_PATH)
     verify_publication_expectations(expectations_identity)
@@ -1982,7 +1982,7 @@ def _validate_candidate(*, state: dict | None = None) -> dict:
         == receipt_payload
         and _stable_read(CANDIDATE_PREFLIGHT, "candidate post-capture preflight")
         == preflight_before,
-        "candidate 三件套在 strict capture 期间发生变化",
+        "the candidate triple changed during the strict capture",
     )
     info = {
         "candidate_sha256": candidate_sha,
@@ -2001,7 +2001,7 @@ def _validate_candidate(*, state: dict | None = None) -> dict:
         if frozen.get("status") == "frozen":
             _require(
                 all(frozen.get(key) == value for key, value in info.items()),
-                "candidate 与 campaign 状态中的冻结身份不一致",
+                "candidate differs from the frozen identity in the campaign state",
             )
     return info
 
@@ -2017,7 +2017,7 @@ def command_train() -> None:
         and prepare.get("status") == "complete"
         and prepare.get("implementation_sha256") == snapshot["implementation_sha256"]
         and all(prepare.get(key) == value for key, value in bc.items()),
-        "train 前必须由本 launcher 完成当前实现的 prepare-bc",
+        "before train, this launcher must complete prepare-bc for the current implementation",
     )
     _freeze_expectations(state, snapshot, bc)
 
@@ -2025,38 +2025,38 @@ def command_train() -> None:
         try:
             info = _validate_candidate(state=None)
         except Exception:
-            # 有最终回执却不构成正式候选，说明 heldout 已经被打开；绝不重训。
+            # A final receipt that does not make an official candidate means heldout was already opened; never retrain.
             _set_phase(
                 state,
                 "train",
                 "locked-failed",
                 retry_forbidden=True,
-                error="已有 candidate/receipt 但 strict publication chain 不通过",
+                error="candidate/receipt exist but the strict publication chain does not pass",
             )
             raise
         _set_phase(state, "train", "frozen", retry_forbidden=True, **info)
-        print("正式 candidate 已冻结且全链复验通过；不会重复训练。")
+        print("official candidate already frozen and the whole chain re-verified; no repeated training.")
         return
 
     prior = state["phases"].get("train", {})
     attempts = int(prior.get("attempts", 0))
     if _run_lock_is_held():
         raise CampaignError(
-            "official-v4 trainer 仍持有 .run.lock；只报告现状，禁止重复发车"
+            "official-v4 trainer still holds .run.lock; only reporting the current state, repeated launch forbidden"
         )
     _require(
         not prior.get("retry_forbidden", False),
-        "正式训练已消费 final heldout 或留下无证 model；禁止重发",
+        "official training already consumed final heldout or left an unproven model; relaunch forbidden",
     )
     _require(
         attempts == 0,
-        "official-v4 正式训练已经点火过。launcher 不允许观察遥测后从 v28"
-        "分叉重训，也不把中间 checkpoint 冒充同一条预注册谱系；"
-        "无完整 PUBLISHED 候选时本 campaign 必须隔离审计",
+        "official-v4 official training has already been launched. The launcher does not allow forking a retrain from v28"
+        " after watching telemetry, nor passing an intermediate checkpoint off as the same pre-registered lineage;"
+        " without a complete PUBLISHED candidate this campaign must be quarantined for audit",
     )
     _require(
         not CANDIDATE_ZIP.exists(),
-        "发现无完整 PUBLISHED 回执的 model_final.zip；禁止覆盖/重训",
+        "found a model_final.zip without a complete PUBLISHED receipt; overwrite/retrain forbidden",
     )
     if CANDIDATE_RECEIPT.exists():
         _set_phase(
@@ -2069,7 +2069,7 @@ def command_train() -> None:
             ),
         )
         raise CampaignError(
-            "最终行为回执已存在（heldout 已消费），但没有严格正式候选；禁止重训"
+            "a final behavior receipt already exists (heldout consumed) but there is no strict official candidate; retrain forbidden"
         )
     if CANDIDATE_DIR.exists():
         residue = sorted(
@@ -2078,7 +2078,7 @@ def command_train() -> None:
         )
         _require(
             not residue,
-            "candidate run 目录已有未登记残留；禁止让 trainer 归档后重发:"
+            "the candidate run directory has unregistered leftovers; the trainer must not archive them and relaunch: "
             f"{residue}",
         )
 
@@ -2097,12 +2097,12 @@ def command_train() -> None:
         retry_forbidden=True,
     )
     try:
-        # 阻止本 launcher 的 BC 生成器在正式训练期间替换 canonical 输入。
+        # Keep this launcher's BC generator from replacing canonical inputs during official training.
         with contextlib.ExitStack() as stack:
             stack.enter_context(exclusive_lock(BC_V1_DIR / ".bc.lock", "BC-v1"))
             stack.enter_context(exclusive_lock(BC_V2_DIR / ".bc.lock", "BC-v2"))
             locked_bc = _bc_identities()
-            _require(locked_bc == bc, "取得 BC 锁前 canonical BC 已漂移")
+            _require(locked_bc == bc, "canonical BC drifted before the BC lock was taken")
             _invoke(command, "official-v4 full training")
         info = _validate_candidate(state=None)
     except Exception as exc:
@@ -2114,8 +2114,8 @@ def command_train() -> None:
             retry_forbidden=True,
             error=f"{type(exc).__name__}: {exc}",
             quarantine_reason=(
-                "无法可靠区分环境点火、G-CAL、target gate 不确定窗与纯运维故障；"
-                "禁止自动重训或从较旧 checkpoint 分叉"
+                "cannot reliably distinguish environment launch, G-CAL, an uncertain target-gate window and a pure operational failure; "
+                "automatic retraining or forking from an older checkpoint is forbidden"
             ),
         )
         raise
@@ -2127,7 +2127,7 @@ def command_train() -> None:
         retry_forbidden=True,
         **info,
     )
-    print("official-v4 R6 candidate 已在 3,747,840 步完整更新边界冻结。")
+    print("official-v4 R6 candidate frozen at the complete update boundary of 3,747,840 steps.")
 
 
 def _eval_archive_path(pool: str, arm: str) -> pathlib.Path:
@@ -2140,8 +2140,8 @@ def _seed_arg(pool: str) -> str:
 
 
 def _eval_command(pool: str, arm: str) -> list[str]:
-    _require(pool in EVAL_POOLS, f"未知 eval pool:{pool}")
-    _require(arm in {"baseline", "candidate"}, f"未知 eval arm:{arm}")
+    _require(pool in EVAL_POOLS, f"unknown eval pool: {pool}")
+    _require(arm in {"baseline", "candidate"}, f"unknown eval arm: {arm}")
     worker = V28_ZIP if arm == "baseline" else CANDIDATE_ZIP
     command = [
         _python_executable(),
@@ -2165,7 +2165,7 @@ def _eval_command(pool: str, arm: str) -> list[str]:
 
 
 def _eval_input_identity(candidate: dict) -> dict:
-    """冻结两臂共同科学输入；每次长评测前后逐项重哈希。"""
+    """Freeze the common scientific inputs of both arms; re-hash them item by item before and after every long evaluation."""
     snapshot = _base_artifact_snapshot()
     bc = _bc_identities()
     expectations, expectations_sha = _read_expectations()
@@ -2203,7 +2203,7 @@ def _eval_input_identity(candidate: dict) -> dict:
         and identity["preregistered_preflight_sha256"]
         == candidate["preflight_sha256"]
         and expectations_sha == candidate["expectations_sha256"],
-        "eval 输入身份与冻结 candidate 不闭合",
+        "eval input identity does not close with the frozen candidate",
     )
     identity["identity_sha256"] = _canonical_sha256(identity)
     return identity
@@ -2226,25 +2226,25 @@ def _validate_official_archive(
         document = validate_eval_archive(document, **expected)
     except (OSError, EvalContractError, ValueError) as exc:
         raise CampaignError(
-            f"{pool}/{arm} 评测档案未通过当前精确身份复验:{path}: {exc}"
+            f"{pool}/{arm} evaluation archive failed re-verification against the current exact identity: {path}: {exc}"
         ) from exc
     archive_sha = hashlib.sha256(payload).hexdigest()
     _require(
         document["meta"]["manager"]["sha256"] == M29_SHA256,
-        f"{pool}/{arm} 档案没有使用 M29",
+        f"{pool}/{arm} archive did not use M29",
     )
     if arm == "baseline":
         _require(
             document["meta"]["worker"]["sha256"] == V28_SHA256
             and document["meta"]["worker"]["gate_report_sha256"] is None,
-            f"{pool} baseline 不是裸 v28",
+            f"{pool} baseline is not the bare v28",
         )
     else:
         _require(
             document["meta"]["worker"]["sha256"] == candidate["candidate_sha256"]
             and document["meta"]["worker"]["gate_report_sha256"]
             == candidate["receipt_sha256"],
-            f"{pool} candidate 档案未绑定冻结模型/发布回执",
+            f"{pool} candidate archive is not bound to the frozen model/publication receipt",
         )
     return document, {
         "path": str(path),
@@ -2265,15 +2265,15 @@ def _pair_documents(pool: str, baseline: dict, candidate: dict) -> None:
         baseline["meta"]["protocol"]["seeds"]
         == candidate["meta"]["protocol"]["seeds"]
         == list(EVAL_POOLS[pool]),
-        f"{pool} baseline/candidate seed 列不精确一致",
+        f"{pool} baseline/candidate seed columns are not exactly equal",
     )
     _require(
         baseline["meta"]["manager"] == candidate["meta"]["manager"],
-        f"{pool} baseline/candidate manager identity 不一致",
+        f"{pool} baseline/candidate manager identity differs",
     )
     _require(
         baseline["meta"]["runtime"] == candidate["meta"]["runtime"],
-        f"{pool} baseline/candidate runtime/content/protocol 不一致",
+        f"{pool} baseline/candidate runtime/content/protocol differ",
     )
 
 
@@ -2304,10 +2304,10 @@ def _run_eval_arm(
         return document, identity
     _require(
         not _eval_archive_path(pool, arm).exists(),
-        f"{pool}/{arm} 固定 tag 已有无效档案；拒绝覆写",
+        f"{pool}/{arm} fixed tag already has an invalid archive; refusing to overwrite",
     )
     attempts = int(arm_state.get("attempts", 0))
-    _require(allow_retry or attempts == 0, f"{pool}/{arm} 不允许第二次点火")
+    _require(allow_retry or attempts == 0, f"{pool}/{arm} a second launch is not allowed")
     command = _eval_command(pool, arm)
     frozen_inputs = _eval_input_identity(candidate)
     arm_state.update(
@@ -2322,7 +2322,7 @@ def _run_eval_arm(
         _invoke(command, f"{pool}/{arm} evaluation")
         _require(
             _eval_input_identity(candidate) == frozen_inputs,
-            f"{pool}/{arm} 评测期间冻结输入发生变化",
+            f"{pool}/{arm} frozen inputs changed during evaluation",
         )
         document, identity = _validate_official_archive(pool, arm, candidate)
     except Exception as exc:
@@ -2330,7 +2330,7 @@ def _run_eval_arm(
             unchanged = _eval_input_identity(candidate) == frozen_inputs
         except Exception:
             unchanged = False
-        _require(unchanged, f"{pool}/{arm} 失败期间冻结输入发生变化")
+        _require(unchanged, f"{pool}/{arm} frozen inputs changed during the failure")
         recovered = _try_archive(pool, arm, candidate)
         if recovered is None:
             arm_state.update(
@@ -2380,10 +2380,10 @@ def command_eval_regression() -> None:
     )
     _require(
         verdict["status"] == "PASS",
-        "7000–7031 paired regression 未通过战斗恢复门:"
+        "7000-7031 paired regression failed the combat-recovery gate: "
         f"{verdict['failed_checks']}",
     )
-    print("7000–7031 M29 paired regression 已完成，战斗恢复门 PASS。")
+    print("7000-7031 M29 paired regression completed; combat-recovery gate PASS.")
 
 
 def _fresh_event_sha(record_without_sha: dict) -> str:
@@ -2397,11 +2397,11 @@ def _read_fresh_ledger() -> list[dict]:
     previous = None
     payload = _stable_read(FRESH_LEDGER_PATH, "fresh append-only ledger")
     for index, raw in enumerate(payload.splitlines(), 1):
-        _require(bool(raw), f"fresh ledger 第 {index} 行为空")
+        _require(bool(raw), f"fresh ledger line {index} is empty")
         try:
             event = strict_json_loads(raw)
         except EvalContractError as exc:
-            raise CampaignError(f"fresh ledger 第 {index} 行不可解析") from exc
+            raise CampaignError(f"fresh ledger line {index} cannot be parsed") from exc
         _require(
             isinstance(event, dict)
             and set(event)
@@ -2414,7 +2414,7 @@ def _read_fresh_ledger() -> list[dict]:
                 "payload",
                 "event_sha256",
             },
-            f"fresh ledger 第 {index} 行字段异常",
+            f"fresh ledger line {index} fields are malformed",
         )
         body = {key: value for key, value in event.items() if key != "event_sha256"}
         _require(
@@ -2422,7 +2422,7 @@ def _read_fresh_ledger() -> list[dict]:
             and event["seq"] == index
             and event["prev_event_sha256"] == previous
             and event["event_sha256"] == _fresh_event_sha(body),
-            f"fresh ledger 第 {index} 行 hash chain 断裂",
+            f"fresh ledger line {index} hash chain broken",
         )
         previous = event["event_sha256"]
         events.append(event)
@@ -2442,7 +2442,7 @@ def _append_fresh_event(event_name: str, payload: dict) -> dict:
             "CANDIDATE_FAIL",
         }
         and isinstance(payload, dict),
-        f"fresh ledger 事件名/载荷非法:{event_name}",
+        f"fresh ledger event name/payload illegal: {event_name}",
     )
     events = _read_fresh_ledger()
     body = {
@@ -2461,7 +2461,7 @@ def _append_fresh_event(event_name: str, payload: dict) -> dict:
         stream.write(_canonical_json_bytes(record) + b"\n")
         stream.flush()
         os.fsync(stream.fileno())
-    _require(_read_fresh_ledger()[-1] == record, "fresh ledger 追加后复验失败")
+    _require(_read_fresh_ledger()[-1] == record, "fresh ledger read-back after append failed")
     return record
 
 
@@ -2469,7 +2469,7 @@ def _validate_ledger_archive_identity(payload: Any, label: str) -> dict:
     _require(
         isinstance(payload, dict)
         and set(payload) == EVAL_ARCHIVE_IDENTITY_KEYS,
-        f"{label} archive identity 字段异常",
+        f"{label} archive identity fields are malformed",
     )
     for key in (
         "sha256",
@@ -2477,15 +2477,15 @@ def _validate_ledger_archive_identity(payload: Any, label: str) -> dict:
         "manager_sha256",
         "protocol_bundle_sha256",
     ):
-        _require(_is_sha256(payload[key]), f"{label}.{key} 非 SHA256")
+        _require(_is_sha256(payload[key]), f"{label}.{key} is not a SHA256")
     _require(
         isinstance(payload["path"], str) and bool(payload["path"]),
-        f"{label}.path 非法",
+        f"{label}.path is illegal",
     )
     _require(
         payload["worker_receipt_sha256"] is None
         or _is_sha256(payload["worker_receipt_sha256"]),
-        f"{label}.worker_receipt_sha256 非法",
+        f"{label}.worker_receipt_sha256 is illegal",
     )
     return payload
 
@@ -2506,11 +2506,11 @@ def _fresh_summary(events: list[dict]) -> dict:
             "candidate_failed": False,
             "candidate_success_payload": None,
         }
-    _require(events[0]["event"] == "BIND", "fresh ledger 首事件必须是 BIND")
+    _require(events[0]["event"] == "BIND", "fresh ledger first event must be BIND")
     bind = events[0]
     _require(
         isinstance(bind["payload"], dict) and bool(bind["payload"]),
-        "fresh BIND payload 必须是非空对象",
+        "fresh BIND payload must be a non-empty object",
     )
     stage = "bound"
     candidate_attempts = 0
@@ -2522,9 +2522,9 @@ def _fresh_summary(events: list[dict]) -> dict:
     for event in events[1:]:
         name = event["event"]
         payload = event["payload"]
-        _require(isinstance(payload, dict), f"fresh {name} payload 必须是对象")
+        _require(isinstance(payload, dict), f"fresh {name} payload must be an object")
         if name == "BASELINE_START":
-            _require(stage == "bound", "fresh BASELINE_START 顺序/重复异常")
+            _require(stage == "bound", "fresh BASELINE_START order/duplicate is malformed")
             _require(
                 set(payload)
                 == {
@@ -2535,14 +2535,14 @@ def _fresh_summary(events: list[dict]) -> dict:
                 and isinstance(payload["command"], list)
                 and _is_sha256(payload["input_identity_sha256"])
                 and _is_sha256(payload["pool_opened_marker_sha256"]),
-                "fresh BASELINE_START payload 异常",
+                "fresh BASELINE_START payload is malformed",
             )
             baseline_start_payload = dict(payload)
             stage = "baseline-started"
         elif name == "BASELINE_SUCCESS":
             _require(
                 stage == "baseline-started",
-                "fresh BASELINE_SUCCESS 必须紧随唯一 START",
+                "fresh BASELINE_SUCCESS must immediately follow the single START",
             )
             baseline_success_payload = dict(
                 _validate_ledger_archive_identity(
@@ -2553,19 +2553,19 @@ def _fresh_summary(events: list[dict]) -> dict:
         elif name == "BASELINE_FAIL":
             _require(
                 stage == "baseline-started",
-                "fresh BASELINE_FAIL 必须紧随唯一 START",
+                "fresh BASELINE_FAIL must immediately follow the single START",
             )
             _require(
                 set(payload) == {"error", "inputs_unchanged"}
                 and isinstance(payload["error"], str)
                 and isinstance(payload["inputs_unchanged"], bool),
-                "fresh BASELINE_FAIL payload 异常",
+                "fresh BASELINE_FAIL payload is malformed",
             )
             stage = "baseline-failed"
         elif name == "CANDIDATE_START":
             _require(
                 stage == "baseline-success",
-                "fresh CANDIDATE_START 早于 baseline SUCCESS 或前发未闭合",
+                "fresh CANDIDATE_START came before baseline SUCCESS or the previous attempt is not closed",
             )
             candidate_attempts += 1
             _require(
@@ -2580,11 +2580,11 @@ def _fresh_summary(events: list[dict]) -> dict:
                 and isinstance(payload["command"], list)
                 and _is_sha256(payload["input_identity_sha256"])
                 and _is_sha256(payload["candidate_fired_marker_sha256"]),
-                "fresh candidate attempt payload/编号异常",
+                "fresh candidate attempt payload/number is malformed",
             )
             _require(
                 candidate_attempts <= FRESH_CANDIDATE_MAX_ATTEMPTS,
-                "fresh candidate 发次超过预注册上限",
+                "fresh candidate attempts exceed the pre-registered limit",
             )
             candidate_open_attempt = candidate_attempts
             candidate_start_payload = dict(payload)
@@ -2593,7 +2593,7 @@ def _fresh_summary(events: list[dict]) -> dict:
             _require(
                 stage == "candidate-started"
                 and payload.get("attempt") == candidate_open_attempt,
-                "fresh CANDIDATE_FAIL 没有匹配的 START",
+                "fresh CANDIDATE_FAIL has no matching START",
             )
             _require(
                 set(payload)
@@ -2607,7 +2607,7 @@ def _fresh_summary(events: list[dict]) -> dict:
                     for key, value in payload.items()
                     if key in {"inputs_unchanged", "recovered_after_restart"}
                 ),
-                "fresh CANDIDATE_FAIL payload 异常",
+                "fresh CANDIDATE_FAIL payload is malformed",
             )
             candidate_open_attempt = None
             stage = "candidate-failed"
@@ -2616,7 +2616,7 @@ def _fresh_summary(events: list[dict]) -> dict:
                 stage == "candidate-started"
                 and set(payload) == {"attempt", "archive"}
                 and payload.get("attempt") == candidate_open_attempt,
-                "fresh CANDIDATE_SUCCESS 没有匹配的 START",
+                "fresh CANDIDATE_SUCCESS has no matching START",
             )
             candidate_success_payload = dict(
                 _validate_ledger_archive_identity(
@@ -2626,7 +2626,7 @@ def _fresh_summary(events: list[dict]) -> dict:
             candidate_open_attempt = None
             stage = "candidate-success"
         else:
-            raise CampaignError(f"fresh ledger 未知/重复事件:{name}")
+            raise CampaignError(f"fresh ledger unknown/duplicate event: {name}")
     return {
         "bind": bind,
         "baseline_started": stage
@@ -2663,7 +2663,7 @@ def _verify_fresh_ledger_checkpoint(state: dict, events: list[dict]) -> None:
     head = phase.get("ledger_head_sha256")
     _require(
         (count is None) == (head is None),
-        "fresh state 的 ledger count/head 只存在一半",
+        "fresh state ledger count/head exists only halfway",
     )
     if count is None:
         return
@@ -2673,7 +2673,7 @@ def _verify_fresh_ledger_checkpoint(state: dict, events: list[dict]) -> None:
         and 1 <= count <= len(events)
         and _is_sha256(head)
         and events[count - 1]["event_sha256"] == head,
-        "fresh ledger 被截尾/改写，未包含 state 已锚定前缀",
+        "fresh ledger was truncated/rewritten and does not contain the prefix the state anchored",
     )
 
 
@@ -2684,7 +2684,7 @@ def _checkpoint_fresh_ledger(
 ) -> list[dict]:
     events = _read_fresh_ledger()
     _fresh_summary(events)
-    _require(bool(events), "fresh ledger 尚无事件，不能锚定")
+    _require(bool(events), "fresh ledger has no events yet and cannot be anchored")
     _set_phase(
         state,
         "eval_fresh",
@@ -2721,7 +2721,7 @@ def _require_regression_complete(state: dict, candidate: dict) -> None:
         phase.get("status") == "complete"
         and phase.get("candidate_sha256") == candidate["candidate_sha256"]
         and phase.get("expectations_sha256") == candidate["expectations_sha256"],
-        "fresh 终考前必须先由同一候选通过 7000 paired regression",
+        "before the fresh final exam, the same candidate must first pass the 7000 paired regression",
     )
     baseline, _ = _validate_official_archive(
         "regression", "baseline", candidate
@@ -2742,7 +2742,7 @@ def _require_regression_complete(state: dict, candidate: dict) -> None:
         and phase.get("analysis_sha256") == analysis_sha
         and phase.get("verdict") == analysis["verdict"]
         and analysis["verdict"]["status"] == "PASS",
-        "regression 分析/裁决缺失、漂移或未通过；禁止打开 fresh 池",
+        "regression analysis/verdict missing, drifted or not passed; opening the fresh pool is forbidden",
     )
 
 
@@ -2774,9 +2774,9 @@ def _fresh_external_residue(
         if path.resolve() in allowed:
             continue
         try:
-            payload = _stable_read(path, "fresh 污染扫描")
+            payload = _stable_read(path, "fresh contamination scan")
         except Exception:
-            residues.append(f"{path} (不可稳定读取)")
+            residues.append(f"{path} (cannot be read stably)")
             continue
         discovered: set[int] = set()
         try:
@@ -2809,8 +2809,8 @@ def _fresh_external_residue(
                 f"{path} (seeds={sorted(discovered & fresh_seeds)})"
             )
         elif any(token in payload for token in seed_literals + official_tags):
-            # 半截 tmp/void/损坏 JSON 只要泄露目标 seed/tag，就按池已打开处理。
-            residues.append(f"{path} (疑似 12000 池残件)")
+            # A half-written tmp/void/corrupt JSON that leaks a target seed/tag counts as the pool having been opened.
+            residues.append(f"{path} (suspected 12000-pool leftover)")
     return residues
 
 
@@ -2849,9 +2849,9 @@ def _prior_fresh_control_residue() -> list[str]:
             )
             phases = document.get("phases") if isinstance(document, dict) else None
             if not isinstance(phases, dict):
-                raise CampaignError("prior campaign status 缺 phases")
+                raise CampaignError("prior campaign status lacks phases")
         except (CampaignError, EvalContractError, OSError, ValueError):
-            residues.append(f"{status_path} (prior campaign status 不可复验)")
+            residues.append(f"{status_path} (prior campaign status cannot be re-verified)")
             continue
         if "eval_fresh" in phases:
             residues.append(f"{status_path} (prior campaign eval_fresh phase)")
@@ -2870,7 +2870,7 @@ def _require_fresh_pool_exclusive(summary: dict) -> None:
     )
     _require(
         not residues,
-        "fresh BIND 后发现未登记 tag/残件消费 12000 池:"
+        "after fresh BIND, an unregistered tag/leftover was found consuming the 12000 pool: "
         f"{residues}",
     )
 
@@ -2888,7 +2888,7 @@ def _fresh_pool_marker(bind_payload: dict) -> dict | None:
             _stable_read(FRESH_POOL_OPENED_PATH, "fresh pool-opened marker")
         )
     except EvalContractError as exc:
-        raise CampaignError("fresh pool-opened marker 不可解析") from exc
+        raise CampaignError("fresh pool-opened marker cannot be parsed") from exc
     _require(
         isinstance(marker, dict)
         and set(marker)
@@ -2904,7 +2904,7 @@ def _fresh_pool_marker(bind_payload: dict) -> dict | None:
         and marker["created_at_ns"] > 0
         and marker["bind"] == bind_payload
         and marker["baseline_command"] == _eval_command("fresh", "baseline"),
-        "fresh pool-opened marker 与当前冻结候选/命令不一致",
+        "fresh pool-opened marker differs from the current frozen candidate/command",
     )
     return marker
 
@@ -2920,7 +2920,7 @@ def _fresh_candidate_fired_marker(bind_payload: dict) -> dict | None:
             )
         )
     except EvalContractError as exc:
-        raise CampaignError("fresh candidate-fired marker 不可解析") from exc
+        raise CampaignError("fresh candidate-fired marker cannot be parsed") from exc
     _require(
         isinstance(marker, dict)
         and set(marker)
@@ -2938,7 +2938,7 @@ def _fresh_candidate_fired_marker(bind_payload: dict) -> dict | None:
         and marker["attempt"] == 1
         and marker["bind"] == bind_payload
         and marker["candidate_command"] == _eval_command("fresh", "candidate"),
-        "fresh candidate-fired marker 与当前 BIND/唯一命令不一致",
+        "fresh candidate-fired marker differs from the current BIND/single command",
     )
     return marker
 
@@ -2956,7 +2956,7 @@ def command_eval_fresh() -> None:
         residues = _fresh_external_residue()
         _require(
             not residues,
-            "12000 池在 official BIND 前已有档案/void；视为已污染:"
+            "the 12000 pool already had archives/void before the official BIND; treated as contaminated: "
             f"{residues}",
         )
         _append_fresh_event("BIND", bind_payload)
@@ -2969,11 +2969,11 @@ def command_eval_fresh() -> None:
     else:
         _require(
             summary["bind"]["payload"] == bind_payload,
-            "fresh ledger 已绑定另一 candidate/runtime/expectations",
+            "fresh ledger is already bound to another candidate/runtime/expectations",
         )
         _require(
             summary["bind"]["payload"]["frozen_inputs"] == frozen_inputs,
-            "fresh BIND 后科学输入发生变化",
+            "fresh scientific inputs changed after BIND",
         )
     marker = _fresh_pool_marker(bind_payload)
     candidate_fired_marker = _fresh_candidate_fired_marker(bind_payload)
@@ -2984,7 +2984,7 @@ def command_eval_fresh() -> None:
                 FRESH_POOL_OPENED_PATH, "fresh pool-opened marker"
             )
             == summary["baseline_start_payload"]["pool_opened_marker_sha256"],
-            "fresh BASELINE_START 未精确绑定当前 pool-opened marker",
+            "fresh BASELINE_START is not exactly bound to the current pool-opened marker",
         )
     if summary["candidate_attempts"] > 0:
         _require(
@@ -2996,26 +2996,26 @@ def command_eval_fresh() -> None:
             == summary["candidate_start_payload"][
                 "candidate_fired_marker_sha256"
             ],
-            "fresh CANDIDATE_START 未精确绑定当前 create-once fired marker",
+            "fresh CANDIDATE_START is not exactly bound to the current create-once fired marker",
         )
     else:
         _require(
             candidate_fired_marker is None,
-            "fresh candidate-fired marker 已存在但 ledger 无 START；"
-            "按可能已点火处理，禁止发车",
+            "fresh candidate-fired marker exists but the ledger has no START; "
+            "treated as possibly launched, launch forbidden",
         )
     _require_fresh_pool_exclusive(summary)
 
     baseline_result = _try_archive("fresh", "baseline", candidate)
     if summary["baseline_success"]:
-        _require(marker is not None, "fresh baseline SUCCESS 却缺 pool-opened marker")
-        _require(baseline_result is not None, "fresh baseline SUCCESS 档案消失/漂移")
+        _require(marker is not None, "fresh baseline SUCCESS but the pool-opened marker is missing")
+        _require(baseline_result is not None, "fresh baseline SUCCESS archive disappeared/drifted")
         _require(
             baseline_result[1] == summary["baseline_success_payload"],
-            "fresh baseline SUCCESS 后档案身份被替换",
+            "fresh baseline archive identity was replaced after SUCCESS",
         )
     elif summary["baseline_started"]:
-        _require(marker is not None, "fresh baseline START 却缺 pool-opened marker")
+        _require(marker is not None, "fresh baseline START but the pool-opened marker is missing")
         if baseline_result is not None and not summary["baseline_failed"]:
             _, identity = baseline_result
             _append_fresh_event("BASELINE_SUCCESS", identity)
@@ -3029,21 +3029,21 @@ def command_eval_fresh() -> None:
         else:
             _require(
                 not _lock_file_is_held(_fresh_output_lock_path("baseline")),
-                "fresh baseline 进程仍持有同 tag lock；等待提交/失败，禁止重发",
+                "fresh baseline process still holds the same-tag lock; wait for commit/failure, relaunch forbidden",
             )
             raise CampaignError(
-                "fresh baseline 已点火但没有可复验成功档案；12000 blind pool 已打开，"
-                "禁止第二次 baseline 点火"
+                "fresh baseline was launched but has no re-verifiable successful archive; the 12000 blind pool is open, "
+                "a second baseline launch is forbidden"
             )
     else:
         _require(
             marker is None,
-            "fresh pool-opened marker 已存在但 ledger 缺 BASELINE_START；"
-            "按可能已点火处理，禁止自动 baseline",
+            "fresh pool-opened marker exists but the ledger lacks BASELINE_START; "
+            "treated as possibly launched, automatic baseline forbidden",
         )
         _require(
             _eval_input_identity(candidate) == frozen_inputs,
-            "fresh baseline 点火前冻结输入发生变化",
+            "fresh frozen inputs changed before the baseline launch",
         )
         _exclusive_create_json(
             FRESH_POOL_OPENED_PATH,
@@ -3078,7 +3078,7 @@ def command_eval_fresh() -> None:
             )
             _require(
                 _eval_input_identity(candidate) == frozen_inputs,
-                "fresh baseline 评测期间冻结输入发生变化",
+                "fresh baseline frozen inputs changed during evaluation",
             )
             baseline_result = _validate_official_archive(
                 "fresh", "baseline", candidate
@@ -3115,14 +3115,14 @@ def command_eval_fresh() -> None:
         )
         summary = _fresh_summary(events)
 
-    _require(summary["baseline_success"], "fresh baseline 未成功冻结")
+    _require(summary["baseline_success"], "fresh baseline was not frozen successfully")
     _require(
         _fresh_pool_marker(bind_payload) is not None
         and _stable_sha256(
             FRESH_POOL_OPENED_PATH, "fresh pool-opened marker"
         )
         == summary["baseline_start_payload"]["pool_opened_marker_sha256"],
-        "fresh baseline 完成时 pool-opened marker 身份漂移",
+        "fresh baseline pool-opened marker identity drifted at completion",
     )
     _require_fresh_pool_exclusive(summary)
     baseline_doc, baseline_identity = _validate_official_archive(
@@ -3130,22 +3130,22 @@ def command_eval_fresh() -> None:
     )
     _require(
         baseline_identity == summary["baseline_success_payload"],
-        "fresh baseline ledger/archive 身份不一致",
+        "fresh baseline ledger/archive identity differs",
     )
 
     candidate_result = _try_archive("fresh", "candidate", candidate)
     if summary["candidate_success"]:
-        _require(candidate_result is not None, "fresh candidate SUCCESS 档案消失/漂移")
+        _require(candidate_result is not None, "fresh candidate SUCCESS archive disappeared/drifted")
         _require(
             candidate_result[1] == summary["candidate_success_payload"],
-            "fresh candidate SUCCESS 后档案身份被替换",
+            "fresh candidate archive identity was replaced after SUCCESS",
         )
     elif candidate_result is not None:
         _, identity = candidate_result
         recovered_attempt = summary["candidate_open_attempt"]
         _require(
             recovered_attempt is not None,
-            "fresh candidate 档案出现在 official 开放发次之外",
+            "fresh candidate archive appeared outside the officially open attempts",
         )
         _append_fresh_event(
             "CANDIDATE_SUCCESS",
@@ -3162,19 +3162,19 @@ def command_eval_fresh() -> None:
     else:
         _require(
             not _eval_archive_path("fresh", "candidate").exists(),
-            "fresh candidate 固定 tag 已有无效档案；禁止覆写/重试",
+            "fresh candidate fixed tag already has an invalid archive; overwrite/retry forbidden",
         )
         if summary["candidate_open_attempt"] is not None:
             _require(
                 not _lock_file_is_held(_fresh_output_lock_path("candidate")),
-                "fresh candidate 进程仍持有同 tag lock；等待当前发次结束",
+                "fresh candidate process still holds the same-tag lock; wait for the current attempt to finish",
             )
             interrupted = summary["candidate_open_attempt"]
             _append_fresh_event(
                 "CANDIDATE_FAIL",
                 {
                     "attempt": interrupted,
-                    "error": "launcher/evaluator 中断且同 tag lock 已释放、无完整档案",
+                    "error": "launcher/evaluator interrupted, the same-tag lock released, no complete archive",
                     "recovered_after_restart": True,
                 },
             )
@@ -3187,16 +3187,16 @@ def command_eval_fresh() -> None:
             )
             summary = _fresh_summary(events)
             raise CampaignError(
-                "fresh candidate 首次点火中断且无完整档案；为防止观察部分输出后"
-                "选择性重试，本预注册 campaign 禁止第二次点火"
+                "fresh candidate's first launch was interrupted with no complete archive; to prevent selective retries after seeing partial output,"
+                " this pre-registered campaign forbids a second launch"
             )
         _require(
             summary["candidate_attempts"] < FRESH_CANDIDATE_MAX_ATTEMPTS,
-            "fresh candidate 已消费唯一预注册发次；禁止第二次点火",
+            "fresh candidate has used its single pre-registered attempt; a second launch is forbidden",
         )
         _require(
             _eval_input_identity(candidate) == frozen_inputs,
-            "fresh candidate 点火前冻结输入与 BIND 不一致",
+            "fresh candidate frozen inputs differ from BIND before launch",
         )
         attempt = summary["candidate_attempts"] + 1
         command = _eval_command("fresh", "candidate")
@@ -3214,7 +3214,7 @@ def command_eval_fresh() -> None:
         candidate_fired_marker = _fresh_candidate_fired_marker(bind_payload)
         _require(
             candidate_fired_marker is not None,
-            "fresh candidate-fired marker 创建后复验失败",
+            "fresh candidate-fired marker read-back after creation failed",
         )
         _append_fresh_event(
             "CANDIDATE_START",
@@ -3239,7 +3239,7 @@ def command_eval_fresh() -> None:
             _invoke(command, f"fresh/candidate evaluation attempt {attempt}")
             _require(
                 _eval_input_identity(candidate) == frozen_inputs,
-                "fresh candidate 评测期间冻结输入发生变化",
+                "fresh candidate frozen inputs changed during evaluation",
             )
             candidate_result = _validate_official_archive(
                 "fresh", "candidate", candidate
@@ -3283,13 +3283,13 @@ def command_eval_fresh() -> None:
         )
         summary = _fresh_summary(events)
 
-    _require(summary["candidate_success"], "fresh candidate 未成功冻结")
+    _require(summary["candidate_success"], "fresh candidate was not frozen successfully")
     candidate_doc, candidate_identity = _validate_official_archive(
         "fresh", "candidate", candidate
     )
     _require(
         candidate_identity == summary["candidate_success_payload"],
-        "fresh candidate ledger/archive 身份不一致",
+        "fresh candidate ledger/archive identity differs",
     )
     _require(
         _fresh_candidate_fired_marker(bind_payload) is not None
@@ -3300,7 +3300,7 @@ def command_eval_fresh() -> None:
         == summary["candidate_start_payload"][
             "candidate_fired_marker_sha256"
         ],
-        "fresh candidate 完成时 fired marker 身份漂移",
+        "fresh candidate fired-marker identity drifted at completion",
     )
     _require_fresh_pool_exclusive(summary)
     _pair_documents("fresh", baseline_doc, candidate_doc)
@@ -3324,13 +3324,13 @@ def command_eval_fresh() -> None:
         verdict=verdict,
     )
     print(
-        "12000–12031 fresh paired evaluation 已完成；baseline 从未重复点火，"
-        f"candidate 发次={summary['candidate_attempts']}，"
-        f"战斗恢复门 {verdict['status']}。"
+        "12000-12031 fresh paired evaluation completed; the baseline was never launched twice, "
+        f"candidate attempts={summary['candidate_attempts']}, "
+        f"combat-recovery gate {verdict['status']}."
     )
     _require(
         verdict["status"] == "PASS",
-        "fresh paired evaluation 已冻结但战斗恢复门 FAIL:"
+        "fresh paired evaluation frozen but the combat-recovery gate FAILed: "
         f"{verdict['failed_checks']}",
     )
 
@@ -3340,7 +3340,7 @@ def _read_frozen_pair(pool: str, state: dict) -> tuple[dict, dict, dict]:
     phase = state["phases"].get(f"eval_{pool}", {})
     _require(
         phase.get("status") in {"complete", "scientific-fail"},
-        f"{pool} paired eval 尚未完成",
+        f"{pool} paired eval not completed yet",
     )
     documents = []
     for arm in ("baseline", "candidate"):
@@ -3348,12 +3348,12 @@ def _read_frozen_pair(pool: str, state: dict) -> tuple[dict, dict, dict]:
             pool, arm, candidate_info
         )
         recorded = phase[arm] if arm in phase else phase.get("arms", {}).get(arm)
-        _require(isinstance(recorded, dict), f"{pool}/{arm} 状态缺身份")
+        _require(isinstance(recorded, dict), f"{pool}/{arm} state lacks an identity")
         _require(
             live_identity["sha256"] == recorded["sha256"]
             and live_identity["worker_sha256"] == recorded["worker_sha256"]
             and live_identity["manager_sha256"] == recorded["manager_sha256"],
-            f"{pool}/{arm} 档案身份已漂移",
+            f"{pool}/{arm} archive identity has drifted",
         )
         documents.append(document)
     _pair_documents(pool, documents[0], documents[1])
@@ -3361,7 +3361,7 @@ def _read_frozen_pair(pool: str, state: dict) -> tuple[dict, dict, dict]:
         documents[0]["meta"]["worker"]["sha256"] == V28_SHA256
         and documents[1]["meta"]["worker"]["sha256"]
         == candidate_info["candidate_sha256"],
-        f"{pool} 双臂 worker 身份异常",
+        f"{pool} two-arm worker identity is malformed",
     )
     return documents[0], documents[1], candidate_info
 
@@ -3375,7 +3375,7 @@ def _paired_analysis(
 ) -> dict:
     left = {row["seed"]: row for row in baseline["rows"]}
     right = {row["seed"]: row for row in candidate["rows"]}
-    _require(set(left) == set(right) == set(EVAL_POOLS[pool]), "paired rows seed 异常")
+    _require(set(left) == set(right) == set(EVAL_POOLS[pool]), "paired rows seeds are malformed")
     metrics = tuple(PAIRED_METRIC_DIRECTIONS)
     paired_rows = []
     for seed in EVAL_POOLS[pool]:
@@ -3447,7 +3447,7 @@ def _paired_analysis(
     _require(
         len(archive_sha256s) == 2
         and all(_is_sha256(value) for value in archive_sha256s),
-        f"{pool} analysis 缺双臂 archive SHA",
+        f"{pool} analysis lacks the two-arm archive SHAs",
     )
     analysis = {
         "schema_version": PAIRED_ANALYSIS_SCHEMA,
@@ -3481,7 +3481,7 @@ def _paired_analysis(
 
 
 def _combat_recovery_verdict(analysis: dict) -> dict:
-    """冻结的最低战斗恢复门；回归不过时绝不消耗 fresh 池。"""
+    """The frozen minimum combat-recovery gate; a failed regression never consumes the fresh pool."""
     summary = analysis["summary"]
     rows = analysis["rows"]
     checks = {
@@ -3547,7 +3547,7 @@ def _freeze_paired_analysis(
     _pair_documents(pool, live_baseline, live_candidate)
     _require(
         live_baseline == baseline and live_candidate == candidate,
-        f"{pool} 双臂档案在读取与分析冻结之间发生变化",
+        f"{pool} two-arm archives changed between reading and freezing the analysis",
     )
     analysis = _paired_analysis(
         pool,
@@ -3566,15 +3566,15 @@ def _freeze_paired_analysis(
                 _stable_read(destination, f"{pool} frozen analysis")
             )
         except EvalContractError as exc:
-            raise CampaignError(f"{pool} analysis 不可解析") from exc
+            raise CampaignError(f"{pool} analysis cannot be parsed") from exc
         _require(
             recorded == analysis,
-            f"{pool} analysis 已存在但与当前冻结档案/launcher 裁决不一致",
+            f"{pool} analysis exists but disagrees with the current frozen archives/launcher verdict",
         )
     else:
         _require(
             allow_create,
-            f"{pool} 已记录分析身份但 analysis 文件缺失；禁止静默重建",
+            f"{pool} analysis identity recorded but the analysis file is missing; silent rebuild forbidden",
         )
         _exclusive_create_json(destination, analysis, f"{pool} paired analysis")
     sha256 = _stable_sha256(destination, f"{pool} analysis")
@@ -3588,7 +3588,7 @@ def _freeze_paired_analysis(
                 allow_nan=False,
             ).encode("utf-8")
         ).hexdigest(),
-        f"{pool} analysis 写入字节与内存裁决不一致",
+        f"{pool} analysis written bytes disagree with the in-memory verdict",
     )
     return analysis, destination, sha256
 
@@ -3608,13 +3608,13 @@ def command_analyze(pool: str) -> None:
         _require(
             eval_phase.get("analysis_sha256") == analysis_sha
             and eval_phase.get("verdict") == analysis["verdict"],
-            "regression eval phase 与冻结 analysis 裁决不一致",
+            "regression eval phase disagrees with the frozen analysis verdict",
         )
     elif eval_phase.get("status") in {"complete", "scientific-fail"}:
         _require(
             eval_phase.get("analysis_sha256") == analysis_sha
             and eval_phase.get("verdict") == analysis["verdict"],
-            "fresh eval phase 与冻结 analysis 裁决不一致",
+            "fresh eval phase disagrees with the frozen analysis verdict",
         )
     phase = state["phases"].get(f"eval_{pool}", {})
     _set_phase(
@@ -3628,7 +3628,7 @@ def command_analyze(pool: str) -> None:
         verdict=analysis["verdict"],
     )
     print(json.dumps(analysis["summary"], ensure_ascii=False, indent=2))
-    print(f"完整 paired analysis: {destination}")
+    print(f"full paired analysis: {destination}")
 
 
 def command_status() -> None:
@@ -3663,13 +3663,13 @@ def command_status() -> None:
         summary = _fresh_summary(ledger)
         live_verdict = None
         if ledger:
-            _require(candidate_info is not None, "fresh ledger 存在但 candidate 不可复验")
+            _require(candidate_info is not None, "fresh ledger exists but the candidate cannot be re-verified")
             _require_regression_complete(state, candidate_info)
             frozen_inputs = _eval_input_identity(candidate_info)
             bind_payload = _fresh_bind_payload(candidate_info, frozen_inputs)
             _require(
                 summary["bind"]["payload"] == bind_payload,
-                "fresh ledger BIND 与当前冻结输入不一致",
+                "fresh ledger BIND differs from the current frozen inputs",
             )
             marker = _fresh_pool_marker(bind_payload)
             candidate_marker = _fresh_candidate_fired_marker(bind_payload)
@@ -3682,12 +3682,12 @@ def command_status() -> None:
                     == summary["baseline_start_payload"][
                         "pool_opened_marker_sha256"
                     ],
-                    "fresh status: baseline marker 漂移",
+                    "fresh status: baseline marker drift",
                 )
             else:
                 _require(
                     marker is None,
-                    "fresh status: pool marker 存在但 ledger 无 BASELINE_START",
+                    "fresh status: pool marker exists but the ledger has no BASELINE_START",
                 )
             if summary["candidate_attempts"]:
                 _require(
@@ -3699,12 +3699,12 @@ def command_status() -> None:
                     == summary["candidate_start_payload"][
                         "candidate_fired_marker_sha256"
                     ],
-                    "fresh status: candidate marker 漂移",
+                    "fresh status: candidate marker drift",
                 )
             else:
                 _require(
                     candidate_marker is None,
-                    "fresh status: candidate marker 存在但 ledger 无 CANDIDATE_START",
+                    "fresh status: candidate marker exists but the ledger has no CANDIDATE_START",
                 )
             _require_fresh_pool_exclusive(summary)
             baseline_document = None
@@ -3716,12 +3716,12 @@ def command_status() -> None:
                 )
                 _require(
                     baseline_identity == summary["baseline_success_payload"],
-                    "fresh status: baseline SUCCESS identity 漂移",
+                    "fresh status: baseline SUCCESS identity drift",
                 )
             if summary["candidate_success"]:
                 _require(
                     baseline_document is not None,
-                    "fresh status: candidate SUCCESS 缺 baseline",
+                    "fresh status: candidate SUCCESS lacks the baseline",
                 )
                 candidate_document, candidate_identity = (
                     _validate_official_archive(
@@ -3730,7 +3730,7 @@ def command_status() -> None:
                 )
                 _require(
                     candidate_identity == summary["candidate_success_payload"],
-                    "fresh status: candidate SUCCESS identity 漂移",
+                    "fresh status: candidate SUCCESS identity drift",
                 )
                 _pair_documents(
                     "fresh", baseline_document, candidate_document
@@ -3750,7 +3750,7 @@ def command_status() -> None:
                     and phase.get("analysis_path") == str(analysis_path)
                     and phase.get("analysis_sha256") == analysis_sha
                     and phase.get("verdict") == analysis["verdict"],
-                    "fresh status: eval phase/analysis 裁决不闭合",
+                    "fresh status: eval phase/analysis verdict does not close",
                 )
                 live_verdict = analysis["verdict"]
         if residue:
@@ -3796,20 +3796,20 @@ def command_status() -> None:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="protocol-v4 M29/KING 战斗恢复唯一正式发车器"
+        description="the single official protocol-v4 M29/KING combat-recovery launcher"
     )
     sub = parser.add_subparsers(dest="command", required=True)
-    sub.add_parser("prepare-bc", help="重采/复验 protocol-v4 BC-v1 + M29 BC-v2")
-    sub.add_parser("train", help="运行唯一、不可分叉重发的 249,856 步安全前缀重放")
+    sub.add_parser("prepare-bc", help="re-sample/re-verify protocol-v4 BC-v1 + M29 BC-v2")
+    sub.add_parser("train", help="run the single 249,856-step safe-prefix replay, which cannot be forked or relaunched")
     sub.add_parser("eval-regression", help="7000–7031 M29 paired regression")
-    sub.add_parser("eval-fresh", help="12000–12031 一次性 M29 paired fresh eval")
-    analyze = sub.add_parser("analyze", help="汇总已冻结 paired archives")
+    sub.add_parser("eval-fresh", help="12000-12031 one-time M29 paired fresh eval")
+    analyze = sub.add_parser("analyze", help="summarize the frozen paired archives")
     analyze.add_argument(
         "--pool",
         choices=tuple(EVAL_POOLS),
         default="fresh",
     )
-    sub.add_parser("status", help="只读复验 campaign 状态与工件")
+    sub.add_parser("status", help="read-only re-verification of the campaign state and artifacts")
     return parser
 
 
@@ -3831,8 +3831,8 @@ def main(argv: list[str] | None = None) -> int:
                 command_eval_fresh()
             elif args.command == "analyze":
                 command_analyze(args.pool)
-            else:  # argparse 的 required subparser 理论上不可达。
-                raise CampaignError(f"未知命令:{args.command}")
+            else:  # argparse's required subparser makes this unreachable in theory.
+                raise CampaignError(f"unknown command: {args.command}")
         return 0
     except (
         CampaignError,

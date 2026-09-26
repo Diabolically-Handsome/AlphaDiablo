@@ -1,15 +1,15 @@
-"""内容案 E1 之自包含快速回归(PREREG-内容案-课⑤x④乙 E1/E7 对应件;不启动引擎/训练)。
+"""Self-contained fast regression for content-case E1 (the E1/E7 counterpart of PREREG-v33-content-case; no engine or training is started).
 
-覆盖(E1 施工面,rev3 核认勘正逐字):
-- worker_env p_skip:布尔语义保留(1.0/0.0 ≡ 原布尔行为,端点不耗流)、
-  setter 校验、专用流逐 env 播种(固定偏移自 episode 种子确定性派生)、
-  reset(seed) 派生接线、Monitor __getattr__ 透传;
-- 调度器解析(linear/hold 语法、主表 244 项、坏格式 fail-loud);
-- 课程回调:腿相对 rollout 序号锚定 (num_timesteps−3,497,984)/2048、
-  全局步锚定禁用(腿前/失准/越界一律抛,禁钳位)、逐 rollout 落账实际推送 p
-  + 回调内恒等断言(rev3 E1②)、"序号→p"全表暴露;
-- 四处条件门"skip_dry ∨ schedule"逐门 + 两处值记录保留 CLI 旗字面值;
-- 两旗互斥断言与 CLI 文档化。
+Covers (the E1 implementation surface, verbatim per the confirmed rev3 correction):
+- worker_env p_skip: boolean semantics kept (1.0/0.0 == the original boolean behaviour; endpoints consume no stream),
+    setter validation, per-env seeding of the dedicated stream (derived deterministically from the episode seed at a fixed offset),
+    reset(seed) derivation wiring, Monitor __getattr__ pass-through;
+- scheduler parsing (linear/hold syntax, 244 entries in the main table, fail-loud on bad formats);
+- curriculum callback: anchored on the leg-relative rollout index (num_timesteps-3,497,984)/2048,
+    global-step anchoring disabled (before the leg / misaligned / out of range all raise, no clamping), the p actually pushed booked per rollout
+    + an identity assertion inside the callback (rev3 E1-2), the whole "index -> p" table exposed;
+- each of the four conditional gates "skip_dry or schedule" + the two value records keep the literal CLI flag value;
+- the mutual-exclusion assertion of the two flags and the CLI documentation.
 """
 
 from __future__ import annotations
@@ -61,7 +61,7 @@ MAIN_TABLE_LITERAL = "linear:1.0:0.5:147,hold:0.5:97"
 
 
 def _stub_worker_env(p, p_rng=None) -> WorkerWindowEnv:
-    """不启动引擎的 WorkerWindowEnv 壳:只挂 p_skip 抽签所需状态。"""
+    """A WorkerWindowEnv shell without the engine: carries only the state the p_skip draw needs."""
     env = WorkerWindowEnv.__new__(WorkerWindowEnv)
     env.skip_dry = _coerce_p_skip(p)
     env._p_rng = p_rng if p_rng is not None else np.random.default_rng(0)
@@ -75,7 +75,7 @@ def _run_cli(*extra_args):
 
 
 class PSkipSemanticsTests(unittest.TestCase):
-    """E1①:skip_dry bool→float 升格,布尔语义位级保留(1.0/0.0 ≡ 原布尔)。"""
+    """E1-1: skip_dry promoted from bool to float, boolean semantics kept bit for bit (1.0/0.0 == the original boolean)."""
 
     def test_coerce_preserves_bool_semantics_and_rejects_out_of_range(self):
         self.assertEqual(_coerce_p_skip(True), 1.0)
@@ -87,8 +87,8 @@ class PSkipSemanticsTests(unittest.TestCase):
                 _coerce_p_skip(bad)
 
     def test_endpoints_replicate_bool_and_consume_no_stream(self):
-        # p=1.0 恒跳过、p=0.0 恒不跳过,且专用流状态零消耗——端点行为
-        # 与原布尔实现位级同构(G0-1 双端点恒等的单测对应件)。
+        # p=1.0 always skips, p=0.0 never skips, and the dedicated stream is not consumed: endpoint behaviour
+        # is bit-for-bit isomorphic to the original boolean implementation (unit-test counterpart of the G0-1 two-endpoint identity).
         for p, expected in ((1.0, True), (True, True), (0.0, False),
                             (False, False)):
             env = _stub_worker_env(p, p_rng=np.random.default_rng(99))
@@ -103,7 +103,7 @@ class PSkipSemanticsTests(unittest.TestCase):
         drawn = [env._skip_dry_draw() for _ in range(64)]
         expected = [float(reference.random()) < 0.7 for _ in range(64)]
         self.assertEqual(drawn, expected)
-        self.assertIn(True, drawn)    # p=0.7 之 64 抽两侧皆应出现
+        self.assertIn(True, drawn)    # both outcomes must appear in 64 draws at p=0.7
         self.assertIn(False, drawn)
 
     def test_setter_sets_validates_and_returns(self):
@@ -114,7 +114,7 @@ class PSkipSemanticsTests(unittest.TestCase):
         for bad in (2.0, -1.0, float("nan")):
             with self.assertRaises(ValueError):
                 env.set_skip_dry_p(bad)
-        self.assertEqual(env.skip_dry, 1.0)   # 失败推送不得污染在位值
+        self.assertEqual(env.skip_dry, 1.0)   # a failed push must not corrupt the in-place value
 
     def test_scheduled_switch_is_atomic_and_rejects_overlap(self):
         env = _stub_worker_env(1.0)
@@ -127,9 +127,9 @@ class PSkipSemanticsTests(unittest.TestCase):
                 "remaining_env_steps": 2,
             },
         )
-        with self.assertRaisesRegex(RuntimeError, "禁止直接覆盖"):
+        with self.assertRaisesRegex(RuntimeError, "directly overwriting the current probability is forbidden"):
             env.set_skip_dry_p(0.25)
-        with self.assertRaisesRegex(RuntimeError, "禁止重叠"):
+        with self.assertRaisesRegex(RuntimeError, "overlapping countdowns are forbidden"):
             env.schedule_skip_dry_p(0.25, 1)
         self.assertFalse(env._tick_skip_dry_schedule())
         self.assertEqual(env.skip_dry, 1.0)
@@ -161,8 +161,8 @@ class PSkipSemanticsTests(unittest.TestCase):
             )
 
     def test_per_env_seed_derivation_is_fixed_offset_and_decoupled(self):
-        # 固定偏移确定性派生:同种子同流,异种子异流;
-        # 且派生流 ≠ 训练流 default_rng(seed)(专用流零染训练 RNG)。
+        # deterministic derivation at a fixed offset: same seed, same stream; different seed, different stream;
+        # and the derived stream != the training stream default_rng(seed) (the dedicated stream never touches the training RNG).
         a = [_derive_p_skip_rng(304000).random() for _ in range(8)]
         b = [_derive_p_skip_rng(304000).random() for _ in range(8)]
         c = [_derive_p_skip_rng(304001).random() for _ in range(8)]
@@ -173,7 +173,7 @@ class PSkipSemanticsTests(unittest.TestCase):
         self.assertEqual(
             _derive_p_skip_rng(0).bit_generator.state,
             np.random.default_rng(_P_SKIP_SEED_OFFSET).bit_generator.state)
-        # 偏移移出 [0, 2**32) 训练种子域,专用流不可能与任何 env 训练流同种子
+        # the offset moves out of the [0, 2**32) training-seed domain, so the dedicated stream can never share a seed with any env's training stream
         self.assertGreaterEqual(_P_SKIP_SEED_OFFSET, 2**32)
 
     def test_reset_with_seed_rederives_both_streams(self):
@@ -185,7 +185,7 @@ class PSkipSemanticsTests(unittest.TestCase):
         env.oe = types.SimpleNamespace(_win={"window_id": 1})
         env._alive = False
         env._episode_seed = None
-        env._new_episode = lambda seed=None, options=None: None   # 免引擎
+        env._new_episode = lambda seed=None, options=None: None   # no engine
         env._advance_to_learning_window = lambda: _AdvanceOutcome(
             np.zeros(1, dtype=np.float32), 0.0, False, False, ())
         WorkerWindowEnv.reset(env, seed=777)
@@ -491,7 +491,7 @@ class PSkipAtomicBoundaryTests(unittest.TestCase):
 
 
 class _TinyEnv(gym.Env):
-    """Monitor 透传测试用微环境:复用 WorkerWindowEnv 的真 setter。"""
+    """Micro-env for the Monitor pass-through test: reuses the real WorkerWindowEnv setter."""
 
     observation_space = gym.spaces.Box(low=-1.0, high=1.0, shape=(1,),
                                        dtype=np.float32)
@@ -509,7 +509,7 @@ class _TinyEnv(gym.Env):
 
 
 class MonitorPassthroughTests(unittest.TestCase):
-    """E1①:setter 供 VecEnv env_method 经 Monitor __getattr__ 透传推送 p。"""
+    """E1-1: the setter lets VecEnv env_method push p through Monitor __getattr__."""
 
     def test_env_method_and_get_attr_pass_through_monitor(self):
         from stable_baselines3.common.monitor import Monitor
@@ -525,20 +525,20 @@ class MonitorPassthroughTests(unittest.TestCase):
 
 
 class DryCurriculumScheduleParserTests(unittest.TestCase):
-    """E1②:--dry-curriculum-schedule 解析(显式可解析,fail-loud)。"""
+    """E1-2: parsing of --dry-curriculum-schedule (explicit, parseable, fail-loud)."""
 
     def test_main_table_literal_and_shape(self):
         self.assertEqual(_DRY_CURRICULUM_MAIN_TABLE, MAIN_TABLE_LITERAL)
         table = _parse_dry_curriculum_schedule(_DRY_CURRICULUM_MAIN_TABLE)
         self.assertEqual(len(table), 244)                    # 147+97
-        self.assertEqual(244 * 2_048, 499_712)               # 恰等腿长(复核)
+        self.assertEqual(244 * 2_048, 499_712)               # exactly the leg length (re-checked)
         self.assertEqual(table[0], 1.0)
-        self.assertEqual(table[146], 0.5)                    # 线性段端点含
-        self.assertEqual(set(table[147:]), {0.5})            # 97 项持平
-        for k in range(147):                                 # 线性内插逐项
+        self.assertEqual(table[146], 0.5)                    # the linear segment includes its endpoint
+        self.assertEqual(set(table[147:]), {0.5})            # 97 entries held flat
+        for k in range(147):                                 # linear interpolation entry by entry
             self.assertAlmostEqual(table[k], 1.0 - 0.5 * k / 146, places=12)
         for earlier, later in zip(table, table[1:]):
-            self.assertGreaterEqual(earlier, later)          # 单调不增
+            self.assertGreaterEqual(earlier, later)          # monotonically non-increasing
 
     def test_segment_grammar_roundtrip(self):
         self.assertEqual(_parse_dry_curriculum_schedule("hold:1.0:3"),
@@ -574,12 +574,12 @@ class DryCurriculumScheduleParserTests(unittest.TestCase):
         table = _parse_dry_curriculum_schedule(
             _DRY_CURRICULUM_MAIN_TABLE)
         for start, total, message in (
-            (_DRY_CURRICULUM_LEG_START - 2_048, 2_048, "rollout 边界"),
-            (_DRY_CURRICULUM_LEG_START + 1, 2_048, "rollout 边界"),
+            (_DRY_CURRICULUM_LEG_START - 2_048, 2_048, "rollout boundary"),
+            (_DRY_CURRICULUM_LEG_START + 1, 2_048, "rollout boundary"),
             (
                 _DRY_CURRICULUM_LEG_START + 240 * 2_048,
                 5 * 2_048,
-                "不足以覆盖",
+                "not long enough to cover",
             ),
         ):
             with self.assertRaisesRegex(ValueError, message):
@@ -672,7 +672,7 @@ def _finish_stub_rollout(cb, stub, *, dual=False):
 
 
 class DryCurriculumCallbackTests(unittest.TestCase):
-    """E1②:腿相对锚定、逐 rollout 落账 + 恒等断言、禁钳位。"""
+    """E1-2: leg-relative anchoring, per-rollout booking + identity assertion, no clamping."""
 
     def test_leg_relative_anchoring_maps_table_by_rollout_index(self):
         table = _parse_dry_curriculum_schedule(_DRY_CURRICULUM_MAIN_TABLE)
@@ -693,24 +693,24 @@ class DryCurriculumCallbackTests(unittest.TestCase):
         )
 
     def test_global_step_anchoring_is_forbidden(self):
-        # 腿前(全局步 0 起算)必须抛——对抗席"全局序号越界钳至表尾恒 0.5"
-        # 构造在此关死;失准与越界同拒。
+        # Before the leg (counting from global step 0) must raise: the adversarial reviewer's construction "a global index out of range clamps to
+        # the end of the table, constantly 0.5" is closed off here; misalignment and out-of-range are rejected alike.
         table = _parse_dry_curriculum_schedule(_DRY_CURRICULUM_MAIN_TABLE)
         cb, _ = _make_callback(table)
         cb.num_timesteps = 0
-        with self.assertRaisesRegex(ValueError, "腿相对锚定失义"):
+        with self.assertRaisesRegex(ValueError, "leg-relative anchoring meaningless"):
             cb._on_rollout_start()
         cb.num_timesteps = _DRY_CURRICULUM_LEG_START + 1_000
-        with self.assertRaisesRegex(ValueError, "边界失准"):
+        with self.assertRaisesRegex(ValueError, "boundary misaligned"):
             cb._on_rollout_start()
         cb.num_timesteps = _DRY_CURRICULUM_LEG_START + 244 * 2_048
-        with self.assertRaisesRegex(ValueError, "越界"):
+        with self.assertRaisesRegex(ValueError, "out of range"):
             cb._on_rollout_start()
 
     def test_identity_assertion_fires_on_readback_mismatch(self):
         cb, stub = _make_callback((1.0, 0.5))
-        stub.get_attr = lambda name: [1.0, 1.0, 0.5, 1.0]   # env[2] 在位值失配
-        with self.assertRaisesRegex(ValueError, "恒等断言失配"):
+        stub.get_attr = lambda name: [1.0, 1.0, 0.5, 1.0]   # env[2]'s in-place value mismatches
+        with self.assertRaisesRegex(ValueError, "identity assertion mismatch"):
             cb._on_rollout_start()
 
     def test_per_rollout_ledger_written_and_matches_table_prefix(self):
@@ -771,9 +771,9 @@ class DryCurriculumCallbackTests(unittest.TestCase):
     def test_schedule_table_exposed_verbatim_for_ledger_event(self):
         table = _parse_dry_curriculum_schedule(_DRY_CURRICULUM_MAIN_TABLE)
         cb = DryCurriculumCallback(table)
-        self.assertEqual(cb.schedule_table, tuple(table))   # DRY_CURRICULUM_TABLE 供源
+        self.assertEqual(cb.schedule_table, tuple(table))   # source of DRY_CURRICULUM_TABLE
         self.assertEqual(cb.leg_start, 3_497_984)
-        with self.assertRaisesRegex(ValueError, "不能为空"):
+        with self.assertRaisesRegex(ValueError, "must not be empty"):
             DryCurriculumCallback(())
         with self.assertRaisesRegex(ValueError, r"\[0, 1\]"):
             DryCurriculumCallback((1.0, 1.5))
@@ -786,7 +786,7 @@ def _ns(**kw):
 
 
 class FourGatePredicateTests(unittest.TestCase):
-    """E1③ 四处条件门:谓词一律"干窗机制在位 = skip_dry ∨ schedule"。"""
+    """E1-3 four conditional gates: the predicate is always "dry-window mechanism active = skip_dry or schedule"."""
 
     def test_predicate_truth_table(self):
         self.assertFalse(_dry_window_mechanism_active(_ns()))
@@ -797,7 +797,7 @@ class FourGatePredicateTests(unittest.TestCase):
             _ns(skip_dry=True, dry_curriculum_schedule=MAIN_TABLE_LITERAL)))
 
     def test_gate_dry_cb_mount(self):
-        # 门㈣(原 :2101-2104):worker ∧ (skip_dry ∨ schedule)
+        # gate 4 (was :2101-2104): worker and (skip_dry or schedule)
         self.assertFalse(_mount_dry_anchor_sentinel(_ns(worker=True)))
         self.assertFalse(_mount_dry_anchor_sentinel(_ns(skip_dry=True)))
         self.assertTrue(_mount_dry_anchor_sentinel(
@@ -826,8 +826,8 @@ class FourGatePredicateTests(unittest.TestCase):
         return result, calls
 
     def test_gate_demos_precheck_fires_for_schedule_without_skip_dry(self):
-        # 门㈡(原 :499-505):schedule 单独在位时预检必须跑(否则课程腿上
-        # 干层锚哨兵与示范集校验静默不跑——rev3 勘正卷 E1 波及面)。
+        # gate 2 (was :499-505): with schedule alone active the precheck must run (otherwise on curriculum legs
+        # the dry-level anchor sentinel and the demo-set check silently would not run: the E1 reach of the rev3 correction).
         _, calls = self._patched(
             _precheck_dry_window_demos,
             _ns(worker=True, dry_curriculum_schedule=MAIN_TABLE_LITERAL))
@@ -839,7 +839,7 @@ class FourGatePredicateTests(unittest.TestCase):
         self.assertEqual(calls_off, [])
 
     def test_gate_demos_sha256_capture_fires_for_schedule(self):
-        # 门㈢(原 :1766-1771):机制在位才捕获 demos_sha256,否则 None。
+        # gate 3 (was :1766-1771): demos_sha256 is captured only when the mechanism is active, otherwise None.
         sha, calls = self._patched(
             _capture_dry_window_demos_sha256,
             _ns(dry_curriculum_schedule=MAIN_TABLE_LITERAL))
@@ -852,22 +852,22 @@ class FourGatePredicateTests(unittest.TestCase):
         self.assertEqual(calls_off, [])
 
     def test_gate_callsites_present_in_source(self):
-        # 四门助手须真被四处调用点消费(防"助手在、门未接线")。
+        # The four gate helpers must really be consumed by the four call sites (guards against "helper present, gate not wired").
         src = TRAIN_PPO.read_text()
         self.assertIn("_require(not _dry_window_mechanism_active(args) or args.worker",
-                      src)                                        # 门㈠ :445
-        self.assertIn("_precheck_dry_window_demos(args)", src)     # 门㈡ :499
+                      src)                                        # gate 1 :445
+        self.assertIn("_precheck_dry_window_demos(args)", src)     # gate 2 :499
         self.assertIn("demos_sha256 = _capture_dry_window_demos_sha256(args)",
-                      src)                                        # 门㈢ :1767
-        self.assertIn("if _mount_dry_anchor_sentinel(args) else None", src)  # 门㈣
+                      src)                                        # gate 3 :1767
+        self.assertIn("if _mount_dry_anchor_sentinel(args) else None", src)  # gate 4
 
 
 class ValueRecordLiteralTests(unittest.TestCase):
-    """E1③ 两处值记录:skip_dry 键保留 CLI 旗字面值,禁被谓词覆写(rev3 勘正)。"""
+    """E1-3 two value records: the skip_dry key keeps the literal CLI flag value and must not be overwritten by the predicate (rev3 correction)."""
 
     @staticmethod
     def _contract(skip_dry, schedule):
-        # rev12 契约读取 contextual graft 三旗；本组只验证不在位形制。
+        # The rev12 contract reads the three contextual-graft flags; this group only checks the inactive shape.
         args = types.SimpleNamespace(
             worker=True, options=False, flat_clock=False, arch="mlp",
             max_steps=3000, num_envs=4, n_steps=512, gamma=1.0, lr=3e-4,
@@ -884,16 +884,16 @@ class ValueRecordLiteralTests(unittest.TestCase):
         return _training_contract(args, model, batch_size=256)
 
     def test_contract_skip_dry_is_cli_literal_not_predicate(self):
-        # L-cur/L-full 形制:--dry-curriculum-schedule 在位、--skip-dry 未携
-        # → 契约 skip_dry 必须为 False(跨案取证锚,按字面施工"六门一律改写"
-        # 将误记 True,核认 CONFIRMED 勘正)。
+        # L-cur/L-full shape: --dry-curriculum-schedule present, --skip-dry absent
+        # -> the contract's skip_dry must be False (a cross-case evidence anchor; implementing "rewrite all six gates" literally
+        # would record True by mistake; confirmed correction).
         contract = self._contract(skip_dry=False, schedule=MAIN_TABLE_LITERAL)
         self.assertIs(contract["skip_dry"], False)
         self.assertIs(self._contract(True, None)["skip_dry"], True)
         self.assertIs(self._contract(False, None)["skip_dry"], False)
 
     def test_contract_revision_follows_single_source_now_rev26(self):
-        # rev26 binds the /10 audit (kl_early_stopped 旗;修正案四 A4)。
+        # rev26 binds the /10 audit (kl_early_stopped flag; amendment 4, A4).
         self.assertEqual(_CONTRACT_REVISION, 26)
         self.assertEqual(
             dict(train_ppo._REGISTERED_DUAL_WORKER_PG_AUDIT_SCHEMAS),
@@ -912,15 +912,15 @@ class ValueRecordLiteralTests(unittest.TestCase):
 
     def test_source_records_cli_literals_and_legacy_print_uses_constant(self):
         src = TRAIN_PPO.read_text()
-        self.assertIn('"skip_dry": bool(args.skip_dry),', src)   # :382 契约键
-        self.assertIn('"skip_dry": args.skip_dry,', src)          # :1815 config 回执
-        # legacy 打印(:404)连带改:修订号取单一真源常量,不再写死 "4"
-        self.assertIn("contract_revision {_CONTRACT_REVISION} 契约", src)
-        self.assertNotIn("写入 contract_revision 4 契约", src)
+        self.assertIn('"skip_dry": bool(args.skip_dry),', src)   # :382 contract key
+        self.assertIn('"skip_dry": args.skip_dry,', src)          # :1815 config receipt
+        # the legacy print (:404) changed with it: the revision number comes from the single source constant, no longer hard-coded "4"
+        self.assertIn("contract_revision {_CONTRACT_REVISION} contract", src)
+        self.assertNotIn("write a contract_revision 4 contract", src)
 
 
 class CliGateSubprocessTests(unittest.TestCase):
-    """E1 CLI 面:--help 文档化、两旗互斥、仅 worker、p 表覆盖闸(fail-loud)。"""
+    """E1 CLI surface: --help documentation, mutual exclusion of the two flags, worker only, p-table coverage gate (fail-loud)."""
 
     def test_help_documents_schedule_flag_and_main_table(self):
         run = _run_cli("--help")
@@ -933,26 +933,26 @@ class CliGateSubprocessTests(unittest.TestCase):
                        "--legacy-worker-policy-observation-view", "--skip-dry",
                        "--dry-curriculum-schedule", MAIN_TABLE_LITERAL)
         self.assertNotEqual(run.returncode, 0)
-        self.assertIn("--skip-dry 与 --dry-curriculum-schedule 互斥", run.stderr)
+        self.assertIn("--skip-dry and --dry-curriculum-schedule are mutually exclusive", run.stderr)
 
     def test_schedule_requires_worker(self):
         run = _run_cli("--dry-curriculum-schedule", MAIN_TABLE_LITERAL)
         self.assertNotEqual(run.returncode, 0)
-        self.assertIn("只能与 --worker 同用", run.stderr)
+        self.assertIn("can only be used with --worker", run.stderr)
 
     def test_schedule_must_cover_leg_no_clamping(self):
         run = _run_cli(
             "--worker", "--legacy-worker-policy-observation-view",
             "--dry-curriculum-schedule", "hold:1.0:2")
         self.assertNotEqual(run.returncode, 0)
-        self.assertIn("不足以覆盖", run.stderr)
+        self.assertIn("not enough to cover", run.stderr)
 
     def test_bad_schedule_format_fails_loud(self):
         run = _run_cli(
             "--worker", "--legacy-worker-policy-observation-view",
             "--dry-curriculum-schedule", "bogus:1:2")
         self.assertNotEqual(run.returncode, 0)
-        self.assertIn("未知段类型", run.stderr)
+        self.assertIn("unknown segment type", run.stderr)
 
 
 if __name__ == "__main__":

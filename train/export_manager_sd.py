@@ -1,6 +1,6 @@
-"""v25:从经理 zip 抽取全量 policy state_dict(含价值头)→ .pt(M-warm 注入用)。
-用法:.venv/bin/python train/export_manager_sd.py [zip] [out.pt]
-默认:train/models/v22-h-manager/model_final.zip → 同目录 policy_full_sd.pt
+"""v25: extract the full policy state_dict (including the value head) from a manager zip -> .pt (for M-warm injection).
+Usage: .venv/bin/python train/export_manager_sd.py [zip] [out.pt]
+Default: train/models/v22-h-manager/model_final.zip -> policy_full_sd.pt in the same directory
 """
 import argparse
 import hashlib
@@ -29,11 +29,11 @@ def main():
     out = args.output or zip_p.parent / "policy_full_sd.pt"
     source_file = zip_p if zip_p.suffix.lower() == ".zip" else pathlib.Path(f"{zip_p}.zip")
     if not source_file.is_file():
-        ap.error(f"checkpoint 不存在: {source_file}")
+        ap.error(f"checkpoint does not exist: {source_file}")
     if out.suffix.lower() != ".pt":
-        ap.error("输出路径必须以 .pt 结尾")
+        ap.error("output path must end with .pt")
     if out.resolve() == source_file.resolve():
-        ap.error("输出路径不能覆盖源 checkpoint")
+        ap.error("output path must not overwrite the source checkpoint")
     # Read exactly once.  Loading from the captured bytes and hashing those
     # same bytes prevents a concurrent replacement from forging provenance.
     source_payload = source_file.read_bytes()
@@ -41,7 +41,7 @@ def main():
     model = MaskablePPO.load(io.BytesIO(source_payload), device="cpu")
     sd = {k: v.detach().cpu().clone() for k, v in model.policy.state_dict().items()}
     if not all(torch.isfinite(v).all().item() for v in sd.values()):
-        raise ValueError("policy state_dict 含 NaN/Inf，拒绝导出")
+        raise ValueError("policy state_dict contains NaN/Inf; refusing to export")
     out.parent.mkdir(parents=True, exist_ok=True)
     tmp = out.with_name(f".{out.name}.{os.getpid()}.tmp")
     try:
@@ -65,8 +65,8 @@ def main():
         os.replace(manifest_tmp, manifest_path)
     finally:
         manifest_tmp.unlink(missing_ok=True)
-    print(f"全量 policy sd({len(sd)} 张量,含价值头)已存 {out} "
-          f"sha256:{artifact_sha[:16]};清单 {manifest_path}")
+    print(f"full policy sd ({len(sd)} tensors, including the value head) saved to {out} "
+          f"sha256: {artifact_sha[:16]}; manifest {manifest_path}")
 
 
 if __name__ == "__main__":

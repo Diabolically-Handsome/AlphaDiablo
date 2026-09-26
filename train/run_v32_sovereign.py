@@ -1,19 +1,19 @@
-"""v32「喝药主权」驱动(docs/prereg/PREREG-v32-喝药主权.md 条款唯一执行者;
-run_v31_neweducation.py 骨架 × run_v30_relay.py 腿谱 定向融合)。
+"""v32 "potion autonomy" driver (sole executor of the clauses of docs/prereg/PREREG-v32-potion-autonomy.md;
+a targeted merge of the run_v31_neweducation.py skeleton x the run_v30_relay.py leg recipe).
 
-克隆差异表(PREREG-v32 逐条):
-- 预检序列:G0 两式(恒等重放+幽灵)→ bc_worker 重生成(R1 闸)→
-  KING_SD 再生+parity → in-case refs 两发 + 对 v31 参照逐种子位级对账
-  (REF_BITEQ,取代 R 走廊健全闸)→ 双腿
-- 双腿同种子对照(唯一变量 = --no-drink-sovereignty),v30 腿谱逐字
-  (lr 3e-4 / ent .005 / M29 治下 / β=0.015625 / skip-dry / 自锚覆写),
-  皆直接 resume 王 zip(legacy 口第二注册用例);nt 闸 3,997,696
-- R2 锚消费:仅全文 sha + 锚桥条款(协议已变,全式复验注定失配——
-  throne/script 数字经桥证对表,strict json 读取)
-- R32-主判(sov×M29 vs ref-science 三档)+ R32-拆分(sov−ctrl)+
-  a12 仪表(worker_action_hist["12"]/局)
-金牌不在此发射(值守手启)。账本:train/runs/v32/gate_ledger.jsonl。
-用法:.venv/bin/python train/run_v32_sovereign.py
+Clone difference table (PREREG-v32, clause by clause):
+- Pre-check sequence: the two G0 forms (identity replay + ghost) -> bc_worker regeneration (R1 gate) ->
+  KING_SD regeneration + parity -> two in-case refs + per-seed bit-level reconciliation against the v31 references
+  (REF_BITEQ, replacing the R-corridor sanity gate) -> two legs
+- Two legs, same-seed control (single variable = --no-drink-sovereignty), v30 leg recipe verbatim
+  (lr 3e-4 / ent .005 / under M29 / beta=0.015625 / skip-dry / self-anchor override),
+  both resume the king zip directly (the second registered use of the legacy port); nt gate 3,997,696
+- R2 anchor consumption: full-text sha + anchor-bridge clause only (the protocol has changed, so a full re-verification is bound to mismatch;
+  throne/script numbers are matched via the bridge proofs, read as strict json)
+- R32 main verdict (sov x M29 vs ref-science, three tiers) + R32 split (sov-ctrl) +
+  a12 instrumentation (worker_action_hist["12"]/episode)
+The gold-standard evaluation is not launched here (it is started manually). Ledger: train/runs/v32/gate_ledger.jsonl.
+Usage: .venv/bin/python train/run_v32_sovereign.py
 """
 from __future__ import annotations
 
@@ -55,16 +55,16 @@ TRAJ_BASELINE_SHA = "2f567d7abfc5b4714cac4ff3236b09ab67e22485d2b05b52d9dc956692a
 THRONE_BASELINE = ROOT / "docs" / "assets" / "g0v32_traj_baseline_throne.json"
 THRONE_BASELINE_SHA = "e235e96972f8f2eeaaebec2bc8970c3e3f77b715f26c364250c42d8d37131cfc"
 ZEROFLIP_REPORT = ROOT / "train" / "runs" / "probe-zeroflip" / "report.json"
-ZEROFLIP_SHA = "b2a2062304b081621e25d5b348e2965bf2f6fb375ed04694462ba1d8b7f6e31b"
+ZEROFLIP_SHA = "e1a8266a70d63ffbe602e5e806209b15b6ad45688390fcfbbe0b435d7038a077"  # English keys/notes; the pre-translation digest was b2a2062304b08162
 
-# v31 参照档(REF_BITEQ 位级对账目标;全文 sha 钉死)
+# v31 reference archives (REF_BITEQ bit-level reconciliation targets; full-text sha pinned)
 V31_REF = {
     "launch": (EVAL / "v31-ref-launch.json",
                "df17db995661c3994215c614ac4beeb6e4670bd1527d51a1198d69d960e01541"),
     "science": (EVAL / "v31-ref-science.json",
                 "d842a8fa75c3b9234f4197a3f9fdc41458e8efeacf1d878934c349cf533c2489"),
 }
-# R2 锚(桥条款消费:strict json + 全文 sha;协议已变禁全式复验)
+# R2 anchors (consumed by the bridge clause: strict json + full-text sha; the protocol has changed, so full re-verification is forbidden)
 R2_BRIDGE = {
     "throne": (EVAL / "r2-throne.json",
                # 2026-09-23: redacted with neutral local paths (content otherwise unchanged); was 2324648a416cbc0c
@@ -75,7 +75,7 @@ R2_BRIDGE = {
 }
 
 LEG_STEPS = 499_712
-NT_TARGET = 3_997_696          # = king 3,497,984 + 499,712(增量语义)
+NT_TARGET = 3_997_696          # = king 3,497,984 + 499,712 (incremental semantics)
 BETA = 0.015625
 SEED = 303_000
 ABANDON_FRAC = (75.0, 112.4)
@@ -83,9 +83,9 @@ FLOOR_FRAC = (85.0, 92.0)
 PAIRED_DIFF = 4.0
 PAIRED_WINS = 18
 DEATHS_MAX = 6
-SURV_DIED_LINE = 3             # R32-主判:ref-science died 基线(v31 实测)
-SURV_MEAN_BAND = -2.0          # 均值不降口径:配对均差 ≥ −2
-A12_USE_LINE = 0.1             # "给了主权不用"档:a12/局 < 0.1
+SURV_DIED_LINE = 3             # R32 main verdict: ref-science died baseline (measured in v31)
+SURV_MEAN_BAND = -2.0          # mean-not-lower definition: paired mean difference >= -2
+A12_USE_LINE = 0.1             # "autonomy given but not used" tier: a12/episode < 0.1
 R4 = {"descend": 0.0204, "override_sentinel": 0.03, "override_void": 0.08, "cap": 0.05}
 CALIBRATED_PROTOCOL_VERSION = 3
 
@@ -127,13 +127,13 @@ def runtime_five(snapshot) -> dict:
 
 
 def assert_case_runtime(snapshot, where: str):
-    require(CASE_RT is not None, "CASE_RUNTIME 未落定")
+    require(CASE_RT is not None, "CASE_RUNTIME not settled")
     current = runtime_five(snapshot)
     if current != CASE_RT:
         log({"event": "CASE_HALT_RUNTIME_DRIFT", "where": where,
              "case": CASE_RT, "current": current})
-        attention(f"案级运行时漂移({where}),停机呈报")
-        raise OperationalFailure(f"案级运行时漂移({where})")
+        attention(f"case-level runtime drift ({where}); stopping")
+        raise OperationalFailure(f"case-level runtime drift ({where})")
 
 
 def run(cmd, logfile, timeout) -> int:
@@ -162,13 +162,13 @@ def zip_steps(p: pathlib.Path) -> int:
 def read_bridge(name: str) -> float:
     path, expected = R2_BRIDGE[name]
     require(path.is_file() and sha256(path) == expected,
-            f"R2 桥档 sha 漂移/缺失:{name}")
+            f"R2 bridge archive sha drift/missing: {name}")
     return float(strict_json_loads(path.read_bytes())["agg"]["ret_mean"])
 
 
 def exam(worker, tag, seeds, manager_npz=None):
     out = EVAL / f"{tag}.json"
-    require(not out.exists(), f"档案不可变性:{out} 已存在,拒绝覆写")
+    require(not out.exists(), f"archive immutability: {out} already exists, refusing to overwrite")
     lo, hi = (int(x) for x in seeds.split("-", 1))
     seed_values = list(range(lo, hi + 1))
     snapshot = freeze_eval_identity(ROOT, worker, manager_npz)
@@ -208,25 +208,25 @@ def validate_adopted(tag, worker, seeds, manager_npz=None):
 
 
 def exam_or_adopt(events, worker, tag, seeds, manager_npz=None):
-    """考发终局条款(v31 参照终局推广):落档+台账即冻结,续跑采信,禁重烧。"""
+    """Exam terminal clause (generalized from the v31 reference terminal): archived + ledger = frozen; resumed runs accept it; no re-burning."""
     out = EVAL / f"{tag}.json"
     prior = [e for e in events
              if e.get("event") == "exam_ok" and e.get("tag") == tag]
     if out.exists():
-        require(bool(prior), f"{tag} 残档在位而台账无 exam_ok,停机呈报")
+        require(bool(prior), f"{tag} leftover archive present but the ledger has no exam_ok; stopping")
         d = validate_adopted(tag, worker, seeds, manager_npz)
         require(d["agg"]["_sha"] == prior[-1]["sha"],
-                f"{tag} 档案与台账 exam_ok sha 失配")
+                f"{tag} archive does not match the ledger exam_ok sha")
         log({"event": "exam_adopted", "tag": tag, "sha": d["agg"]["_sha"]})
         return d
-    require(not prior, f"{tag} 台账在册而档案缺失(REF_INVALID 型),停机呈报")
+    require(not prior, f"{tag} on the ledger but the archive is missing (REF_INVALID type); stopping")
     return exam_retry(worker, tag, seeds, manager_npz)
 
 
 def exam_retry(worker, tag, seeds, manager_npz=None):
     d = exam(worker, tag, seeds, manager_npz)
     if d is None:
-        log({"event": "exam_crash", "tag": tag, "note": "评测失败,按崩溃条款重考一次"})
+        log({"event": "exam_crash", "tag": tag, "note": "evaluation failed; retaking once under the crash clause"})
         d = exam(worker, tag, seeds, manager_npz)
     return d
 
@@ -241,8 +241,8 @@ def depth2_count(rows) -> int:
 
 def by_seed(rows, lo=7000, hi=7032) -> dict:
     m = {r["seed"]: r for r in rows}
-    require(len(rows) == len(m), "种子集合异常(含重复 seed)")
-    require(set(m) == set(range(lo, hi)), f"种子集合异常(须为 {lo}-{hi - 1})")
+    require(len(rows) == len(m), "seed set is malformed (contains a duplicate seed)")
+    require(set(m) == set(range(lo, hi)), f"seed set is malformed (must be {lo}-{hi - 1})")
     return m
 
 
@@ -252,13 +252,13 @@ def a12_per_ep(agg) -> float:
 
 
 def biteq(new_doc, ref_name: str):
-    """REF_BITEQ:新参照与 v31 同名参照逐种子逐字段位级对账。"""
+    """REF_BITEQ: bit-level, per-seed, per-field reconciliation of the new reference against the v31 reference of the same name."""
     path, expected = V31_REF[ref_name]
     require(path.is_file() and sha256(path) == expected,
-            f"v31 参照档 sha 漂移:{ref_name}")
+            f"v31 reference archive sha drift: {ref_name}")
     old = strict_json_loads(path.read_bytes())
     old_rows, new_rows = old["rows"], new_doc["rows"]
-    require(len(old_rows) == len(new_rows) == 32, "参照行数异常")
+    require(len(old_rows) == len(new_rows) == 32, "reference row count is malformed")
     diffs = []
     for o, n in zip(sorted(old_rows, key=lambda r: r["seed"]),
                     sorted(new_rows, key=lambda r: r["seed"])):
@@ -270,7 +270,7 @@ def biteq(new_doc, ref_name: str):
     if diffs or agg_diff:
         log({"event": "CASE_HALT_G0", "via": "REF_BITEQ", "ref": ref_name,
              "row_diff_seeds": diffs, "agg_diff": agg_diff})
-        attention(f"REF_BITEQ 失败({ref_name}):E1 对现任栈非惰性,G0 失义")
+        attention(f"REF_BITEQ FAIL ({ref_name}): E1 is not inert on the incumbent stack, so G0 loses its meaning")
         raise SystemExit(7)
     log({"event": "REF_BITEQ", "ref": ref_name, "rows": 32, "agg_core": "equal"})
 
@@ -288,7 +288,7 @@ def read_ledger() -> list[dict]:
         try:
             out.append(json.loads(line))
         except json.JSONDecodeError as exc:
-            raise OperationalFailure(f"台账第 {i} 行不可解析: {exc}") from exc
+            raise OperationalFailure(f"ledger line {i} cannot be parsed: {exc}") from exc
     return out
 
 
@@ -299,45 +299,45 @@ def git(*args) -> str:
 
 def preflight(events):
     global CASE_RT
-    require(PROTOCOL_VERSION == CALIBRATED_PROTOCOL_VERSION, "契约版本漂移")
+    require(PROTOCOL_VERSION == CALIBRATED_PROTOCOL_VERSION, "contract version drift")
     dirty = [l for l in git("status", "--porcelain").splitlines()
              if l != "?? train/leaderboard-assembled-v3.md"]
-    require(not dirty, f"W1: 工作树不净 {dirty}")
+    require(not dirty, f"W1: working tree not clean {dirty}")
     head = git("rev-parse", "HEAD")
-    for path in ("docs/prereg/PREREG-v32-喝药主权.md", "train/run_v32_sovereign.py"):
+    for path in ("docs/prereg/PREREG-v32-potion-autonomy.md", "train/run_v32_sovereign.py"):
         touch = git("log", "-1", "--format=%H", "--", path)
-        require(touch == head, f"W1: {path} 最后触碰 != HEAD")
+        require(touch == head, f"W1: {path} last touched != HEAD")
     freezes = [e for e in events if e.get("event") == "FREEZE_SHA"]
     if freezes:
-        require(freezes[-1]["sha"] == head, "W1: HEAD != 台账最后 FREEZE_SHA")
-    require(KING_ZIP.is_file() and sha256(KING_ZIP) == KING_ZIP_SHA, "王 zip 漂移")
-    require(sha256(KING_NPZ) == KING_NPZ_SHA, "王 npz 漂移")
-    require(sha256(M29_NPZ) == M29_NPZ_SHA, "M29 npz 漂移")
-    require(zip_steps(KING_ZIP) == 3_497_984, "王 zip 步数账异常")
+        require(freezes[-1]["sha"] == head, "W1: HEAD != last FREEZE_SHA on the ledger")
+    require(KING_ZIP.is_file() and sha256(KING_ZIP) == KING_ZIP_SHA, "king zip drift")
+    require(sha256(KING_NPZ) == KING_NPZ_SHA, "king npz drift")
+    require(sha256(M29_NPZ) == M29_NPZ_SHA, "M29 npz drift")
+    require(zip_steps(KING_ZIP) == 3_497_984, "king zip step count is malformed")
     for name, (path, expected) in {**V31_REF, **R2_BRIDGE}.items():
         require(path.is_file() and sha256(path) == expected,
-                f"档案钉死失配:{name}")
+                f"archive pin mismatch: {name}")
     require(ZEROFLIP_REPORT.is_file()
             and sha256(ZEROFLIP_REPORT) == ZEROFLIP_SHA,
-            "零翻转探针报告钉死失配(锚桥证①落档件)")
+            "zero-flip probe report pin mismatch (anchor-bridge proof 1, archived item)")
     require(THRONE_BASELINE.is_file()
             and sha256(THRONE_BASELINE) == THRONE_BASELINE_SHA,
-            "王座轨迹闭合基线钉死失配(锚桥证①升格件)")
+            "throne trajectory closure baseline pin mismatch (anchor-bridge proof 1, promoted item)")
     tags = (["v32-ref-launch", "v32-ref-science", "v32-golden"]
             + [f"{leg}-{s}" for leg in LEGS for s in ("s16", "full32", "m29")])
     for t in tags:
         if not any(e.get("event") == "exam_ok" and e.get("tag") == t
                    for e in events):
             require(not (EVAL / f"{t}.json").exists(),
-                    f"W9: 目标档案已存在:{t}(重启协议:先 .void)")
+                    f"W9: target archive already exists: {t} (restart protocol: .void it first)")
     for leg in LEGS:
         if leg_starts(events, leg) == 0:
-            require(not (RUNS / leg).exists(), f"运行目录残留:{leg}")
+            require(not (RUNS / leg).exists(), f"leftover run directory: {leg}")
     snapshot = freeze_eval_identity(ROOT, str(KING_NPZ), None)
     CASE_RT = runtime_five(snapshot)
     prior_rt = [e for e in events if e.get("event") == "CASE_RUNTIME"]
     if prior_rt:
-        require(prior_rt[0]["five"] == CASE_RT, "W10: 续跑运行时对账失配")
+        require(prior_rt[0]["five"] == CASE_RT, "W10: resumed-run runtime reconciliation mismatch")
     else:
         log({"event": "CASE_RUNTIME", "five": CASE_RT})
     if not freezes:
@@ -357,36 +357,36 @@ def _main():
     events = read_ledger()
     if any(e.get("event") in ("VERDICT_PATH", "GOLDEN_AUTHORIZED")
            for e in events):
-        print("案已结/待手启金评:幂等退出", flush=True)
+        print("case closed / gold-standard evaluation awaiting manual launch: idempotent exit", flush=True)
         return
     preflight(events)
 
-    # ---- S1 G0 两式(每次发车都重验——护栏而非一次性仪式)----
+    # ---- S1 the two G0 forms (re-verified at every launch: a guard rail, not a one-off ritual) ----
     require(TRAJ_BASELINE.is_file()
             and sha256(TRAJ_BASELINE) == TRAJ_BASELINE_SHA,
-            "G0 基线档钉死失配(须为冻结 commit 入库件)")
+            "G0 baseline archive pin mismatch (must be the file checked in with the frozen commit)")
     if not stage_done(events, "G0_BASELINE"):
         log({"event": "G0_BASELINE", "sha": TRAJ_BASELINE_SHA,
              "seeds": "7000-7015",
-             "captured": "变更前(E1 施工前,stash 纯净码)"})
+             "captured": "before the change (before the E1 work, clean code from stash)"})
     if not stage_done(events, "E1_SCOPE_NOTE"):
         log({"event": "E1_SCOPE_NOTE",
-             "note": "belt 前置系批文外裁量施工(④丙精神+14号先例+幽灵实测"
-                     "必要性),无专项应答;呈报单列待追认"})
+             "note": "the belt precondition was an implementation choice beyond the pre-registered text (in the spirit of 4C + precedent 14 + the ghost measurement showing it"
+                     " necessary); no case-specific response; listed separately in the report"})
     require(run([PY, "train/probe_g0_traj.py", "replay"],
                 f"g0-replay.{time.time_ns()}.log", 1_800) == 0,
-            "G0-恒等 重放失败(king)")
+            "G0-identity replay failed (king)")
     require(run([PY, "train/probe_g0_traj.py", "replay", "throne"],
                 f"g0-replay-throne.{time.time_ns()}.log", 1_800) == 0,
-            "G0-恒等 重放失败(throne,锚桥证①升格件)")
+            "G0-identity replay failed (throne, anchor-bridge proof 1 promoted item)")
     log({"event": "G0_REPLAY", "verdict": "PASS", "seeds": "7000-7015",
          "workers": ["king", "throne"]})
     require(run([PY, "train/probe_g0_ghost.py"],
                 f"g0-ghost.{time.time_ns()}.log", 1_800) == 0,
-            "G0-幽灵 失败")
+            "G0-ghost failed")
     log({"event": "G0_GHOST", "verdict": "PASS"})
 
-    # ---- S2 bc_worker 重生成(R1 闸;新 impl 世界的教师回执)----
+    # ---- S2 bc_worker regeneration (R1 gate; the teacher receipt of the new impl world) ----
     if stage_done(events, "BC_REGEN"):
         import sys as _sys
         _sys.path.insert(0, str(ROOT / "train"))
@@ -395,11 +395,11 @@ def _main():
         prior_bc = [e for e in events if e.get("event") == "BC_REGEN"][-1]
         require(rec["policy_sha256"] == prior_bc.get(
                     "policy_sha256", rec["policy_sha256"]),
-                "BC_SD 跨发车身份链断裂")
+                "BC_SD identity chain broken across launches")
     if not stage_done(events, "BC_REGEN"):
         require(run([PY, "train/bc_worker.py"],
                     f"bc-regen.{time.time_ns()}.log", 3_600) == 0,
-                "bc_worker 重生成失败(R-W FAIL 型,全案停机)")
+                "bc_worker regeneration failed (R-W FAIL type; the whole case stops)")
         import sys as _sys
         _sys.path.insert(0, str(ROOT / "train"))
         from train_ppo import _validate_bc_report
@@ -407,22 +407,22 @@ def _main():
         log({"event": "BC_REGEN", "held_out_top1": rec["held_out_top1"],
              "pairs": rec["pairs"], "policy_sha256": rec["policy_sha256"]})
 
-    # ---- S3 KING_SD 再生 + 教师宣誓 ----
+    # ---- S3 KING_SD regeneration + teacher attestation ----
     if stage_done(events, "KING_SD_OK"):
         prior_ks = [e for e in events if e.get("event") == "KING_SD_OK"][-1]
         require(KING_SD.exists()
                 and sha256(KING_SD) == prior_ks.get("sha256", ""),
-                "KING_SD 跨发车身份链断裂")
+                "KING_SD identity chain broken across launches")
     if not stage_done(events, "KING_SD_OK"):
         require(run([PY, "train/export_manager_sd.py", str(KING_ZIP),
                      str(KING_SD)], "export-king-sd.log", 600) == 0
-                and KING_SD.exists(), "KING_SD 导出失败")
+                and KING_SD.exists(), "KING_SD export failed")
         require(run([PY, "train/check_teacher_parity.py", str(KING_SD),
                      str(KING_NPZ)], "parity-king.log", 600) == 0,
-                "G-KL-W:王锚 sd 与 npz 宣誓失败")
+                "G-KL-W: king anchor sd vs npz attestation failed")
         log({"event": "KING_SD_OK", "sha256": sha256(KING_SD)})
 
-    # ---- S4 in-case refs + REF_BITEQ(全案级位级 G0)----
+    # ---- S4 in-case refs + REF_BITEQ (case-level bit-level G0) ----
     refs = {}
     for name, manager in (("launch", None), ("science", str(M29_NPZ))):
         tag = f"v32-ref-{name}"
@@ -430,7 +430,7 @@ def _main():
                       for e in events)
         d = exam_or_adopt(events, str(KING_NPZ), tag, "7000-7031",
                           manager_npz=manager)
-        require(d is not None, f"{tag} 参照考试连败")
+        require(d is not None, f"{tag} reference exam failed repeatedly")
         biteq(d, name)
         if not already:
             log({"event": "exam_ok", "tag": tag, "mean": d["agg"]["ret_mean"],
@@ -447,23 +447,23 @@ def _main():
     ref_rows = by_seed(refs["launch"]["rows"])
     sci_rows = by_seed(refs["science"]["rows"])
 
-    # ---- S5 双腿串行(同种子;唯一变量 = 主权旋钮)----
+    # ---- S5 two legs in series (same seeds; single variable = the autonomy knob) ----
     npz = {}
     for leg, extra in LEGS.items():
         model_path = RUNS / leg / "model_final.zip"
         out = RUNS / leg / "policy.npz"
         if model_path.exists() and zip_steps(model_path) == NT_TARGET:
             if not out.exists():
-                # 补导出通道:训练已达标仅 npz 缺——不记 leg_start 不烧额度
+                # Re-export channel: training reached its target and only the npz is missing; do not record leg_start and do not use up quota
                 require(run([PY, "train/export_worker_npz.py", str(model_path),
                              str(out)], f"export-{leg}.retry.log", 600) == 0
-                        and out.exists(), f"{leg} 补导出失败,停机呈报")
+                        and out.exists(), f"{leg} re-export failed; stopping")
                 log({"event": "npz_exported", "leg": leg,
-                     "sha256": sha256(out), "note": "补导出(非重点火)"})
+                     "sha256": sha256(out), "note": "re-export (not a relaunch)"})
             log({"event": "leg_skip_complete", "leg": leg})
             npz[leg] = str(out)
             continue
-        require(leg_starts(events, leg) < 2, f"{leg} 点火额度耗尽(台账制)")
+        require(leg_starts(events, leg) < 2, f"{leg} launch quota exhausted (ledger-based)")
         cmd = [PY, "train/train_ppo.py", "--worker", "--algo", "mppo",
                "--gamma", "1.0", "--max-steps", "3000", "--n-steps", "512",
                "--num-envs", "4", "--lr", "3e-4", "--ent-coef", "0.005",
@@ -484,22 +484,22 @@ def _main():
         log({"event": "leg_done", "leg": leg, "rc": rc, "nt_zip": nt,
              "dt_min": round((time.time() - t0) / 60, 1)})
         require(rc == 0 and nt == NT_TARGET,
-                f"{leg} 训练未达标(rc={rc}, nt={nt}, 目标={NT_TARGET})"
-                "——命题未考,本版不追加重训")
+                f"{leg} training did not reach its target (rc={rc}, nt={nt}, target={NT_TARGET})"
+                ": proposition not examined; this version adds no retraining")
         require(run([PY, "train/export_worker_npz.py", str(model_path),
                      str(out)], f"export-{leg}.log", 600) == 0 and out.exists(),
-                f"{leg} npz 导出失败")
+                f"{leg} npz export failed")
         npz[leg] = str(out)
         log({"event": "npz_exported", "leg": leg, "sha256": sha256(out)})
 
-    # ---- S6 考试:s16 → full32(H)→ full32(M29)----
+    # ---- S6 exams: s16 -> full32 (H) -> full32 (M29) ----
     s16 = {}
     for leg in LEGS:
         tag = f"{leg}-s16"
         already = any(e.get("event") == "exam_ok" and e.get("tag") == tag
                       for e in events)
         d = exam_or_adopt(events, npz[leg], tag, "7000-7015")
-        require(d is not None, f"{leg} 初筛连败")
+        require(d is not None, f"{leg} screen failed repeatedly")
         s16[leg] = d["agg"]["ret_mean"]
         if not already:
             log({"event": "exam_ok", "tag": tag, "mean": d["agg"]["ret_mean"],
@@ -508,10 +508,10 @@ def _main():
                            "sha": d["agg"]["_sha"]})
     if all(v < abandon for v in s16.values()):
         log({"event": "VERDICT_PATH", "golden_authorized": False,
-             "why": f"双腿初筛均 <{abandon}——训练失败或跨治下转移失败"
-                    "(训练在 M29 治下,初筛在 H 治下),主权命题未考",
+             "why": f"both legs' screens < {abandon}: training failed or failed to transfer across managers"
+                    " (trained under M29, screened under H); the autonomy proposition was not examined",
              "s16": s16, "R": R})
-        attention("判决:训练失败,命题未考")
+        attention("verdict: training failed, proposition not examined")
         return
     full, m29 = {}, {}
     for leg in LEGS:
@@ -519,7 +519,7 @@ def _main():
         already = any(e.get("event") == "exam_ok" and e.get("tag") == tag
                       for e in events)
         d = exam_or_adopt(events, npz[leg], tag, "7000-7031")
-        require(d is not None, f"{leg} 满 32 连败")
+        require(d is not None, f"{leg} full-32 failed repeatedly")
         full[leg] = d
         a = d["agg"]
         if not already:
@@ -538,7 +538,7 @@ def _main():
                        for e in events)
         d2 = exam_or_adopt(events, npz[leg], tag2, "7000-7031",
                            manager_npz=str(M29_NPZ))
-        require(d2 is not None, f"{leg} M29 深潜考连败")
+        require(d2 is not None, f"{leg} M29 deep-dive exam failed repeatedly")
         m29[leg] = d2
         a2 = d2["agg"]
         if not already2:
@@ -552,7 +552,7 @@ def _main():
                  "depth2": depth2_count(d2["rows"]),
                  "sha": a2["_sha"]})
 
-    # ---- R32-拆分(sov−ctrl,同种子逐对,只记不裁)----
+    # ---- R32 split (sov-ctrl, same seeds pair by pair, recorded only, not judged) ----
     sov_rows = by_seed(full["v32-sov"]["rows"])
     ctrl_rows = by_seed(full["v32-ctrl"]["rows"])
     split = [sov_rows[s]["ret"] - ctrl_rows[s]["ret"] for s in sorted(sov_rows)]
@@ -562,20 +562,20 @@ def _main():
     log({"event": "R32_SPLIT",
          "paired_sov_minus_ctrl": round(sp_mean, 2),
          "wins_sov": sum(x > 0 for x in split),
-         "direction": ("方向未判定(|均差|<2,承 R30.6 判读先例)"
-                       if abs(sp_mean) < 2.0 else "方向读数"),
+         "direction": ("direction undetermined (|mean diff|<2, following the R30.6 reading precedent)"
+                       if abs(sp_mean) < 2.0 else "direction reading"),
          "triangle": {"ctrl_minus_ref": round(sum(tri_ctrl) / 32, 2),
                       "sov_minus_ref": round(sum(tri_sov) / 32, 2),
-                      "note": "三角对账;禁以 sov−ctrl 单读数代言主权效应"},
+                      "note": "triangle reconciliation; the single sov-ctrl reading must not stand for the autonomy effect"},
          "died": {"sov": full["v32-sov"]["agg"]["died"],
                   "ctrl": full["v32-ctrl"]["agg"]["died"]},
          "a12": {"sov": a12_per_ep(full["v32-sov"]["agg"]),
                  "ctrl": a12_per_ep(full["v32-ctrl"]["agg"])},
-         "口径": "同种子仅保证初始权重与 env 流等价,主权掩码自首个重归一化"
-                 "分布即改变抽样,轨迹随即分岔——'唯一变量'系配置层陈述;"
-                 "两腿步数账恒等(各+499712),免双口径"})
+         "definition": "same seeds only guarantee equal initial weights and env stream; the autonomy mask changes sampling from the first renormalized"
+                 " distribution on, so trajectories diverge at once: 'single variable' is a configuration-level statement;"
+                 " the two legs' step ledgers are identical (+499712 each), so there is no second definition"})
 
-    # ---- R32-主判(sov×M29 vs ref-science;三档穷尽,独立于发射)----
+    # ---- R32 main verdict (sov x M29 vs ref-science; three exhaustive tiers, independent of launch) ----
     sm = m29["v32-sov"]
     sm_rows = by_seed(sm["rows"])
     surv_diffs = [sm_rows[s]["ret"] - sci_rows[s]["ret"] for s in sorted(sci_rows)]
@@ -586,43 +586,43 @@ def _main():
     if (sm_a12 >= A12_USE_LINE and sm_died < SURV_DIED_LINE
             and surv_mean >= SURV_MEAN_BAND):
         if ctrl_m29_died < SURV_DIED_LINE:
-            main_verdict = (f"存活改善与主权同现(重训连带候选,ctrl×M29 died "
-                            f"{ctrl_m29_died} 亦<{SURV_DIED_LINE},禁用因果动词):"
-                            f"died {sm_died} ∧ 均差 {surv_mean:.2f} ∧ "
-                            f"a12/局 {sm_a12}≥{A12_USE_LINE}")
+            main_verdict = (f"survival improvement co-occurs with autonomy (retraining side-effect candidate, ctrl x M29 died "
+                            f"{ctrl_m29_died} also <{SURV_DIED_LINE}; causal verbs forbidden): "
+                            f"died {sm_died} and mean diff {surv_mean:.2f} and "
+                            f"a12/episode {sm_a12}>={A12_USE_LINE}")
         else:
-            main_verdict = (f"主权兑换存活:died {sm_died}<{SURV_DIED_LINE} ∧ "
-                            f"配对均差 {surv_mean:.2f}≥{SURV_MEAN_BAND} ∧ "
-                            f"a12/局 {sm_a12}≥{A12_USE_LINE}(ctrl×M29 died "
-                            f"{ctrl_m29_died} 未同现)——批文成功线兑现")
+            main_verdict = (f"autonomy converts into survival: died {sm_died}<{SURV_DIED_LINE} and "
+                            f"paired mean diff {surv_mean:.2f}>={SURV_MEAN_BAND} and "
+                            f"a12/episode {sm_a12}>={A12_USE_LINE} (ctrl x M29 died "
+                            f"{ctrl_m29_died} does not co-occur): the pre-registered success line is met")
     elif (sm_a12 < A12_USE_LINE and sm_died <= SURV_DIED_LINE
           and surv_mean >= SURV_MEAN_BAND):
-        note2 = ("(低用量与存活改善并现,归因未证,死亡种子集合差随判词)"
+        note2 = (" (low usage co-occurs with improved survival; attribution unproven; the death-seed set difference goes with the verdict)"
                  if sm_a12 > 0 and sm_died < SURV_DIED_LINE else "")
-        main_verdict = (f"给了主权不用:a12/局 {sm_a12}<{A12_USE_LINE} 且 "
-                        f"died {sm_died}≤{SURV_DIED_LINE} ∧ 均差 "
-                        f"{surv_mean:.2f}≥{SURV_MEAN_BAND}——④丙 无害无效,"
-                        f"转 ④乙 议程{note2}")
+        main_verdict = (f"autonomy given but not used: a12/episode {sm_a12}<{A12_USE_LINE} and "
+                        f"died {sm_died}<={SURV_DIED_LINE} and mean diff "
+                        f"{surv_mean:.2f}>={SURV_MEAN_BAND}: 4C harmless and ineffective, "
+                        f"move to the 4B agenda{note2}")
     else:
         if sm_a12 >= A12_USE_LINE and sm_died <= SURV_DIED_LINE \
                 and surv_mean >= SURV_MEAN_BAND:
-            sub = "用而未兑现存活、未劣化(禁用'有害')" + (
-                ",回报改善而存活未证" if surv_mean > 0 else "")
+            sub = "used, but survival not converted and no degradation ('harmful' forbidden)" + (
+                "; return improved but survival unproven" if surv_mean > 0 else "")
         elif sm_a12 >= A12_USE_LINE:
-            sub = "用而劣化"
+            sub = "used and degraded"
         else:
-            sub = f"低用量劣化(重训/协议连带候选,a12={sm_a12})"
-        main_verdict = (f"档3({sub}):a12/局 {sm_a12},died {sm_died}"
-                        f"(线 {SURV_DIED_LINE}),均差 {surv_mean:.2f}"
-                        f"(带 {SURV_MEAN_BAND})——触发解耦条款,"
-                        "转捆绑评估案(批文'不行的话'义)")
+            sub = f"low usage and degraded (retraining/protocol side-effect candidate, a12={sm_a12})"
+        main_verdict = (f"tier 3 ({sub}): a12/episode {sm_a12}, died {sm_died}"
+                        f" (line {SURV_DIED_LINE}), mean diff {surv_mean:.2f}"
+                        f" (band {SURV_MEAN_BAND}): triggers the decoupling clause, "
+                        "move to the bundled evaluation case (the pre-registered 'if it does not work' branch)")
     ref_dead = {r["seed"] for r in refs["science"]["rows"] if r["died"]}
     sov_dead = {r["seed"] for r in sm["rows"] if r["died"]}
     log({"event": "R32_MAIN", "verdict": main_verdict, "died": sm_died,
          "a12_per_ep": sm_a12, "paired_mean_vs_sciref": round(surv_mean, 2),
          "wins": sum(x > 0 for x in surv_diffs),
-         "binom_note": "P(died≤2|n=32,p=3/32)≈0.41——died 档位系方向读数"
-                       "非显著性证据(与 18/32 线注记同纪律)",
+         "binom_note": "P(died<=2|n=32,p=3/32)~0.41: the died tier is a direction reading, "
+                       "not evidence of significance (same discipline as the 18/32 line note)",
          "ctrl_m29": {"mean": m29["v32-ctrl"]["agg"]["ret_mean"],
                       "died": ctrl_m29_died,
                       "a12": a12_per_ep(m29["v32-ctrl"]["agg"])},
@@ -638,7 +638,7 @@ def _main():
                        "sciref_a13": round(int(refs["science"]["agg"].get(
                            "worker_action_hist", {}).get("13", 0)) / 32, 2)}})
 
-    # ---- 资格/胜者/地板/发射(v31 梯子逐字)----
+    # ---- eligibility/winner/floor/launch (v31 ladder verbatim) ----
     def qual_of(d):
         a = d["agg"]
         dpe_ = dive_per_ep(d["rows"])
@@ -657,17 +657,17 @@ def _main():
         a = full[n]["agg"]
         if (not quals[n]["qual_ok"] and a["died"] <= DEATHS_MAX
                 and a["cap_rate"] >= R4["cap"]):
-            cap_note[n] = ("失格仅因 cap_rate——闸门语义漂移候选(主权饮药"
-                           "延长存活推高撞帽,线未重标定,本案禁调线)")
+            cap_note[n] = ("disqualified only by cap_rate: gate-semantics drift candidate (autonomous drinking"
+                           " prolongs survival and pushes up cap hits; the line was not recalibrated, and adjusting it is forbidden in this case)")
     log({"event": "quals", **quals,
          **({"cap_drift_note": cap_note} if cap_note else {})})
     pool = [n for n in LEGS if quals[n]["qual_ok"]]
     if not pool:
         log({"event": "VERDICT_PATH", "golden_authorized": False,
-             "verdict": "双腿资格失败——无胜者,换届命题未答(功效外)",
+             "verdict": "both legs ineligible: no winner, the succession proposition unanswered (outside statistical power)",
              "arms_full32": {n: full[n]["agg"]["ret_mean"] for n in LEGS},
              "R": R})
-        attention("判决:双腿资格失败(R32 主判/拆分已入册)")
+        attention("verdict: both legs ineligible (R32 main verdict/split are on record)")
         return
     prelim = max(LEGS, key=lambda n: full[n]["agg"]["ret_mean"])
     if prelim not in pool:
@@ -687,11 +687,11 @@ def _main():
          "died": wa["died"], "substituted": winner != prelim})
     if wa["ret_mean"] < floor_repro:
         log({"event": "VERDICT_PATH", "golden_authorized": False,
-             "why": f"胜者 {wa['ret_mean']} < {floor_repro}(=(85/92)×{R})"
-                    "——未复现参考水平,换届命题未考",
+             "why": f"winner {wa['ret_mean']} < {floor_repro} (=(85/92)x{R})"
+                    ": reference level not reproduced, the succession proposition not examined",
              "arms_full32": {n: full[n]["agg"]["ret_mean"] for n in LEGS},
              "R": R, "main_verdict": main_verdict})
-        attention("判决:未复现参考水平(R32 主判/拆分已入册)")
+        attention("verdict: reference level not reproduced (R32 main verdict/split are on record)")
         return
     diffs = [wrows[s]["ret"] - ref_rows[s]["ret"] for s in sorted(ref_rows)]
     pd_mean = sum(diffs) / 32
@@ -699,20 +699,20 @@ def _main():
     launch = pd_mean >= PAIRED_DIFF and pd_wins >= PAIRED_WINS
     log({"event": "launch_check", "paired_mean": round(pd_mean, 2),
          "paired_wins": pd_wins, "died": wa["died"],
-         "multiple_comparison": "18/32 线第 5 次开奖;P(≥18|p=.5)≈30%"
-                                "(精确 0.2983;v29-v31 之 ≈43% 系"
-                                "P(≥17) 笔误,随本案判词勘误注记)"})
+         "multiple_comparison": "5th draw on the 18/32 line; P(>=18|p=.5)~30%"
+                                " (exact 0.2983; the ~43% in v29-v31 was a slip for"
+                                " P(>=17), corrected in a note with this case's verdict)"})
     throne = read_bridge("throne")
     script_ref = read_bridge("script")
     p_hi = round(throne + 4.0, 1)
-    P_LINE = (f"P线(锚桥对表:王座在位锚值 {throne} 系 r2-throne R2 重测值,"
-              f"重测不改名分,王座头衔仍系在位组装体;脚本参照 {script_ref}):死>6→回退;"
-              f"金≥{p_hi}且死≤4→P32-登基;∈({throne},{p_hi})且死≤4→点估;"
-              f">{throne}且死5-6→持平(安全性);∈[{script_ref},{throne}]→持平;"
-              f"<{script_ref}→回退。名分流转照 v31 附录成文版,两闸分行宣示。"
-              "金池开牌史:金牌实开 v22/v23/v24 三次,R2 定锚五发系测量"
-              "暴露,v31 未开;本案若发射为金牌第 4 次实开、金池累计第 9 次"
-              "暴露,固定池偏置随判词")
+    P_LINE = (f"P line (anchor-bridge matching: the throne's incumbent anchor value {throne} is the R2 re-measurement of r2-throne; "
+              f"re-measuring does not change the title, the throne title still belongs to the incumbent assembled agent; script reference {script_ref}): deaths>6 -> revert; "
+              f"gold>={p_hi} and deaths<=4 -> P32 takes the throne; in ({throne},{p_hi}) and deaths<=4 -> point estimate; "
+              f">{throne} and deaths 5-6 -> tie (safety); in [{script_ref},{throne}] -> tie; "
+              f"<{script_ref} -> revert. Title succession follows the written version of the v31 appendix; the two gates are declared on separate lines. "
+              "Gold-pool opening history: the gold standard was actually opened three times (v22/v23/v24); the five R2 anchoring runs were measurement"
+              " exposures; v31 did not open it; if this case launches, it is the 4th actual gold opening and the 9th cumulative gold-pool"
+              " exposure; the fixed-pool bias goes with the verdict")
     if launch:
         golden_cmd = (f"{PY} train/eval_assembled.py --worker {npz[winner]} "
                       f"--manager-npz {H_NPZ} --seeds 9000-9031 "
@@ -723,39 +723,39 @@ def _main():
              "worker_npz_sha": sha16(npz[winner]), "full32_sha": wa["_sha"],
              "golden_cmd": golden_cmd, "p_line": P_LINE,
              "main_verdict": main_verdict,
-             "note": "金牌值守手启单臂一次;知会出处=战役级纪律,无本案专项"
-                     "应答(v31 条款);锚桥三证(零翻转落档/REF_BITEQ×2/"
-                     "幽灵断言E)在册;王座锚桥系分布外推(限定随判词)"})
-        attention(f"金牌待手启:{winner};R32 主判:{main_verdict}")
+             "note": "gold-standard evaluation started manually, single arm, once; governed by the campaign-level gold-evaluation"
+                     " discipline (v31 clause); the three anchor-bridge proofs (zero-flip archive/REF_BITEQ x2/"
+                     "ghost assertion E) are on record; the throne anchor bridge is an out-of-distribution extrapolation (qualified in the verdict)"})
+        attention(f"gold-standard evaluation awaiting manual launch: {winner}; R32 main verdict: {main_verdict}")
         return
-    wins_note = (f"(宽度注记:赢 {pd_wins}/32 ≥14)" if pd_wins >= 14 else "")
+    wins_note = (f" (width note: won {pd_wins}/32 >=14)" if pd_wins >= 14 else "")
     if pd_mean >= PAIRED_DIFF:
-        verdict = f"均值增益 +{pd_mean:.2f} 而宽度未达(赢 {pd_wins}/32)——点估增益不烧牌"
+        verdict = f"mean gain +{pd_mean:.2f} but width not reached (won {pd_wins}/32): a point-estimate gain does not spend the gold run"
     elif pd_mean >= 2.0:
-        verdict = f"配对均差 {pd_mean:.2f} ∈[+2,+4)——探针级改进不烧牌{wins_note}"
+        verdict = f"paired mean diff {pd_mean:.2f} in [+2,+4): a probe-level improvement does not spend the gold run{wins_note}"
     else:
-        verdict = f"配对均差 {pd_mean:.2f} <+2——现任连任{wins_note}"
+        verdict = f"paired mean diff {pd_mean:.2f} <+2: the incumbent stays{wins_note}"
     log({"event": "VERDICT_PATH", "golden_authorized": False,
          "verdict": verdict, "main_verdict": main_verdict,
          "winner": winner, "arms_full32": {n: full[n]["agg"]["ret_mean"]
                                            for n in LEGS},
          "paired_mean": round(pd_mean, 2), "paired_wins": pd_wins, "R": R})
-    attention(f"判决(不发射):{verdict};R32 主判:{main_verdict}")
+    attention(f"verdict (no launch): {verdict}; R32 main verdict: {main_verdict}")
 
 
 def main():
     try:
-        with exclusive_lock(V32 / ".driver.lock", "v32 驱动"):
+        with exclusive_lock(V32 / ".driver.lock", "v32 driver"):
             _main()
     except (OperationalFailure, OutputReservationError) as e:
         log({"event": "OPERATIONAL_FAILURE", "why": str(e)})
-        attention("运维失败:\n" + str(e))
+        attention("operational failure:\n" + str(e))
         raise SystemExit(2) from e
     except SystemExit:
         raise
     except Exception as e:
         log({"event": "DRIVER_EXCEPTION", "why": repr(e)})
-        attention("驱动异常死亡:\n" + traceback.format_exc())
+        attention("driver died with an exception:\n" + traceback.format_exc())
         raise
 
 

@@ -1,39 +1,39 @@
-# R20 单批更新诊断协议
+# R20 single-batch update diagnostic protocol
 
-## 目的与授权边界
+## Purpose and scope
 
-上一轮全程学习组完成 8192 个学习步，四批均未通过原 PG 更新方向条件。已有回执不足以判断完整 GAE 目标是否同样变差，且终点权重未保存。本协议准备一个新诊断批次，使用可核对的前后状态回答这个问题；它不把局部指标当作通关能力，也不改变原候选发布条件。
+The previous full-run learning group completed 8,192 learning steps, and none of its four batches passed the original PG update-direction condition. The existing receipts are not enough to tell whether the full GAE objective got worse as well, and the end-point weights were not saved. This protocol prepares a new diagnostic batch that answers this question with verifiable before/after states; it does not treat local metrics as the ability to clear the game, and it does not change the original candidate release conditions.
 
-本次是新增预算提案，准备代码不表示已启动。只允许一个全程 FARM+DIVE 学习组、4 个环境各 512 步，总计 2048 学习步。仍从原 R16 权重独立初始化，Adam 为空、新计数为零；使用原 sustain-v6、adjacent-v1、种子 2168000 至 2168003 及原学习/奖励配方。没有第二组、自动重跑或认证替换。
+This is a proposal for a new budget; preparing the code does not mean the run has started. It allows only one full-run FARM+DIVE learning group, 4 environments of 512 steps each, 2,048 learning steps in total. It still initializes independently from the original R16 weights, with an empty Adam and new counters at zero; it uses the original sustain-v6, adjacent-v1, seeds 2168000 to 2168003 and the original learning/reward recipe. There is no second group, no automatic rerun and no certification replacement.
 
-阶段上限为初始化 120 秒、训练 300 秒、离线分析 120 秒；超时按工程停止处理，并清理该阶段创建的进程。每个证据包的未压缩成员总量最多 512 MiB。学习步数不同会改变总进度字段，故这是同配方的首批诊断，不先验宣称逐步重现上一轮首批。
+The stage limits are 120 seconds for initialization, 300 seconds for training and 120 seconds for offline analysis; a timeout is handled as an engineering stop, and the processes created in that stage are cleaned up. The uncompressed members of each evidence package total at most 512 MiB. A different number of learning steps changes the total-progress fields, so this is a first-batch diagnostic of the same recipe, and it is not claimed in advance to reproduce the previous run's first batch step by step.
 
-## 如何保留证据
+## How the evidence is kept
 
-训练 CLI 显式使用 `--diagnostic-rollout first-update-v1`；默认关闭。只接受 CPU Worker MaskablePPO、candidate、全新资源初始化和恰一个完整 rollout，排除续训和校准中断。
+The training CLI uses `--diagnostic-rollout first-update-v1` explicitly; it is off by default. It only accepts CPU Worker MaskablePPO, candidate, a fresh resource initialization and exactly one complete rollout, excluding resumed training and calibration interruptions.
 
-回调在 GAE 已完成、优化器尚未更新的 `on_rollout_end`，复制原密封数组及逐行环境回执，保存策略与 Adam 状态。数组保持时间主序 `[time, env, ...]`，不能与随后 SB3 的环境主序或随机 minibatch 顺序混用。捕获逻辑不增加策略推理、梯度计算、优化器更新或随机抽样。
+In `on_rollout_end`, after GAE is complete and before the optimizer updates, the callback copies the original sealed arrays and per-row environment receipts and saves the policy and Adam state. The arrays keep the time-major order `[time, env, ...]` and must not be mixed with SB3's later env-major order or random minibatch order. The capture logic adds no policy inference, gradient computation, optimizer update or random sampling.
 
-只有一个完整更新及其原回执闭合，才在 `on_training_end` 保存对应终点。前后包绑定实现、初始化、步数及起点 actor 身份。未完整采样或更新，不生成可比较的 after 包；捕获错误停止试验。原最终发布验收随后照常运行，失败状态和非零退出保留。
+Only when one complete update and its original receipts close is the corresponding end point saved in `on_training_end`. The before and after packages bind the implementation, initialization, step count and starting actor identity. Without complete sampling or a complete update no comparable after package is produced; a capture error stops the trial. The original final release acceptance then runs as usual, and failure states and non-zero exits are kept.
 
-产物为 `first_update_before.zip`、`first_update_after.zip`、`rollout_diagnostic.json`。包明确标记 `DIAGNOSTIC_ONLY_NOT_PUBLISHABLE`，保存纯 tensor state_dict、数组和 JSON；不是普通 SB3 checkpoint，不能作为认证模型。已有同名文件不得覆盖。
+The outputs are `first_update_before.zip`, `first_update_after.zip` and `rollout_diagnostic.json`. The packages are explicitly marked `DIAGNOSTIC_ONLY_NOT_PUBLISHABLE` and hold plain tensor state_dicts, arrays and JSON; they are not ordinary SB3 checkpoints and cannot serve as a certified model. Existing files of the same name must not be overwritten.
 
-## 离线比较与解释
+## Offline comparison and interpretation
 
-离线进程仅加载本次明确绑定的初始化来构造同一策略，分别加载前后 state_dict，在相同线程及原每时刻环境批形状下推理。使用原动作、mask 和 old_log_probs，先核验起点概率与采集记录闭合；不为制造 ratio=1 替换记录。
+The offline process loads only the initialization explicitly bound for this run to construct the same policy, loads the before and after state_dicts separately, and runs inference with the same threads and the original per-time-step environment batch shape. It uses the original actions, masks and old_log_probs and first verifies that the starting probabilities close with the collected records; records are never replaced to force ratio=1.
 
-比较两种固定目标，均以损失下降为改善：
+Two fixed objectives are compared, in both cases counting a decreasing loss as an improvement:
 
-1. **完整封存 GAE 的 clipped surrogate**：沿用 clip 公式，对全批 GAE 只标准化一次。它包括后续奖励与 value 的影响，但不同于实际训练中各 minibatch 各自标准化的损失。
-2. **原即时战斗奖励参考**：`q = combat_effect * transition_reward`，使用全批中心化后的 `-mean((q-mean(q))*log_pi)`。不能用包含 TimeLimit bootstrap 的 buffer reward 代替真实 transition_reward。
+1. **Clipped surrogate on the full sealed GAE**: uses the clip formula and normalizes the whole batch's GAE only once. It includes the effect of later rewards and the value, but differs from the loss in actual training, where each minibatch is normalized separately.
+2. **Original immediate combat-reward reference**: `q = combat_effect * transition_reward`, using the batch-centred `-mean((q-mean(q))*log_pi)`. The buffer reward, which includes the TimeLimit bootstrap, must not stand in for the real transition_reward.
 
-同时记录 entropy、value MSE 和概率变化。当前逐行回执没有 FARM/DIVE 标签，不能从动作或 mask 猜测分组；本版不提供没有证据支持的分组统计。
+Entropy, value MSE and probability changes are recorded as well. The current per-row receipts have no FARM/DIVE label, and groups must not be guessed from actions or masks; this version provides no grouped statistics without supporting evidence.
 
-| 观察结果 | 可以支持的下一步 |
+| Observation | Next step it can support |
 |---|---|
-| GAE 目标改善，战斗参考变差 | 检查参考指标与长期目标的一致性；不直接判定训练失败或放宽门槛 |
-| 两者均变差 | 进一步检查信用分配及更新过程，不能仅凭此指认 Adam、熵或裁剪 |
-| 两者改善但方向条件仍拒收 | 核查起点局部方向与有限步目标变化的差异 |
-| 数据、概率或更新回执不闭合 | 停止解释效果，先解决工程错误 |
+| GAE objective improves, combat reference gets worse | check whether the reference metric agrees with the long-term objective; do not directly judge training a failure or relax the thresholds |
+| both get worse | examine credit assignment and the update process further; this alone cannot blame Adam, entropy or clipping |
+| both improve but the direction condition still rejects | check the difference between the local direction at the starting point and the finite-step objective change |
+| data, probabilities or update receipts do not close | stop interpreting the effect and fix the engineering error first |
 
-无论哪种结果，同数据目标都不能证明独立游戏表现改善。该版本不保存实际 minibatch 顺序或逐步梯度，不能逐项分解优化器因果，也不承诺精确续训。稳定下楼、完整 L2 生存窗口和后续第 7 层仍需独立的真实游戏验证。
+Whatever the result, an objective on the same data cannot prove better independent game performance. This version does not save the actual minibatch order or per-step gradients, cannot decompose the optimizer's causal effects item by item, and does not promise exact resumed training. Stable descending, a complete L2 survival window and the later level 7 still need independent real-game verification.

@@ -1,11 +1,11 @@
-"""v22 恶魔臂 F:平面 296 维 + spiral2 示范行为克隆。
+"""v22 devil arm F: behaviour cloning of spiral2 demonstrations on the flat 296-dim observation.
 
-用法:
-  采集+训练+重放检查:.venv/bin/python train/bc_flat.py
-产出:train/runs/bc-flat/policy_sd.pt(--bc-init 用)+ bc_report.json
-示范种子 100-227(与探针 7000 段、评估 9000 段零交叉)。
-教师 = spiral2 平面逻辑(神谕逐字 + 停滞钟驱动的榨干下楼)。
-重放检查 = "spiral2 是否为 296 维观测的无记忆函数"的直接裁决(≥0.85×教师均值)。
+Usage:
+  collect + train + replay check: .venv/bin/python train/bc_flat.py
+Output: train/runs/bc-flat/policy_sd.pt (for --bc-init) + bc_report.json
+Demo seeds 100-227 (disjoint from the 7000 probe block and the 9000 evaluation block).
+Teacher = spiral2 flat logic (oracle verbatim + stall-clock-driven drain-then-descend).
+Replay check = a direct test of "spiral2 is a memoryless function of the 296-dim observation" (>= 0.85 x teacher mean).
 """
 import json
 import hashlib
@@ -27,7 +27,7 @@ from train_ppo import _BC_REPORT_SCHEMA_VERSION, _implementation_bundle_sha256
 
 OUT = ROOT / "train" / "runs" / "bc-flat"
 OUT.mkdir(parents=True, exist_ok=True)
-DEMO_SEEDS = list(range(100, 228))       # 128 局
+DEMO_SEEDS = list(range(100, 228))       # 128 episodes
 REPLAY_SEEDS = list(range(7000, 7032))
 
 
@@ -60,7 +60,7 @@ def write_report(record):
 
 
 def teacher_action(env_flat):
-    """spiral2 平面教师:停滞钟≥140 → 11 下楼;否则神谕农/潜内环。"""
+    """spiral2 flat teacher: stall clock >= 140 -> 11 descend; otherwise the oracle farm/dive inner loop."""
     raw = env_flat.env._raw
     clvl, dlvl = raw["char_level"], raw["dungeon_level"]
     if env_flat._clock >= KILL_PATIENCE:
@@ -88,13 +88,13 @@ def collect():
             obs, r, done, trunc, _ = env.step(a)
             R += r
         rets.append(R)
-    print(f"示范:{len(X)} 对,教师均回报 {sum(rets)/len(rets):.1f}", flush=True)
+    print(f"demos: {len(X)} pairs, teacher mean return {sum(rets)/len(rets):.1f}", flush=True)
     env.close()
     return np.stack(X), np.asarray(Y, dtype=np.int64), sum(rets) / len(rets)
 
 
 class PiHead(nn.Module):
-    """与 SB3 MlpPolicy(64,64) 策略侧同构:mlp_extractor.policy_net + action_net。"""
+    """Isomorphic to the policy side of SB3 MlpPolicy(64,64): mlp_extractor.policy_net + action_net."""
 
     def __init__(self, obs_dim=296, n_act=15):
         super().__init__()
@@ -111,15 +111,15 @@ def _masked_replay_action(model, observation, action_mask) -> int:
     valid = np.asarray(action_mask, dtype=bool)
     if valid.shape != (15,):
         raise RuntimeError(
-            f"BC flat 重放动作掩码形状异常:{valid.shape} != (15,)")
+            f"BC flat replay action mask shape invalid: {valid.shape} != (15,)")
     if not bool(valid.any()):
-        raise RuntimeError("BC flat 重放动作掩码全假")
+        raise RuntimeError("BC flat replay action mask is all False")
     logits = model(
         torch.from_numpy(
             np.asarray(observation, dtype=np.float32)).unsqueeze(0))[0]
     if tuple(logits.shape) != (15,):
         raise RuntimeError(
-            f"BC flat 重放策略输出形状异常:{tuple(logits.shape)} != (15,)")
+            f"BC flat replay policy output shape invalid: {tuple(logits.shape)} != (15,)")
     masked_logits = logits.masked_fill(
         ~torch.as_tensor(valid, dtype=torch.bool, device=logits.device),
         -torch.inf,
@@ -164,8 +164,8 @@ def replay(model):
                 obs, r, done, trunc, _ = env.step(a)
                 R += r
             rets.append(R)
-    # 原实现用 100-227 示范池教师均值除 7000-7031 BC 均值，
-    # 把种子难度差当成策略损失。改为同池、同环境基准。
+    # The original code divided the teacher mean on the 100-227 demo pool by the BC mean on 7000-7031,
+    # treating the seed-difficulty gap as policy loss. Now uses a same-pool, same-environment baseline.
     for seed in REPLAY_SEEDS:
         obs, _ = env.reset(seed=seed)
         done = trunc = False
@@ -177,16 +177,16 @@ def replay(model):
     mean = sum(rets) / len(rets)
     teacher_mean = sum(teacher_rets) / len(teacher_rets)
     if teacher_mean <= 0:
-        raise RuntimeError(f"同池教师均回报 {teacher_mean:.3f} <= 0，比值闸无定义")
+        raise RuntimeError(f"same-pool teacher mean return {teacher_mean:.3f} <= 0; ratio gate undefined")
     ratio = mean / teacher_mean
-    print(f"重放:BC {mean:.1f} vs 同池教师 {teacher_mean:.1f} "
-          f"= {ratio:.2f} 倍(线 0.85)", flush=True)
+    print(f"replay: BC {mean:.1f} vs same-pool teacher {teacher_mean:.1f} "
+          f"= {ratio:.2f}x (line 0.85)", flush=True)
     env.close()
     return mean, teacher_mean, ratio
 
 
 def export_sb3_sd(model):
-    """映射到 SB3 MaskablePPO('MlpPolicy') 的 state_dict 键名(策略侧)。"""
+    """Map to the (policy-side) state_dict key names of SB3 MaskablePPO('MlpPolicy')."""
     sd = {
         "mlp_extractor.policy_net.0.weight": model.net[0].weight,
         "mlp_extractor.policy_net.0.bias": model.net[0].bias,
@@ -214,18 +214,18 @@ def main():
     if not ok:
         write_report(report)
         raise RuntimeError(
-            f"无记忆函数闸 FAIL(ratio={ratio:.3f});拒绝覆写 policy_sd.pt")
+            f"memoryless-function gate FAIL (ratio={ratio:.3f}); refusing to overwrite policy_sd.pt")
     policy_tmp = OUT / "policy_sd.tmp.pt"
     if artifact_provenance() != provenance:
-        raise RuntimeError("BC flat 运行期间实现/引擎/内容发生漂移")
+        raise RuntimeError("implementation/engine/content drifted while BC flat was running")
     torch.save(export_sb3_sd(model), policy_tmp)
     policy_tmp.replace(OUT / "policy_sd.pt")
     report["policy_sha256"] = hashlib.sha256(
         (OUT / "policy_sd.pt").read_bytes()).hexdigest()
     write_report(report)
-    print(f"已存 {OUT}/policy_sd.pt;无记忆函数假设:PASS", flush=True)
+    print(f"saved {OUT}/policy_sd.pt; memoryless-function hypothesis: PASS", flush=True)
 
 
 if __name__ == "__main__":
-    with exclusive_lock(OUT / ".bc.lock", "BC flat 产物"):
+    with exclusive_lock(OUT / ".bc.lock", "BC flat artifacts"):
         main()

@@ -22,7 +22,7 @@ _RPATH_RE = re.compile(r"^path (.*?) \(offset [0-9]+\)$")
 
 def version_tuple(value: str) -> tuple[int, int, int]:
     if not _VERSION_RE.fullmatch(value):
-        raise ValueError(f"非法 macOS 版本:{value!r}")
+        raise ValueError(f"invalid macOS version: {value!r}")
     parts = [int(part) for part in value.split(".")]
     return tuple((parts + [0, 0])[:3])
 
@@ -43,7 +43,7 @@ def parse_minos(load_commands: str) -> tuple[str, ...]:
             values.append(line.split(None, 1)[1])
             command = None
     if not values:
-        raise ValueError("Mach-O 没有 macOS minimum-version load command")
+        raise ValueError("Mach-O has no macOS minimum-version load command")
     for value in values:
         version_tuple(value)
     return tuple(values)
@@ -59,7 +59,7 @@ def parse_rpaths(load_commands: str) -> tuple[str, ...]:
         elif in_rpath and line.startswith("path "):
             match = _RPATH_RE.fullmatch(line)
             if not match:
-                raise ValueError(f"无法解析 LC_RPATH:{line!r}")
+                raise ValueError(f"cannot parse LC_RPATH: {line!r}")
             values.append(match.group(1))
             in_rpath = False
         elif line.startswith("cmd "):
@@ -81,7 +81,7 @@ def _otool(flag: str, path: pathlib.Path) -> str:
         ["/usr/bin/otool", flag, str(path)], text=True,
         stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
     if result.returncode != 0:
-        raise RuntimeError(f"otool {flag} {path} 失败:{result.stderr.strip()}")
+        raise RuntimeError(f"otool {flag} {path} failed: {result.stderr.strip()}")
     return result.stdout
 
 
@@ -120,8 +120,8 @@ def _resolve_dependency(
     if len(matches) == 1:
         return matches[0].resolve()
     if len(matches) > 1:
-        raise RuntimeError(f"依赖 {name} 有多个候选:{matches}")
-    raise RuntimeError(f"无法解析 {loader} 的非系统依赖:{name}")
+        raise RuntimeError(f"dependency {name} has multiple candidates: {matches}")
+    raise RuntimeError(f"cannot resolve non-system dependency of {loader}: {name}")
 
 
 def audit(
@@ -147,15 +147,15 @@ def audit(
             continue
         visited.add(path)
         if not path.is_file():
-            raise RuntimeError(f"Mach-O 不存在:{path}")
+            raise RuntimeError(f"Mach-O not found: {path}")
         load_commands = _otool("-l", path)
         minimums = parse_minos(load_commands)
         if is_root and any(version_tuple(value) != requested for value in minimums):
             raise RuntimeError(
-                f"{path} minos={minimums}，不等于请求的 {deployment_target}")
+                f"{path} minos={minimums}, not equal to the requested {deployment_target}")
         if any(version_tuple(value) > requested for value in minimums):
             raise RuntimeError(
-                f"{path} minos={minimums} 高于产物目标 {deployment_target}")
+                f"{path} minos={minimums} is newer than the build target {deployment_target}")
         audited.append((path, minimums))
 
         rpaths = parse_rpaths(load_commands)
@@ -181,10 +181,10 @@ def main() -> int:
             [pathlib.Path(value) for value in args.search_root],
         )
     except (OSError, RuntimeError, ValueError) as exc:
-        parser.exit(1, f"macOS minos 审计失败: {exc}\n")
+        parser.exit(1, f"macOS minos audit failed: {exc}\n")
     summary = ", ".join(
         f"{path.name}:{'/'.join(minimums)}" for path, minimums in audited)
-    print(f"macOS minos 审计通过({args.deployment_target}): {summary}")
+    print(f"macOS minos audit passed ({args.deployment_target}): {summary}")
     return 0
 
 

@@ -1,9 +1,9 @@
-"""把冻结 plain Worker(SB3 zip)导出成带部署合约的严格 NPZ。
+"""Export a frozen plain Worker (SB3 zip) to a strict NPZ carrying its deployment contract.
 
-新 checkpoint 从 training contract 推导 observation/action12 语义；未持久化
-这些字段的历史 checkpoint 必须显式给 ``--observation-view`` 与
-``--action12-mode``。输出含六张矩阵和唯一 ``worker_contract_json`` 成员，
-并做 1000 个已选 policy-space 观测的 SB3↔NumPy argmax parity。
+New checkpoints derive the observation/action12 semantics from the training contract; historical
+checkpoints that did not persist these fields must pass ``--observation-view`` and
+``--action12-mode`` explicitly. The output holds six matrices and a single ``worker_contract_json`` member,
+and runs an SB3<->NumPy argmax parity check on 1000 selected policy-space observations.
 """
 import argparse
 import hashlib
@@ -25,7 +25,7 @@ def _canonical_contract_sha256(contract) -> str | None:
     if contract is None:
         return None
     if not isinstance(contract, dict):
-        raise ValueError("checkpoint 的 diablogym_contract 必须是 dict 或 null")
+        raise ValueError("checkpoint diablogym_contract must be a dict or null")
     try:
         payload = json.dumps(
             contract,
@@ -37,7 +37,7 @@ def _canonical_contract_sha256(contract) -> str | None:
             separators=(",", ":"),
         ).encode("utf-8")
     except (TypeError, ValueError) as exc:
-        raise ValueError("checkpoint 的 diablogym_contract 不是严格 JSON") from exc
+        raise ValueError("checkpoint diablogym_contract is not strict JSON") from exc
     return hashlib.sha256(payload).hexdigest()
 
 
@@ -48,12 +48,12 @@ def _resolve_declared_value(
         label: str) -> str:
     if explicit is not None and derived is not None and explicit != derived:
         raise ValueError(
-            f"{label} 与 checkpoint training contract 冲突:"
+            f"{label} conflicts with the checkpoint training contract: "
             f"{explicit!r} != {derived!r}")
     selected = explicit if explicit is not None else derived
     if selected is None:
         raise ValueError(
-            f"checkpoint 未携可推导的 {label}；旧 checkpoint 必须显式传 --{label.replace('_', '-')}")
+            f"checkpoint carries no derivable {label}; old checkpoints must pass --{label.replace('_', '-')} explicitly")
     return selected
 
 
@@ -80,7 +80,7 @@ def _worker_contract_from_checkpoint(
             legacy_view = training_contract["legacy_policy_observation_view"]
             if not isinstance(legacy_view, bool):
                 raise ValueError(
-                    "training contract.legacy_policy_observation_view 必须是 bool")
+                    "training contract.legacy_policy_observation_view must be a bool")
             derived_view = (
                 WORKER_OBSERVATION_VIEW_LEGACY_V3
                 if legacy_view
@@ -90,7 +90,7 @@ def _worker_contract_from_checkpoint(
             sovereignty = training_contract["drink_sovereignty"]
             if not isinstance(sovereignty, bool):
                 raise ValueError(
-                    "training contract.drink_sovereignty 必须是 bool")
+                    "training contract.drink_sovereignty must be a bool")
             derived_action12 = (
                 WORKER_ACTION12_ENVIRONMENT_MASK
                 if sovereignty
@@ -131,12 +131,12 @@ def _plain_policy_arrays(model) -> dict[str, np.ndarray]:
         or hasattr(policy, "a12_gate")
     ):
         raise ValueError(
-            "A12/BC-aux/asymmetric policy 不能导出为 plain six-matrix Worker NPZ")
+            "A12/BC-aux/asymmetric policy cannot be exported as a plain six-matrix Worker NPZ")
     if tuple(getattr(model.observation_space, "shape", ())) != (298,):
         raise ValueError(
-            "plain six-matrix Worker NPZ 只支持 298 维策略观测")
+            "plain six-matrix Worker NPZ only supports the 298-dim policy observation")
     if not isinstance(getattr(policy, "features_extractor", None), FlattenExtractor):
-        raise ValueError("Worker NPZ 只支持 FlattenExtractor")
+        raise ValueError("Worker NPZ only supports FlattenExtractor")
     layers = list(getattr(policy.mlp_extractor, "policy_net", ()))
     if (
         len(layers) != 4
@@ -147,7 +147,7 @@ def _plain_policy_arrays(model) -> dict[str, np.ndarray]:
         or not isinstance(getattr(policy, "action_net", None), th.nn.Linear)
     ):
         raise ValueError(
-            "Worker NPZ 只支持 Linear-Tanh-Linear-Tanh + Linear action head")
+            "Worker NPZ only supports Linear-Tanh-Linear-Tanh + Linear action head")
     sd = policy.state_dict()
     keys = (
         "mlp_extractor.policy_net.0.weight",
@@ -159,7 +159,7 @@ def _plain_policy_arrays(model) -> dict[str, np.ndarray]:
     )
     missing = [key for key in keys if key not in sd]
     if missing:
-        raise ValueError(f"plain Worker policy 缺少权重:{missing}")
+        raise ValueError(f"plain Worker policy is missing weights: {missing}")
     arrays = {
         "w0": sd[keys[0]].detach().cpu().numpy(),
         "b0": sd[keys[1]].detach().cpu().numpy(),
@@ -169,7 +169,7 @@ def _plain_policy_arrays(model) -> dict[str, np.ndarray]:
         "ba": sd[keys[5]].detach().cpu().numpy(),
     }
     if not all(np.isfinite(array).all() for array in arrays.values()):
-        raise ValueError("策略权重含 NaN/Inf，拒绝导出")
+        raise ValueError("policy weights contain NaN/Inf; refusing to export")
     return arrays
 
 
@@ -196,8 +196,8 @@ def main():
             WORKER_OBSERVATION_VIEW_RAW_V4,
         ),
         help=(
-            "源 checkpoint 未持久化视图时必须显式声明；"
-            "若 contract 已持久化则本值只能与之相同"),
+            "must be declared explicitly when the source checkpoint did not persist the view; "
+            "if the contract persisted it, this value must equal it"),
     )
     ap.add_argument(
         "--action12-mode",
@@ -206,19 +206,19 @@ def main():
             WORKER_ACTION12_ENVIRONMENT_MASK,
         ),
         help=(
-            "源 checkpoint 未持久化喝药主权时必须显式声明；"
-            "若 contract 已持久化则本值只能与之相同"),
+            "must be declared explicitly when the source checkpoint did not persist potion autonomy; "
+            "if the contract persisted it, this value must equal it"),
     )
     args = ap.parse_args()
     zip_p = args.zip_path
     out = args.output or zip_p.parent / "policy.npz"
     source_file = zip_p if zip_p.suffix.lower() == ".zip" else pathlib.Path(f"{zip_p}.zip")
     if not source_file.is_file():
-        ap.error(f"checkpoint 不存在: {source_file}")
+        ap.error(f"checkpoint does not exist: {source_file}")
     if out.suffix.lower() != ".npz":
-        ap.error("输出路径必须以 .npz 结尾")
+        ap.error("output path must end with .npz")
     if out.resolve() == source_file.resolve():
-        ap.error("输出路径不能覆盖源 checkpoint")
+        ap.error("output path must not overwrite the source checkpoint")
     # Capture once so the loaded model and recorded source identity cannot be
     # split by a concurrent path replacement.
     source_payload = source_file.read_bytes()
@@ -269,10 +269,10 @@ def main():
     finally:
         tmp.unlink(missing_ok=True)
     print(
-        f"npz 已存 {out};parity 失配 {mism}/1000;"
+        f"npz saved {out}; parity mismatches {mism}/1000; "
         f"view={worker_contract['observation_view']};"
         f"a12={worker_contract['action12_mode']};"
-        f"源 checkpoint sha256:{source_sha256[:16]}")
+        f"source checkpoint sha256: {source_sha256[:16]}")
 
 
 if __name__ == "__main__":

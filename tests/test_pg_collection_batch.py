@@ -110,7 +110,7 @@ class CollectionBatchTests(unittest.TestCase):
     def test_malformed_distribution_batch_cannot_silently_reshape(self):
         model, actions = self.fixture()
         model.policy = _RecordingPolicy(bad_shape=True)
-        with self.assertRaisesRegex(RuntimeError, "batch 形状"):
+        with self.assertRaisesRegex(RuntimeError, "batch shape"):
             LeashedMaskablePPO._worker_pg_collection_log_probs(model, actions)
 
     def test_real_multi_env_collection_replays_time_steps_before_first_optimizer(self):
@@ -144,7 +144,7 @@ class CollectionBatchTests(unittest.TestCase):
                     values[1, 0] += np.float32(0.5)
         model, env = audit_model()
         try:
-            with self.assertRaisesRegex(RuntimeError, "actor/log-prob 与 collection 回执不闭合"):
+            with self.assertRaisesRegex(RuntimeError, "actor/log-prob does not close with the collection receipt"):
                 model.learn(total_timesteps=8, callback=Tamper())
             self.assertEqual(model._ppo_optimizer_steps_completed, 0)
             self.assertEqual(model._actor_optimizer_steps_completed, 0)
@@ -160,7 +160,7 @@ class CollectionBatchTests(unittest.TestCase):
                 self.model.rollout_buffer.generator_ready = True
         model, env = audit_model()
         try:
-            with self.assertRaisesRegex(RuntimeError, "未展开的 audited rollout buffer"):
+            with self.assertRaisesRegex(RuntimeError, "unflattened audited rollout buffer"):
                 model.learn(total_timesteps=8, callback=FlattenFlag())
             self.assertEqual(model._ppo_optimizer_steps_completed, 0)
         finally:

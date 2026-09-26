@@ -1,59 +1,80 @@
-# R17 Gate T0′ 判决书(2026-09-06 22:13)
+# R17 Gate T0′ verdict (2026-09-06)
 
-主席令「现在就来」:合并 R17.1-D 战利品变现(候选 `~/r21_loot_economy_20260905/candidate`,三方合并 8 处冲突全部"两者都留",
-补丁 0012 按 CRLF 基线重生成,漂移门 PASS)→ 最终字节认证(全套件 1933/1/0;探针回归 33023de1… 相等;G0 零 RuntimeError;
-双向重烤进行中,截至撰写各 2/4 PASS)→ T0′。驱动 `r10-staging/run_t0_prime.py`;产物 `r10-staging/t0-prime/`;
-新桥 5693800d…;池 2_133 同种子配对;时钟 completion-l2-v1(卖装备服务硬性要求:首次 L2 截止 12000 实际拍、之后 1800 观察、
-观测分母 6000)。施工中修复一处接缝:服务把仍在走路的角色交还工人 → coach-v03 下在 RESUPPLY 窗内用审计过的脚本等待先停稳
-(options_env),veto-v1 不受影响;completion 时钟的 L2 到达检查在 coach-v03 下不再要求 pretransition_ready。
+Run on instruction the same day: merge the R17.1-D loot monetisation (candidate in a local work directory,
+not published; three-way merge, all 8 conflicts resolved as "keep both"; patch 0012 regenerated against the
+CRLF baseline, drift gate PASS) → final-byte certification (full suite 1933/1/0; probe regression 33023de1…
+equal; G0 with zero RuntimeError; two-way re-bake in progress, 2/4 PASS on each side at the time of
+writing) → T0′. Driver `r10-staging/run_t0_prime.py`; outputs `r10-staging/t0-prime/` (both not
+published); new bridge 5693800d…; pool 2_133, paired on the same seeds; clock completion-l2-v1 (a hard
+requirement of the gear-selling service: the first L2 cut-off at 12000 actual steps, then 1800 steps of
+observation, observation denominator 6000). One seam was fixed during construction: the service handed a
+character that was still walking back to the worker → under coach-v03, inside a RESUPPLY window, it now
+first waits with an audited script until it stands still (options_env); veto-v1 is unaffected; under
+coach-v03, the L2 arrival check of the completion clock no longer requires pretransition_ready.
 
-## 一、结果(48 种子)
+## 1. Results (48 seeds)
 
-| 组 | 时钟 | 存活 | 死亡 | L2 到达 | L2 每千拍风险率 | 强制未达标下楼份额 | 末期金币 | 首降+1800 可观测 |
+| Group | Clock | Survived | Deaths | L2 reached | L2 hazard per thousand steps | Forced-unready descent share | Final gold | First descent + 1800 observable |
 |---|---|---|---|---|---|---|---|---|
-| (d′) full + **卖装备** sustain-loot-v1 | 12000 | 13 | 35 | 37 | 0.756 | **0.184** | **125** | 40 |
-| (d″) full 不卖 sustain-v6 | 12000 | 15 | 33 | 38 | 0.623 | 0.359 | 95 | 41 |
-| 参考 (d) full 不卖(T0) | 6000 | 34 | 14 | 20 | 0.760 | 0.500 | 81 | 8 |
-| 参考 A0′-arm 无通道(T0) | 6000 | 26 | 22 | 24 | 0.890 | — | 100 | 16 |
+| (d′) full + **gear selling** sustain-loot-v1 | 12000 | 13 | 35 | 37 | 0.756 | **0.184** | **125** | 40 |
+| (d″) full, no selling, sustain-v6 | 12000 | 15 | 33 | 38 | 0.623 | 0.359 | 95 | 41 |
+| Reference (d) full, no selling (T0) | 6000 | 34 | 14 | 20 | 0.760 | 0.500 | 81 | 8 |
+| Reference A0′-arm, no channel (T0) | 6000 | 26 | 22 | 24 | 0.890 | — | 100 | 16 |
 
-配对 (d′) vs (d″):saved 1 / lost 3,净 −2;死亡率差 +0.042,UCB95 +0.110。**裁决:T0′_FAIL**(判据 1、2 未达;判据 4 达)。
+Paired (d′) vs (d″): saved 1 / lost 3, net −2; death-rate difference +0.042, UCB95 +0.110. **Decision:
+T0′_FAIL** (criteria 1 and 2 not met; criterion 4 met).
 
-## 二、卖装备做到了它该做的,存活没有跟上
+## 2. Gear selling did its job; survival did not follow
 
-- 钱:末期金币 95 → 125;强制未达标下楼 36% → **18%**(T0 无卖装备为 50%)。主席 2026-09-04 的异议在"达标"这一层完全成立。
-- 存活:13 vs 15,风险率 0.76 vs 0.62,没有改善。
+- Money: final gold 95 → 125; forced-unready descents 36% → **18%** (50% in T0 without gear selling). The
+  objection recorded on 2026-09-04 holds completely at the level of "readiness".
+- Survival: 13 vs 15, hazard 0.76 vs 0.62, no improvement.
 
-## 三、决定性的拆分:达标者与未达标者在 L2 死得一样快
+## 3. The decisive split: ready and unready characters die equally fast on L2
 
-按下楼时是否满足六条法拆分(三臂):
+Split by whether the six-condition law was met at descent (three arms):
 
-| 臂 | 达标下楼 n / L2 死亡 / 风险率 | 强制未达标 n / L2 死亡 / 风险率 |
+| Arm | Ready descents n / L2 deaths / hazard | Forced-unready n / L2 deaths / hazard |
 |---|---|---|
 | (d) 6000 | 10 / 3 / 0.642 | 10 / 4 / 0.881 |
 | (d″) 12000 | 24 / 16 / 0.609 | 14 / 9 / 0.650 |
 | (d′) 12000 | 30 / 24 / 0.835 | 7 / 3 / 0.430 |
 
-三臂 95 次下楼合并,**L2 存活者与 L2 死者在下楼时的面板几乎相同**:AC 10.2 vs 10.8,clvl 3.06 vs 3.08,伤害 8.2 vs 7.8,
-腰带 4.25 vs 4.46,HP 84 vs 85。AC ≥ 13 的 21 次下楼仍死 71%;clvl ≥ 4 只有 7 次(死 5)。L2 死亡中位时间 467 拍。
-**六条战备法在当前数值区间不区分生死。** 面板评审当时对 ③ 案的"尺子倒挂"异议(AC 9 = 出生甲 + 2,定义式达标)由数据坐实:
-达标可以买到,存活买不到。R14 的结论(h(2) ≈ 0.55 是技能墙不是价格墙)在资源通道齐备之后依然成立。
+Pooling the 95 descents of the three arms, **L2 survivors and L2 deaths have almost the same panel at
+descent**: AC 10.2 vs 10.8, clvl 3.06 vs 3.08, damage 8.2 vs 7.8, belt 4.25 vs 4.46, HP 84 vs 85. The 21
+descents with AC ≥ 13 still died 71% of the time; only 7 descents had clvl ≥ 4 (5 died). Median time to
+death on L2: 467 steps.
+**In the current range of values, the six-condition readiness law does not separate life from death.** The
+panel's objection at the time to option 3, the "inverted ruler" (AC 9 = starting armour + 2, ready by
+definition), is confirmed by the data: readiness can be bought, survival cannot. R14's conclusion (h(2) ≈
+0.55 is a skill wall, not a price wall) still holds once the resource channel is complete.
 
-## 四、机理小结(实测)
+## 4. Mechanism summary (measured)
 
-1. 6000 拍下通道"救人"主要靠少下、晚下(L2 停留拍 351 → 192);12000 拍下所有到 L2 的角色都在那里战至死亡(33–35/48)。
-2. 资金链已经打通:拾金 → 回城 → 买/修/穿 → 卖闲置 → 二次回城,达标份额三步走 50% → 36% → 18%。
-3. L2 的每拍死亡率 0.6–0.8/千拍,对 AC 10–13、clvl 3、四瓶药的角色一视同仁。杠杆不在采购,在 L2 上的打法:
-   hunt 宏在 L2 主动求战(花名册 100+),没有撤退、没有喝药节奏、没有交战选择。
+1. At 6000 steps the channel "saves lives" mainly by descending less and later (steps on L2 351 → 192); at
+   12000 steps every character that reaches L2 fights there until it dies (33-35/48).
+2. The money chain is connected: pick up gold → town trip → buy / repair / equip → sell idle gear → second
+   town trip, and the forced-unready share went down in three steps, 50% → 36% → 18%.
+3. The per-step death rate on L2 is 0.6-0.8 per thousand steps, the same for characters with AC 10-13, clvl
+   3 and four potions. The lever is not purchasing but how the agent plays L2: the hunt macro seeks fights
+   actively on L2 (roster 100+), with no retreat, no drinking rhythm and no choice of engagements.
 
-## 五、下一步(候选,待主席)
+## 5. Next steps (candidates, for decision)
 
-- **R18 提前:L2 生存课**(面板 ② 的可用零件,当时条件"有药有甲"现已满足):撤退宏、交战选择、喝药节奏;深起点课程(R9 mcurr 机器)。
-- **零训练机理探针(便宜,明天)**:同池同钟,(d″) 配 L2 关闭 hunt(或 L2 只探索不求战)——若风险率明显下降,证明杠杆在求战强度。
-- **战备法重标(慎)**:当前数据无法给出一个把生死分开的 AC/clvl 阈值(AC 13 仍死 71%);L1 经验池 6–9k 决定 clvl 上限约 3–4,
-  更高的门槛在 L1 不可达。不建议再动尺子。
-- 训练臂:T0′ 未过,不发射。
+- **Bring R18 forward: an L2 survival course** (the usable parts of the panel's option 2, whose condition,
+  "potions and armour available", is now met): a retreat macro, engagement choice, a drinking rhythm; a
+  deep-start curriculum (the R9 mcurr machinery).
+- **A zero-training mechanism probe (cheap, next)**: same pool, same clock, (d″) with hunt turned off on L2
+  (or explore-only, no fight-seeking on L2); if the hazard drops clearly, that proves the lever is the
+  intensity of fight-seeking.
+- **Recalibrate the readiness law (with care)**: the current data cannot give an AC/clvl threshold that
+  separates life from death (AC 13 still dies 71% of the time); the L1 XP pool of 6-9k caps clvl at about
+  3-4, and higher thresholds are unreachable on L1. Changing the ruler again is not recommended.
+- Training arm: T0′ failed, no launch.
 
-## 六、种子与文件
+## 6. Seeds and files
 
-2_133 再消耗 2 组(累计 6 组)。新文件:本判决书、`t0-prime/`、`run_t0_prime.py`、`t0p_split.py`、`t0p_survivors.py`(~/r17_work/r17-1)。
-无冻结工件被覆盖。六卷 r17-anchor 重铸与双向重烤在最终字节上进行中,结果另记台账。
+2_133 consumed by 2 more groups (6 groups in total). New files: this verdict, and the outputs and scripts in
+a local work directory (`t0-prime/`, `run_t0_prime.py`, `t0p_split.py`, `t0p_survivors.py`; not published).
+No frozen artefact overwritten. The recast of the six r17-anchor sheets and the two-way re-bake are running
+on the final bytes; results are recorded separately in the ledger.

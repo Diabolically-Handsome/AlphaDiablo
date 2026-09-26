@@ -3,10 +3,10 @@
 Everything about schema/2 (``migrate_loot_candidate``) plus proof that schema/1
 -- the five frozen sustain-v2..v6 operations, their receipts and their allowed
 contract vocabulary -- is byte-identical to the tree before this change.  The
-literals in ``FROZEN_*`` were captured from the main tree
-(``~/AlphaDiablo/diablogym``) and from ``b3-tree.pre-b3b`` BEFORE the R18-B3b
-edit; the two agree on every one of them (the only pre-existing difference
-between those trees is R18-B3's reserved, unmintable loot name).
+literals in ``FROZEN_*`` were captured from the main development tree and
+from a copy taken before the R18-B3b edit; the two agree on every one of
+them (the only pre-existing difference between those trees is R18-B3's
+reserved, unmintable loot name).
 """
 from copy import deepcopy
 import hashlib
@@ -761,7 +761,7 @@ class LiveTrainingContractIdentityTests(unittest.TestCase):
 
     @staticmethod
     def _launch_argv(time_protocol, escrow_table, hunt_scope="all"):
-        """B3B-LAUNCH-COMMAND.sh's train_ppo invocation, verbatim.
+        """The R18-B3b launch command's train_ppo invocation (launch script not published), verbatim.
 
         ``--resource-warm-start`` only has to be truthy here: the contract asks
         whether a warm start is in play, and the file itself is read by _main,

@@ -1,26 +1,48 @@
-# R9 取证报告:双臂行为塌缩(2026-08-27,终判后归档)
+# R9 forensic report: behavioural collapse of both arms (2026-08-27, filed after the final verdict)
 
-## 异常发现
-06:30 mcurr 池 a 成绩与 mfresh 池 a 逐位相同(mean 105.74274129532098、depth_hist、l3+、死亡数、死亡种子序列全部一致,仅结果 sha 不同)。随后预测 mcurr 池 b 将逐位复现 mfresh 池 b——06:37 命中(99.83548711193744/l3+12/死亡103)。
+## Anomaly
+The pool-a result of mcurr was bit-identical to the pool-a result of mfresh (mean 105.74274129532098,
+depth_hist, l3+, death count and the sequence of death seeds all identical; only the result sha differed).
+We then predicted that mcurr pool b would reproduce mfresh pool b bit for bit, and it did
+(99.83548711193744 / l3+ 12 / deaths 103).
 
-## 排查步骤与证据
-1. 驱动传参核验:进行中的 mcurr-b 进程命令行确认 --manager-npz 指向 r9-mcurr/policy.npz(路径无误,考官未发错卷)。
-2. 策略文件比对:两 NPZ 完整 sha256 不同;逐数组比对(w0/b0/w1/b1/wa/ba)全部 identical=False,各层 maxdiff 0.026~0.156——两张网真实不同。
-3. 行为探针(20000 样本 x 3 分布):
-   - [0,1] 均匀分布(raw-v4 归一化观测的真实定义域):两网 argmax 一致率 100.00%,且全部选动作 0(动作分布 [20000,0,0] / [20000,0,0])。
-   - 高斯 N(0,1) 与 N(0,5)(分布外):一致率仅 69%——证明两网不同,仅在真实流形上合流。
+## Investigation steps and evidence
+1. Driver arguments: the command line of the running mcurr-b process confirmed that --manager-npz pointed
+   to r9-mcurr/policy.npz (the path was right; the examiner did not hand out the wrong paper).
+2. Policy files: the full sha256 of the two NPZ files differ; an array-by-array comparison
+   (w0/b0/w1/b1/wa/ba) gives identical=False for every array, with per-layer maxdiff 0.026-0.156: the two
+   networks really are different.
+3. Behaviour probe (20000 samples x 3 distributions):
+   - Uniform on [0,1] (the true domain of the raw-v4 normalised observation): argmax agreement between
+     the two networks is 100.00%, and both always choose action 0 (action distributions [20000,0,0] /
+     [20000,0,0]).
+   - Gaussian N(0,1) and N(0,5) (out of distribution): agreement only 69%, which proves the networks
+     differ and merge only on the real manifold.
 
-## 结论
-考试有效,非运维事故。两臂各自塌缩为常数策略(恒发动作 0),故与冻结工人+固定种子组合后产生逐位相同轨迹。终判『无胜者』的数字全部真实。
+## Conclusion
+The exam was valid; this was not an operations incident. Each arm collapsed into a constant policy
+(always action 0), so combined with the frozen worker and fixed seeds they produced bit-identical
+trajectories. All numbers behind the final verdict "no winner" are real.
 
-## 机制解释(与既有案卷一致)
-v20 判决:现行工资经济下下潜为负期望收益。经理无论发何指令,工资均贴锚线,指令间无可辨梯度 → 策略塌缩至任一常数指令(ent 0.02 未能阻止流形上的 argmax 合流)。mcurr 训练日志中的 L4/L5 足迹来自课程将其放置于深处(deep-start),并未转化为标准起点下的行为差异(半个比特都没有)。
+## Mechanism (consistent with earlier dossiers)
+The v20 verdict: under the current wage economy, diving has negative expected return. Whatever command
+the manager issues, the wage sits on the anchor line, and there is no distinguishable gradient between
+commands → the policy collapses to one constant command (ent 0.02 did not prevent argmax merging on the
+manifold). The L4/L5 footprints in mcurr's training logs come from the curriculum placing it deep
+(deep-start) and did not turn into any behavioural difference from the standard starting point (not
+even half a bit).
 
-## 对路线图的含义
-经理侧手段(重训 mfresh / 深起点课程 mcurr)已穷尽并全部证伪。深度解锁的钥匙不在经理侧,在环境工资制度侧:课程②(DIVE 工资改革,env-side,需总设计师批准)由备选升格为唯一活路,本案为其立案证据链。
+## Implications for the roadmap
+The manager-side tools (retraining mfresh / the deep-start curriculum mcurr) are exhausted and all
+falsified. The key to unlocking depth is not on the manager side but in the environment's wage system:
+course 2 (DIVE wage reform, environment side, needs approval) moves from an alternative to the only way
+forward, and this case forms its chain of evidence.
 
-## 建议(供总设计师裁夺,非决定)
-1. R10 若立案课程②,判据应含『指令间工资可辨性』探针(防再次塌缩);
-2. 行为探针(argmax 一致率 + 动作分布)纳入未来对照臂考试的标准前检——两臂行为同一时,配对检验功效为零,应提前宣告而非跑完全考。
+## Recommendations (for decision; not decisions)
+1. If R10 opens course 2, its criteria should include a probe for "distinguishable wages between
+   commands" (to prevent another collapse);
+2. The behaviour probe (argmax agreement + action distribution) should become a standard pre-check for
+   future control-arm exams: when two arms behave identically, a paired test has zero power, and this
+   should be declared up front rather than after running the full exam.
 
-取证:Claude(夜班班长)。原始命令与输出留存于会话记录;本文件为 NEW FILE,未改动任何冻结产物。
+This report is a new file and changes no frozen artefact.

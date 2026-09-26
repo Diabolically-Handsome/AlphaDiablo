@@ -1,25 +1,25 @@
-# v22-H — 策略脑 v1(分层经理,首个入库模型)
+# v22-H — Policy brain v1 (hierarchical manager, the first model added to the repository)
 
-第一个赢下预注册实弹对抗(P7)的模型,原样封存。
+The first model to win a pre-registered live head-to-head (P7), archived unchanged.
 
-## 身份
+## Identity
 
-| 项 | 值 |
+| Item | Value |
 |---|---|
-| 架构 | MaskablePPO `MlpPolicy` (64,64),γ=1.0,gae_lambda=0.95 |
-| 观测 | 303 维(295 基础 + 剩余时间/停滞钟/本层击杀/本层步数/上次选项 one-hot(3)/上次 τ) |
-| 动作 | Discrete(3):FARM / DIVE / RESUPPLY(选项级,SMDP;内环为神谕逐字冻结宏) |
-| 训练 | 3M 微步 @ M1 Max,`train_ppo.py --options`,run `ppo-hier-v22-h`(2026-07-09) |
-| 引擎 | DevilutionX 钉死 `34c4cfc2e733`(bootstrap.sh ENGINE_REF)+ diablogym 桥(v20 世界规则:下楼阶梯 + 死亡阶梯 + 自动加点) |
-| SHA-256 | `9dcf40b061bcb40b5548f30587d726758f2ea27df745dd7fb418c44adaa81c38`(2026-09-23 重新保存:仅 zip 内 `data` 元数据里的本机路径换成中性路径,权重与优化器状态逐字节不变;原始文件见提交 c1ffced,原 SHA-256 `f3b579d2b0c9b613045692435a46702d1a9e8de8fc62e155c651f565d8bd6f1a`) |
+| Architecture | MaskablePPO `MlpPolicy` (64,64), γ=1.0, gae_lambda=0.95 |
+| Observation | 303 dims (295 base + time remaining / stall clock / kills on this level / steps on this level / last option one-hot (3) / last τ) |
+| Actions | Discrete(3): FARM / DIVE / RESUPPLY (option level, SMDP; the inner loop is the oracle's macros, frozen verbatim) |
+| Training | 3M micro-steps on an Apple M1 Max, `train_ppo.py --options`, run `ppo-hier-v22-h` (2026-07-09) |
+| Engine | DevilutionX pinned at `34c4cfc2e733` (bootstrap.sh ENGINE_REF) + the diablogym bridge (v20 world rules: descend ladder + death ladder + automatic stat allocation) |
+| SHA-256 | `9dcf40b061bcb40b5548f30587d726758f2ea27df745dd7fb418c44adaa81c38` (re-saved on 2026-09-23 with a neutral path in the zip metadata; weights and optimizer state unchanged; previous SHA-256 `f3b579d2b0c9b613045692435a46702d1a9e8de8fc62e155c651f565d8bd6f1a`) |
 
-## 战绩(金种子 9000-9031,终评协议)
+## Results (gold seeds 9000-9031, final-evaluation protocol)
 
-均回报 **93.9**(中位 103.45),死亡 **2/32**,对恶魔臂 F 成对胜 24/32。
-教师脚本 101.5 但死 25/32——本模型用 7.5% 的回报换掉了 92% 的死亡。
-完整对局记录见 `train/leaderboard-hier.md`,判决书见 `docs/design/DESIGN.md` v22 章。
+Mean return **93.9** (median 103.45), deaths **2/32**, paired wins against devil arm F 24/32.
+The teacher script scores 101.5 but dies 25/32 — this model trades 7.5% of the return for 92% fewer deaths.
+Full game records are in `train/leaderboard-hier.md`; the verdict is in the v22 chapter of `docs/design/DESIGN.md`.
 
-## 复现 / 加载
+## Reproduce / load
 
 ```bash
 .venv/bin/python train/evaluate_options.py train/models/v22-h-manager/model_final --options
@@ -30,5 +30,5 @@ from sb3_contrib import MaskablePPO
 model = MaskablePPO.load("train/models/v22-h-manager/model_final", device="cpu")
 ```
 
-注意:观测契约(303 维布局)由 `python/diablogym/options_env.py` 定义,
-改动该文件的 `_mgr_obs` 即作废此模型——只能新训,不能兼容。
+Note: the observation contract (the 303-dim layout) is defined by `python/diablogym/options_env.py`.
+Changing `_mgr_obs` in that file invalidates this model; it can only be retrained, not made compatible.

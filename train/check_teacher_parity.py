@@ -1,8 +1,8 @@
-"""v30 G-KL-W:自锚教师保真闸——logits、部署掩码概率与 argmax 全口径。
+"""v30 G-KL-W: self-anchored teacher fidelity gate -- logits, deployment-mask probabilities and argmax, all criteria.
 
-用法:.venv/bin/python train/check_teacher_parity.py <teacher_sd.pt> <worker_policy.npz>
-预注册口径:obs = np.random.default_rng(0).standard_normal((1000, 298)).astype(float32)。
-退出码 0 = logits/probability 近逐位且 0/1000 失配；缩放温度也必须闸死。
+Usage: .venv/bin/python train/check_teacher_parity.py <teacher_sd.pt> <worker_policy.npz>
+Pre-registered criterion: obs = np.random.default_rng(0).standard_normal((1000, 298)).astype(float32).
+Exit code 0 = logits/probabilities nearly bit-identical and 0/1000 mismatches; a scaled temperature must also be caught.
 """
 import argparse
 import pathlib
@@ -55,7 +55,7 @@ def parity_metrics(
 
 
 def parity_passes(metrics: dict) -> bool:
-    """集中保存闸门阈值，避免命令行与回归测试各写一份后漂移。"""
+    """Keep the gate thresholds in one place so the CLI and regression tests cannot drift apart."""
     return (metrics["raw_argmax_mismatch"] == 0
             and metrics["masked_argmax_mismatch"] == 0
             and metrics["logits_max_abs"] < 1e-4
@@ -72,13 +72,13 @@ def main():
         WORKER_OBSERVATION_VIEW_LEGACY_V3,
     )
 
-    ap = argparse.ArgumentParser(description="校验教师 state_dict 与工人 NPZ 的 argmax 一致性")
+    ap = argparse.ArgumentParser(description="check argmax agreement between a teacher state_dict and a worker NPZ")
     ap.add_argument("teacher_sd", type=pathlib.Path)
     ap.add_argument("worker_npz", type=pathlib.Path)
     args = ap.parse_args()
     for path in (args.teacher_sd, args.worker_npz):
         if not path.is_file():
-            ap.error(f"文件不存在: {path}")
+            ap.error(f"file does not exist: {path}")
 
     sd_path, npz_path = str(args.teacher_sd), str(args.worker_npz)
     teacher = build_teacher(sd_path)
@@ -86,10 +86,10 @@ def main():
     contract = net.require_worker_contract()
     if contract["observation_view"] != WORKER_OBSERVATION_VIEW_LEGACY_V3:
         ap.error(
-            "KING teacher parity 只定义于完整 legacy-v3 policy observation")
+            "KING teacher parity is only defined for the full legacy-v3 policy observation")
     if contract["action12_mode"] != WORKER_ACTION12_PERMANENTLY_MASKED:
         ap.error(
-            "KING teacher parity 要求 permanently-masked action12 contract")
+            "KING teacher parity requires a permanently-masked action12 contract")
     obs = np.random.default_rng(0).standard_normal((1000, 298)).astype(np.float32)
     metrics = parity_metrics(
         teacher,
